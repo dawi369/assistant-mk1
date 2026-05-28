@@ -1,9 +1,10 @@
-import { ChatAnthropic } from "@langchain/anthropic";
+import { ChatOpenRouter } from "@langchain/openrouter";
 import { MessagesAnnotation, StateGraph } from "@langchain/langgraph";
 
-const model = new ChatAnthropic({
-  model: process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-6",
-  streaming: true,
+const model = new ChatOpenRouter({
+  model: process.env.OPENROUTER_MODEL ?? "openai/gpt-5.2",
+  siteUrl: process.env.OPENROUTER_SITE_URL,
+  siteName: process.env.OPENROUTER_APP_NAME ?? "assistant-mk1",
 });
 
 const callModel = async (state: typeof MessagesAnnotation.State) => {

@@ -1,4 +1,4 @@
-This is the [assistant-ui](https://github.com/assistant-ui/assistant-ui) starter project for LangGraph. It ships a minimal Claude-backed agent (`backend/agent.ts`) plus a Next.js chat UI that streams from it.
+This is the [assistant-ui](https://github.com/assistant-ui/assistant-ui) starter project for LangGraph. It ships a minimal OpenRouter-backed agent (`backend/agent.ts`) plus a Next.js chat UI that streams from it.
 
 ## Getting Started
 
@@ -9,10 +9,11 @@ This is the [assistant-ui](https://github.com/assistant-ui/assistant-ui) starter
    ```
 
    Required:
-   - `ANTHROPIC_API_KEY` — used by `backend/agent.ts`
+   - `OPENROUTER_API_KEY` — used by `backend/agent.ts`
 
    Optional:
-   - `ANTHROPIC_MODEL` — override the default model id
+   - `OPENROUTER_MODEL` — override the default model id
+   - `OPENROUTER_SITE_URL` / `OPENROUTER_APP_NAME` — OpenRouter attribution metadata
    - `LANGSMITH_TRACING` / `LANGSMITH_API_KEY` / `LANGSMITH_PROJECT` — tracing
    - `LANGCHAIN_API_KEY` — only needed when pointing `LANGGRAPH_API_URL` at LangGraph Platform (cloud)
 
