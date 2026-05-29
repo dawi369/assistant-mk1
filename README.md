@@ -1,4 +1,4 @@
-This is the [assistant-ui](https://github.com/assistant-ui/assistant-ui) starter project for LangGraph. It ships a minimal OpenRouter-backed agent (`backend/agent.ts`) plus a Next.js chat UI that streams from it.
+This is a reusable agent workbench built from the [assistant-ui](https://github.com/assistant-ui/assistant-ui) LangGraph starter. It ships a minimal OpenRouter-backed agent (`backend/agent.ts`), a Next.js chat UI that streams from it, and the first runtime seams for hosted staging, external starts, cron creation, and interrupt resumes.
 
 ## Getting Started
 
@@ -29,13 +29,53 @@ This is the [assistant-ui](https://github.com/assistant-ui/assistant-ui) starter
 
    Run them individually with `pnpm dev:backend` and `pnpm dev:frontend`.
 
+   This repo uses pnpm because it is faster, works well for future workspace/package extraction, and `pnpm-lock.yaml` is the package-manager source of truth.
+
+3. Verify local changes:
+
+   ```bash
+   pnpm typecheck
+   pnpm build
+   pnpm lint
+   ```
+
 ## Project layout
 
 ```
 app/                Next.js App Router pages + /api proxy
+app/api/[..._path]/ Next.js catch-all proxy for LangGraph API requests
 backend/agent.ts    LangGraph graph exported as `graph`
+docs/               repo-native operating docs
 lib/chatApi.ts      LangGraph SDK client factory
 langgraph.json      LangGraph CLI config (graph id, node version, env file)
 ```
 
 `app/assistant.tsx` builds the runtime with `unstable_createLangGraphStream({ client, assistantId })` from `@assistant-ui/react-langgraph`.
+
+`app/api/[..._path]/route.ts` uses Next.js catch-all route syntax. The bracketed folder is intentionally named that way: it lets one route receive `/api/threads`, `/api/threads/:id/runs`, and other LangGraph API paths, then proxy them to `LANGGRAPH_API_URL`.
+
+## Operating docs
+
+- `AGENTS.md` — repo instructions for coding agents
+- `goal.md` — product goal, phases, and done bar
+- `docs/architecture.md` — system shape and seams
+- `docs/agent-workbench.md` — reusable workbench UX model
+- `docs/runtime.md` — threads, runs, interrupts, crons, and external signals
+- `docs/deployment-fly.md` — Fly dev/staging workflow
+
+## External signals
+
+`POST /api/external-signals` is the token-protected ingress for outside systems. Set `EXTERNAL_SIGNAL_TOKEN`, then send:
+
+```bash
+curl -X POST http://localhost:3000/api/external-signals \
+  -H "Authorization: Bearer $EXTERNAL_SIGNAL_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"start","input":{"messages":[{"role":"user","content":"Run a smoke test."}]}}'
+```
+
+See `docs/runtime.md` for start, resume, and cron payloads.
+
+## Fly dev/staging
+
+The first Fly target is a hosted staging runtime, not the primary editing environment. It runs Next and the LangGraph dev server together in one Machine for simple validation after feature slices. See `docs/deployment-fly.md`.

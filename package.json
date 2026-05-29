@@ -5,9 +5,13 @@
   "scripts": {
     "dev": "concurrently -n frontend,backend -c cyan,magenta \"pnpm dev:frontend\" \"pnpm dev:backend\"",
     "dev:frontend": "next dev --turbopack",
-    "dev:backend": "langgraphjs dev",
+    "dev:backend": "langgraphjs dev --host 0.0.0.0 --port 2024 --no-browser",
     "build": "next build",
     "start": "next start",
+    "start:frontend": "next start -H 0.0.0.0 -p ${PORT:-3000}",
+    "start:backend": "langgraphjs dev --host 0.0.0.0 --port ${LANGGRAPH_PORT:-2024} --no-browser",
+    "start:fly": "concurrently -n frontend,backend -c cyan,magenta \"pnpm start:frontend\" \"pnpm start:backend\"",
+    "typecheck": "tsc --noEmit",
     "lint": "oxlint && oxfmt --check",
     "format": "oxfmt --check",
     "format:fix": "oxfmt",
@@ -50,6 +54,7 @@
     "oxfmt": "^0.51.0",
     "oxlint": "^1.66.0",
     "tailwindcss": "^4.3.0",
-    "typescript": "^6.0.3"
-  }
+    "typescript": "5.9.3"
+  },
+  "packageManager": "pnpm@10.33.0"
 }
