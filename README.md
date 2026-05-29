@@ -59,6 +59,11 @@ langgraph.json      LangGraph CLI config (graph id, node version, env file)
 - `AGENTS.md` — repo instructions for coding agents
 - `goal.md` — product goal, phases, and done bar
 - `docs/architecture.md` — system shape and seams
+- `docs/infrastructure.md` — infrastructure topology and request flow
+- `docs/cloudflare-control-plane.md` — target live multi-user control plane
+- `docs/fly-tool-runners.md` — heavy tool and workflow execution plane
+- `docs/data-and-state.md` — storage responsibilities and canonical entities
+- `docs/secrets-and-risk.md` — secret custody, risk levels, and production gates
 - `docs/agent-workbench.md` — reusable workbench UX model
 - `docs/context-engineering.md` — decision records and provenance-backed recall
 - `docs/runtime.md` — threads, runs, interrupts, crons, and external signals

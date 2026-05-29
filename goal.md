@@ -26,6 +26,7 @@ Status: in progress.
 - Standardize on pnpm because `pnpm-lock.yaml` is tracked.
 - Add health check and Fly staging config.
 - Add token-protected external signal ingress.
+- Add basic infrastructure docs for Cloudflare control plane, Fly tool runners, storage, secrets, and risk.
 - Verify local typecheck, build, lint, and dev smoke.
 
 ## Phase 2: Workbench UX
@@ -46,6 +47,7 @@ Status: planned.
 Status: planned.
 
 - Validate persistence behavior for interrupted work across restart.
+- Validate the Cloudflare control-plane and Fly tool-runner split with a minimal signed tool call.
 - Add first cron-triggered workflow.
 - Add first external webhook/signal integration.
 - Add first typed tool adapter and first CLI/OSS-backed tool adapter.

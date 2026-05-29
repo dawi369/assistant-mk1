@@ -98,3 +98,5 @@ Production persistence should separate concerns:
 - Per-agent hot state for live conversation/session coordination.
 - Object storage for artifacts, logs, traces, reports, and screenshots.
 - Workflow engine state for in-flight complex workflows.
+
+See `docs/data-and-state.md` for storage ownership and `docs/infrastructure.md` for the target control-plane/request flow.

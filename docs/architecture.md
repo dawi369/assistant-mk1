@@ -30,6 +30,8 @@ observe -> analyze -> propose -> execute -> review
 
 This maps to Polymancer as market observation, conviction analysis, trade proposal, order execution, and position review. It also maps to non-trading apps such as CI observation, failure analysis, fix proposal, deployment execution, and log review.
 
+For implementation-level infrastructure responsibilities, see `docs/infrastructure.md`, `docs/cloudflare-control-plane.md`, `docs/fly-tool-runners.md`, `docs/data-and-state.md`, and `docs/secrets-and-risk.md`.
+
 ## Generic Subsystems
 
 - Identity and tenancy: every thread, run, secret, memory item, ledger entry, strategy, trigger, tool permission, and artifact belongs to a user or workspace.
