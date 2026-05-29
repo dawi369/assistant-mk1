@@ -49,6 +49,26 @@ Polymancer-specific behavior must map to generic Assistant-MK1 primitives:
 - Trade approval -> interrupt/resume flow.
 - Kill switch -> risk policy and runtime control.
 
+## Generic Workflow Lifecycle
+
+Polymancer maps to the generic lifecycle:
+
+```txt
+observe markets -> analyze conviction -> propose trade -> execute order -> review position
+```
+
+Other apps should use the same framework:
+
+```txt
+observe CI -> analyze failure -> propose fix -> execute deploy -> review logs
+```
+
+```txt
+observe source docs -> analyze gaps -> propose edits -> execute revision -> review diff
+```
+
+The lifecycle is intentionally generic. Polymancer is a stress test, not a special-case runtime.
+
 ## Tooling Requirement
 
 The framework must make tool implementation easy enough that a new project can add domain tools without changing the core workbench.

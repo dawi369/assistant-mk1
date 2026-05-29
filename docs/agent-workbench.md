@@ -17,6 +17,8 @@ Polymancer is the benchmark reference app because trading stresses autonomy, sec
 - Conviction/strategy: show what the agent currently believes, why, confidence, and what would change its mind.
 - Triggers: show heartbeats, webhook triggers, scheduled checks, external events, and domain-specific monitors.
 - Memory/personality: let users configure durable instructions, domain knowledge, preferences, risk tolerance, tone, decision style, and operating principles.
+- Decision records: show the durable "why" behind beliefs, strategies, plans, and past actions, including evidence, counter-evidence, confidence, provenance, and freshness.
+- Workflow lifecycle: show where work sits in `observe`, `analyze`, `propose`, `execute`, or `review`.
 
 ## Component Rules
 
@@ -26,6 +28,7 @@ Polymancer is the benchmark reference app because trading stresses autonomy, sec
 - Do not bake a single project domain into the base assistant experience.
 - Keep trading-specific language in reference app configuration. Base components should use generic terms such as managed state, ledger, triggers, tools, memory, and risk.
 - Treat tool execution as server-side only. The frontend may request, approve, inspect, or configure tools, but it must never receive provider keys, trading keys, or tool secrets.
+- Treat tenant scope as runtime data, not prompt text. Every component that reads or writes durable state should receive scoped data from the server.
 
 ## Tool Implementation Requirements
 
@@ -46,6 +49,7 @@ Polymancer is the benchmark reference app because trading stresses autonomy, sec
 7. Add a first CLI/OSS-backed tool demo with timeout, logs, and typed output.
 8. Add generic managed-state and audit surfaces.
 9. Add user/workspace scoping before any hosted multi-user runtime.
+10. Add decision-record surfaces for provenance-backed recall.
 
 ## Design Principle
 

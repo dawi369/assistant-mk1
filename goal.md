@@ -15,6 +15,8 @@ The reference target is Polymancer: a future Polymarket-focused assistant that p
 - Keep OpenRouter provider credentials server-side.
 - Make tool implementation boring and repeatable. A project should be able to add typed tools, wrap CLI tools, or run OSS packages/submodules as agent tools without rewriting the framework.
 - Treat multi-user support as an early architecture constraint: user/workspace identity must scope threads, runs, secrets, tools, memory, ledgers, triggers, and artifacts.
+- Split fast conversation from complex workflow execution. The conversational agent should answer from canonical state and escalate typed workflow intents only when needed.
+- Store important past reasoning as flexible decision records with evidence, counter-evidence, confidence, provenance, artifacts, and freshness.
 
 ## Phase 1: Foundation
 
@@ -36,6 +38,7 @@ Status: planned.
 - Add artifact and execution history surfaces.
 - Add tool visibility: enabled tools, recent calls, permissions, risk level, and failure state.
 - Add generic managed-state/ledger views that can represent trades, tasks, deployments, documents, tickets, or other domain assets.
+- Add decision-record views so users can ask why the agent believes or planned something and get a provenance-backed answer.
 - Keep base assistant-ui components reusable.
 
 ## Phase 3: Durable Runtime
@@ -46,6 +49,7 @@ Status: planned.
 - Add first cron-triggered workflow.
 - Add first external webhook/signal integration.
 - Add first typed tool adapter and first CLI/OSS-backed tool adapter.
+- Add first typed workflow intent and generic lifecycle demo using `observe -> analyze -> propose -> execute -> review`.
 - Define encrypted secret custody, per-user tool permissions, audit events, risk policies, and kill switches before live high-risk actions.
 - Decide whether production persistence needs managed LangGraph Platform, Postgres-backed self-hosting, or another durable store.
 

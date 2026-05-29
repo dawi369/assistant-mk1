@@ -1,6 +1,25 @@
 # Runtime Model
 
-The runtime should use LangGraph's native primitives before introducing a custom scheduler or orchestration layer.
+The runtime is split into a conversational control plane and workflow execution plane.
+
+The conversational agent handles fast user interaction: answering from notes/state, explaining current plans, editing memory, inspecting recent activity, and deciding whether a typed workflow intent is needed.
+
+The workflow plane handles explicit multi-step work: tool calls, approvals, risk gates, background checks, and durable audit outputs. LangGraph is the preferred engine for complex workflows, but it is not the only possible backend.
+
+## Workflow Lifecycle
+
+Generic workflow stages:
+
+- `observe`: collect state, events, inputs, or external data.
+- `analyze`: compare evidence, reason about options, and update conviction.
+- `propose`: create an action proposal, plan, or recommendation.
+- `execute`: perform an approved action or dry-run execution.
+- `review`: inspect results, update managed state, and write decision records.
+
+Examples:
+
+- Polymancer: observe markets, analyze conviction, propose trade, execute order, review position.
+- Deployment agent: observe CI, analyze failure, propose fix, execute deploy, review logs.
 
 ## Threads
 
@@ -18,7 +37,7 @@ Important rule: code before an interrupt can execute again when resumed. Side ef
 
 ## Crons
 
-Recurring starts should use LangGraph cron creation through the Agent Server API. The frontend can expose cron management later, but the first durable seam is the token-protected external signal route.
+Recurring starts should create typed workflow intents. In the current starter, cron creation can use the LangGraph Agent Server API. In the target architecture, schedules may live in a Cloudflare-style stateful control plane and escalate to LangGraph or tool runners only when needed.
 
 ## External Signals
 
@@ -71,4 +90,11 @@ Create a cron:
 
 ## Persistence
 
-Local development may use the LangGraph dev server's default behavior. Hosted staging must verify whether interrupted work survives restart before relying on it. Production should use durable LangGraph persistence or a database-backed deployment before real long-running jobs depend on it.
+Local development may use the LangGraph dev server's default behavior. Hosted staging must verify whether interrupted work survives restart before relying on it.
+
+Production persistence should separate concerns:
+
+- Tenant-scoped relational state for users, workspaces, permissions, ledgers, triggers, audit events, and decision records.
+- Per-agent hot state for live conversation/session coordination.
+- Object storage for artifacts, logs, traces, reports, and screenshots.
+- Workflow engine state for in-flight complex workflows.
