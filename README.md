@@ -62,6 +62,7 @@ langgraph.json      LangGraph CLI config (graph id, node version, env file)
 - `docs/agent-workbench.md` — reusable workbench UX model
 - `docs/runtime.md` — threads, runs, interrupts, crons, and external signals
 - `docs/deployment-fly.md` — Fly dev/staging workflow
+- `docs/reference-apps/polymancer.md` — reference target for a demanding 24/7 tool-using agent
 
 ## External signals
 

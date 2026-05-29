@@ -1,6 +1,8 @@
 # Agent Workbench
 
-The workbench is the reusable frontend layer this repo is meant to become. Chat remains the first interface, but the product should support project-scale agent work.
+The workbench is the reusable frontend layer this repo is meant to become. Chat remains the first interface, but the product should support project-scale agent work: long-running processes, tools, external triggers, user knowledge, managed state, audit trails, and multi-user isolation.
+
+Polymancer is the benchmark reference app because trading stresses autonomy, secrets, ledgers, risk, and fast external signals. The framework must stay generic: the same surfaces should support non-trading projects such as deployment agents, research assistants, document workflows, issue triage, or operations copilots.
 
 ## Core Flows
 
@@ -10,6 +12,11 @@ The workbench is the reusable frontend layer this repo is meant to become. Chat 
 - Interrupts: surface approval prompts, missing-input requests, blocked tool calls, and external resume points.
 - Artifacts: expose files, documents, plans, diffs, logs, screenshots, and generated outputs as first-class results.
 - Execution history: show past runs, important events, and resumable checkpoints when the runtime supports them.
+- Tools: show available tools, enabled tools, recent calls, permissions, timeout/risk policy, failures, and whether a tool is built in, project-specific, CLI-backed, or OSS-backed.
+- Managed state: show what the agent owns or manages. In trading this means positions and orders; in other apps it may mean tasks, deployments, documents, tickets, or tracked resources.
+- Conviction/strategy: show what the agent currently believes, why, confidence, and what would change its mind.
+- Triggers: show heartbeats, webhook triggers, scheduled checks, external events, and domain-specific monitors.
+- Memory/personality: let users configure durable instructions, domain knowledge, preferences, risk tolerance, tone, decision style, and operating principles.
 
 ## Component Rules
 
@@ -17,6 +24,16 @@ The workbench is the reusable frontend layer this repo is meant to become. Chat 
 - Put project-specific workbench composition around the thread, not inside low-level message rendering.
 - Prefer typed data passed into reusable components over global assumptions.
 - Do not bake a single project domain into the base assistant experience.
+- Keep trading-specific language in reference app configuration. Base components should use generic terms such as managed state, ledger, triggers, tools, memory, and risk.
+- Treat tool execution as server-side only. The frontend may request, approve, inspect, or configure tools, but it must never receive provider keys, trading keys, or tool secrets.
+
+## Tool Implementation Requirements
+
+- A new typed tool should be addable with a small module that declares name, description, input schema, output schema, permissions, risk level, timeout, logging policy, and execution function.
+- CLI tools, OSS packages, scripts, and git submodules should be wrapped behind the same tool interface as native TypeScript tools.
+- Tool availability should be configurable per user/workspace and per deployment.
+- High-risk tools must support dry-run, approvals, per-user limits, audit logs, and kill switches.
+- Tool output should be structured enough for the UI to show results, failures, artifacts, and follow-up actions without parsing prose.
 
 ## First UI Milestones
 
@@ -25,6 +42,10 @@ The workbench is the reusable frontend layer this repo is meant to become. Chat 
 3. Add interrupt display and resume actions.
 4. Add artifact list and execution history.
 5. Add project context configuration that can be swapped per downstream app.
+6. Add tool registry UI and a first typed tool demo.
+7. Add a first CLI/OSS-backed tool demo with timeout, logs, and typed output.
+8. Add generic managed-state and audit surfaces.
+9. Add user/workspace scoping before any hosted multi-user runtime.
 
 ## Design Principle
 
