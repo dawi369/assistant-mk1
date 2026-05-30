@@ -1,12 +1,17 @@
 # DB Contracts
 
-Assistant-MK1 uses docs-first DB contracts before adding migrations or expanding
-`lib/agent-framework/contracts.ts`. These are durable entity contracts, not final
-D1 table schemas, SQL migrations, or stable public APIs.
+Assistant-MK1 uses docs-first DB contracts before adding migrations or storage
+implementations. These contracts define durable entity shapes and repository
+operations, not final D1 table schemas, SQL migrations, or stable public APIs.
 
 The provisional serializable TypeScript layer lives in
 `lib/agent-framework/db-contracts.ts`. That file mirrors these entity contracts
 for application code, but it still is not a migration or storage implementation.
+
+The provisional data-client interface layer lives in
+`lib/agent-framework/data-client.ts`. That file defines repository-style
+operations for workflow callers. It does not implement Cloudflare APIs, direct
+D1/R2 access, validation, or persistence.
 
 The goal is to define the data shapes the platform must preserve across
 Cloudflare, Fly, LangGraph, and future app-specific bots without locking the
@@ -43,9 +48,12 @@ type ScopedRecord = {
 };
 ```
 
-## Core Entities
+## Durable Entity Shapes
 
-### User
+The TypeScript names in this section are provisional code-facing names. They
+describe serializable records the platform must preserve, not table names.
+
+### UserRecord
 
 Authenticated person who can own or join workspaces.
 
@@ -58,7 +66,7 @@ Minimum fields:
 - `updatedAt`
 - `data`
 
-### Workspace
+### WorkspaceRecord
 
 Project, team, account, or app boundary. Workspaces isolate tools, secrets,
 memory, ledgers, triggers, and artifacts.
@@ -72,7 +80,7 @@ Minimum fields:
 - `updatedAt`
 - `data`
 
-### Membership
+### MembershipRecord
 
 User-to-workspace relationship. Authorization checks should use membership
 records before touching scoped data.
@@ -90,7 +98,7 @@ Minimum fields:
 
 Suggested statuses: `active`, `invited`, `disabled`.
 
-### Agent
+### AgentRecord
 
 Configured assistant instance inside a workspace. A workspace may have multiple
 agents for different domains, personalities, tools, or operating modes.
@@ -108,7 +116,7 @@ Minimum fields:
 
 Suggested statuses: `active`, `paused`, `archived`.
 
-### Thread
+### ThreadRecord
 
 Conversation or task continuity container. Threads are where users return to
 ask what the agent is doing, why it did something, or what it is waiting on.
@@ -127,7 +135,7 @@ Minimum fields:
 
 Suggested statuses: `open`, `waiting`, `archived`.
 
-### Workflow Intent
+### WorkflowIntentRecord
 
 Typed escalation request from conversation, schedule, webhook, or another
 trusted event. Runtime routing is policy/config, not a stored runtime target.
@@ -151,7 +159,7 @@ Minimum fields:
 Suggested statuses: `queued`, `running`, `interrupted`, `completed`, `failed`,
 `cancelled`.
 
-### Decision Record
+### DecisionRecordEntity
 
 Durable reasoning/provenance unit. It captures what the agent believes or
 decided, why, what evidence supports it, and what supersedes it.
@@ -174,7 +182,7 @@ Minimum fields:
 
 Suggested statuses: `active`, `superseded`, `rejected`, `stale`, `archived`.
 
-### Tool Definition Metadata
+### ToolMetadataRecord
 
 Durable metadata for a tool the platform knows about. This is not the same as
 runtime `ToolDefinition`, because runtime definitions contain executable
@@ -197,7 +205,7 @@ Suggested statuses: `available`, `deprecated`, `disabled`.
 Tool metadata may be global. Tool enablement, permissions, credentials, and
 policy are tenant-scoped.
 
-### Tool Permission
+### ToolPermissionRecord
 
 Tenant-scoped enablement and policy attachment for a tool.
 
@@ -215,7 +223,7 @@ Minimum fields:
 
 Suggested statuses: `enabled`, `disabled`, `pending_review`.
 
-### Tool Call
+### ToolCallRecord
 
 One execution attempt against one tool. Tool calls should record enough detail
 to audit what happened without leaking secrets or embedding huge outputs.
@@ -240,7 +248,7 @@ Minimum fields:
 
 Suggested statuses: `started`, `succeeded`, `failed`, `cancelled`, `timed_out`.
 
-### Audit Event
+### AuditEventRecord
 
 Immutable record of important platform, workflow, or tool activity. Audit
 events should be append-only.
@@ -249,18 +257,17 @@ Minimum fields:
 
 - `id`
 - `scope`
-- `actorType`
-- `actorId`
+- `actor`
 - `action`
-- `targetType`
-- `targetId`
+- `target`
 - `summary`
 - `createdAt`
 - `data`
 
-Suggested actor types: `user`, `agent`, `workflow`, `tool`, `system`.
+Suggested actor types inside `actor`: `user`, `agent`, `workflow`, `tool`,
+`system`.
 
-### Artifact Metadata
+### ArtifactMetadataRecord
 
 Searchable metadata for a blob stored in R2 or another artifact store.
 
@@ -279,7 +286,7 @@ Minimum fields:
 
 R2 stores the object. D1 stores metadata, ownership, and relationships.
 
-### Trigger
+### TriggerRecord
 
 Schedule, webhook, external event subscription, or tool event that can wake an
 agent or workflow.
@@ -301,7 +308,7 @@ Minimum fields:
 
 Suggested statuses: `active`, `paused`, `disabled`.
 
-### Managed State
+### ManagedStateRecord
 
 Domain asset the agent owns, watches, or explains. One app may store positions;
 another may store services, dossiers, documents, tickets, or tracked resources.
@@ -320,7 +327,7 @@ Minimum fields:
 - `updatedAt`
 - `data`
 
-### Ledger Entry
+### LedgerEntryRecord
 
 Durable record of a proposed, simulated, executed, skipped, blocked, or reviewed
 action. Ledgers are generic action records, not tied to one app category.
@@ -380,9 +387,19 @@ Cloudflare-mediated APIs are the initial backing implementation for app-state
 reads and writes. Workflows, Fly runners, and LangGraph services should use
 repository-style operations instead of raw tables.
 
-Target operation groups:
+The code-facing contract lives in `lib/agent-framework/data-client.ts`. It is
+an interface-only boundary:
 
-- `workspaceContext.load(scope)`
+- Every method takes trusted `scope` as the first argument.
+- Inputs exclude storage-owned fields such as `id`, `scope`, and timestamps
+  unless the operation is explicitly updating an existing record.
+- Outputs return durable entity records from `db-contracts.ts`.
+- The interface does not imply HTTP paths, D1 tables, migrations, R2 object key
+  layout, or Cloudflare/Fly implementation classes.
+
+Repository groups:
+
+- `workspaceContext.load(scope, input?)`
 - `decisions.create(scope, input)`
 - `decisions.list(scope, filters)`
 - `decisions.supersede(scope, input)`
@@ -398,10 +415,15 @@ Target operation groups:
 - `ledger.append(scope, input)`
 - `ledger.list(scope, filters)`
 
-The data-client interface must enforce tenant scope, permission checks,
+Data-client implementations must enforce tenant scope, permission checks,
 redaction, and audit behavior. The backing implementation may later move from
 mediated Cloudflare APIs to scoped direct D1/R2 access for proven hot paths, but
-workflow code should not need to change.
+workflow code should not need to change because it depends on these repository
+interfaces.
+
+Storage implementation details are intentionally deferred. Do not add table
+names, SQL migrations, D1/R2 bindings, Cloudflare Worker handlers, or Fly
+service clients to satisfy this contract layer.
 
 ## App Extension Model
 

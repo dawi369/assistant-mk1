@@ -4,7 +4,7 @@ The runtime is split into a conversational control plane and workflow execution 
 
 The conversational agent handles fast user interaction: answering from notes/state, explaining current plans, editing memory, inspecting recent activity, and deciding whether a typed workflow intent is needed.
 
-The workflow plane handles explicit multi-step work: tool calls, approvals, ution policy gates, background checks, and durable audit outputs. LangGraph is the preferred engine for complex workflows, but it is not the only possible backend.
+The workflow plane handles explicit multi-step work: tool calls, approvals, execution policy gates, background checks, and durable audit outputs. LangGraph is the preferred engine for complex workflows, but it is not the only possible backend.
 
 ## Workflow Lifecycle
 
