@@ -60,6 +60,8 @@ Fly/LangGraph workflow
 
 Future optimization: scoped direct D1/R2 access may be considered only after a measured performance or reliability problem. It must use the same scoped data-client interface and produce the same audit events. It is not part of the initial implementation.
 
+See `docs/db-contracts.md` for the durable entity contracts and repository-style operation groups Fly/LangGraph should call through the mediated data client.
+
 ## LangGraph On Fly
 
 LangGraph can run on Fly as a workflow service for complex graph-shaped work. In that model, Cloudflare creates a typed workflow intent, policy approves it, and Fly executes the LangGraph workflow. Final outputs must return to canonical state: decision records, audit events, artifacts, ledgers, and managed state.

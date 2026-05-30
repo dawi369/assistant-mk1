@@ -6,16 +6,16 @@ Assistant-MK1 should not rely on vague chat memory for important decisions. The 
 
 A `DecisionRecord` is the generic unit for durable reasoning. It works for trading, deployments, documents, research, ticket triage, and other domains.
 
+The durable entity contract lives in `docs/db-contracts.md`. This page explains how those records should be used for grounded recall.
+
 Each record should capture:
 
 - Tenant scope: `userId` and `workspaceId`.
-- Decision category: belief, strategy, plan, action, policy, preference, or another app-defined category.
+- App-defined category data when useful: belief, strategy, plan, action, policy, preference, or another project-specific category.
 - Thesis: the claim or decision.
-- Evidence and counter-evidence.
-- Alternatives considered.
-- Confidence and freshness.
+- Evidence, counter-evidence, alternatives, confidence, and freshness when the app needs them.
 - Provenance: user note, tool result, workflow output, external trigger, manual override, artifact, or run.
-- Related runs, tool calls, artifacts, and managed-state records.
+- Related runs, tool calls, artifacts, managed-state records, and other links through provenance, artifact references, or extension data.
 - Status: active, superseded, rejected, stale, or archived.
 - Domain extension data for app-specific fields.
 

@@ -27,6 +27,7 @@ Status: in progress.
 - Add health check and Fly staging config.
 - Add token-protected external signal ingress.
 - Add basic infrastructure docs for Cloudflare control plane, Fly tool runners, storage, secrets, and execution policy.
+- Add docs-first DB contracts for tenant-scoped durable entities and data-client boundaries.
 - Verify local typecheck, build, lint, and dev smoke.
 
 ## Phase 2: Workbench UX

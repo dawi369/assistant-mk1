@@ -38,6 +38,8 @@ The frontend streams from the conversational control plane. Fly and LangGraph se
 9. Cloudflare streams status and results to the frontend from canonical state.
 10. The frontend shows the new state and lets the user inspect why it changed.
 
+Canonical durable entity contracts are defined in `docs/db-contracts.md`. This infrastructure page should describe flow and ownership, not duplicate entity shapes.
+
 ## Runtime Split
 
 Cloudflare-style Agents are the preferred future live control plane because they fit stateful multi-user coordination. Fly is the preferred execution plane for heavy tools and LangGraph workflow workers. LangGraph remains important for complex graph-shaped workflows, but it does not have to be the always-on per-user runtime.
@@ -62,6 +64,8 @@ Start with mediated Cloudflare APIs for workflow reads and writes. LangGraph and
 - `PATCH /managed-state`
 
 Those APIs validate tenant scope, permissions, execution policy, and redaction before touching D1 or R2.
+
+Workflow and tool code should depend on data-client operations, not raw tables. See `docs/db-contracts.md` for the initial operation groups.
 
 Future optimization: scoped direct D1/R2 access from Fly/LangGraph is not part of the initial implementation. It may be considered later only for measured hot paths where mediated APIs create a concrete performance or reliability problem. Even then, direct access must use the same scoped data-client interface, tenant checks, redaction rules, and audit events.
 

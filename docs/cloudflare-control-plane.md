@@ -64,6 +64,8 @@ These APIs should expose scoped operations, not raw tables:
 
 This keeps tenant isolation below the prompt layer and gives the platform one place to enforce auth, policy, redaction, and audit.
 
+The mediated API should expose data-client operations over the durable entity contracts in `docs/db-contracts.md`; it should not expose raw D1 table access to workflow callers.
+
 Scoped direct storage access from Fly/LangGraph is a future optimization, not a current implementation path.
 
 ## Tenant Boundary

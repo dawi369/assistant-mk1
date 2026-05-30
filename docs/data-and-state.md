@@ -2,6 +2,8 @@
 
 Assistant-MK1 needs clear ownership for every kind of state. Summaries are indexes, not truth. Durable state and linked artifacts are the source of truth.
 
+This page maps storage ownership. See `docs/db-contracts.md` for docs-first durable entity contracts and data-client boundaries.
+
 ## Storage Map
 
 - Durable Object state or Durable Object SQLite: per-agent hot state, active session state, coordination locks, and wakeup metadata.
@@ -25,6 +27,8 @@ Assistant-MK1 needs clear ownership for every kind of state. Summaries are index
 - Trigger: schedule, webhook, external event, or tool event that can wake work.
 - Managed state: domain assets the agent owns or monitors.
 - Ledger entry: proposed, executed, skipped, blocked, or reviewed action.
+
+These are canonical platform concepts, not final table definitions. Entity-level contract shapes live in `docs/db-contracts.md`.
 
 ## D1 Responsibilities
 
