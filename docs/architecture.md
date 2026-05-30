@@ -2,7 +2,7 @@
 
 Assistant-MK1 is a reusable agent workbench with a conversational control plane, workflow execution plane, and hosted Fly.io dev/staging runtime.
 
-The architecture is generic, but it is evaluated against a demanding reference app: Polymancer, a future Polymarket-focused assistant. Trading is useful as a stress test because it requires long-running autonomy, secrets, ledgers, execution policy, tools, external triggers, and multi-user isolation. Those same primitives must remain reusable for non-trading projects.
+The architecture is generic, but it is evaluated against demanding reference apps such as Polymancer and deployment agents. Reference apps are stress tests for long-running autonomy, secrets, ledgers, execution policy, tools, external triggers, and multi-user isolation. The primitives must remain reusable across agent projects.
 
 ## System Shape
 
@@ -28,7 +28,7 @@ The generic workflow lifecycle is:
 observe -> analyze -> propose -> execute -> review
 ```
 
-This maps to Polymancer as market observation, conviction analysis, trade proposal, order execution, and position review. It also maps to non-trading apps such as CI observation, failure analysis, fix proposal, deployment execution, and log review.
+This maps to Polymancer as market observation, conviction analysis, trade proposal, order execution, and position review. It also maps to deployment workflows as CI observation, failure analysis, fix proposal, deployment execution, and log review.
 
 For implementation-level infrastructure responsibilities, see `docs/infrastructure.md`, `docs/cloudflare-control-plane.md`, `docs/fly-tool-runners.md`, `docs/data-and-state.md`, and `docs/secrets-and-risk.md`.
 
@@ -42,7 +42,7 @@ For implementation-level infrastructure responsibilities, see `docs/infrastructu
 - Ledger and audit trail: planned actions, proposed actions, executed actions, skipped actions, model rationale, tool calls, external triggers, and policy blocks should be recorded.
 - Decision records: important beliefs, strategies, plans, actions, and policy decisions should be stored with evidence, counter-evidence, confidence, alternatives, provenance, related artifacts, and freshness.
 - Knowledge/personality: users can configure durable instructions, project knowledge, preferences, risk tolerance, tone, decision style, review cadence, and domain-specific operating principles.
-- Policy layer: ask, dry-run, execute, human approval, per-user limits, allowlists/denylists, cooldowns, and kill switches are framework primitives, not trading-only features.
+- Policy layer: ask, dry-run, execute, human approval, per-user limits, allowlists/denylists, cooldowns, and kill switches are framework primitives.
 - Observability: every long-running process needs run status, last heartbeat, next scheduled check, active tools, current managed state, and failure reason.
 
 ## Important Seams
@@ -62,7 +62,7 @@ The conversational runtime should own the fast dialogue loop. Complex workflows 
 
 External systems should enter through authenticated API routes, not through direct browser-only flows.
 
-Tools should execute server-side. Browser code can show tool state, request an action, approve a pending action, or inspect results, but it must not receive provider keys, trading credentials, or other tool secrets.
+Tools should execute server-side. Browser code can show tool state, request an action, approve a pending action, or inspect results, but it must not receive provider keys, user credentials, or other tool secrets.
 
 ## Deployment Boundary
 

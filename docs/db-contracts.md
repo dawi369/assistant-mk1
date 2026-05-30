@@ -4,6 +4,10 @@ Assistant-MK1 uses docs-first DB contracts before adding migrations or expanding
 `lib/agent-framework/contracts.ts`. These are durable entity contracts, not final
 D1 table schemas, SQL migrations, or stable public APIs.
 
+The provisional serializable TypeScript layer lives in
+`lib/agent-framework/db-contracts.ts`. That file mirrors these entity contracts
+for application code, but it still is not a migration or storage implementation.
+
 The goal is to define the data shapes the platform must preserve across
 Cloudflare, Fly, LangGraph, and future app-specific bots without locking the
 repo into premature storage details.
@@ -14,6 +18,8 @@ repo into premature storage details.
 - The model never supplies tenant scope; auth, session, or trusted trigger
   context derives it.
 - Shared fields stay small and boring.
+- TypeScript contracts are serializable records, not runtime objects with
+  executable functions.
 - App-specific fields go in `data?: Record<string, unknown>` until repeated
   usage proves they belong in the shared core.
 - Status fields are used only for real lifecycle state.
@@ -297,8 +303,8 @@ Suggested statuses: `active`, `paused`, `disabled`.
 
 ### Managed State
 
-Domain asset the agent owns, watches, or explains. Trading apps may store
-positions; deployment apps may store services; research apps may store dossiers.
+Domain asset the agent owns, watches, or explains. One app may store positions;
+another may store services, dossiers, documents, tickets, or tracked resources.
 
 Minimum fields:
 
@@ -317,8 +323,7 @@ Minimum fields:
 ### Ledger Entry
 
 Durable record of a proposed, simulated, executed, skipped, blocked, or reviewed
-action. Ledgers are generic; trading ledgers are one implementation, not the
-framework identity.
+action. Ledgers are generic action records, not tied to one app category.
 
 Minimum fields:
 
@@ -405,7 +410,7 @@ fields in `data`.
 
 Examples:
 
-- Trading app: `marketId`, `positionId`, `walletAddress`, `maxExposure`.
+- Market app: `marketId`, `positionId`, `walletAddress`, `maxExposure`.
 - Deployment app: `repo`, `commitSha`, `environment`, `serviceName`.
 - Research app: `sourceSetId`, `citationStyle`, `reviewCadence`.
 - Ticketing app: `issueId`, `priority`, `team`, `sla`.
@@ -413,3 +418,12 @@ Examples:
 When the same field appears across multiple app types and affects framework
 behavior, it can be promoted from `data` into a shared contract in a later
 version.
+
+Reference mappings:
+
+- `docs/reference-apps/polymancer.md` maps markets, positions, trade proposals,
+  triggers, ledgers, tool calls, and decision records into these generic
+  entities.
+- `docs/reference-apps/deployment-agent.md` maps CI failures, services, deploy
+  proposals, rollback actions, logs, audit events, and decision records into the
+  same generic entities.

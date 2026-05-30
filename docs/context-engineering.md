@@ -4,7 +4,7 @@ Assistant-MK1 should not rely on vague chat memory for important decisions. The 
 
 ## Decision Records
 
-A `DecisionRecord` is the generic unit for durable reasoning. It works for trading, deployments, documents, research, ticket triage, and other domains.
+A `DecisionRecord` is the generic unit for durable reasoning. It works across deployments, documents, research, ticket triage, market workflows, and other domains.
 
 The durable entity contract lives in `docs/db-contracts.md`. This page explains how those records should be used for grounded recall.
 

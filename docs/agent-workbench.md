@@ -2,7 +2,7 @@
 
 The workbench is the reusable frontend layer this repo is meant to become. Chat remains the first interface, but the product should support project-scale agent work: long-running processes, tools, external triggers, user knowledge, managed state, audit trails, and multi-user isolation.
 
-Polymancer is the benchmark reference app because trading stresses autonomy, secrets, ledgers, execution policy, and fast external signals. The framework must stay generic: the same surfaces should support non-trading projects such as deployment agents, research assistants, document workflows, issue triage, or operations copilots.
+Polymancer is one benchmark reference app because it stresses autonomy, secrets, ledgers, execution policy, and fast external signals. The framework must stay generic: the same surfaces should support deployment agents, research assistants, document workflows, issue triage, operations copilots, and other agent projects.
 
 ## Core Flows
 
@@ -13,7 +13,7 @@ Polymancer is the benchmark reference app because trading stresses autonomy, sec
 - Artifacts: expose files, documents, plans, diffs, logs, screenshots, and generated outputs as first-class results.
 - Execution history: show past runs, important events, and resumable checkpoints when the runtime supports them.
 - Tools: show available tools, enabled tools, recent calls, permissions, execution policy, failures, and whether a tool is built in, project-specific, CLI-backed, or OSS-backed.
-- Managed state: show what the agent owns or manages. In trading this means positions and orders; in other apps it may mean tasks, deployments, documents, tickets, or tracked resources.
+- Managed state: show what the agent owns or manages, such as positions, orders, tasks, deployments, documents, tickets, or tracked resources.
 - Conviction/strategy: show what the agent currently believes, why, confidence, and what would change its mind.
 - Triggers: show heartbeats, webhook triggers, scheduled checks, external events, and domain-specific monitors.
 - Memory/personality: let users configure durable instructions, domain knowledge, preferences, risk tolerance, tone, decision style, and operating principles.
@@ -26,8 +26,8 @@ Polymancer is the benchmark reference app because trading stresses autonomy, sec
 - Put project-specific workbench composition around the thread, not inside low-level message rendering.
 - Prefer typed data passed into reusable components over global assumptions.
 - Do not bake a single project domain into the base assistant experience.
-- Keep trading-specific language in reference app configuration. Base components should use generic terms such as managed state, ledger, triggers, tools, memory, and policy.
-- Treat tool execution as server-side only. The frontend may request, approve, inspect, or configure tools, but it must never receive provider keys, trading keys, or tool secrets.
+- Keep domain-specific language in reference app configuration. Base components should use generic terms such as managed state, ledger, triggers, tools, memory, and policy.
+- Treat tool execution as server-side only. The frontend may request, approve, inspect, or configure tools, but it must never receive provider keys, user credentials, or tool secrets.
 - Treat tenant scope as runtime data, not prompt text. Every component that reads or writes durable state should receive scoped data from the server.
 
 ## Tool Implementation Requirements

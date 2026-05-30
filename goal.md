@@ -4,7 +4,7 @@
 
 Build a reusable, smart agent frontend that can be adapted across complex projects. The first product shape is an agent workbench: chat is the main interaction surface, but the system must also expose project context, run state, long-running task controls, interrupts, artifacts, and external starts.
 
-The reference target is Polymancer: a future Polymarket-focused assistant that proves the framework can handle 24/7 autonomy, user-specific knowledge, tool execution, ledgers, market monitoring, secrets, and multi-user isolation. Polymancer is a benchmark, not the whole scope. Assistant-MK1 must stay useful for non-trading projects that need the same generic primitives.
+The reference target is Polymancer: a future Polymarket-focused assistant that proves the framework can handle 24/7 autonomy, user-specific knowledge, tool execution, ledgers, market monitoring, secrets, and multi-user isolation. Polymancer is a benchmark, not the repo identity. Assistant-MK1 must stay general enough for many agent projects that need the same primitives.
 
 ## Current Direction
 

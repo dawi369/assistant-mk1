@@ -18,8 +18,8 @@ Polymarket-specific code should live in adapter/configuration layers, not in cor
 
 ## Consequences
 
-- Trading can guide architecture, but Assistant-MK1 must stay useful for non-trading projects.
+- Reference apps can guide architecture, but Assistant-MK1 must stay useful across project domains.
 - Tools must be easy to add, permission, observe, and disable.
 - CLI tools, OSS packages, scripts, and future git submodules must be wrappable as server-side tools.
 - Multi-user isolation is required early, even if the first user is only the project owner.
-- Live autonomous trading is not considered production-ready before auth, encrypted secret custody, durable ledgers, auditability, execution policies, and kill switches exist.
+- Live autonomous market execution is not considered production-ready before auth, encrypted secret custody, durable ledgers, auditability, execution policies, and kill switches exist.

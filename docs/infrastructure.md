@@ -71,4 +71,4 @@ Future optimization: scoped direct D1/R2 access from Fly/LangGraph is not part o
 
 ## Reference App Boundary
 
-Polymancer stress-tests the system with trading, secrets, ledgers, triggers, and autonomy. It is a reference mapping only. The same infrastructure must support non-trading agents for deployments, documents, research, tickets, operations, and other workflows.
+Polymancer stress-tests the system with market workflows, secrets, ledgers, triggers, and autonomy. It is a reference mapping only. The same infrastructure must support deployments, documents, research, tickets, operations, and other agent workflows.

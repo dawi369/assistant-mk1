@@ -71,6 +71,7 @@ langgraph.json      LangGraph CLI config (graph id, node version, env file)
 - `docs/tenancy.md` — user/workspace scoping and isolation rules
 - `docs/deployment-fly.md` — Fly dev/staging workflow
 - `docs/reference-apps/polymancer.md` — reference target for a demanding 24/7 tool-using agent
+- `docs/reference-apps/deployment-agent.md` — operational reference target for deployment agents
 
 ## External signals
 

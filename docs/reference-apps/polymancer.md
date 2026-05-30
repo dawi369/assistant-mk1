@@ -19,7 +19,7 @@ Trading stress-tests the framework:
 - Policy: full autonomy still needs deterministic execution modes, approval gates, limits, allowlists, denylists, cooldowns, and kill switches.
 - Multi-user isolation: every user needs separate accounts, memory, tools, ledgers, schedules, and secrets.
 
-These requirements are generic. The same framework should support non-trading agents for deployments, research, documents, tickets, operations, and other complex workflows.
+These requirements are generic. The same framework should support deployments, research, documents, tickets, operations, and other complex workflows.
 
 ## Core Capabilities
 
@@ -48,6 +48,48 @@ Polymancer-specific behavior must map to generic Assistant-MK1 primitives:
 - Conviction update -> strategy state snapshot.
 - Trade approval -> interrupt/resume flow.
 - Kill switch -> execution policy and runtime control.
+
+## DB Contract Mapping
+
+Polymancer should not add app-specific framework primitives. It should use the
+generic durable entities from `docs/db-contracts.md` and put domain-specific
+fields in `data`.
+
+- `AgentRecord`: one configured Polymancer assistant for a user/workspace, with
+  operating style, allowed markets, and cadence in `data`.
+- `ThreadRecord`: conversations such as "watch election markets" or "explain my
+  current exposure".
+- `WorkflowIntentRecord`: typed work like `market.observe`,
+  `wallet.copy_watch`, `position.review`, `trade.propose`, or `trade.execute`.
+- `DecisionRecordEntity`: conviction records, theses, counter-evidence, and
+  what would change the plan.
+- `ManagedStateRecord`: markets, watched wallets, positions, open orders, and
+  sectors the agent monitors.
+- `LedgerEntryRecord`: proposed trades, simulated orders, executed orders,
+  skipped opportunities, blocked actions, and post-trade reviews.
+- `TriggerRecord`: heartbeats, price movement triggers, volume triggers, wallet
+  activity triggers, and event/news wakeups.
+- `ToolMetadataRecord`: Polymarket Gamma/Data/CLOB adapters, wallet research
+  tools, copy-trade scanners, and local CLI wrappers.
+- `ToolPermissionRecord`: per-user enablement for read-only data, dry-run order
+  previews, and live execution tools.
+- `ToolCallRecord`: every market query, wallet scan, order preview, and order
+  submission attempt.
+- `ArtifactMetadataRecord`: research reports, order previews, execution logs,
+  charts, screenshots, and exported ledgers.
+- `AuditEventRecord`: approvals, policy blocks, tool calls, order attempts,
+  trigger wakeups, and manual overrides.
+
+Example `data` fields:
+
+- Market managed state: `marketId`, `question`, `outcome`, `liquidity`,
+  `spread`, `volume`, `closeTime`.
+- Position managed state: `marketId`, `outcome`, `size`, `averagePrice`,
+  `currentPrice`, `exposure`.
+- Trade ledger entry: `marketId`, `side`, `orderType`, `size`, `limitPrice`,
+  `expectedCost`, `executionMode`.
+- Conviction decision: `marketId`, `confidence`, `timeHorizon`,
+  `counterEvidence`, `freshness`.
 
 ## Generic Workflow Lifecycle
 
@@ -135,4 +177,4 @@ Shared infrastructure can host many users, but no agent run should be able to cr
 
 ## Boundary
 
-Assistant-MK1 remains the reusable framework. Polymancer is the reference benchmark and a future proving app. Trading gets special attention because it stress-tests the architecture, but non-trading projects remain first-class.
+Assistant-MK1 remains the reusable framework. Polymancer is a reference benchmark and future proving app, not the repo identity.

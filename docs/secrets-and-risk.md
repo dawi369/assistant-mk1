@@ -14,7 +14,7 @@ Secrets must be:
 - Never returned to browser API responses.
 - Redacted from logs, artifacts, traces, and model-visible content unless explicitly safe.
 
-Secrets include model keys, trading keys, API tokens, webhook signing keys, OAuth refresh tokens, and any credential that can spend money, move assets, mutate production systems, or access private data.
+Secrets include model keys, account keys, API tokens, webhook signing keys, OAuth refresh tokens, and any credential that can spend money, move assets, mutate production systems, or access private data.
 
 ## Execution Modes
 
@@ -43,4 +43,4 @@ Tools that can mutate external state must support:
 
 Live external mutation is blocked until auth, encrypted secrets, tenant isolation, ledgers, auditability, permissions, policy limits, and kill switches exist.
 
-This applies to Polymancer trading tools and to non-trading tools such as deployment, database mutation, billing, email sending, and production admin actions.
+This applies to any mutation-capable tool, including market execution, deployment, database mutation, billing, email sending, and production admin actions.
