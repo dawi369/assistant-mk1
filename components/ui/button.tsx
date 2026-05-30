@@ -1,3 +1,10 @@
+/**
+ * Local shadcn-style button primitive and variant definitions.
+ *
+ * This is the shared button surface for app and assistant-ui controls. Keep
+ * variants generic; workflow-specific meaning should be expressed by callers
+ * through labels, icons, state, and policy-aware behavior.
+ */
 import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 import { Slot } from "radix-ui"

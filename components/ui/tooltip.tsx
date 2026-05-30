@@ -1,5 +1,11 @@
 "use client"
 
+/**
+ * Local shadcn-style tooltip primitives built on Radix Tooltip.
+ *
+ * Tooltips are centralized here so compact icon controls can share delay,
+ * portal, animation, and positioning behavior without duplicating Radix wiring.
+ */
 import * as React from "react"
 import { Tooltip as TooltipPrimitive } from "radix-ui"
 

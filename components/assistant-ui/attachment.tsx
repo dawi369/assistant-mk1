@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * assistant-ui attachment controls and message attachment rendering.
+ *
+ * This file adapts assistant-ui primitives into the project UI: composer file
+ * selection, attachment previews, removal controls, and submitted user-message
+ * attachment display. It should remain reusable and avoid product-specific
+ * workflow assumptions.
+ */
 import { type PropsWithChildren, useEffect, useState, type FC } from "react";
 import { XIcon, PlusIcon, FileText } from "lucide-react";
 import {

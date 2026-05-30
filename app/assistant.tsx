@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * Client runtime bridge between assistant-ui and LangGraph.
+ *
+ * This component creates the LangGraph SDK client, converts assistant-ui message
+ * streams into LangGraph runs, and provides the runtime to the thread UI. It
+ * should stay provider-agnostic; model credentials and graph logic live on the
+ * server side.
+ */
 import { useMemo } from "react";
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import {

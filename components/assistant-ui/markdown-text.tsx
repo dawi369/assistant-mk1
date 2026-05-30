@@ -1,5 +1,12 @@
 "use client";
 
+/**
+ * Markdown renderer used by assistant messages and reasoning content.
+ *
+ * This wraps assistant-ui's markdown primitive with GFM support and custom code
+ * block actions. Keep it presentation-focused; retrieval, citation, and
+ * artifact semantics should arrive as structured message/tool data.
+ */
 import "@assistant-ui/react-markdown/styles/dot.css";
 
 import {

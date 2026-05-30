@@ -1,3 +1,10 @@
+/**
+ * Token-protected ingress for external workflow signals.
+ *
+ * Outside systems use this route to start work, resume interrupted runs, or
+ * create LangGraph crons. It is intentionally server-side and bearer-token
+ * protected so external triggers do not bypass runtime authentication checks.
+ */
 import { Client } from "@langchain/langgraph-sdk";
 import { NextResponse, type NextRequest } from "next/server";
 

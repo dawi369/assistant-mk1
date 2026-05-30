@@ -1,5 +1,12 @@
 "use client";
 
+/**
+ * Shared collapsible shell for grouped tool-call UI.
+ *
+ * Tool renderers use this to keep progress, results, and details visually
+ * consistent while preserving assistant-ui's streaming states and scroll-lock
+ * behavior.
+ */
 import {
   memo,
   useCallback,

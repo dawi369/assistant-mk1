@@ -1,5 +1,12 @@
 "use client";
 
+/**
+ * Generic fallback renderer for assistant-ui tool calls.
+ *
+ * Tool-specific UI can override this later, but this component gives every tool
+ * call a consistent inspectable state: running, success, error, expandable
+ * arguments, and expandable result content.
+ */
 import { memo, useCallback, useRef, useState } from "react";
 import {
   AlertCircleIcon,

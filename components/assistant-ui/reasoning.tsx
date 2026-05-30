@@ -1,5 +1,12 @@
 "use client";
 
+/**
+ * Collapsible reasoning-part renderers for assistant-ui streams.
+ *
+ * Reasoning content is displayed as inspectable supporting context without
+ * becoming the canonical source of truth. Durable decisions and provenance
+ * should still be written through framework state contracts.
+ */
 import { memo, useCallback, useRef, useState } from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { BrainIcon, ChevronDownIcon } from "lucide-react";

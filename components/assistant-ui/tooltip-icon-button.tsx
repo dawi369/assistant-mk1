@@ -1,5 +1,12 @@
 "use client";
 
+/**
+ * Icon-button primitive with an attached tooltip.
+ *
+ * Use this for compact controls where the icon carries the visible affordance
+ * and the tooltip supplies the accessible label/context. It wraps the local
+ * Button and Tooltip primitives rather than defining a separate button style.
+ */
 import { type ComponentPropsWithRef, forwardRef } from "react";
 import { Slot } from "radix-ui";
 

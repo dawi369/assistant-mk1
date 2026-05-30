@@ -1,5 +1,12 @@
 "use client"
 
+/**
+ * Local shadcn-style wrapper around Radix Collapsible primitives.
+ *
+ * These exports provide stable `data-slot` hooks and keep low-level UI building
+ * blocks centralized so assistant/workbench components do not import Radix
+ * primitives directly.
+ */
 import { Collapsible as CollapsiblePrimitive } from "radix-ui"
 
 function Collapsible({

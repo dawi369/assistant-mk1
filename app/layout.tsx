@@ -1,3 +1,10 @@
+/**
+ * Root Next.js layout for the workbench shell.
+ *
+ * This file owns global font/theme providers and document metadata. Product
+ * runtime behavior belongs in `app/assistant.tsx` and the API routes, keeping
+ * layout concerns separate from agent orchestration.
+ */
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { TooltipProvider } from "@/components/ui/tooltip";

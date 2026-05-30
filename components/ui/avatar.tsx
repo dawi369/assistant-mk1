@@ -1,5 +1,11 @@
 "use client"
 
+/**
+ * Local shadcn-style avatar primitives built on Radix Avatar.
+ *
+ * The wrapper adds consistent slot attributes, sizing, image, and fallback
+ * styling for user/workspace/agent identity surfaces across the workbench.
+ */
 import * as React from "react"
 import { Avatar as AvatarPrimitive } from "radix-ui"
 

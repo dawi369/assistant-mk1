@@ -1,3 +1,11 @@
+/**
+ * Main assistant thread composition.
+ *
+ * This assembles assistant-ui primitives, markdown rendering, reasoning parts,
+ * tool-call groups, attachments, and composer controls into the chat surface.
+ * Keep domain-specific workbench panels around this component rather than
+ * baking app-specific concepts into message rendering.
+ */
 import {
   ComposerAddAttachment,
   ComposerAttachments,

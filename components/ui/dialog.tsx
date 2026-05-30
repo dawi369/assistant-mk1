@@ -1,5 +1,12 @@
 "use client"
 
+/**
+ * Local shadcn-style dialog primitives built on Radix Dialog.
+ *
+ * This module centralizes dialog slots, overlay/content structure, close
+ * affordances, and animation classes so feature components can compose modals
+ * without reimplementing accessibility or layout plumbing.
+ */
 import * as React from "react"
 import { XIcon } from "lucide-react"
 import { Dialog as DialogPrimitive } from "radix-ui"
