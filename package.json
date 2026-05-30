@@ -15,7 +15,10 @@
     "lint": "oxlint && oxfmt --check",
     "format": "oxfmt --check",
     "format:fix": "oxfmt",
-    "lint:fix": "oxlint --fix && oxfmt"
+    "lint:fix": "oxlint --fix && oxfmt",
+    "graph:render": "tsx scripts/render-architecture-graph.ts render",
+    "graph:check": "tsx scripts/render-architecture-graph.ts check",
+    "graph:list": "tsx scripts/render-architecture-graph.ts list"
   },
   "dependencies": {
     "@assistant-ui/react": "^0.14.11",
@@ -54,6 +57,7 @@
     "oxfmt": "^0.51.0",
     "oxlint": "^1.66.0",
     "tailwindcss": "^4.3.0",
+    "tsx": "^4.22.3",
     "typescript": "5.9.3"
   },
   "packageManager": "pnpm@10.33.0"
