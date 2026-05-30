@@ -2,7 +2,7 @@
 
 The workbench is the reusable frontend layer this repo is meant to become. Chat remains the first interface, but the product should support project-scale agent work: long-running processes, tools, external triggers, user knowledge, managed state, audit trails, and multi-user isolation.
 
-Polymancer is the benchmark reference app because trading stresses autonomy, secrets, ledgers, risk, and fast external signals. The framework must stay generic: the same surfaces should support non-trading projects such as deployment agents, research assistants, document workflows, issue triage, or operations copilots.
+Polymancer is the benchmark reference app because trading stresses autonomy, secrets, ledgers, execution policy, and fast external signals. The framework must stay generic: the same surfaces should support non-trading projects such as deployment agents, research assistants, document workflows, issue triage, or operations copilots.
 
 ## Core Flows
 
@@ -26,7 +26,7 @@ Polymancer is the benchmark reference app because trading stresses autonomy, sec
 - Put project-specific workbench composition around the thread, not inside low-level message rendering.
 - Prefer typed data passed into reusable components over global assumptions.
 - Do not bake a single project domain into the base assistant experience.
-- Keep trading-specific language in reference app configuration. Base components should use generic terms such as managed state, ledger, triggers, tools, memory, and risk.
+- Keep trading-specific language in reference app configuration. Base components should use generic terms such as managed state, ledger, triggers, tools, memory, and policy.
 - Treat tool execution as server-side only. The frontend may request, approve, inspect, or configure tools, but it must never receive provider keys, trading keys, or tool secrets.
 - Treat tenant scope as runtime data, not prompt text. Every component that reads or writes durable state should receive scoped data from the server.
 

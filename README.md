@@ -63,7 +63,7 @@ langgraph.json      LangGraph CLI config (graph id, node version, env file)
 - `docs/cloudflare-control-plane.md` — target live multi-user control plane
 - `docs/fly-tool-runners.md` — heavy tool and workflow execution plane
 - `docs/data-and-state.md` — storage responsibilities and canonical entities
-- `docs/secrets-and-risk.md` — secret custody, risk levels, and production gates
+- `docs/secrets-and-risk.md` — secret custody, execution modes, and production gates
 - `docs/agent-workbench.md` — reusable workbench UX model
 - `docs/context-engineering.md` — decision records and provenance-backed recall
 - `docs/runtime.md` — threads, runs, interrupts, crons, and external signals

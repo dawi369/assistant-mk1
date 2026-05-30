@@ -6,7 +6,7 @@ Polymancer is the reference target for Assistant-MK1. It is not the whole produc
 
 Polymancer is a personal Polymarket trader in your pocket: conversational, stateful, available 24/7, and able to act through approved tools. A user should be able to discuss world events, share intuition, define a thesis, copy-watch a wallet, monitor a sector, and ask the assistant what it believes, what it owns, what it plans, and why.
 
-The closest useful version is not just an LLM that can place orders. It is an operator with memory, tools, a ledger, conviction state, monitoring loops, risk policies, and a clear audit trail.
+The closest useful version is not just an LLM that can place orders. It is an operator with memory, tools, a ledger, conviction state, monitoring loops, execution policies, and a clear audit trail.
 
 ## Why This Reference App Matters
 
@@ -16,7 +16,7 @@ Trading stress-tests the framework:
 - Secrets: user credentials must be encrypted, scoped, revocable, and server-side only.
 - Tools: market data, wallet research, copy-trading, order previews, and execution adapters need a boring plug-in path.
 - Ledgers: every proposed, skipped, blocked, and executed action needs a durable record.
-- Risk: full autonomy still needs dry-run mode, approval gates, limits, allowlists, denylists, cooldowns, and kill switches.
+- Policy: full autonomy still needs deterministic execution modes, approval gates, limits, allowlists, denylists, cooldowns, and kill switches.
 - Multi-user isolation: every user needs separate accounts, memory, tools, ledgers, schedules, and secrets.
 
 These requirements are generic. The same framework should support non-trading agents for deployments, research, documents, tickets, operations, and other complex workflows.
@@ -47,7 +47,7 @@ Polymancer-specific behavior must map to generic Assistant-MK1 primitives:
 - User thesis -> memory/personality item with provenance.
 - Conviction update -> strategy state snapshot.
 - Trade approval -> interrupt/resume flow.
-- Kill switch -> risk policy and runtime control.
+- Kill switch -> execution policy and runtime control.
 
 ## Generic Workflow Lifecycle
 
@@ -86,7 +86,7 @@ Every tool should declare:
 - Name, description, and project/domain.
 - Input schema and output schema.
 - Required secrets and permissions.
-- Risk level and whether dry-run is supported.
+- Supported execution modes and policy name, when needed.
 - Timeout and cancellation behavior.
 - Logging and redaction policy.
 - Artifact outputs, if any.
@@ -102,7 +102,7 @@ Polymarket tools should be one adapter family, not hard-coded framework behavior
 - [Market data overview](https://docs.polymarket.com/market-data/overview): public market data with no auth, including Gamma, CLOB price/orderbook data, and Data API positions/activity.
 - [Trading overview](https://docs.polymarket.com/trading/overview): CLOB trading flow, SDKs, and order lifecycle.
 
-The first adapter should be read-only or dry-run. Live trading is not production-ready until auth, encrypted secrets, ledgers, auditability, permissions, risk limits, and kill switches exist.
+The first adapter should be read-only or dry-run. Live trading is not production-ready until auth, encrypted secrets, ledgers, auditability, permissions, execution policies, and kill switches exist.
 
 ## Multi-User Requirement
 
@@ -114,7 +114,7 @@ Polymancer cannot be treated as a single global bot. Each user or workspace must
 - Schedules and external triggers.
 - Memory and personality.
 - Managed state and ledger.
-- Risk policies and kill switches.
+- Execution policies and kill switches.
 - Audit trail and artifacts.
 
 Shared infrastructure can host many users, but no agent run should be able to cross user/workspace boundaries accidentally.
@@ -127,9 +127,9 @@ Shared infrastructure can host many users, but no agent run should be able to cr
 - Frontend code cannot access credentials, and logs/API responses do not expose secrets.
 - A scheduled heartbeat creates a run, updates state, and records an audit event.
 - An external event wakes the right user/workspace agent and creates or resumes the correct thread.
-- A high-risk action can pause, request approval, resume, and record the decision.
-- The agent can propose a high-risk action in dry-run mode without executing it.
-- A risk policy blocks an action that exceeds configured limits and records the block.
+- An external mutation can pause, request approval, resume, and record the decision.
+- The agent can propose an external mutation in dry-run mode without executing it.
+- An execution policy blocks an action that exceeds configured limits and records the block.
 - The user can ask, "what are you doing and why?" and receive an answer grounded in managed state, strategy state, and recent runs.
 - Fly staging can show agent state, tool history, run history, and external-trigger behavior.
 

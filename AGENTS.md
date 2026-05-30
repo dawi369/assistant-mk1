@@ -39,7 +39,7 @@ curl http://localhost:3000/api/health
 
 For Fly staging work, deploy only after local checks pass and then smoke the hosted `/api/health`, assistant thread creation, streaming, and any external-signal route touched by the change.
 
-## Risk Rules
+## Safety Rules
 
 - Do not run destructive Git commands unless explicitly requested.
 - Do not echo secrets into logs, docs, commits, or chat.

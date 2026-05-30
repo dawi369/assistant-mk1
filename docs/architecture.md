@@ -2,7 +2,7 @@
 
 Assistant-MK1 is a reusable agent workbench with a conversational control plane, workflow execution plane, and hosted Fly.io dev/staging runtime.
 
-The architecture is generic, but it is evaluated against a demanding reference app: Polymancer, a future Polymarket-focused assistant. Trading is useful as a stress test because it requires long-running autonomy, secrets, ledgers, risk controls, tools, external triggers, and multi-user isolation. Those same primitives must remain reusable for non-trading projects.
+The architecture is generic, but it is evaluated against a demanding reference app: Polymancer, a future Polymarket-focused assistant. Trading is useful as a stress test because it requires long-running autonomy, secrets, ledgers, execution policy, tools, external triggers, and multi-user isolation. Those same primitives must remain reusable for non-trading projects.
 
 ## System Shape
 
@@ -39,8 +39,8 @@ For implementation-level infrastructure responsibilities, see `docs/infrastructu
 - CLI and OSS adapters: local CLIs, OSS packages, scripts, and git submodules should run server-side behind the same tool interface as native tools.
 - Secret custody: user credentials and API keys must be encrypted, scoped, revocable, never exposed to the browser, and only available to approved server-side tools.
 - Agent runtime: conversational state and workflow state are separate concerns. LangGraph remains the preferred complex workflow engine behind escalation, while a Cloudflare-style stateful agent can own live per-user/workspace coordination.
-- Ledger and audit trail: planned actions, proposed actions, executed actions, skipped actions, model rationale, tool calls, external triggers, and risk blocks should be recorded.
-- Decision records: important beliefs, strategies, plans, actions, and risk decisions should be stored with evidence, counter-evidence, confidence, alternatives, provenance, related artifacts, and freshness.
+- Ledger and audit trail: planned actions, proposed actions, executed actions, skipped actions, model rationale, tool calls, external triggers, and policy blocks should be recorded.
+- Decision records: important beliefs, strategies, plans, actions, and policy decisions should be stored with evidence, counter-evidence, confidence, alternatives, provenance, related artifacts, and freshness.
 - Knowledge/personality: users can configure durable instructions, project knowledge, preferences, risk tolerance, tone, decision style, review cadence, and domain-specific operating principles.
 - Policy layer: ask, dry-run, execute, human approval, per-user limits, allowlists/denylists, cooldowns, and kill switches are framework primitives, not trading-only features.
 - Observability: every long-running process needs run status, last heartbeat, next scheduled check, active tools, current managed state, and failure reason.

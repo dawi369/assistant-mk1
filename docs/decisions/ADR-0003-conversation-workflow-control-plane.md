@@ -6,7 +6,7 @@ Status: accepted
 
 Assistant-MK1 needs to stay generic while still supporting demanding apps like Polymancer. Not every user message should start a heavy agent graph. Many interactions are simple: answer from memory, explain current state, edit notes, inspect strategy, or summarize recent activity.
 
-Complex workflows still matter. Trading, deployment, research, and operations agents all need explicit multi-step execution, tool calls, approvals, risk gates, and durable audit trails.
+Complex workflows still matter. Trading, deployment, research, and operations agents all need explicit multi-step execution, tool calls, approvals, execution policy gates, and durable audit trails.
 
 ## Decision
 

@@ -26,7 +26,7 @@ Status: in progress.
 - Standardize on pnpm because `pnpm-lock.yaml` is tracked.
 - Add health check and Fly staging config.
 - Add token-protected external signal ingress.
-- Add basic infrastructure docs for Cloudflare control plane, Fly tool runners, storage, secrets, and risk.
+- Add basic infrastructure docs for Cloudflare control plane, Fly tool runners, storage, secrets, and execution policy.
 - Verify local typecheck, build, lint, and dev smoke.
 
 ## Phase 2: Workbench UX
@@ -37,7 +37,7 @@ Status: planned.
 - Show thread/run status in the UI.
 - Add interrupt approval/resume flows.
 - Add artifact and execution history surfaces.
-- Add tool visibility: enabled tools, recent calls, permissions, risk level, and failure state.
+- Add tool visibility: enabled tools, recent calls, permissions, execution policy, and failure state.
 - Add generic managed-state/ledger views that can represent trades, tasks, deployments, documents, tickets, or other domain assets.
 - Add decision-record views so users can ask why the agent believes or planned something and get a provenance-backed answer.
 - Keep base assistant-ui components reusable.
@@ -52,7 +52,7 @@ Status: planned.
 - Add first external webhook/signal integration.
 - Add first typed tool adapter and first CLI/OSS-backed tool adapter.
 - Add first typed workflow intent and generic lifecycle demo using `observe -> analyze -> propose -> execute -> review`.
-- Define encrypted secret custody, per-user tool permissions, audit events, risk policies, and kill switches before live high-risk actions.
+- Define encrypted secret custody, per-user tool permissions, audit events, execution policies, and kill switches before live external mutation.
 - Decide whether production persistence needs managed LangGraph Platform, Postgres-backed self-hosting, or another durable store.
 
 ## Done Bar

@@ -8,7 +8,7 @@ Assistant-MK1 is a reusable agent framework. Infrastructure should support many 
 assistant-ui frontend
   -> conversational control plane
   -> typed intent router
-  -> policy and risk gate
+  -> execution policy gate
   -> workflow engine or tool runner
   -> decision records, audit events, artifacts, managed state
 ```

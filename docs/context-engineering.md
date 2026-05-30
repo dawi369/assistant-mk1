@@ -9,7 +9,7 @@ A `DecisionRecord` is the generic unit for durable reasoning. It works for tradi
 Each record should capture:
 
 - Tenant scope: `userId` and `workspaceId`.
-- Decision type: belief, strategy, plan, action, risk, preference, or other.
+- Decision category: belief, strategy, plan, action, policy, preference, or another app-defined category.
 - Thesis: the claim or decision.
 - Evidence and counter-evidence.
 - Alternatives considered.
