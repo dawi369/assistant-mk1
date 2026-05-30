@@ -28,10 +28,9 @@ Minimum request shape:
 ```json
 {
   "scope": { "userId": "user-id", "workspaceId": "workspace-id" },
-  "intentId": "intent-id",
+  "workflowIntentId": "intent-id",
   "toolName": "tool.name",
-  "risk": "medium",
-  "dryRun": true,
+  "execution": { "mode": "dry_run", "policy": "default" },
   "input": {}
 }
 ```
@@ -41,7 +40,7 @@ The Fly service must:
 - Verify the request signature.
 - Validate tenant scope and tool permission.
 - Enforce timeout and cancellation policy.
-- Enforce dry-run and approval requirements.
+- Enforce execution mode and approval requirements.
 - Redact secrets from logs and responses.
 - Return structured output and artifact references.
 - Write or return audit summaries for persistence.

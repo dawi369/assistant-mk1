@@ -24,5 +24,5 @@ All durable state is scoped by `userId` and `workspaceId`. The model never decid
 - Complex work is explicit, inspectable, and auditable.
 - Polymancer becomes one reference mapping, not the repo identity.
 - Workflow stages are generic: `observe`, `analyze`, `propose`, `execute`, `review`.
-- Every escalation carries tenant scope, trigger source, risk level, dry-run/approval flags, and payload.
+- Every escalation carries tenant scope, deterministic execution mode, optional policy name, and payload.
 - Workflow outputs must write back decision records, artifacts, ledger/audit events, and managed state updates.

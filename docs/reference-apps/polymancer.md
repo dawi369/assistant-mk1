@@ -38,7 +38,7 @@ These requirements are generic. The same framework should support non-trading ag
 Polymancer-specific behavior must map to generic Assistant-MK1 primitives:
 
 - Polymarket account -> user/workspace identity and secret custody.
-- Trading tools -> typed server-side tools with permissions and risk levels.
+- Trading tools -> typed server-side tools with permissions and deterministic execution modes.
 - Open positions -> managed state and ledger entries.
 - Trade proposals -> pending actions and artifacts.
 - Submitted orders -> executed actions and audit events.

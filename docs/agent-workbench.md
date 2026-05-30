@@ -12,7 +12,7 @@ Polymancer is the benchmark reference app because trading stresses autonomy, sec
 - Interrupts: surface approval prompts, missing-input requests, blocked tool calls, and external resume points.
 - Artifacts: expose files, documents, plans, diffs, logs, screenshots, and generated outputs as first-class results.
 - Execution history: show past runs, important events, and resumable checkpoints when the runtime supports them.
-- Tools: show available tools, enabled tools, recent calls, permissions, timeout/risk policy, failures, and whether a tool is built in, project-specific, CLI-backed, or OSS-backed.
+- Tools: show available tools, enabled tools, recent calls, permissions, execution policy, failures, and whether a tool is built in, project-specific, CLI-backed, or OSS-backed.
 - Managed state: show what the agent owns or manages. In trading this means positions and orders; in other apps it may mean tasks, deployments, documents, tickets, or tracked resources.
 - Conviction/strategy: show what the agent currently believes, why, confidence, and what would change its mind.
 - Triggers: show heartbeats, webhook triggers, scheduled checks, external events, and domain-specific monitors.
@@ -32,10 +32,10 @@ Polymancer is the benchmark reference app because trading stresses autonomy, sec
 
 ## Tool Implementation Requirements
 
-- A new typed tool should be addable with a small module that declares name, description, input schema, output schema, permissions, risk level, timeout, logging policy, and execution function.
+- A new typed tool should be addable with a small module that declares name, description, execution function, and only the metadata proven necessary by real usage.
 - CLI tools, OSS packages, scripts, and git submodules should be wrapped behind the same tool interface as native TypeScript tools.
 - Tool availability should be configurable per user/workspace and per deployment.
-- High-risk tools must support dry-run, approvals, per-user limits, audit logs, and kill switches.
+- Tools that mutate external state must support deterministic execution modes such as ask, dry-run, and execute, with policy checks outside the model.
 - Tool output should be structured enough for the UI to show results, failures, artifacts, and follow-up actions without parsing prose.
 
 ## First UI Milestones

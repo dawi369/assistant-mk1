@@ -32,7 +32,7 @@ D1 should hold relational data:
 
 - Users, workspaces, memberships, and roles.
 - Agents and configuration.
-- Tool registry, permissions, and risk policy metadata.
+- Tool registry, permissions, and execution policy metadata.
 - Threads, workflow intents, decision records, audit events, triggers, managed state, and ledger entries.
 - Artifact metadata and R2 object references.
 

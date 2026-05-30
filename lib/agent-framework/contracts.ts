@@ -1,3 +1,15 @@
+/**
+ * Early WIP framework contracts.
+ *
+ * These types are intentionally small and provisional. They are not final
+ * database schemas, wire protocols, or stable platform APIs. Prefer boring,
+ * serializable shapes and add fields only after real usage proves they are
+ * needed.
+ *
+ * Types that contain functions are runtime-only and must not be persisted
+ * directly. Durable registries should store serializable metadata instead.
+ */
+
 export type Id = string;
 
 export type TenantScope = {
@@ -7,17 +19,12 @@ export type TenantScope = {
 
 export type WorkflowStage = "observe" | "analyze" | "propose" | "execute" | "review";
 
-export type RiskLevel = "low" | "medium" | "high" | "critical";
+export type ExecutionMode = "ask" | "dry_run" | "execute";
 
-export type TriggerSource =
-  | "user_message"
-  | "schedule"
-  | "webhook"
-  | "tool_event"
-  | "system_event"
-  | "manual";
-
-export type RuntimeTarget = "cloudflare_agent" | "langgraph" | "tool_runner";
+export type ExecutionPolicy = {
+  mode: ExecutionMode;
+  policy?: string;
+};
 
 export type ArtifactRef = {
   id: Id;
@@ -48,75 +55,61 @@ export type DecisionRecord = {
   scope: TenantScope;
   title: string;
   summary: string;
-  decisionType: "belief" | "strategy" | "plan" | "action" | "risk" | "preference" | "other";
   thesis: string;
-  evidence: string[];
-  counterEvidence: string[];
-  alternatives: string[];
-  confidence: number;
-  provenance: ProvenanceRef[];
-  relatedRunIds: Id[];
-  relatedToolCallIds: Id[];
-  artifacts: ArtifactRef[];
-  status: "active" | "superseded" | "rejected" | "stale" | "archived";
+  provenance?: ProvenanceRef[];
+  artifacts?: ArtifactRef[];
   createdAt: string;
   updatedAt: string;
-  revisitAfter?: string;
-  domain?: string;
-  domainData?: Record<string, unknown>;
+  data?: Record<string, unknown>;
 };
 
-export type WorkflowIntent<Payload = Record<string, unknown>> = {
+export type WorkflowIntent<Payload = unknown> = {
   id: Id;
   scope: TenantScope;
   stage: WorkflowStage;
-  target: RuntimeTarget;
-  workflowType: string;
-  trigger: TriggerSource;
-  risk: RiskLevel;
-  requiresApproval: boolean;
-  dryRun: boolean;
+  type: string;
+  execution: ExecutionPolicy;
   payload: Payload;
-  relatedDecisionIds: Id[];
+  relatedDecisionIds?: Id[];
   createdAt: string;
 };
 
-export type ToolDefinition<Input = Record<string, unknown>, Output = Record<string, unknown>> = {
+/**
+ * Runtime-only tool definition.
+ *
+ * This is the in-process shape a tool runner can execute. It is not the
+ * durable tool registry shape because it contains functions.
+ */
+export type ToolDefinition<Input = unknown, Output = unknown> = {
   name: string;
   description: string;
-  kind: "native" | "api" | "cli" | "oss_package" | "submodule";
-  inputSchemaName: string;
-  outputSchemaName: string;
-  requiredSecrets: string[];
-  permissions: string[];
-  risk: RiskLevel;
-  supportsDryRun: boolean;
-  timeoutMs: number;
-  logging: {
-    redactInputs: string[];
-    redactOutputs: string[];
-    artifactPolicy: "none" | "summary" | "full";
-  };
-  isAvailable(scope: TenantScope): boolean | Promise<boolean>;
-  execute(input: Input, context: ToolExecutionContext): Promise<ToolResult<Output>>;
+  kind?: string;
+  timeoutMs?: number;
+  isAvailable?: (scope: TenantScope) => boolean | Promise<boolean>;
+  execute: (input: Input, context: ToolExecutionContext) => Promise<ToolResult<Output>>;
 };
 
 export type ToolExecutionContext = {
   scope: TenantScope;
-  intentId?: Id;
-  runId?: Id;
-  dryRun: boolean;
+  execution: ExecutionPolicy;
+  workflowIntentId?: Id;
   signal?: AbortSignal;
 };
 
-export type ToolResult<Output = Record<string, unknown>> = {
-  ok: boolean;
-  output?: Output;
-  error?: {
-    code: string;
-    message: string;
-    retryable: boolean;
-  };
-  artifacts: ArtifactRef[];
-  auditSummary: string;
-};
+export type ToolResult<Output = unknown> =
+  | {
+      ok: true;
+      output: Output;
+      artifacts?: ArtifactRef[];
+      auditSummary?: string;
+    }
+  | {
+      ok: false;
+      error: {
+        code: string;
+        message: string;
+        retryable?: boolean;
+      };
+      artifacts?: ArtifactRef[];
+      auditSummary?: string;
+    };

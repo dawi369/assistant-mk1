@@ -31,7 +31,7 @@ The frontend streams from the conversational control plane. Fly and LangGraph se
 2. The runtime derives `userId` and `workspaceId` from authenticated context or trusted trigger metadata.
 3. The conversational agent reads scoped canonical state and answers directly when possible.
 4. If work needs escalation, the runtime creates a typed `WorkflowIntent`.
-5. Policy checks tenant scope, tool permissions, risk level, dry-run mode, approvals, and kill switches.
+5. Policy checks tenant scope, tool permissions, execution mode, approvals, and kill switches.
 6. The workflow engine or tool runner executes the approved work.
 7. Complex workflows read and write app state through mediated, tenant-scoped Cloudflare APIs first.
 8. Outputs are written back as decision records, audit events, artifacts, ledgers, and managed-state updates.
@@ -61,7 +61,7 @@ Start with mediated Cloudflare APIs for workflow reads and writes. LangGraph and
 - `POST /artifacts`
 - `PATCH /managed-state`
 
-Those APIs validate tenant scope, permissions, risk policy, and redaction before touching D1 or R2.
+Those APIs validate tenant scope, permissions, execution policy, and redaction before touching D1 or R2.
 
 Future optimization: scoped direct D1/R2 access from Fly/LangGraph is not part of the initial implementation. It may be considered later only for measured hot paths where mediated APIs create a concrete performance or reliability problem. Even then, direct access must use the same scoped data-client interface, tenant checks, redaction rules, and audit events.
 

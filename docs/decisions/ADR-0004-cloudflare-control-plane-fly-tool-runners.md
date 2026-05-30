@@ -24,7 +24,7 @@ LangGraph and tool runners use mediated Cloudflare APIs for app-state reads and 
 - Fly owns heavy execution, CLI/OSS tools, submodules, browser automation, and LangGraph workflow workers.
 - D1 stores relational control-plane data.
 - R2 stores artifacts and blobs, not app database records.
-- Every tool call must carry tenant scope, permission context, risk level, dry-run/approval status, and audit output.
+- Every tool call must carry tenant scope, permission context, execution mode/policy, and audit output.
 - The frontend streams from Cloudflare, not directly from Fly by default.
 - Workflow DB access is mediated by Cloudflare APIs first to prevent cross-user contamination.
 - The current local/Fly LangGraph starter remains useful for development and staged validation while the target runtime evolves.

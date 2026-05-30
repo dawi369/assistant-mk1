@@ -16,16 +16,19 @@ Secrets must be:
 
 Secrets include model keys, trading keys, API tokens, webhook signing keys, OAuth refresh tokens, and any credential that can spend money, move assets, mutate production systems, or access private data.
 
-## Risk Levels
+## Execution Modes
 
-- `low`: read-only or reversible actions.
-- `medium`: writes or external calls with limited blast radius.
-- `high`: money movement, production changes, private data export, or irreversible external mutation.
-- `critical`: actions that can cause large financial, security, legal, or operational harm.
+Early contracts should avoid hardcoded risk taxonomies. The first deterministic control is execution mode:
+
+- `ask`: the agent can reason, explain, and propose, but cannot mutate external state.
+- `dry_run`: the agent or tool can simulate effects and return proposed actions.
+- `execute`: the tool may mutate external state only if policy allows it.
+
+Risk scoring, approval rules, limits, and kill switches belong in policy configuration around these modes, not in early framework contracts.
 
 ## Required Controls
 
-High-risk and critical tools must support:
+Tools that can mutate external state must support:
 
 - Dry-run mode.
 - Approval gates.
@@ -38,6 +41,6 @@ High-risk and critical tools must support:
 
 ## Production Bar
 
-Live high-risk tools are blocked until auth, encrypted secrets, tenant isolation, ledgers, auditability, permissions, risk limits, and kill switches exist.
+Live external mutation is blocked until auth, encrypted secrets, tenant isolation, ledgers, auditability, permissions, policy limits, and kill switches exist.
 
 This applies to Polymancer trading tools and to non-trading tools such as deployment, database mutation, billing, email sending, and production admin actions.

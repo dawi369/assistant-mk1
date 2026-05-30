@@ -60,7 +60,7 @@ These APIs should expose scoped operations, not raw tables:
 - Append audit events.
 - Create artifact metadata and upload/sign R2 objects.
 - Read and patch managed state.
-- Read tool permissions and risk policy.
+- Read tool permissions and execution policy.
 
 This keeps tenant isolation below the prompt layer and gives the platform one place to enforce auth, policy, redaction, and audit.
 
