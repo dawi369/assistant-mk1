@@ -238,9 +238,6 @@ function renderGraphHtml(graph: ArchitectureGraph): string {
           <span class="pill">${graph.nodes.length} nodes / ${graph.edges.length} edges</span>
         </summary>
         <div class="panel-body">
-          <div class="notice">
-            This view is intentionally dense and generated from every canonical node and edge. It should not become the primary reading path.
-          </div>
           <div class="diagram-scroll">
             <pre class="mermaid">${escapeHtml(megaMermaid)}</pre>
           </div>
