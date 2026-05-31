@@ -17,6 +17,7 @@ import type {
   MembershipRecord,
   RecordData,
   RecordStatus,
+  RunRecord,
   ThreadRecord,
   ToolCallRecord,
   UserRecord,
@@ -69,6 +70,26 @@ export type WorkflowIntentUpdateStatusInput = {
   id: Id;
   status: RecordStatus;
   data?: RecordData;
+};
+
+export type RunCreateInput = Omit<RunRecord, "id" | "scope" | "createdAt" | "updatedAt">;
+
+export type RunUpdateStatusInput = {
+  id: Id;
+  status: RunRecord["status"];
+  heartbeatAt?: string;
+  lastEventAt?: string;
+  currentInterruptId?: Id;
+  data?: RecordData;
+};
+
+export type RunListFilters = {
+  agentId?: Id;
+  threadId?: Id;
+  workflowIntentId?: Id;
+  parentRunId?: Id;
+  status?: RunRecord["status"];
+  limit?: number;
 };
 
 export type ToolCallRecordStartedInput = Omit<
@@ -160,6 +181,12 @@ export type WorkflowIntentRepository = {
   ): Promise<WorkflowIntentRecord>;
 };
 
+export type RunRepository = {
+  create(scope: DataClientScope, input: RunCreateInput): Promise<RunRecord>;
+  updateStatus(scope: DataClientScope, input: RunUpdateStatusInput): Promise<RunRecord>;
+  list(scope: DataClientScope, filters?: RunListFilters): Promise<RunRecord[]>;
+};
+
 export type ToolCallRepository = {
   recordStarted(scope: DataClientScope, input: ToolCallRecordStartedInput): Promise<ToolCallRecord>;
   recordFinished(
@@ -197,6 +224,7 @@ export type AgentFrameworkDataClient = {
   workspaceContext: WorkspaceContextRepository;
   decisions: DecisionRecordRepository;
   workflowIntents: WorkflowIntentRepository;
+  runs: RunRepository;
   toolCalls: ToolCallRepository;
   audit: AuditEventRepository;
   artifacts: ArtifactRepository;

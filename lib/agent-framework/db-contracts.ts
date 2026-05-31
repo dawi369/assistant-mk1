@@ -14,6 +14,8 @@ import type {
   ArtifactRef,
   ExecutionPolicy,
   Id,
+  RunRelation,
+  RunStatus,
   ProvenanceRef,
   TenantScope,
   WorkflowStage,
@@ -91,6 +93,30 @@ export type WorkflowIntentRecord<Payload = unknown> = ScopedRecord & {
   status: RecordStatus;
   payload: Payload;
   relatedDecisionIds?: Id[];
+  updatedAt: string;
+};
+
+export type RunRecord = ScopedRecord & {
+  agentId: Id;
+  threadId?: Id;
+  workflowIntentId?: Id;
+  status: RunStatus;
+  execution: ExecutionPolicy;
+  stage?: WorkflowStage;
+  relation?: RunRelation;
+  engine?: string;
+  externalRunId?: string;
+  currentInterruptId?: Id;
+  heartbeatAt?: string;
+  lastEventAt?: string;
+  cancelledAt?: string;
+  completedAt?: string;
+  failedAt?: string;
+  failureSummary?: string;
+  toolCallIds?: Id[];
+  artifactRefs?: ArtifactRef[];
+  decisionRecordIds?: Id[];
+  ledgerEntryIds?: Id[];
   updatedAt: string;
 };
 

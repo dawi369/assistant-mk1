@@ -29,11 +29,74 @@ A thread is the persistent container for a conversation or task. The frontend cr
 
 A run executes an assistant against a thread. Foreground chat and background work both map to runs. When multiple signals arrive for the same thread, use explicit multitask behavior such as enqueueing rather than racing new work.
 
+In the target architecture, a run is a first-class control-plane record, not
+only a workflow-engine implementation detail. A `RunRecord` should connect the
+thread, optional workflow intent, execution policy, current status, heartbeat,
+interrupt state, external engine run ID, and durable outputs such as tool calls,
+artifacts, ledgers, audit events, and decision records.
+
+Run status should be inspectable by the workbench UI. The user should be able to
+answer: what is running, what is waiting, what failed, what can be cancelled,
+and what durable evidence was produced.
+
+## Child Runs
+
+Delegated or subagent work should become child runs instead of invisible nested
+model calls.
+
+Child run rules:
+
+- Child runs inherit trusted tenant scope from the parent runtime.
+- Child runs link to `parentRunId` and `rootRunId`.
+- Child runs receive a narrowed model-visible tool surface.
+- Child run depth is capped by policy/runtime configuration.
+- Parent cancellation can cascade to non-durable child runs.
+- Durable child runs may outlive the parent only when policy explicitly allows
+  it.
+- Child results should return as structured summaries plus durable outputs, not
+  only prose in the parent transcript.
+
 ## Interrupts
 
 Interrupts pause execution and wait for human or external input. They are the correct primitive for approvals, blocked decisions, missing credentials, and user confirmation.
 
 Important rule: code before an interrupt can execute again when resumed. Side effects before interrupts must be idempotent, or they should move after the interrupt.
+
+## Tool Exposure
+
+Tool registration and tool exposure are separate concerns. The platform may know
+about many tools, but a given model run should see only the tools allowed for
+its tenant scope, agent, workflow stage, execution mode, policy, and child-run
+context.
+
+The provisional runtime contract is a tool exposure resolver. It receives the
+candidate tools plus scoped run context and returns visibility decisions. This
+keeps token cost and risk lower without deleting tools from the installed
+library.
+
+## Lifecycle Events
+
+Runtime behavior should emit typed lifecycle events before Assistant-MK1 adds
+any user-installed hook system.
+
+Initial events:
+
+- `intent.created`
+- `run.queued`
+- `run.started`
+- `run.interrupted`
+- `approval.requested`
+- `tool.requested`
+- `tool.started`
+- `tool.finished`
+- `artifact.created`
+- `decision.created`
+- `run.completed`
+- `run.failed`
+- `run.cancelled`
+
+These events feed audit logs, UI timelines, policy checks, and future extension
+points. Arbitrary filesystem hooks are not part of the first implementation.
 
 ## Crons
 
@@ -41,7 +104,11 @@ Recurring starts should create typed workflow intents. In the current starter, c
 
 ## External Signals
 
-`POST /api/external-signals` is the app-level ingress for outside systems.
+`POST /api/external-signals` is the current app-level staging ingress for
+outside systems. The target architecture routes external events through the
+control plane first: derive tenant scope, create a workflow intent, policy-gate
+the request, create a run record, execute through LangGraph or Fly, then stream
+status from canonical state.
 
 Authentication:
 

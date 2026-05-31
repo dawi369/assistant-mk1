@@ -28,6 +28,7 @@ Minimum request shape:
 ```json
 {
   "scope": { "userId": "user-id", "workspaceId": "workspace-id" },
+  "runId": "run-id",
   "workflowIntentId": "intent-id",
   "toolName": "tool.name",
   "execution": { "mode": "dry_run", "policy": "default" },
@@ -44,6 +45,8 @@ The Fly service must:
 - Redact secrets from logs and responses.
 - Return structured output and artifact references.
 - Write or return audit summaries for persistence.
+- Report status against the control-plane run record rather than owning the
+  user-facing stream.
 
 ## Mediated State Access
 

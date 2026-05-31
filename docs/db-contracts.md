@@ -159,6 +159,51 @@ Minimum fields:
 Suggested statuses: `queued`, `running`, `interrupted`, `completed`, `failed`,
 `cancelled`.
 
+### RunRecord
+
+Runtime control record for one foreground, background, workflow, or child
+execution attempt. It represents the hosted control-plane equivalent of a
+session/run object, not a transcript artifact.
+
+Minimum fields:
+
+- `id`
+- `scope`
+- `agentId`
+- `threadId`
+- `workflowIntentId`
+- `status`
+- `execution`
+- `stage`
+- `relation`
+- `engine`
+- `externalRunId`
+- `currentInterruptId`
+- `heartbeatAt`
+- `lastEventAt`
+- `cancelledAt`
+- `completedAt`
+- `failedAt`
+- `failureSummary`
+- `toolCallIds`
+- `artifactRefs`
+- `decisionRecordIds`
+- `ledgerEntryIds`
+- `createdAt`
+- `updatedAt`
+- `data`
+
+Suggested statuses: `queued`, `running`, `waiting`, `interrupted`,
+`completed`, `failed`, `cancelled`.
+
+`relation` carries parent/child execution metadata such as `parentRunId`,
+`rootRunId`, `depth`, and whether a child is allowed to outlive the parent.
+
+`engine` and `externalRunId` link to workflow-engine state such as a LangGraph
+run, Fly tool-runner job, or future control-plane execution backend. Important
+durable outputs still live in framework records: audit events, tool calls,
+artifacts, decision records, ledgers, and managed state.
+
 ### DecisionRecordEntity
 
 Durable reasoning/provenance unit. It captures what the agent believes or
@@ -405,6 +450,9 @@ Repository groups:
 - `decisions.supersede(scope, input)`
 - `workflowIntents.create(scope, input)`
 - `workflowIntents.updateStatus(scope, input)`
+- `runs.create(scope, input)`
+- `runs.updateStatus(scope, input)`
+- `runs.list(scope, filters)`
 - `toolCalls.recordStarted(scope, input)`
 - `toolCalls.recordFinished(scope, input)`
 - `audit.append(scope, input)`

@@ -19,6 +19,7 @@ This page maps storage ownership. See `docs/db-contracts.md` for docs-first dura
 - Agent: configured assistant instance within a workspace.
 - Thread: conversation or task continuity.
 - Workflow intent: typed escalation request.
+- Run: one foreground, background, workflow, or child execution attempt.
 - Decision record: durable reasoning/provenance record.
 - Tool definition: registered tool contract and policy.
 - Tool call: one execution attempt against a tool.
@@ -37,7 +38,7 @@ D1 should hold relational data:
 - Users, workspaces, memberships, and roles.
 - Agents and configuration.
 - Tool registry, permissions, and execution policy metadata.
-- Threads, workflow intents, decision records, audit events, triggers, managed state, and ledger entries.
+- Threads, workflow intents, runs, decision records, audit events, triggers, managed state, and ledger entries.
 - Artifact metadata and R2 object references.
 
 ## R2 Responsibilities

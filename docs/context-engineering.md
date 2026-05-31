@@ -29,6 +29,24 @@ Summaries are indexes, not truth. The agent should answer "why?" by retrieving d
 - Domain-specific fields belong in extension data, not in the core schema.
 - A decision can be confident only if it can point to provenance.
 
+## Context Assembly
+
+Context assembly should be explicit before Assistant-MK1 adds compression or
+advanced memory behavior.
+
+Suggested tiers:
+
+- Stable: agent identity, project rules, and guidance for the currently exposed
+  tools.
+- Scoped: trusted workspace, project, thread, and active run state.
+- Retrieved: relevant decision records, managed state, ledgers, artifacts, and
+  audit summaries.
+- Volatile: current time, model/provider metadata, active interrupt state, and
+  recent lifecycle events.
+
+The model should not infer tenant scope from prompt text. Scope is derived by
+the runtime and applied at the data-client boundary.
+
 ## Generic Examples
 
 Trading:

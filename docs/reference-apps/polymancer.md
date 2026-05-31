@@ -61,6 +61,9 @@ fields in `data`.
   current exposure".
 - `WorkflowIntentRecord`: typed work like `market.observe`,
   `wallet.copy_watch`, `position.review`, `trade.propose`, or `trade.execute`.
+- `RunRecord`: foreground chats, scheduled checks, external wakeups, and child
+  workflow executions that need status, heartbeat, cancellation, and recovery
+  metadata.
 - `DecisionRecordEntity`: conviction records, theses, counter-evidence, and
   what would change the plan.
 - `ManagedStateRecord`: markets, watched wallets, positions, open orders, and

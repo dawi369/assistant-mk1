@@ -69,6 +69,7 @@ langgraph.json      LangGraph CLI config (graph id, node version, env file)
 - `docs/context-engineering.md` — decision records and provenance-backed recall
 - `docs/runtime.md` — threads, runs, interrupts, crons, and external signals
 - `docs/tenancy.md` — user/workspace scoping and isolation rules
+- `docs/hermes-lessons-runtime-plan.md` — temporary plan for applying useful harness lessons without changing the product architecture
 - `docs/deployment-fly.md` — Fly dev/staging workflow
 - `docs/reference-apps/polymancer.md` — reference target for a demanding 24/7 tool-using agent
 - `docs/reference-apps/deployment-agent.md` — operational reference target for deployment agents

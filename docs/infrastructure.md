@@ -9,6 +9,7 @@ assistant-ui frontend
   -> conversational control plane
   -> typed intent router
   -> execution policy gate
+  -> run control record
   -> workflow engine or tool runner
   -> decision records, audit events, artifacts, managed state
 ```
@@ -20,6 +21,7 @@ The frontend streams from the conversational control plane. Fly and LangGraph se
 - Frontend: operator cockpit for conversation, state, tools, approvals, artifacts, and run history.
 - Conversational control plane: live user/workspace agent coordination, fast answers from canonical state, memory updates, and typed workflow escalation.
 - Workflow execution plane: explicit multi-step workflows such as `observe -> analyze -> propose -> execute -> review`.
+- Run control: durable status, heartbeat, parent/child ownership, interrupts, cancellation, and recovery metadata for active and historical executions.
 - Tool runners: server-side execution for CLIs, OSS packages, git submodules, scripts, browser automation, API tools, and heavy jobs.
 - Storage: tenant-scoped relational data, per-agent hot state, object artifacts, and workflow backend state.
 - Secrets: encrypted, scoped, revocable, server-side only, and available only to approved tools.
@@ -32,11 +34,12 @@ The frontend streams from the conversational control plane. Fly and LangGraph se
 3. The conversational agent reads scoped canonical state and answers directly when possible.
 4. If work needs escalation, the runtime creates a typed `WorkflowIntent`.
 5. Policy checks tenant scope, tool permissions, execution mode, approvals, and kill switches.
-6. The workflow engine or tool runner executes the approved work.
-7. Complex workflows read and write app state through mediated, tenant-scoped Cloudflare APIs first.
-8. Outputs are written back as decision records, audit events, artifacts, ledgers, and managed-state updates.
-9. Cloudflare streams status and results to the frontend from canonical state.
-10. The frontend shows the new state and lets the user inspect why it changed.
+6. The runtime creates or updates a `RunRecord` for the execution attempt.
+7. The workflow engine or tool runner executes the approved work.
+8. Complex workflows read and write app state through mediated, tenant-scoped Cloudflare APIs first.
+9. Outputs are written back as decision records, audit events, artifacts, ledgers, and managed-state updates.
+10. Cloudflare streams run status and results to the frontend from canonical state.
+11. The frontend shows the new state and lets the user inspect why it changed.
 
 Canonical durable entity contracts are defined in `docs/db-contracts.md`. This infrastructure page should describe flow and ownership, not duplicate entity shapes.
 
@@ -68,6 +71,24 @@ Those APIs validate tenant scope, permissions, execution policy, and redaction b
 Workflow and tool code should depend on data-client operations, not raw tables. See `docs/db-contracts.md` for the initial operation groups.
 
 Future optimization: scoped direct D1/R2 access from Fly/LangGraph is not part of the initial implementation. It may be considered later only for measured hot paths where mediated APIs create a concrete performance or reliability problem. Even then, direct access must use the same scoped data-client interface, tenant checks, redaction rules, and audit events.
+
+## Tool Exposure
+
+The durable tool registry can contain more tools than a single model run should
+see. Before a workflow or child run starts, the control plane should resolve the
+model-visible tool surface from tenant scope, agent configuration, tool
+permissions, workflow stage, execution mode, policy, and delegation context.
+
+This resolver is a policy boundary, not just prompt decoration. It reduces
+token cost, narrows risk, and gives the UI a concrete explanation for why a tool
+was exposed or hidden.
+
+## Lifecycle Events
+
+The first extension surface should be typed lifecycle events, not arbitrary
+shell hooks. Events such as `run.started`, `tool.finished`, and
+`approval.requested` should drive audit records, UI history, policy checks, and
+future hook/plugin decisions.
 
 ## Reference App Boundary
 

@@ -18,6 +18,7 @@ The architecture is generic, but it is evaluated against demanding reference app
 - Conversational agent: fast user-facing loop for chat, notes, memory, strategy, managed state, and status questions.
 - Intent router: converts eligible requests, schedules, tool events, and external triggers into typed workflow intents.
 - Policy layer: validates tenant scope, tool permissions, execution mode, approvals, and kill switches before execution.
+- Run control: tracks foreground, background, workflow, and child executions with status, heartbeat, interrupt, cancellation, recovery, and parent/child metadata.
 - Workflow engine: executes typed intents through the best backend for the job. LangGraph is preferred for complex workflows with graph semantics, interrupts, and resumability.
 - Tool runner: executes server-side tools, including CLIs, OSS packages, scripts, submodules, API tools, and heavy jobs.
 - Canonical state: all durable outputs return to scoped memory, decision records, managed state, ledgers, artifacts, and audit logs.
@@ -36,6 +37,7 @@ For implementation-level infrastructure responsibilities, see `docs/infrastructu
 
 - Identity and tenancy: every thread, run, secret, memory item, ledger entry, strategy, trigger, tool permission, and artifact belongs to a user or workspace.
 - Tool registry: tools are first-class runtime modules with typed inputs/outputs, permissions, execution policy, timeout policy, logging policy, and per-user/workspace availability.
+- Tool exposure resolver: a policy/runtime boundary that narrows registered tools to the model-visible set for a specific tenant, agent, workflow stage, execution mode, and child-run context.
 - CLI and OSS adapters: local CLIs, OSS packages, scripts, and git submodules should run server-side behind the same tool interface as native tools.
 - Secret custody: user credentials and API keys must be encrypted, scoped, revocable, never exposed to the browser, and only available to approved server-side tools.
 - Agent runtime: conversational state and workflow state are separate concerns. LangGraph remains the preferred complex workflow engine behind escalation, while a Cloudflare-style stateful agent can own live per-user/workspace coordination.
@@ -44,6 +46,7 @@ For implementation-level infrastructure responsibilities, see `docs/infrastructu
 - Knowledge/personality: users can configure durable instructions, project knowledge, preferences, risk tolerance, tone, decision style, review cadence, and domain-specific operating principles.
 - Policy layer: ask, dry-run, execute, human approval, per-user limits, allowlists/denylists, cooldowns, and kill switches are framework primitives.
 - Observability: every long-running process needs run status, last heartbeat, next scheduled check, active tools, current managed state, and failure reason.
+- Lifecycle events: typed runtime events should drive audit records, UI timelines, policy checks, and future hook surfaces before arbitrary user-installed hooks exist.
 
 ## Important Seams
 

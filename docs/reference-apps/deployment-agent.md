@@ -60,6 +60,9 @@ The deployment agent should use the generic durable entities from
   production deploy".
 - `WorkflowIntentRecord`: typed work like `ci.observe`, `failure.analyze`,
   `deploy.propose`, `deploy.execute`, `rollback.propose`, or `logs.review`.
+- `RunRecord`: foreground investigations, CI-triggered analyses, deploy
+  attempts, rollback reviews, and child workflow executions with status,
+  heartbeat, cancellation, and recovery metadata.
 - `DecisionRecordEntity`: root-cause hypotheses, deploy safety judgments,
   rollback rationale, and post-incident conclusions.
 - `ManagedStateRecord`: repositories, services, environments, incidents,

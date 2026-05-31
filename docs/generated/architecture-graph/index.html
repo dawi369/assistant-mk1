@@ -387,10 +387,10 @@
       </header>
 
       <div class="topline" aria-label="Graph summary">
-        <span class="meta-pill">53 nodes</span>
-        <span class="meta-pill">74 edges</span>
+        <span class="meta-pill">56 nodes</span>
+        <span class="meta-pill">80 edges</span>
         <span class="meta-pill">7 views</span>
-        <span class="meta-pill">43 current</span>
+        <span class="meta-pill">46 current</span>
         <span class="meta-pill">10 target</span>
       </div>
 
@@ -465,7 +465,7 @@
               this for completeness checks.
             </p>
           </div>
-          <span class="pill">53 nodes / 74 edges</span>
+          <span class="pill">56 nodes / 80 edges</span>
         </summary>
         <div class="panel-body">
           <div class="diagram-scroll">
@@ -500,6 +500,7 @@ flowchart LR
     n_audit_event[&quot;AuditEventRecord&quot;]
     n_artifact_metadata[&quot;ArtifactMetadataRecord&quot;]
     n_workflow_intent[&quot;WorkflowIntentRecord&quot;]
+    n_run_record[&quot;RunRecord&quot;]
     n_tool_call_record[&quot;ToolCallRecord&quot;]
     n_managed_state[&quot;ManagedStateRecord&quot;]
     n_ledger_entry[&quot;LedgerEntryRecord&quot;]
@@ -522,6 +523,7 @@ flowchart LR
     n_secret_custody[&quot;Secret Custody&quot;]
     n_tenant_scope[&quot;Tenant Scope&quot;]
     n_execution_policy[&quot;Execution Policy&quot;]
+    n_tool_exposure_resolver[&quot;Tool Exposure Resolver&quot;]
   end
   subgraph sg_runtime[&quot;Runtime&quot;]
     n_next_app[&quot;Next.js App Router&quot;]
@@ -543,6 +545,7 @@ flowchart LR
     n_architecture_graph_tooling[&quot;Architecture Graph Tooling&quot;]
   end
   subgraph sg_workflow[&quot;Workflow&quot;]
+    n_lifecycle_events[&quot;Lifecycle Events&quot;]
     n_workflow_lifecycle[&quot;Workflow Lifecycle&quot;]
     n_observe_stage[&quot;Observe&quot;]
     n_analyze_stage[&quot;Analyze&quot;]
@@ -575,6 +578,7 @@ flowchart LR
   n_durable_entity_contracts -.-&gt;|defines| n_audit_event
   n_durable_entity_contracts -.-&gt;|defines| n_artifact_metadata
   n_durable_entity_contracts -.-&gt;|defines| n_workflow_intent
+  n_durable_entity_contracts -.-&gt;|defines| n_run_record
   n_durable_entity_contracts -.-&gt;|defines| n_tool_call_record
   n_durable_entity_contracts -.-&gt;|defines| n_managed_state
   n_durable_entity_contracts -.-&gt;|defines| n_ledger_entry
@@ -584,6 +588,7 @@ flowchart LR
   n_data_client_contract --&gt;|append| n_audit_event
   n_data_client_contract --&gt;|metadata, upload URL| n_artifact_metadata
   n_data_client_contract --&gt;|create, update status| n_workflow_intent
+  n_data_client_contract --&gt;|create, update, list| n_run_record
   n_data_client_contract --&gt;|started, finished| n_tool_call_record
   n_data_client_contract --&gt;|get, patch| n_managed_state
   n_data_client_contract --&gt;|append, list| n_ledger_entry
@@ -593,18 +598,21 @@ flowchart LR
   n_cloudflare_control_plane --&gt;|auth or trusted trigger context| n_tenant_scope
   n_cloudflare_control_plane --&gt;|before escalation| n_policy_layer
   n_cloudflare_control_plane --&gt;|typed escalation| n_workflow_intent
+  n_cloudflare_control_plane --&gt;|status and heartbeat| n_run_record
   n_cloudflare_control_plane --&gt;|signed server request| n_fly_tool_runners
   n_cloudflare_control_plane --&gt;|workflow escalation| n_langgraph_workflow_service
   n_fly_tool_runners --&gt;|scoped reads/writes| n_data_client_contract
   n_langgraph_workflow_service --&gt;|scoped reads/writes| n_data_client_contract
   n_signed_tool_call --&gt;|typed execution request| n_fly_tool_runners
   n_policy_layer --&gt;|ask, dry-run, execute| n_execution_policy
+  n_policy_layer --&gt;|model-visible tools| n_tool_exposure_resolver
   n_policy_layer --&gt;|approved tools only| n_secret_custody
   n_assistant_runtime -.-&gt;|browser never receives secrets| n_secret_custody
   n_d1_storage --&gt;|target relational records| n_durable_entity_contracts
   n_r2_storage --&gt;|blob backing store| n_artifact_metadata
   n_durable_object_state --&gt;|hot coordination state| n_cloudflare_control_plane
   n_workflow_backend_state --&gt;|in-flight execution state| n_langgraph_workflow_service
+  n_workflow_lifecycle --&gt;|runtime events| n_lifecycle_events
   n_workflow_lifecycle --&gt;|stage| n_observe_stage
   n_observe_stage --&gt;|evidence| n_analyze_stage
   n_analyze_stage --&gt;|options| n_propose_stage
@@ -617,6 +625,7 @@ flowchart LR
   n_fly_tool_runners --&gt;|execution attempt| n_tool_call_record
   n_fly_tool_runners --&gt;|logs and outputs| n_artifact_metadata
   n_fly_tool_runners --&gt;|audit summary| n_audit_event
+  n_lifecycle_events --&gt;|audit timeline| n_audit_event
   n_external_trigger --&gt;|wake work| n_workflow_intent
   n_external_trigger --&gt;|trusted metadata| n_tenant_scope
   n_docs_architecture -.-&gt;|system source of truth| n_assistant_mk1
@@ -663,6 +672,7 @@ flowchart LR
   class n_audit_event entity;
   class n_artifact_metadata entity;
   class n_workflow_intent entity;
+  class n_run_record entity;
   class n_tool_call_record entity;
   class n_managed_state entity;
   class n_ledger_entry entity;
@@ -675,6 +685,8 @@ flowchart LR
   class n_secret_custody policy;
   class n_tenant_scope policy;
   class n_execution_policy policy;
+  class n_tool_exposure_resolver policy;
+  class n_lifecycle_events workflow;
   class n_d1_storage storage;
   class n_r2_storage storage;
   class n_durable_object_state storage;
@@ -701,7 +713,7 @@ flowchart LR
             <h2>Whole-System Overview</h2>
             <p>Current frontend/backend plus target control plane, execution plane, and storage.</p>
           </div>
-          <span class="pill">14 nodes / 12 edges</span>
+          <span class="pill">15 nodes / 13 edges</span>
         </summary>
         <div class="diagram-scroll">
           <pre class="mermaid">
@@ -715,6 +727,7 @@ flowchart LR
   n_langgraph_workflow_service[&quot;LangGraph Workflow Service&quot;]
   n_data_client_contract[&quot;AgentFrameworkDataClient&quot;]
   n_durable_entity_contracts[&quot;Durable Entity Contracts&quot;]
+  n_run_record[&quot;RunRecord&quot;]
   n_artifact_metadata[&quot;ArtifactMetadataRecord&quot;]
   n_d1_storage[&quot;D1 Relational State&quot;]
   n_r2_storage[&quot;R2 Artifact Storage&quot;]
@@ -728,6 +741,7 @@ flowchart LR
   n_cloudflare_control_plane --&gt;|initial mediated implementation| n_data_client_contract
   n_fly_tool_runners --&gt;|scoped reads/writes| n_data_client_contract
   n_langgraph_workflow_service --&gt;|scoped reads/writes| n_data_client_contract
+  n_data_client_contract --&gt;|create, update, list| n_run_record
   n_d1_storage --&gt;|target relational records| n_durable_entity_contracts
   n_r2_storage --&gt;|blob backing store| n_artifact_metadata
   n_durable_object_state --&gt;|hot coordination state| n_cloudflare_control_plane
@@ -746,6 +760,7 @@ flowchart LR
   class n_langgraph_workflow_service runtime;
   class n_data_client_contract interface;
   class n_durable_entity_contracts interface;
+  class n_run_record entity;
   class n_artifact_metadata entity;
   class n_d1_storage storage;
   class n_r2_storage storage;
@@ -761,7 +776,7 @@ flowchart LR
             <h2>Current Repo Map</h2>
             <p>Checked-in app routes, backend graph, components, contracts, and config.</p>
           </div>
-          <span class="pill">20 nodes / 14 edges</span>
+          <span class="pill">23 nodes / 15 edges</span>
         </summary>
         <div class="diagram-scroll">
           <pre class="mermaid">
@@ -785,6 +800,9 @@ flowchart LR
   n_framework_contracts[&quot;Framework Runtime Contracts&quot;]
   n_durable_entity_contracts[&quot;Durable Entity Contracts&quot;]
   n_data_client_contract[&quot;AgentFrameworkDataClient&quot;]
+  n_run_record[&quot;RunRecord&quot;]
+  n_tool_exposure_resolver[&quot;Tool Exposure Resolver&quot;]
+  n_lifecycle_events[&quot;Lifecycle Events&quot;]
   n_assistant_mk1[&quot;Assistant-MK1 Workbench&quot;]
   n_next_app --&gt;|serves| n_home_route
   n_home_route --&gt;|renders| n_assistant_runtime
@@ -800,6 +818,7 @@ flowchart LR
   n_langgraph_config -.-&gt;|graph id agent| n_langgraph_backend
   n_langgraph_backend --&gt;|model invoke| n_openrouter_provider
   n_assistant_runtime -.-&gt;|provider secrets stay server-side| n_openrouter_provider
+  n_durable_entity_contracts -.-&gt;|defines| n_run_record
   classDef runtime fill:#ecfeff,stroke:#0891b2,color:#111827;
   classDef app fill:#eef2ff,stroke:#4f46e5,color:#111827;
   classDef component fill:#f8fafc,stroke:#64748b,color:#111827;
@@ -807,6 +826,9 @@ flowchart LR
   classDef api_route fill:#f0fdf4,stroke:#16a34a,color:#111827;
   classDef external fill:#f1f5f9,stroke:#475569,color:#111827;
   classDef config fill:#fafafa,stroke:#525252,color:#111827;
+  classDef entity fill:#fefce8,stroke:#ca8a04,color:#111827;
+  classDef policy fill:#fee2e2,stroke:#dc2626,color:#111827;
+  classDef workflow fill:#fdf2f8,stroke:#db2777,color:#111827;
   class n_next_app runtime;
   class n_home_route app;
   class n_assistant_runtime runtime;
@@ -826,6 +848,9 @@ flowchart LR
   class n_framework_contracts interface;
   class n_durable_entity_contracts interface;
   class n_data_client_contract interface;
+  class n_run_record entity;
+  class n_tool_exposure_resolver policy;
+  class n_lifecycle_events workflow;
   class n_assistant_mk1 app;</pre
           >
         </div>
@@ -837,7 +862,7 @@ flowchart LR
             <h2>Target Runtime Map</h2>
             <p>Cloudflare owns coordination and streams; Fly/LangGraph execute heavy workflows.</p>
           </div>
-          <span class="pill">11 nodes / 11 edges</span>
+          <span class="pill">14 nodes / 13 edges</span>
         </summary>
         <div class="diagram-scroll">
           <pre class="mermaid">
@@ -847,6 +872,9 @@ flowchart LR
   n_tenant_scope[&quot;Tenant Scope&quot;]
   n_policy_layer[&quot;Policy Layer&quot;]
   n_workflow_intent[&quot;WorkflowIntentRecord&quot;]
+  n_run_record[&quot;RunRecord&quot;]
+  n_tool_exposure_resolver[&quot;Tool Exposure Resolver&quot;]
+  n_lifecycle_events[&quot;Lifecycle Events&quot;]
   n_signed_tool_call[&quot;Signed Tool Call Boundary&quot;]
   n_fly_tool_runners[&quot;Fly Tool Runners&quot;]
   n_langgraph_workflow_service[&quot;LangGraph Workflow Service&quot;]
@@ -857,6 +885,8 @@ flowchart LR
   n_cloudflare_control_plane --&gt;|auth or trusted trigger context| n_tenant_scope
   n_cloudflare_control_plane --&gt;|before escalation| n_policy_layer
   n_cloudflare_control_plane --&gt;|typed escalation| n_workflow_intent
+  n_cloudflare_control_plane --&gt;|status and heartbeat| n_run_record
+  n_policy_layer --&gt;|model-visible tools| n_tool_exposure_resolver
   n_cloudflare_control_plane --&gt;|signed server request| n_fly_tool_runners
   n_cloudflare_control_plane --&gt;|workflow escalation| n_langgraph_workflow_service
   n_signed_tool_call --&gt;|typed execution request| n_fly_tool_runners
@@ -867,12 +897,16 @@ flowchart LR
   classDef runtime fill:#ecfeff,stroke:#0891b2,color:#111827;
   classDef policy fill:#fee2e2,stroke:#dc2626,color:#111827;
   classDef entity fill:#fefce8,stroke:#ca8a04,color:#111827;
+  classDef workflow fill:#fdf2f8,stroke:#db2777,color:#111827;
   classDef interface fill:#fff7ed,stroke:#ea580c,color:#111827;
   class n_assistant_runtime runtime;
   class n_cloudflare_control_plane runtime;
   class n_tenant_scope policy;
   class n_policy_layer policy;
   class n_workflow_intent entity;
+  class n_run_record entity;
+  class n_tool_exposure_resolver policy;
+  class n_lifecycle_events workflow;
   class n_signed_tool_call interface;
   class n_fly_tool_runners runtime;
   class n_langgraph_workflow_service runtime;
@@ -891,7 +925,7 @@ flowchart LR
               Repository operations mapped to durable entities and backing storage responsibilities.
             </p>
           </div>
-          <span class="pill">12 nodes / 10 edges</span>
+          <span class="pill">13 nodes / 11 edges</span>
         </summary>
         <div class="diagram-scroll">
           <pre class="mermaid">
@@ -903,6 +937,7 @@ flowchart LR
   n_audit_event[&quot;AuditEventRecord&quot;]
   n_artifact_metadata[&quot;ArtifactMetadataRecord&quot;]
   n_workflow_intent[&quot;WorkflowIntentRecord&quot;]
+  n_run_record[&quot;RunRecord&quot;]
   n_tool_call_record[&quot;ToolCallRecord&quot;]
   n_managed_state[&quot;ManagedStateRecord&quot;]
   n_ledger_entry[&quot;LedgerEntryRecord&quot;]
@@ -913,6 +948,7 @@ flowchart LR
   n_data_client_contract --&gt;|append| n_audit_event
   n_data_client_contract --&gt;|metadata, upload URL| n_artifact_metadata
   n_data_client_contract --&gt;|create, update status| n_workflow_intent
+  n_data_client_contract --&gt;|create, update, list| n_run_record
   n_data_client_contract --&gt;|started, finished| n_tool_call_record
   n_data_client_contract --&gt;|get, patch| n_managed_state
   n_data_client_contract --&gt;|append, list| n_ledger_entry
@@ -929,6 +965,7 @@ flowchart LR
   class n_audit_event entity;
   class n_artifact_metadata entity;
   class n_workflow_intent entity;
+  class n_run_record entity;
   class n_tool_call_record entity;
   class n_managed_state entity;
   class n_ledger_entry entity;
@@ -944,7 +981,7 @@ flowchart LR
             <h2>Workflow Lifecycle Map</h2>
             <p>Generic observe/analyze/propose/execute/review flow and durable outputs.</p>
           </div>
-          <span class="pill">10 nodes / 9 edges</span>
+          <span class="pill">12 nodes / 11 edges</span>
         </summary>
         <div class="diagram-scroll">
           <pre class="mermaid">
@@ -955,6 +992,8 @@ flowchart LR
   n_propose_stage[&quot;Propose&quot;]
   n_execute_stage[&quot;Execute&quot;]
   n_review_stage[&quot;Review&quot;]
+  n_run_record[&quot;RunRecord&quot;]
+  n_lifecycle_events[&quot;Lifecycle Events&quot;]
   n_decision_record[&quot;DecisionRecordEntity&quot;]
   n_audit_event[&quot;AuditEventRecord&quot;]
   n_ledger_entry[&quot;LedgerEntryRecord&quot;]
@@ -964,6 +1003,8 @@ flowchart LR
   n_analyze_stage --&gt;|options| n_propose_stage
   n_propose_stage --&gt;|approved or dry-run action| n_execute_stage
   n_execute_stage --&gt;|result| n_review_stage
+  n_workflow_lifecycle --&gt;|runtime events| n_lifecycle_events
+  n_lifecycle_events --&gt;|audit timeline| n_audit_event
   n_review_stage --&gt;|why and provenance| n_decision_record
   n_review_stage --&gt;|activity trail| n_audit_event
   n_review_stage --&gt;|action record| n_ledger_entry
@@ -976,6 +1017,8 @@ flowchart LR
   class n_propose_stage workflow;
   class n_execute_stage workflow;
   class n_review_stage workflow;
+  class n_run_record entity;
+  class n_lifecycle_events workflow;
   class n_decision_record entity;
   class n_audit_event entity;
   class n_ledger_entry entity;
@@ -990,7 +1033,7 @@ flowchart LR
             <h2>Tool Execution Map</h2>
             <p>Policy-gated tool request, Fly execution, and audit/artifact persistence.</p>
           </div>
-          <span class="pill">8 nodes / 7 edges</span>
+          <span class="pill">9 nodes / 8 edges</span>
         </summary>
         <div class="diagram-scroll">
           <pre class="mermaid">
@@ -998,6 +1041,7 @@ flowchart LR
   n_cloudflare_control_plane[&quot;Cloudflare Control Plane&quot;]
   n_policy_layer[&quot;Policy Layer&quot;]
   n_execution_policy[&quot;Execution Policy&quot;]
+  n_tool_exposure_resolver[&quot;Tool Exposure Resolver&quot;]
   n_signed_tool_call[&quot;Signed Tool Call Boundary&quot;]
   n_fly_tool_runners[&quot;Fly Tool Runners&quot;]
   n_tool_call_record[&quot;ToolCallRecord&quot;]
@@ -1005,6 +1049,7 @@ flowchart LR
   n_audit_event[&quot;AuditEventRecord&quot;]
   n_cloudflare_control_plane --&gt;|before escalation| n_policy_layer
   n_policy_layer --&gt;|ask, dry-run, execute| n_execution_policy
+  n_policy_layer --&gt;|model-visible tools| n_tool_exposure_resolver
   n_cloudflare_control_plane --&gt;|signed server request| n_fly_tool_runners
   n_signed_tool_call --&gt;|typed execution request| n_fly_tool_runners
   n_fly_tool_runners --&gt;|execution attempt| n_tool_call_record
@@ -1017,6 +1062,7 @@ flowchart LR
   class n_cloudflare_control_plane runtime;
   class n_policy_layer policy;
   class n_execution_policy policy;
+  class n_tool_exposure_resolver policy;
   class n_signed_tool_call interface;
   class n_fly_tool_runners runtime;
   class n_tool_call_record entity;
@@ -1032,7 +1078,7 @@ flowchart LR
             <h2>Tenancy And Security Map</h2>
             <p>Scope derivation, policy enforcement, secret custody, and browser boundaries.</p>
           </div>
-          <span class="pill">9 nodes / 8 edges</span>
+          <span class="pill">10 nodes / 9 edges</span>
         </summary>
         <div class="diagram-scroll">
           <pre class="mermaid">
@@ -1044,6 +1090,7 @@ flowchart LR
   n_data_client_contract[&quot;AgentFrameworkDataClient&quot;]
   n_policy_layer[&quot;Policy Layer&quot;]
   n_execution_policy[&quot;Execution Policy&quot;]
+  n_tool_exposure_resolver[&quot;Tool Exposure Resolver&quot;]
   n_secret_custody[&quot;Secret Custody&quot;]
   n_openrouter_provider[&quot;OpenRouter Provider&quot;]
   n_external_trigger --&gt;|trusted metadata| n_tenant_scope
@@ -1051,6 +1098,7 @@ flowchart LR
   n_data_client_contract --&gt;|scope first argument| n_tenant_scope
   n_cloudflare_control_plane --&gt;|before escalation| n_policy_layer
   n_policy_layer --&gt;|ask, dry-run, execute| n_execution_policy
+  n_policy_layer --&gt;|model-visible tools| n_tool_exposure_resolver
   n_policy_layer --&gt;|approved tools only| n_secret_custody
   n_assistant_runtime -.-&gt;|browser never receives secrets| n_secret_custody
   n_assistant_runtime -.-&gt;|provider secrets stay server-side| n_openrouter_provider
@@ -1065,6 +1113,7 @@ flowchart LR
   class n_data_client_contract interface;
   class n_policy_layer policy;
   class n_execution_policy policy;
+  class n_tool_exposure_resolver policy;
   class n_secret_custody policy;
   class n_openrouter_provider external;</pre
           >
@@ -1125,6 +1174,7 @@ flowchart LR
               <option value="durable-object">durable-object</option>
               <option value="entity">entity</option>
               <option value="execution-plane">execution-plane</option>
+              <option value="extension">extension</option>
               <option value="external">external</option>
               <option value="external-trigger">external-trigger</option>
               <option value="fly">fly</option>
@@ -1414,7 +1464,10 @@ flowchart LR
                       ><code>lib/agent-framework/contracts.ts</code></a
                     >
                   </td>
-                  <td>framework-contracts, policy-layer, tenant-scope, execution-policy</td>
+                  <td>
+                    framework-contracts, policy-layer, tenant-scope, execution-policy,
+                    tool-exposure-resolver, lifecycle-events
+                  </td>
                 </tr>
                 <tr>
                   <td>
@@ -1432,8 +1485,8 @@ flowchart LR
                   </td>
                   <td>
                     durable-entity-contracts, decision-record, audit-event, artifact-metadata,
-                    workflow-intent, tool-call-record, managed-state, ledger-entry, trigger-record,
-                    tool-metadata
+                    workflow-intent, run-record, tool-call-record, managed-state, ledger-entry,
+                    trigger-record, tool-metadata
                   </td>
                 </tr>
                 <tr>
@@ -1712,6 +1765,14 @@ flowchart LR
             "fileRefs": ["lib/agent-framework/db-contracts.ts"]
           },
           {
+            "id": "run-record",
+            "label": "RunRecord",
+            "summary": "Runtime control record for foreground, background, workflow, and child executions.",
+            "kind": "entity",
+            "tags": ["current", "entity", "workflow", "runtime", "tenant-scoped"],
+            "fileRefs": ["lib/agent-framework/db-contracts.ts"]
+          },
+          {
             "id": "tool-call-record",
             "label": "ToolCallRecord",
             "summary": "One auditable execution attempt against a registered tool.",
@@ -1801,6 +1862,22 @@ flowchart LR
             "summary": "Deterministic ask, dry-run, execute mode plus policy references for approval and limits.",
             "kind": "policy",
             "tags": ["current", "policy", "tools", "security"],
+            "fileRefs": ["lib/agent-framework/contracts.ts"]
+          },
+          {
+            "id": "tool-exposure-resolver",
+            "label": "Tool Exposure Resolver",
+            "summary": "Narrows registered tools to the model-visible set for a scoped run context.",
+            "kind": "policy",
+            "tags": ["current", "policy", "tools", "tenant-scoped"],
+            "fileRefs": ["lib/agent-framework/contracts.ts"]
+          },
+          {
+            "id": "lifecycle-events",
+            "label": "Lifecycle Events",
+            "summary": "Typed runtime events for audit, UI timelines, policy checks, and future hooks.",
+            "kind": "workflow",
+            "tags": ["current", "workflow", "audit", "extension"],
             "fileRefs": ["lib/agent-framework/contracts.ts"]
           },
           {
@@ -2088,6 +2165,13 @@ flowchart LR
             "label": "defines"
           },
           {
+            "id": "durable-contracts-define-runs",
+            "from": "durable-entity-contracts",
+            "to": "run-record",
+            "kind": "documents",
+            "label": "defines"
+          },
+          {
             "id": "durable-contracts-define-tool-calls",
             "from": "durable-entity-contracts",
             "to": "tool-call-record",
@@ -2149,6 +2233,13 @@ flowchart LR
             "to": "workflow-intent",
             "kind": "writes",
             "label": "create, update status"
+          },
+          {
+            "id": "data-client-writes-runs",
+            "from": "data-client-contract",
+            "to": "run-record",
+            "kind": "writes",
+            "label": "create, update, list"
           },
           {
             "id": "data-client-writes-tool-calls",
@@ -2214,6 +2305,13 @@ flowchart LR
             "label": "typed escalation"
           },
           {
+            "id": "cloudflare-updates-runs",
+            "from": "cloudflare-control-plane",
+            "to": "run-record",
+            "kind": "writes",
+            "label": "status and heartbeat"
+          },
+          {
             "id": "cloudflare-calls-fly",
             "from": "cloudflare-control-plane",
             "to": "fly-tool-runners",
@@ -2256,6 +2354,13 @@ flowchart LR
             "label": "ask, dry-run, execute"
           },
           {
+            "id": "policy-enforces-tool-exposure",
+            "from": "policy-layer",
+            "to": "tool-exposure-resolver",
+            "kind": "enforces",
+            "label": "model-visible tools"
+          },
+          {
             "id": "policy-enforces-secret-custody",
             "from": "policy-layer",
             "to": "secret-custody",
@@ -2296,6 +2401,13 @@ flowchart LR
             "to": "langgraph-workflow-service",
             "kind": "stores",
             "label": "in-flight execution state"
+          },
+          {
+            "id": "workflow-emits-lifecycle-events",
+            "from": "workflow-lifecycle",
+            "to": "lifecycle-events",
+            "kind": "emits",
+            "label": "runtime events"
           },
           {
             "id": "workflow-starts-observe",
@@ -2382,6 +2494,13 @@ flowchart LR
             "label": "audit summary"
           },
           {
+            "id": "lifecycle-events-write-audit",
+            "from": "lifecycle-events",
+            "to": "audit-event",
+            "kind": "writes",
+            "label": "audit timeline"
+          },
+          {
             "id": "trigger-creates-intent",
             "from": "external-trigger",
             "to": "workflow-intent",
@@ -2447,6 +2566,7 @@ flowchart LR
               "langgraph-workflow-service",
               "data-client-contract",
               "durable-entity-contracts",
+              "run-record",
               "artifact-metadata",
               "d1-storage",
               "r2-storage",
@@ -2462,12 +2582,13 @@ flowchart LR
               "cloudflare-owns-data-client",
               "fly-uses-data-client",
               "langgraph-service-uses-data-client",
+              "data-client-writes-runs",
               "d1-stores-entities",
               "r2-stores-artifacts",
               "durable-object-stores-hot-state",
               "workflow-backend-stores-checkpoints"
             ],
-            "mermaid": "flowchart LR\n  n_assistant_mk1[\"Assistant-MK1 Workbench\"]\n  n_next_app[\"Next.js App Router\"]\n  n_home_route[\"Home Route\"]\n  n_assistant_runtime[\"assistant-ui LangGraph Runtime\"]\n  n_cloudflare_control_plane[\"Cloudflare Control Plane\"]\n  n_fly_tool_runners[\"Fly Tool Runners\"]\n  n_langgraph_workflow_service[\"LangGraph Workflow Service\"]\n  n_data_client_contract[\"AgentFrameworkDataClient\"]\n  n_durable_entity_contracts[\"Durable Entity Contracts\"]\n  n_artifact_metadata[\"ArtifactMetadataRecord\"]\n  n_d1_storage[\"D1 Relational State\"]\n  n_r2_storage[\"R2 Artifact Storage\"]\n  n_durable_object_state[\"Durable Object Hot State\"]\n  n_workflow_backend_state[\"Workflow Backend State\"]\n  n_assistant_mk1 --\u003e|current app runtime| n_next_app\n  n_home_route --\u003e|renders| n_assistant_runtime\n  n_cloudflare_control_plane --\u003e|target user-facing stream| n_assistant_runtime\n  n_cloudflare_control_plane --\u003e|signed server request| n_fly_tool_runners\n  n_cloudflare_control_plane --\u003e|workflow escalation| n_langgraph_workflow_service\n  n_cloudflare_control_plane --\u003e|initial mediated implementation| n_data_client_contract\n  n_fly_tool_runners --\u003e|scoped reads/writes| n_data_client_contract\n  n_langgraph_workflow_service --\u003e|scoped reads/writes| n_data_client_contract\n  n_d1_storage --\u003e|target relational records| n_durable_entity_contracts\n  n_r2_storage --\u003e|blob backing store| n_artifact_metadata\n  n_durable_object_state --\u003e|hot coordination state| n_cloudflare_control_plane\n  n_workflow_backend_state --\u003e|in-flight execution state| n_langgraph_workflow_service\n  classDef app fill:#eef2ff,stroke:#4f46e5,color:#111827;\n  classDef runtime fill:#ecfeff,stroke:#0891b2,color:#111827;\n  classDef interface fill:#fff7ed,stroke:#ea580c,color:#111827;\n  classDef entity fill:#fefce8,stroke:#ca8a04,color:#111827;\n  classDef storage fill:#f0f9ff,stroke:#0284c7,color:#111827;\n  class n_assistant_mk1 app;\n  class n_next_app runtime;\n  class n_home_route app;\n  class n_assistant_runtime runtime;\n  class n_cloudflare_control_plane runtime;\n  class n_fly_tool_runners runtime;\n  class n_langgraph_workflow_service runtime;\n  class n_data_client_contract interface;\n  class n_durable_entity_contracts interface;\n  class n_artifact_metadata entity;\n  class n_d1_storage storage;\n  class n_r2_storage storage;\n  class n_durable_object_state storage;\n  class n_workflow_backend_state storage;"
+            "mermaid": "flowchart LR\n  n_assistant_mk1[\"Assistant-MK1 Workbench\"]\n  n_next_app[\"Next.js App Router\"]\n  n_home_route[\"Home Route\"]\n  n_assistant_runtime[\"assistant-ui LangGraph Runtime\"]\n  n_cloudflare_control_plane[\"Cloudflare Control Plane\"]\n  n_fly_tool_runners[\"Fly Tool Runners\"]\n  n_langgraph_workflow_service[\"LangGraph Workflow Service\"]\n  n_data_client_contract[\"AgentFrameworkDataClient\"]\n  n_durable_entity_contracts[\"Durable Entity Contracts\"]\n  n_run_record[\"RunRecord\"]\n  n_artifact_metadata[\"ArtifactMetadataRecord\"]\n  n_d1_storage[\"D1 Relational State\"]\n  n_r2_storage[\"R2 Artifact Storage\"]\n  n_durable_object_state[\"Durable Object Hot State\"]\n  n_workflow_backend_state[\"Workflow Backend State\"]\n  n_assistant_mk1 --\u003e|current app runtime| n_next_app\n  n_home_route --\u003e|renders| n_assistant_runtime\n  n_cloudflare_control_plane --\u003e|target user-facing stream| n_assistant_runtime\n  n_cloudflare_control_plane --\u003e|signed server request| n_fly_tool_runners\n  n_cloudflare_control_plane --\u003e|workflow escalation| n_langgraph_workflow_service\n  n_cloudflare_control_plane --\u003e|initial mediated implementation| n_data_client_contract\n  n_fly_tool_runners --\u003e|scoped reads/writes| n_data_client_contract\n  n_langgraph_workflow_service --\u003e|scoped reads/writes| n_data_client_contract\n  n_data_client_contract --\u003e|create, update, list| n_run_record\n  n_d1_storage --\u003e|target relational records| n_durable_entity_contracts\n  n_r2_storage --\u003e|blob backing store| n_artifact_metadata\n  n_durable_object_state --\u003e|hot coordination state| n_cloudflare_control_plane\n  n_workflow_backend_state --\u003e|in-flight execution state| n_langgraph_workflow_service\n  classDef app fill:#eef2ff,stroke:#4f46e5,color:#111827;\n  classDef runtime fill:#ecfeff,stroke:#0891b2,color:#111827;\n  classDef interface fill:#fff7ed,stroke:#ea580c,color:#111827;\n  classDef entity fill:#fefce8,stroke:#ca8a04,color:#111827;\n  classDef storage fill:#f0f9ff,stroke:#0284c7,color:#111827;\n  class n_assistant_mk1 app;\n  class n_next_app runtime;\n  class n_home_route app;\n  class n_assistant_runtime runtime;\n  class n_cloudflare_control_plane runtime;\n  class n_fly_tool_runners runtime;\n  class n_langgraph_workflow_service runtime;\n  class n_data_client_contract interface;\n  class n_durable_entity_contracts interface;\n  class n_run_record entity;\n  class n_artifact_metadata entity;\n  class n_d1_storage storage;\n  class n_r2_storage storage;\n  class n_durable_object_state storage;\n  class n_workflow_backend_state storage;"
           },
           {
             "id": "current-repo-map",
@@ -2494,6 +2615,9 @@ flowchart LR
               "framework-contracts",
               "durable-entity-contracts",
               "data-client-contract",
+              "run-record",
+              "tool-exposure-resolver",
+              "lifecycle-events",
               "assistant-mk1"
             ],
             "edgeIds": [
@@ -2510,9 +2634,10 @@ flowchart LR
               "external-signals-calls-langgraph",
               "langgraph-config-configures-backend",
               "langgraph-backend-calls-openrouter",
-              "frontend-must-not-access-provider"
+              "frontend-must-not-access-provider",
+              "durable-contracts-define-runs"
             ],
-            "mermaid": "flowchart LR\n  n_next_app[\"Next.js App Router\"]\n  n_home_route[\"Home Route\"]\n  n_assistant_runtime[\"assistant-ui LangGraph Runtime\"]\n  n_thread_ui[\"Thread UI Composition\"]\n  n_attachment_ui[\"Attachment UI\"]\n  n_markdown_ui[\"Markdown Renderer\"]\n  n_reasoning_ui[\"Reasoning Renderer\"]\n  n_tool_call_ui[\"Tool Call UI\"]\n  n_ui_primitives[\"Local UI Primitives\"]\n  n_chat_client[\"LangGraph SDK Client Factory\"]\n  n_api_proxy[\"LangGraph API Proxy\"]\n  n_external_signals_route[\"External Signals Route\"]\n  n_health_route[\"Health Route\"]\n  n_langgraph_backend[\"LangGraph Backend Graph\"]\n  n_openrouter_provider[\"OpenRouter Provider\"]\n  n_langgraph_config[\"LangGraph Config\"]\n  n_framework_contracts[\"Framework Runtime Contracts\"]\n  n_durable_entity_contracts[\"Durable Entity Contracts\"]\n  n_data_client_contract[\"AgentFrameworkDataClient\"]\n  n_assistant_mk1[\"Assistant-MK1 Workbench\"]\n  n_next_app --\u003e|serves| n_home_route\n  n_home_route --\u003e|renders| n_assistant_runtime\n  n_assistant_runtime --\u003e|provides runtime| n_thread_ui\n  n_thread_ui --\u003e|renders| n_attachment_ui\n  n_thread_ui --\u003e|renders| n_markdown_ui\n  n_thread_ui --\u003e|renders| n_reasoning_ui\n  n_thread_ui --\u003e|renders| n_tool_call_ui\n  n_assistant_runtime --\u003e|creates SDK client| n_chat_client\n  n_chat_client --\u003e|browser SDK traffic| n_api_proxy\n  n_api_proxy --\u003e|forwards API requests| n_langgraph_backend\n  n_external_signals_route --\u003e|starts, resumes, creates crons| n_langgraph_backend\n  n_langgraph_config -.-\u003e|graph id agent| n_langgraph_backend\n  n_langgraph_backend --\u003e|model invoke| n_openrouter_provider\n  n_assistant_runtime -.-\u003e|provider secrets stay server-side| n_openrouter_provider\n  classDef runtime fill:#ecfeff,stroke:#0891b2,color:#111827;\n  classDef app fill:#eef2ff,stroke:#4f46e5,color:#111827;\n  classDef component fill:#f8fafc,stroke:#64748b,color:#111827;\n  classDef interface fill:#fff7ed,stroke:#ea580c,color:#111827;\n  classDef api_route fill:#f0fdf4,stroke:#16a34a,color:#111827;\n  classDef external fill:#f1f5f9,stroke:#475569,color:#111827;\n  classDef config fill:#fafafa,stroke:#525252,color:#111827;\n  class n_next_app runtime;\n  class n_home_route app;\n  class n_assistant_runtime runtime;\n  class n_thread_ui component;\n  class n_attachment_ui component;\n  class n_markdown_ui component;\n  class n_reasoning_ui component;\n  class n_tool_call_ui component;\n  class n_ui_primitives component;\n  class n_chat_client interface;\n  class n_api_proxy api_route;\n  class n_external_signals_route api_route;\n  class n_health_route api_route;\n  class n_langgraph_backend runtime;\n  class n_openrouter_provider external;\n  class n_langgraph_config config;\n  class n_framework_contracts interface;\n  class n_durable_entity_contracts interface;\n  class n_data_client_contract interface;\n  class n_assistant_mk1 app;"
+            "mermaid": "flowchart LR\n  n_next_app[\"Next.js App Router\"]\n  n_home_route[\"Home Route\"]\n  n_assistant_runtime[\"assistant-ui LangGraph Runtime\"]\n  n_thread_ui[\"Thread UI Composition\"]\n  n_attachment_ui[\"Attachment UI\"]\n  n_markdown_ui[\"Markdown Renderer\"]\n  n_reasoning_ui[\"Reasoning Renderer\"]\n  n_tool_call_ui[\"Tool Call UI\"]\n  n_ui_primitives[\"Local UI Primitives\"]\n  n_chat_client[\"LangGraph SDK Client Factory\"]\n  n_api_proxy[\"LangGraph API Proxy\"]\n  n_external_signals_route[\"External Signals Route\"]\n  n_health_route[\"Health Route\"]\n  n_langgraph_backend[\"LangGraph Backend Graph\"]\n  n_openrouter_provider[\"OpenRouter Provider\"]\n  n_langgraph_config[\"LangGraph Config\"]\n  n_framework_contracts[\"Framework Runtime Contracts\"]\n  n_durable_entity_contracts[\"Durable Entity Contracts\"]\n  n_data_client_contract[\"AgentFrameworkDataClient\"]\n  n_run_record[\"RunRecord\"]\n  n_tool_exposure_resolver[\"Tool Exposure Resolver\"]\n  n_lifecycle_events[\"Lifecycle Events\"]\n  n_assistant_mk1[\"Assistant-MK1 Workbench\"]\n  n_next_app --\u003e|serves| n_home_route\n  n_home_route --\u003e|renders| n_assistant_runtime\n  n_assistant_runtime --\u003e|provides runtime| n_thread_ui\n  n_thread_ui --\u003e|renders| n_attachment_ui\n  n_thread_ui --\u003e|renders| n_markdown_ui\n  n_thread_ui --\u003e|renders| n_reasoning_ui\n  n_thread_ui --\u003e|renders| n_tool_call_ui\n  n_assistant_runtime --\u003e|creates SDK client| n_chat_client\n  n_chat_client --\u003e|browser SDK traffic| n_api_proxy\n  n_api_proxy --\u003e|forwards API requests| n_langgraph_backend\n  n_external_signals_route --\u003e|starts, resumes, creates crons| n_langgraph_backend\n  n_langgraph_config -.-\u003e|graph id agent| n_langgraph_backend\n  n_langgraph_backend --\u003e|model invoke| n_openrouter_provider\n  n_assistant_runtime -.-\u003e|provider secrets stay server-side| n_openrouter_provider\n  n_durable_entity_contracts -.-\u003e|defines| n_run_record\n  classDef runtime fill:#ecfeff,stroke:#0891b2,color:#111827;\n  classDef app fill:#eef2ff,stroke:#4f46e5,color:#111827;\n  classDef component fill:#f8fafc,stroke:#64748b,color:#111827;\n  classDef interface fill:#fff7ed,stroke:#ea580c,color:#111827;\n  classDef api_route fill:#f0fdf4,stroke:#16a34a,color:#111827;\n  classDef external fill:#f1f5f9,stroke:#475569,color:#111827;\n  classDef config fill:#fafafa,stroke:#525252,color:#111827;\n  classDef entity fill:#fefce8,stroke:#ca8a04,color:#111827;\n  classDef policy fill:#fee2e2,stroke:#dc2626,color:#111827;\n  classDef workflow fill:#fdf2f8,stroke:#db2777,color:#111827;\n  class n_next_app runtime;\n  class n_home_route app;\n  class n_assistant_runtime runtime;\n  class n_thread_ui component;\n  class n_attachment_ui component;\n  class n_markdown_ui component;\n  class n_reasoning_ui component;\n  class n_tool_call_ui component;\n  class n_ui_primitives component;\n  class n_chat_client interface;\n  class n_api_proxy api_route;\n  class n_external_signals_route api_route;\n  class n_health_route api_route;\n  class n_langgraph_backend runtime;\n  class n_openrouter_provider external;\n  class n_langgraph_config config;\n  class n_framework_contracts interface;\n  class n_durable_entity_contracts interface;\n  class n_data_client_contract interface;\n  class n_run_record entity;\n  class n_tool_exposure_resolver policy;\n  class n_lifecycle_events workflow;\n  class n_assistant_mk1 app;"
           },
           {
             "id": "target-runtime-map",
@@ -2525,6 +2650,9 @@ flowchart LR
               "tenant-scope",
               "policy-layer",
               "workflow-intent",
+              "run-record",
+              "tool-exposure-resolver",
+              "lifecycle-events",
               "signed-tool-call",
               "fly-tool-runners",
               "langgraph-workflow-service",
@@ -2537,6 +2665,8 @@ flowchart LR
               "cloudflare-derives-scope",
               "cloudflare-enforces-policy",
               "cloudflare-creates-intents",
+              "cloudflare-updates-runs",
+              "policy-enforces-tool-exposure",
               "cloudflare-calls-fly",
               "cloudflare-calls-langgraph-workflows",
               "signed-tool-call-targets-fly",
@@ -2545,7 +2675,7 @@ flowchart LR
               "tool-execution-writes-audit",
               "tool-execution-writes-artifact"
             ],
-            "mermaid": "flowchart LR\n  n_assistant_runtime[\"assistant-ui LangGraph Runtime\"]\n  n_cloudflare_control_plane[\"Cloudflare Control Plane\"]\n  n_tenant_scope[\"Tenant Scope\"]\n  n_policy_layer[\"Policy Layer\"]\n  n_workflow_intent[\"WorkflowIntentRecord\"]\n  n_signed_tool_call[\"Signed Tool Call Boundary\"]\n  n_fly_tool_runners[\"Fly Tool Runners\"]\n  n_langgraph_workflow_service[\"LangGraph Workflow Service\"]\n  n_data_client_contract[\"AgentFrameworkDataClient\"]\n  n_audit_event[\"AuditEventRecord\"]\n  n_artifact_metadata[\"ArtifactMetadataRecord\"]\n  n_cloudflare_control_plane --\u003e|target user-facing stream| n_assistant_runtime\n  n_cloudflare_control_plane --\u003e|auth or trusted trigger context| n_tenant_scope\n  n_cloudflare_control_plane --\u003e|before escalation| n_policy_layer\n  n_cloudflare_control_plane --\u003e|typed escalation| n_workflow_intent\n  n_cloudflare_control_plane --\u003e|signed server request| n_fly_tool_runners\n  n_cloudflare_control_plane --\u003e|workflow escalation| n_langgraph_workflow_service\n  n_signed_tool_call --\u003e|typed execution request| n_fly_tool_runners\n  n_fly_tool_runners --\u003e|scoped reads/writes| n_data_client_contract\n  n_langgraph_workflow_service --\u003e|scoped reads/writes| n_data_client_contract\n  n_fly_tool_runners --\u003e|audit summary| n_audit_event\n  n_fly_tool_runners --\u003e|logs and outputs| n_artifact_metadata\n  classDef runtime fill:#ecfeff,stroke:#0891b2,color:#111827;\n  classDef policy fill:#fee2e2,stroke:#dc2626,color:#111827;\n  classDef entity fill:#fefce8,stroke:#ca8a04,color:#111827;\n  classDef interface fill:#fff7ed,stroke:#ea580c,color:#111827;\n  class n_assistant_runtime runtime;\n  class n_cloudflare_control_plane runtime;\n  class n_tenant_scope policy;\n  class n_policy_layer policy;\n  class n_workflow_intent entity;\n  class n_signed_tool_call interface;\n  class n_fly_tool_runners runtime;\n  class n_langgraph_workflow_service runtime;\n  class n_data_client_contract interface;\n  class n_audit_event entity;\n  class n_artifact_metadata entity;"
+            "mermaid": "flowchart LR\n  n_assistant_runtime[\"assistant-ui LangGraph Runtime\"]\n  n_cloudflare_control_plane[\"Cloudflare Control Plane\"]\n  n_tenant_scope[\"Tenant Scope\"]\n  n_policy_layer[\"Policy Layer\"]\n  n_workflow_intent[\"WorkflowIntentRecord\"]\n  n_run_record[\"RunRecord\"]\n  n_tool_exposure_resolver[\"Tool Exposure Resolver\"]\n  n_lifecycle_events[\"Lifecycle Events\"]\n  n_signed_tool_call[\"Signed Tool Call Boundary\"]\n  n_fly_tool_runners[\"Fly Tool Runners\"]\n  n_langgraph_workflow_service[\"LangGraph Workflow Service\"]\n  n_data_client_contract[\"AgentFrameworkDataClient\"]\n  n_audit_event[\"AuditEventRecord\"]\n  n_artifact_metadata[\"ArtifactMetadataRecord\"]\n  n_cloudflare_control_plane --\u003e|target user-facing stream| n_assistant_runtime\n  n_cloudflare_control_plane --\u003e|auth or trusted trigger context| n_tenant_scope\n  n_cloudflare_control_plane --\u003e|before escalation| n_policy_layer\n  n_cloudflare_control_plane --\u003e|typed escalation| n_workflow_intent\n  n_cloudflare_control_plane --\u003e|status and heartbeat| n_run_record\n  n_policy_layer --\u003e|model-visible tools| n_tool_exposure_resolver\n  n_cloudflare_control_plane --\u003e|signed server request| n_fly_tool_runners\n  n_cloudflare_control_plane --\u003e|workflow escalation| n_langgraph_workflow_service\n  n_signed_tool_call --\u003e|typed execution request| n_fly_tool_runners\n  n_fly_tool_runners --\u003e|scoped reads/writes| n_data_client_contract\n  n_langgraph_workflow_service --\u003e|scoped reads/writes| n_data_client_contract\n  n_fly_tool_runners --\u003e|audit summary| n_audit_event\n  n_fly_tool_runners --\u003e|logs and outputs| n_artifact_metadata\n  classDef runtime fill:#ecfeff,stroke:#0891b2,color:#111827;\n  classDef policy fill:#fee2e2,stroke:#dc2626,color:#111827;\n  classDef entity fill:#fefce8,stroke:#ca8a04,color:#111827;\n  classDef workflow fill:#fdf2f8,stroke:#db2777,color:#111827;\n  classDef interface fill:#fff7ed,stroke:#ea580c,color:#111827;\n  class n_assistant_runtime runtime;\n  class n_cloudflare_control_plane runtime;\n  class n_tenant_scope policy;\n  class n_policy_layer policy;\n  class n_workflow_intent entity;\n  class n_run_record entity;\n  class n_tool_exposure_resolver policy;\n  class n_lifecycle_events workflow;\n  class n_signed_tool_call interface;\n  class n_fly_tool_runners runtime;\n  class n_langgraph_workflow_service runtime;\n  class n_data_client_contract interface;\n  class n_audit_event entity;\n  class n_artifact_metadata entity;"
           },
           {
             "id": "data-and-state-map",
@@ -2560,6 +2690,7 @@ flowchart LR
               "audit-event",
               "artifact-metadata",
               "workflow-intent",
+              "run-record",
               "tool-call-record",
               "managed-state",
               "ledger-entry",
@@ -2572,13 +2703,14 @@ flowchart LR
               "data-client-writes-audit",
               "data-client-writes-artifacts",
               "data-client-writes-intents",
+              "data-client-writes-runs",
               "data-client-writes-tool-calls",
               "data-client-writes-managed-state",
               "data-client-writes-ledger",
               "d1-stores-entities",
               "r2-stores-artifacts"
             ],
-            "mermaid": "flowchart LR\n  n_data_client_contract[\"AgentFrameworkDataClient\"]\n  n_tenant_scope[\"Tenant Scope\"]\n  n_durable_entity_contracts[\"Durable Entity Contracts\"]\n  n_decision_record[\"DecisionRecordEntity\"]\n  n_audit_event[\"AuditEventRecord\"]\n  n_artifact_metadata[\"ArtifactMetadataRecord\"]\n  n_workflow_intent[\"WorkflowIntentRecord\"]\n  n_tool_call_record[\"ToolCallRecord\"]\n  n_managed_state[\"ManagedStateRecord\"]\n  n_ledger_entry[\"LedgerEntryRecord\"]\n  n_d1_storage[\"D1 Relational State\"]\n  n_r2_storage[\"R2 Artifact Storage\"]\n  n_data_client_contract --\u003e|scope first argument| n_tenant_scope\n  n_data_client_contract --\u003e|create, list, supersede| n_decision_record\n  n_data_client_contract --\u003e|append| n_audit_event\n  n_data_client_contract --\u003e|metadata, upload URL| n_artifact_metadata\n  n_data_client_contract --\u003e|create, update status| n_workflow_intent\n  n_data_client_contract --\u003e|started, finished| n_tool_call_record\n  n_data_client_contract --\u003e|get, patch| n_managed_state\n  n_data_client_contract --\u003e|append, list| n_ledger_entry\n  n_d1_storage --\u003e|target relational records| n_durable_entity_contracts\n  n_r2_storage --\u003e|blob backing store| n_artifact_metadata\n  classDef interface fill:#fff7ed,stroke:#ea580c,color:#111827;\n  classDef policy fill:#fee2e2,stroke:#dc2626,color:#111827;\n  classDef entity fill:#fefce8,stroke:#ca8a04,color:#111827;\n  classDef storage fill:#f0f9ff,stroke:#0284c7,color:#111827;\n  class n_data_client_contract interface;\n  class n_tenant_scope policy;\n  class n_durable_entity_contracts interface;\n  class n_decision_record entity;\n  class n_audit_event entity;\n  class n_artifact_metadata entity;\n  class n_workflow_intent entity;\n  class n_tool_call_record entity;\n  class n_managed_state entity;\n  class n_ledger_entry entity;\n  class n_d1_storage storage;\n  class n_r2_storage storage;"
+            "mermaid": "flowchart LR\n  n_data_client_contract[\"AgentFrameworkDataClient\"]\n  n_tenant_scope[\"Tenant Scope\"]\n  n_durable_entity_contracts[\"Durable Entity Contracts\"]\n  n_decision_record[\"DecisionRecordEntity\"]\n  n_audit_event[\"AuditEventRecord\"]\n  n_artifact_metadata[\"ArtifactMetadataRecord\"]\n  n_workflow_intent[\"WorkflowIntentRecord\"]\n  n_run_record[\"RunRecord\"]\n  n_tool_call_record[\"ToolCallRecord\"]\n  n_managed_state[\"ManagedStateRecord\"]\n  n_ledger_entry[\"LedgerEntryRecord\"]\n  n_d1_storage[\"D1 Relational State\"]\n  n_r2_storage[\"R2 Artifact Storage\"]\n  n_data_client_contract --\u003e|scope first argument| n_tenant_scope\n  n_data_client_contract --\u003e|create, list, supersede| n_decision_record\n  n_data_client_contract --\u003e|append| n_audit_event\n  n_data_client_contract --\u003e|metadata, upload URL| n_artifact_metadata\n  n_data_client_contract --\u003e|create, update status| n_workflow_intent\n  n_data_client_contract --\u003e|create, update, list| n_run_record\n  n_data_client_contract --\u003e|started, finished| n_tool_call_record\n  n_data_client_contract --\u003e|get, patch| n_managed_state\n  n_data_client_contract --\u003e|append, list| n_ledger_entry\n  n_d1_storage --\u003e|target relational records| n_durable_entity_contracts\n  n_r2_storage --\u003e|blob backing store| n_artifact_metadata\n  classDef interface fill:#fff7ed,stroke:#ea580c,color:#111827;\n  classDef policy fill:#fee2e2,stroke:#dc2626,color:#111827;\n  classDef entity fill:#fefce8,stroke:#ca8a04,color:#111827;\n  classDef storage fill:#f0f9ff,stroke:#0284c7,color:#111827;\n  class n_data_client_contract interface;\n  class n_tenant_scope policy;\n  class n_durable_entity_contracts interface;\n  class n_decision_record entity;\n  class n_audit_event entity;\n  class n_artifact_metadata entity;\n  class n_workflow_intent entity;\n  class n_run_record entity;\n  class n_tool_call_record entity;\n  class n_managed_state entity;\n  class n_ledger_entry entity;\n  class n_d1_storage storage;\n  class n_r2_storage storage;"
           },
           {
             "id": "workflow-lifecycle-map",
@@ -2592,6 +2724,8 @@ flowchart LR
               "propose-stage",
               "execute-stage",
               "review-stage",
+              "run-record",
+              "lifecycle-events",
               "decision-record",
               "audit-event",
               "ledger-entry",
@@ -2603,12 +2737,14 @@ flowchart LR
               "analyze-to-propose",
               "propose-to-execute",
               "execute-to-review",
+              "workflow-emits-lifecycle-events",
+              "lifecycle-events-write-audit",
               "review-writes-decisions",
               "review-writes-audit",
               "review-writes-ledger",
               "review-writes-managed-state"
             ],
-            "mermaid": "flowchart LR\n  n_workflow_lifecycle[\"Workflow Lifecycle\"]\n  n_observe_stage[\"Observe\"]\n  n_analyze_stage[\"Analyze\"]\n  n_propose_stage[\"Propose\"]\n  n_execute_stage[\"Execute\"]\n  n_review_stage[\"Review\"]\n  n_decision_record[\"DecisionRecordEntity\"]\n  n_audit_event[\"AuditEventRecord\"]\n  n_ledger_entry[\"LedgerEntryRecord\"]\n  n_managed_state[\"ManagedStateRecord\"]\n  n_workflow_lifecycle --\u003e|stage| n_observe_stage\n  n_observe_stage --\u003e|evidence| n_analyze_stage\n  n_analyze_stage --\u003e|options| n_propose_stage\n  n_propose_stage --\u003e|approved or dry-run action| n_execute_stage\n  n_execute_stage --\u003e|result| n_review_stage\n  n_review_stage --\u003e|why and provenance| n_decision_record\n  n_review_stage --\u003e|activity trail| n_audit_event\n  n_review_stage --\u003e|action record| n_ledger_entry\n  n_review_stage --\u003e|updated asset state| n_managed_state\n  classDef workflow fill:#fdf2f8,stroke:#db2777,color:#111827;\n  classDef entity fill:#fefce8,stroke:#ca8a04,color:#111827;\n  class n_workflow_lifecycle workflow;\n  class n_observe_stage workflow;\n  class n_analyze_stage workflow;\n  class n_propose_stage workflow;\n  class n_execute_stage workflow;\n  class n_review_stage workflow;\n  class n_decision_record entity;\n  class n_audit_event entity;\n  class n_ledger_entry entity;\n  class n_managed_state entity;"
+            "mermaid": "flowchart LR\n  n_workflow_lifecycle[\"Workflow Lifecycle\"]\n  n_observe_stage[\"Observe\"]\n  n_analyze_stage[\"Analyze\"]\n  n_propose_stage[\"Propose\"]\n  n_execute_stage[\"Execute\"]\n  n_review_stage[\"Review\"]\n  n_run_record[\"RunRecord\"]\n  n_lifecycle_events[\"Lifecycle Events\"]\n  n_decision_record[\"DecisionRecordEntity\"]\n  n_audit_event[\"AuditEventRecord\"]\n  n_ledger_entry[\"LedgerEntryRecord\"]\n  n_managed_state[\"ManagedStateRecord\"]\n  n_workflow_lifecycle --\u003e|stage| n_observe_stage\n  n_observe_stage --\u003e|evidence| n_analyze_stage\n  n_analyze_stage --\u003e|options| n_propose_stage\n  n_propose_stage --\u003e|approved or dry-run action| n_execute_stage\n  n_execute_stage --\u003e|result| n_review_stage\n  n_workflow_lifecycle --\u003e|runtime events| n_lifecycle_events\n  n_lifecycle_events --\u003e|audit timeline| n_audit_event\n  n_review_stage --\u003e|why and provenance| n_decision_record\n  n_review_stage --\u003e|activity trail| n_audit_event\n  n_review_stage --\u003e|action record| n_ledger_entry\n  n_review_stage --\u003e|updated asset state| n_managed_state\n  classDef workflow fill:#fdf2f8,stroke:#db2777,color:#111827;\n  classDef entity fill:#fefce8,stroke:#ca8a04,color:#111827;\n  class n_workflow_lifecycle workflow;\n  class n_observe_stage workflow;\n  class n_analyze_stage workflow;\n  class n_propose_stage workflow;\n  class n_execute_stage workflow;\n  class n_review_stage workflow;\n  class n_run_record entity;\n  class n_lifecycle_events workflow;\n  class n_decision_record entity;\n  class n_audit_event entity;\n  class n_ledger_entry entity;\n  class n_managed_state entity;"
           },
           {
             "id": "tool-execution-map",
@@ -2619,6 +2755,7 @@ flowchart LR
               "cloudflare-control-plane",
               "policy-layer",
               "execution-policy",
+              "tool-exposure-resolver",
               "signed-tool-call",
               "fly-tool-runners",
               "tool-call-record",
@@ -2628,13 +2765,14 @@ flowchart LR
             "edgeIds": [
               "cloudflare-enforces-policy",
               "policy-enforces-execution-policy",
+              "policy-enforces-tool-exposure",
               "cloudflare-calls-fly",
               "signed-tool-call-targets-fly",
               "tool-execution-writes-tool-call",
               "tool-execution-writes-artifact",
               "tool-execution-writes-audit"
             ],
-            "mermaid": "flowchart LR\n  n_cloudflare_control_plane[\"Cloudflare Control Plane\"]\n  n_policy_layer[\"Policy Layer\"]\n  n_execution_policy[\"Execution Policy\"]\n  n_signed_tool_call[\"Signed Tool Call Boundary\"]\n  n_fly_tool_runners[\"Fly Tool Runners\"]\n  n_tool_call_record[\"ToolCallRecord\"]\n  n_artifact_metadata[\"ArtifactMetadataRecord\"]\n  n_audit_event[\"AuditEventRecord\"]\n  n_cloudflare_control_plane --\u003e|before escalation| n_policy_layer\n  n_policy_layer --\u003e|ask, dry-run, execute| n_execution_policy\n  n_cloudflare_control_plane --\u003e|signed server request| n_fly_tool_runners\n  n_signed_tool_call --\u003e|typed execution request| n_fly_tool_runners\n  n_fly_tool_runners --\u003e|execution attempt| n_tool_call_record\n  n_fly_tool_runners --\u003e|logs and outputs| n_artifact_metadata\n  n_fly_tool_runners --\u003e|audit summary| n_audit_event\n  classDef runtime fill:#ecfeff,stroke:#0891b2,color:#111827;\n  classDef policy fill:#fee2e2,stroke:#dc2626,color:#111827;\n  classDef interface fill:#fff7ed,stroke:#ea580c,color:#111827;\n  classDef entity fill:#fefce8,stroke:#ca8a04,color:#111827;\n  class n_cloudflare_control_plane runtime;\n  class n_policy_layer policy;\n  class n_execution_policy policy;\n  class n_signed_tool_call interface;\n  class n_fly_tool_runners runtime;\n  class n_tool_call_record entity;\n  class n_artifact_metadata entity;\n  class n_audit_event entity;"
+            "mermaid": "flowchart LR\n  n_cloudflare_control_plane[\"Cloudflare Control Plane\"]\n  n_policy_layer[\"Policy Layer\"]\n  n_execution_policy[\"Execution Policy\"]\n  n_tool_exposure_resolver[\"Tool Exposure Resolver\"]\n  n_signed_tool_call[\"Signed Tool Call Boundary\"]\n  n_fly_tool_runners[\"Fly Tool Runners\"]\n  n_tool_call_record[\"ToolCallRecord\"]\n  n_artifact_metadata[\"ArtifactMetadataRecord\"]\n  n_audit_event[\"AuditEventRecord\"]\n  n_cloudflare_control_plane --\u003e|before escalation| n_policy_layer\n  n_policy_layer --\u003e|ask, dry-run, execute| n_execution_policy\n  n_policy_layer --\u003e|model-visible tools| n_tool_exposure_resolver\n  n_cloudflare_control_plane --\u003e|signed server request| n_fly_tool_runners\n  n_signed_tool_call --\u003e|typed execution request| n_fly_tool_runners\n  n_fly_tool_runners --\u003e|execution attempt| n_tool_call_record\n  n_fly_tool_runners --\u003e|logs and outputs| n_artifact_metadata\n  n_fly_tool_runners --\u003e|audit summary| n_audit_event\n  classDef runtime fill:#ecfeff,stroke:#0891b2,color:#111827;\n  classDef policy fill:#fee2e2,stroke:#dc2626,color:#111827;\n  classDef interface fill:#fff7ed,stroke:#ea580c,color:#111827;\n  classDef entity fill:#fefce8,stroke:#ca8a04,color:#111827;\n  class n_cloudflare_control_plane runtime;\n  class n_policy_layer policy;\n  class n_execution_policy policy;\n  class n_tool_exposure_resolver policy;\n  class n_signed_tool_call interface;\n  class n_fly_tool_runners runtime;\n  class n_tool_call_record entity;\n  class n_artifact_metadata entity;\n  class n_audit_event entity;"
           },
           {
             "id": "tenancy-security-map",
@@ -2649,6 +2787,7 @@ flowchart LR
               "data-client-contract",
               "policy-layer",
               "execution-policy",
+              "tool-exposure-resolver",
               "secret-custody",
               "openrouter-provider"
             ],
@@ -2658,11 +2797,12 @@ flowchart LR
               "data-client-enforces-scope",
               "cloudflare-enforces-policy",
               "policy-enforces-execution-policy",
+              "policy-enforces-tool-exposure",
               "policy-enforces-secret-custody",
               "secret-custody-must-not-browser",
               "frontend-must-not-access-provider"
             ],
-            "mermaid": "flowchart LR\n  n_assistant_runtime[\"assistant-ui LangGraph Runtime\"]\n  n_external_trigger[\"External Trigger\"]\n  n_cloudflare_control_plane[\"Cloudflare Control Plane\"]\n  n_tenant_scope[\"Tenant Scope\"]\n  n_data_client_contract[\"AgentFrameworkDataClient\"]\n  n_policy_layer[\"Policy Layer\"]\n  n_execution_policy[\"Execution Policy\"]\n  n_secret_custody[\"Secret Custody\"]\n  n_openrouter_provider[\"OpenRouter Provider\"]\n  n_external_trigger --\u003e|trusted metadata| n_tenant_scope\n  n_cloudflare_control_plane --\u003e|auth or trusted trigger context| n_tenant_scope\n  n_data_client_contract --\u003e|scope first argument| n_tenant_scope\n  n_cloudflare_control_plane --\u003e|before escalation| n_policy_layer\n  n_policy_layer --\u003e|ask, dry-run, execute| n_execution_policy\n  n_policy_layer --\u003e|approved tools only| n_secret_custody\n  n_assistant_runtime -.-\u003e|browser never receives secrets| n_secret_custody\n  n_assistant_runtime -.-\u003e|provider secrets stay server-side| n_openrouter_provider\n  classDef runtime fill:#ecfeff,stroke:#0891b2,color:#111827;\n  classDef external fill:#f1f5f9,stroke:#475569,color:#111827;\n  classDef policy fill:#fee2e2,stroke:#dc2626,color:#111827;\n  classDef interface fill:#fff7ed,stroke:#ea580c,color:#111827;\n  class n_assistant_runtime runtime;\n  class n_external_trigger external;\n  class n_cloudflare_control_plane runtime;\n  class n_tenant_scope policy;\n  class n_data_client_contract interface;\n  class n_policy_layer policy;\n  class n_execution_policy policy;\n  class n_secret_custody policy;\n  class n_openrouter_provider external;"
+            "mermaid": "flowchart LR\n  n_assistant_runtime[\"assistant-ui LangGraph Runtime\"]\n  n_external_trigger[\"External Trigger\"]\n  n_cloudflare_control_plane[\"Cloudflare Control Plane\"]\n  n_tenant_scope[\"Tenant Scope\"]\n  n_data_client_contract[\"AgentFrameworkDataClient\"]\n  n_policy_layer[\"Policy Layer\"]\n  n_execution_policy[\"Execution Policy\"]\n  n_tool_exposure_resolver[\"Tool Exposure Resolver\"]\n  n_secret_custody[\"Secret Custody\"]\n  n_openrouter_provider[\"OpenRouter Provider\"]\n  n_external_trigger --\u003e|trusted metadata| n_tenant_scope\n  n_cloudflare_control_plane --\u003e|auth or trusted trigger context| n_tenant_scope\n  n_data_client_contract --\u003e|scope first argument| n_tenant_scope\n  n_cloudflare_control_plane --\u003e|before escalation| n_policy_layer\n  n_policy_layer --\u003e|ask, dry-run, execute| n_execution_policy\n  n_policy_layer --\u003e|model-visible tools| n_tool_exposure_resolver\n  n_policy_layer --\u003e|approved tools only| n_secret_custody\n  n_assistant_runtime -.-\u003e|browser never receives secrets| n_secret_custody\n  n_assistant_runtime -.-\u003e|provider secrets stay server-side| n_openrouter_provider\n  classDef runtime fill:#ecfeff,stroke:#0891b2,color:#111827;\n  classDef external fill:#f1f5f9,stroke:#475569,color:#111827;\n  classDef policy fill:#fee2e2,stroke:#dc2626,color:#111827;\n  classDef interface fill:#fff7ed,stroke:#ea580c,color:#111827;\n  class n_assistant_runtime runtime;\n  class n_external_trigger external;\n  class n_cloudflare_control_plane runtime;\n  class n_tenant_scope policy;\n  class n_data_client_contract interface;\n  class n_policy_layer policy;\n  class n_execution_policy policy;\n  class n_tool_exposure_resolver policy;\n  class n_secret_custody policy;\n  class n_openrouter_provider external;"
           }
         ],
         "fileRefs": [
@@ -2692,7 +2832,14 @@ flowchart LR
           ["langgraph.json", ["langgraph-backend", "langgraph-config"]],
           [
             "lib/agent-framework/contracts.ts",
-            ["framework-contracts", "policy-layer", "tenant-scope", "execution-policy"]
+            [
+              "framework-contracts",
+              "policy-layer",
+              "tenant-scope",
+              "execution-policy",
+              "tool-exposure-resolver",
+              "lifecycle-events"
+            ]
           ],
           ["lib/agent-framework/data-client.ts", ["data-client-contract"]],
           [
@@ -2703,6 +2850,7 @@ flowchart LR
               "audit-event",
               "artifact-metadata",
               "workflow-intent",
+              "run-record",
               "tool-call-record",
               "managed-state",
               "ledger-entry",

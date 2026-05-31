@@ -74,6 +74,48 @@ export type WorkflowIntent<Payload = unknown> = {
   createdAt: string;
 };
 
+export type RunStatus =
+  | "queued"
+  | "running"
+  | "waiting"
+  | "interrupted"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+export type RunRelation = {
+  parentRunId?: Id;
+  rootRunId?: Id;
+  depth?: number;
+  durableChild?: boolean;
+};
+
+export type LifecycleEventName =
+  | "intent.created"
+  | "run.queued"
+  | "run.started"
+  | "run.interrupted"
+  | "approval.requested"
+  | "tool.requested"
+  | "tool.started"
+  | "tool.finished"
+  | "artifact.created"
+  | "decision.created"
+  | "run.completed"
+  | "run.failed"
+  | "run.cancelled";
+
+export type LifecycleEvent = {
+  name: LifecycleEventName;
+  scope: TenantScope;
+  runId?: Id;
+  workflowIntentId?: Id;
+  toolName?: string;
+  summary?: string;
+  occurredAt: string;
+  data?: Record<string, unknown>;
+};
+
 /**
  * Runtime-only tool definition.
  *
@@ -113,3 +155,27 @@ export type ToolResult<Output = unknown> =
       artifacts?: ArtifactRef[];
       auditSummary?: string;
     };
+
+export type ToolExposureContext<Payload = unknown> = {
+  scope: TenantScope;
+  agentId: Id;
+  threadId?: Id;
+  runId?: Id;
+  workflowIntent?: WorkflowIntent<Payload>;
+  execution: ExecutionPolicy;
+  stage?: WorkflowStage;
+  relation?: RunRelation;
+  platform?: string;
+};
+
+export type ToolExposureDecision<Input = unknown, Output = unknown> = {
+  tool: ToolDefinition<Input, Output>;
+  visible: boolean;
+  reason?: string;
+  data?: Record<string, unknown>;
+};
+
+export type ToolExposureResolver = (
+  tools: ToolDefinition[],
+  context: ToolExposureContext,
+) => Promise<ToolExposureDecision[]> | ToolExposureDecision[];

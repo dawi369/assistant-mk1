@@ -11,6 +11,8 @@ Use it for:
 - Live per-user/workspace agent state.
 - WebSocket, SSE, or HTTP chat coordination.
 - User-facing stream ownership for conversation and workflow progress.
+- Run control records for foreground, background, workflow, and child execution
+  status.
 - Scheduled checks, alarms, and trigger handling.
 - Typed workflow intent creation.
 - Tenant-scoped reads and writes to app data.
@@ -43,6 +45,8 @@ A future Cloudflare Agent should be scoped to a user/workspace/agent identity. I
 - Load current managed state, notes, memory, and open work.
 - Answer simple questions without launching a heavy workflow.
 - Create typed `WorkflowIntent` records for complex work.
+- Create and update `RunRecord` status, heartbeat, interruption, cancellation,
+  and parent/child metadata.
 - Wake on schedules or external events.
 - Call Fly tool runners through signed server-to-server requests.
 - Receive progress callbacks or read workflow status produced by Fly/LangGraph.
