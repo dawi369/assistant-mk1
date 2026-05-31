@@ -11,7 +11,7 @@ import { execFileSync } from "node:child_process";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { architectureGraph } from "../docs/architecture.graph";
+import { architectureGraph, architectureNodeKinds } from "../docs/architecture.graph";
 import type {
   ArchitectureEdge,
   ArchitectureGraph,
@@ -108,6 +108,20 @@ function renderGraphMarkdown(graph: ArchitectureGraph): string {
   lines.push("- Promotes a `target` or `planned` concept into current implementation.");
   lines.push("");
 
+  lines.push("## Mega View");
+  lines.push("");
+  lines.push(
+    "The HTML explorer includes a collapsed Mega View generated from every canonical node and edge. Use scoped views for understanding; use the Mega View for completeness checks.",
+  );
+  lines.push("");
+  lines.push(`- Nodes: ${graph.nodes.length}`);
+  lines.push(`- Edges: ${graph.edges.length}`);
+  lines.push("- Node kind groups:");
+  for (const [kind, nodes] of groupNodesByKind(graph.nodes)) {
+    lines.push(`  - ${kind}: ${nodes.length}`);
+  }
+  lines.push("");
+
   lines.push("## Generated Views");
   lines.push("");
   lines.push(
@@ -119,6 +133,42 @@ function renderGraphMarkdown(graph: ArchitectureGraph): string {
       (view) => `- ${view.title}: ${view.nodeIds.length} nodes, ${view.edgeIds.length} edges.`,
     ),
   );
+  lines.push("");
+
+  lines.push("## View Details");
+  lines.push("");
+  lines.push(
+    "Each view stays compact here and expands in the HTML explorer. The TypeScript graph remains the source of truth.",
+  );
+  lines.push("");
+  for (const view of graph.views) {
+    lines.push(`<details>`);
+    lines.push(
+      `<summary>${view.title}: ${view.nodeIds.length} nodes, ${view.edgeIds.length} edges</summary>`,
+    );
+    lines.push("");
+    lines.push(view.summary);
+    lines.push("");
+    lines.push(`Nodes: ${view.nodeIds.map((nodeId) => `\`${nodeId}\``).join(", ")}.`);
+    lines.push("");
+    lines.push(`Edges: ${view.edgeIds.map((edgeId) => `\`${edgeId}\``).join(", ")}.`);
+    lines.push("");
+    lines.push(`</details>`);
+    lines.push("");
+  }
+
+  lines.push("## Node Groups");
+  lines.push("");
+  for (const [kind, nodes] of groupNodesByKind(graph.nodes)) {
+    lines.push(`- ${kind}: ${nodes.length} (${nodes.map((node) => `\`${node.id}\``).join(", ")})`);
+  }
+  lines.push("");
+
+  lines.push("## Edge Groups");
+  lines.push("");
+  for (const [kind, edges] of groupEdgesByKind(graph.edges)) {
+    lines.push(`- ${kind}: ${edges.length}`);
+  }
   lines.push("");
 
   lines.push("## Tracked Source Files");
@@ -148,6 +198,8 @@ function renderGraphHtml(graph: ArchitectureGraph): string {
     ...view,
     mermaid: renderMermaidView(graph, view),
   }));
+  const megaViewId = "mega-view";
+  const megaMermaid = renderMegaMermaidView(graph);
   const explorerNodes = graph.nodes.map((node) => ({
     id: node.id,
     label: node.label,
@@ -170,12 +222,30 @@ function renderGraphHtml(graph: ArchitectureGraph): string {
   const targetCount = graph.nodes.filter((node) => node.tags.includes("target")).length;
   const nodeKinds = [...new Set(graph.nodes.map((node) => node.kind))].sort();
   const tags = [...new Set(graph.nodes.flatMap((node) => node.tags))].sort();
-  const viewNav = graph.views
+  const viewNav = viewModels
     .map(
       (view) =>
-        `<a class="view-link" href="#${escapeAttribute(view.id)}">${escapeHtml(view.title)}</a>`,
+        `<button class="view-link" type="button" data-open-view="${escapeAttribute(view.id)}">${escapeHtml(view.title)}</button>`,
     )
     .join("\n");
+  const megaViewSection = `
+      <details class="panel view-panel" id="${megaViewId}">
+        <summary class="section-heading collapsible-heading">
+          <div>
+            <h2>Mega View</h2>
+            <p>All canonical nodes and edges in one atlas. Use scoped views for understanding; use this for completeness checks.</p>
+          </div>
+          <span class="pill">${graph.nodes.length} nodes / ${graph.edges.length} edges</span>
+        </summary>
+        <div class="panel-body">
+          <div class="notice">
+            This view is intentionally dense and generated from every canonical node and edge. It should not become the primary reading path.
+          </div>
+          <div class="diagram-scroll">
+            <pre class="mermaid">${escapeHtml(megaMermaid)}</pre>
+          </div>
+        </div>
+      </details>`;
   const viewSections = viewModels
     .map(
       (view) => `
@@ -283,24 +353,29 @@ function renderGraphHtml(graph: ArchitectureGraph): string {
         flex-wrap: wrap;
         justify-content: flex-end;
         gap: 8px;
-        min-width: 260px;
+        max-width: 440px;
       }
 
-      .button-link,
+      .path-chip,
       .panel {
         border: 1px solid var(--border);
         border-radius: 8px;
         background: var(--panel);
       }
 
-      .button-link {
+      .path-chip {
         display: inline-flex;
         align-items: center;
         min-height: 34px;
         padding: 7px 10px;
         color: var(--text);
         font-size: 13px;
-        text-decoration: none;
+      }
+
+      .path-chip code {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       .topline {
@@ -352,7 +427,7 @@ function renderGraphHtml(graph: ArchitectureGraph): string {
 
       .view-link {
         padding: 8px 10px;
-        text-decoration: none;
+        cursor: pointer;
       }
 
       .panel {
@@ -361,10 +436,10 @@ function renderGraphHtml(graph: ArchitectureGraph): string {
       }
 
       .section-heading {
-        display: flex;
-        justify-content: space-between;
-        gap: 16px;
-        align-items: flex-start;
+        display: grid;
+        grid-template-columns: 26px minmax(0, 1fr) auto;
+        gap: 14px;
+        align-items: center;
       }
 
       .section-heading p {
@@ -394,7 +469,6 @@ function renderGraphHtml(graph: ArchitectureGraph): string {
         flex: 0 0 auto;
         width: 22px;
         height: 22px;
-        margin-right: 10px;
         border: 1px solid var(--border);
         border-radius: 6px;
         color: var(--muted);
@@ -411,6 +485,10 @@ function renderGraphHtml(graph: ArchitectureGraph): string {
 
       .panel-body {
         padding: 16px;
+      }
+
+      .section-heading .pill {
+        justify-self: end;
       }
 
       .panel-body > * + * {
@@ -520,7 +598,7 @@ function renderGraphHtml(graph: ArchitectureGraph): string {
 
         .hero-actions {
           justify-content: flex-start;
-          min-width: 0;
+          max-width: none;
         }
 
         h1 {
@@ -532,7 +610,13 @@ function renderGraphHtml(graph: ArchitectureGraph): string {
         }
 
         .section-heading {
-          display: grid;
+          grid-template-columns: 26px minmax(0, 1fr);
+          align-items: start;
+        }
+
+        .section-heading .pill {
+          grid-column: 2;
+          justify-self: start;
         }
       }
     </style>
@@ -557,8 +641,8 @@ function renderGraphHtml(graph: ArchitectureGraph): string {
           <h1>${escapeHtml(graph.title)}</h1>
         </div>
         <div class="hero-actions">
-          <a class="button-link" href="../../architecture.graph.ts">Canonical graph</a>
-          <a class="button-link" href="../architecture-graph.md">Markdown index</a>
+          <span class="path-chip"><code>docs/architecture.graph.ts</code></span>
+          <span class="path-chip"><code>docs/generated/architecture-graph.md</code></span>
         </div>
       </header>
 
@@ -571,6 +655,7 @@ function renderGraphHtml(graph: ArchitectureGraph): string {
       </div>
 
       <nav class="nav" aria-label="Graph views">
+        <button class="view-link" type="button" data-open-view="${megaViewId}">Mega View</button>
         ${viewNav}
       </nav>
 
@@ -596,6 +681,8 @@ function renderGraphHtml(graph: ArchitectureGraph): string {
         <p>After graph updates, run <code>pnpm graph:render</code> and <code>pnpm graph:check</code>.</p>
         </div>
       </details>
+
+      ${megaViewSection}
 
       ${viewSections}
 
@@ -703,6 +790,7 @@ function renderGraphHtml(graph: ArchitectureGraph): string {
       const nodeTag = document.getElementById("node-tag");
       const edgeSearch = document.getElementById("edge-search");
       const edgeKind = document.getElementById("edge-kind");
+      const viewButtons = document.querySelectorAll("[data-open-view]");
 
       const edgeKinds = [...new Set(graph.edges.map((edge) => edge.kind))].sort();
       for (const kind of edgeKinds) {
@@ -800,6 +888,17 @@ function renderGraphHtml(graph: ArchitectureGraph): string {
         input.addEventListener("input", renderEdges);
       }
 
+      for (const button of viewButtons) {
+        button.addEventListener("click", () => {
+          const section = document.getElementById(button.dataset.openView);
+          if (!section) {
+            return;
+          }
+          section.open = true;
+          section.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+      }
+
       renderNodes();
       renderEdges();
     </script>
@@ -832,6 +931,35 @@ function renderMermaidView(graph: ArchitectureGraph, view: ArchitectureView): st
 
   for (const nodeId of view.nodeIds) {
     const node = requireNode(nodeById, nodeId);
+    lines.push(`  class ${mermaidId(node.id)} ${node.kind};`);
+  }
+
+  return lines.join("\n");
+}
+
+function renderMegaMermaidView(graph: ArchitectureGraph): string {
+  const lines: string[] = ["flowchart LR"];
+
+  for (const [kind, nodes] of groupNodesByKind(graph.nodes)) {
+    lines.push(`  subgraph ${mermaidSubgraphId(kind)}["${mermaidText(formatKindLabel(kind))}"]`);
+    for (const node of nodes) {
+      lines.push(`    ${mermaidId(node.id)}["${mermaidText(node.label)}"]`);
+    }
+    lines.push("  end");
+  }
+
+  for (const edge of graph.edges) {
+    const arrow = mermaidArrow(edge);
+    lines.push(
+      `  ${mermaidId(edge.from)} ${arrow}|${mermaidText(edge.label)}| ${mermaidId(edge.to)}`,
+    );
+  }
+
+  for (const kind of architectureNodeKinds) {
+    lines.push(`  classDef ${kind} ${classDefForKind(kind)};`);
+  }
+
+  for (const node of graph.nodes) {
     lines.push(`  class ${mermaidId(node.id)} ${node.kind};`);
   }
 
@@ -911,8 +1039,43 @@ function collectRefs(nodes: ArchitectureNode[], key: "fileRefs"): Array<[string,
   return [...refs.entries()].sort(([a], [b]) => a.localeCompare(b));
 }
 
+function groupNodesByKind(
+  nodes: ArchitectureNode[],
+): Array<[ArchitectureNode["kind"], ArchitectureNode[]]> {
+  const groups = new Map<ArchitectureNode["kind"], ArchitectureNode[]>();
+
+  for (const node of nodes) {
+    groups.set(node.kind, [...(groups.get(node.kind) ?? []), node]);
+  }
+
+  return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
+}
+
+function groupEdgesByKind(
+  edges: ArchitectureEdge[],
+): Array<[ArchitectureEdge["kind"], ArchitectureEdge[]]> {
+  const groups = new Map<ArchitectureEdge["kind"], ArchitectureEdge[]>();
+
+  for (const edge of edges) {
+    groups.set(edge.kind, [...(groups.get(edge.kind) ?? []), edge]);
+  }
+
+  return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
+}
+
 function renderReferenceRows(refs: Array<[string, string[]]>): string[] {
   return refs.map(([ref, nodes]) => `- \`${ref}\` -> ${nodes.join(", ")}`);
+}
+
+function formatKindLabel(kind: ArchitectureNode["kind"]): string {
+  return kind
+    .split("_")
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+}
+
+function mermaidSubgraphId(kind: ArchitectureNode["kind"]): string {
+  return `sg_${kind.replaceAll(/[^a-zA-Z0-9_]/g, "_")}`;
 }
 
 function mermaidId(id: string): string {

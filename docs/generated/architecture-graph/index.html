@@ -93,24 +93,29 @@
         flex-wrap: wrap;
         justify-content: flex-end;
         gap: 8px;
-        min-width: 260px;
+        max-width: 440px;
       }
 
-      .button-link,
+      .path-chip,
       .panel {
         border: 1px solid var(--border);
         border-radius: 8px;
         background: var(--panel);
       }
 
-      .button-link {
+      .path-chip {
         display: inline-flex;
         align-items: center;
         min-height: 34px;
         padding: 7px 10px;
         color: var(--text);
         font-size: 13px;
-        text-decoration: none;
+      }
+
+      .path-chip code {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       .topline {
@@ -162,7 +167,7 @@
 
       .view-link {
         padding: 8px 10px;
-        text-decoration: none;
+        cursor: pointer;
       }
 
       .panel {
@@ -171,10 +176,10 @@
       }
 
       .section-heading {
-        display: flex;
-        justify-content: space-between;
-        gap: 16px;
-        align-items: flex-start;
+        display: grid;
+        grid-template-columns: 26px minmax(0, 1fr) auto;
+        gap: 14px;
+        align-items: center;
       }
 
       .section-heading p {
@@ -204,7 +209,6 @@
         flex: 0 0 auto;
         width: 22px;
         height: 22px;
-        margin-right: 10px;
         border: 1px solid var(--border);
         border-radius: 6px;
         color: var(--muted);
@@ -221,6 +225,10 @@
 
       .panel-body {
         padding: 16px;
+      }
+
+      .section-heading .pill {
+        justify-self: end;
       }
 
       .panel-body > * + * {
@@ -330,7 +338,7 @@
 
         .hero-actions {
           justify-content: flex-start;
-          min-width: 0;
+          max-width: none;
         }
 
         h1 {
@@ -342,7 +350,13 @@
         }
 
         .section-heading {
-          display: grid;
+          grid-template-columns: 26px minmax(0, 1fr);
+          align-items: start;
+        }
+
+        .section-heading .pill {
+          grid-column: 2;
+          justify-self: start;
         }
       }
     </style>
@@ -367,8 +381,8 @@
           <h1>Assistant-MK1 Internal Architecture Graph</h1>
         </div>
         <div class="hero-actions">
-          <a class="button-link" href="../../architecture.graph.ts">Canonical graph</a>
-          <a class="button-link" href="../architecture-graph.md">Markdown index</a>
+          <span class="path-chip"><code>docs/architecture.graph.ts</code></span>
+          <span class="path-chip"><code>docs/generated/architecture-graph.md</code></span>
         </div>
       </header>
 
@@ -381,13 +395,28 @@
       </div>
 
       <nav class="nav" aria-label="Graph views">
-        <a class="view-link" href="#whole-system-overview">Whole-System Overview</a>
-        <a class="view-link" href="#current-repo-map">Current Repo Map</a>
-        <a class="view-link" href="#target-runtime-map">Target Runtime Map</a>
-        <a class="view-link" href="#data-and-state-map">Data And State Map</a>
-        <a class="view-link" href="#workflow-lifecycle-map">Workflow Lifecycle Map</a>
-        <a class="view-link" href="#tool-execution-map">Tool Execution Map</a>
-        <a class="view-link" href="#tenancy-security-map">Tenancy And Security Map</a>
+        <button class="view-link" type="button" data-open-view="mega-view">Mega View</button>
+        <button class="view-link" type="button" data-open-view="whole-system-overview">
+          Whole-System Overview
+        </button>
+        <button class="view-link" type="button" data-open-view="current-repo-map">
+          Current Repo Map
+        </button>
+        <button class="view-link" type="button" data-open-view="target-runtime-map">
+          Target Runtime Map
+        </button>
+        <button class="view-link" type="button" data-open-view="data-and-state-map">
+          Data And State Map
+        </button>
+        <button class="view-link" type="button" data-open-view="workflow-lifecycle-map">
+          Workflow Lifecycle Map
+        </button>
+        <button class="view-link" type="button" data-open-view="tool-execution-map">
+          Tool Execution Map
+        </button>
+        <button class="view-link" type="button" data-open-view="tenancy-security-map">
+          Tenancy And Security Map
+        </button>
       </nav>
 
       <details class="panel">
@@ -424,6 +453,249 @@
             After graph updates, run <code>pnpm graph:render</code> and
             <code>pnpm graph:check</code>.
           </p>
+        </div>
+      </details>
+
+      <details class="panel view-panel" id="mega-view">
+        <summary class="section-heading collapsible-heading">
+          <div>
+            <h2>Mega View</h2>
+            <p>
+              All canonical nodes and edges in one atlas. Use scoped views for understanding; use
+              this for completeness checks.
+            </p>
+          </div>
+          <span class="pill">53 nodes / 74 edges</span>
+        </summary>
+        <div class="panel-body">
+          <div class="notice">
+            This view is intentionally dense and generated from every canonical node and edge. It
+            should not become the primary reading path.
+          </div>
+          <div class="diagram-scroll">
+            <pre class="mermaid">
+flowchart LR
+  subgraph sg_api_route[&quot;Api Route&quot;]
+    n_api_proxy[&quot;LangGraph API Proxy&quot;]
+    n_external_signals_route[&quot;External Signals Route&quot;]
+    n_health_route[&quot;Health Route&quot;]
+  end
+  subgraph sg_app[&quot;App&quot;]
+    n_assistant_mk1[&quot;Assistant-MK1 Workbench&quot;]
+    n_home_route[&quot;Home Route&quot;]
+  end
+  subgraph sg_component[&quot;Component&quot;]
+    n_thread_ui[&quot;Thread UI Composition&quot;]
+    n_attachment_ui[&quot;Attachment UI&quot;]
+    n_markdown_ui[&quot;Markdown Renderer&quot;]
+    n_reasoning_ui[&quot;Reasoning Renderer&quot;]
+    n_tool_call_ui[&quot;Tool Call UI&quot;]
+    n_ui_primitives[&quot;Local UI Primitives&quot;]
+  end
+  subgraph sg_config[&quot;Config&quot;]
+    n_langgraph_config[&quot;LangGraph Config&quot;]
+  end
+  subgraph sg_doc[&quot;Doc&quot;]
+    n_docs_architecture[&quot;Architecture Docs&quot;]
+    n_reference_apps[&quot;Reference App Docs&quot;]
+  end
+  subgraph sg_entity[&quot;Entity&quot;]
+    n_decision_record[&quot;DecisionRecordEntity&quot;]
+    n_audit_event[&quot;AuditEventRecord&quot;]
+    n_artifact_metadata[&quot;ArtifactMetadataRecord&quot;]
+    n_workflow_intent[&quot;WorkflowIntentRecord&quot;]
+    n_tool_call_record[&quot;ToolCallRecord&quot;]
+    n_managed_state[&quot;ManagedStateRecord&quot;]
+    n_ledger_entry[&quot;LedgerEntryRecord&quot;]
+    n_trigger_record[&quot;TriggerRecord&quot;]
+    n_tool_metadata[&quot;Tool Metadata and Permission Records&quot;]
+  end
+  subgraph sg_external[&quot;External&quot;]
+    n_openrouter_provider[&quot;OpenRouter Provider&quot;]
+    n_external_trigger[&quot;External Trigger&quot;]
+  end
+  subgraph sg_interface[&quot;Interface&quot;]
+    n_chat_client[&quot;LangGraph SDK Client Factory&quot;]
+    n_framework_contracts[&quot;Framework Runtime Contracts&quot;]
+    n_durable_entity_contracts[&quot;Durable Entity Contracts&quot;]
+    n_data_client_contract[&quot;AgentFrameworkDataClient&quot;]
+    n_signed_tool_call[&quot;Signed Tool Call Boundary&quot;]
+  end
+  subgraph sg_policy[&quot;Policy&quot;]
+    n_policy_layer[&quot;Policy Layer&quot;]
+    n_secret_custody[&quot;Secret Custody&quot;]
+    n_tenant_scope[&quot;Tenant Scope&quot;]
+    n_execution_policy[&quot;Execution Policy&quot;]
+  end
+  subgraph sg_runtime[&quot;Runtime&quot;]
+    n_next_app[&quot;Next.js App Router&quot;]
+    n_assistant_runtime[&quot;assistant-ui LangGraph Runtime&quot;]
+    n_langgraph_backend[&quot;LangGraph Backend Graph&quot;]
+    n_fly_staging[&quot;Fly Dev/Staging Runtime&quot;]
+    n_cloudflare_control_plane[&quot;Cloudflare Control Plane&quot;]
+    n_fly_tool_runners[&quot;Fly Tool Runners&quot;]
+    n_langgraph_workflow_service[&quot;LangGraph Workflow Service&quot;]
+  end
+  subgraph sg_storage[&quot;Storage&quot;]
+    n_d1_storage[&quot;D1 Relational State&quot;]
+    n_r2_storage[&quot;R2 Artifact Storage&quot;]
+    n_durable_object_state[&quot;Durable Object Hot State&quot;]
+    n_workflow_backend_state[&quot;Workflow Backend State&quot;]
+  end
+  subgraph sg_tooling[&quot;Tooling&quot;]
+    n_package_scripts[&quot;Package Scripts&quot;]
+    n_architecture_graph_tooling[&quot;Architecture Graph Tooling&quot;]
+  end
+  subgraph sg_workflow[&quot;Workflow&quot;]
+    n_workflow_lifecycle[&quot;Workflow Lifecycle&quot;]
+    n_observe_stage[&quot;Observe&quot;]
+    n_analyze_stage[&quot;Analyze&quot;]
+    n_propose_stage[&quot;Propose&quot;]
+    n_execute_stage[&quot;Execute&quot;]
+    n_review_stage[&quot;Review&quot;]
+  end
+  n_assistant_mk1 --&gt;|current app runtime| n_next_app
+  n_next_app --&gt;|serves| n_home_route
+  n_home_route --&gt;|renders| n_assistant_runtime
+  n_assistant_runtime --&gt;|provides runtime| n_thread_ui
+  n_thread_ui --&gt;|renders| n_attachment_ui
+  n_thread_ui --&gt;|renders| n_markdown_ui
+  n_thread_ui --&gt;|renders| n_reasoning_ui
+  n_thread_ui --&gt;|renders| n_tool_call_ui
+  n_assistant_runtime --&gt;|creates SDK client| n_chat_client
+  n_chat_client --&gt;|browser SDK traffic| n_api_proxy
+  n_api_proxy --&gt;|forwards API requests| n_langgraph_backend
+  n_external_signals_route --&gt;|starts, resumes, creates crons| n_langgraph_backend
+  n_external_trigger --&gt;|authenticated signal| n_external_signals_route
+  n_health_route -.-&gt;|smoke target| n_fly_staging
+  n_langgraph_config -.-&gt;|graph id agent| n_langgraph_backend
+  n_langgraph_backend --&gt;|model invoke| n_openrouter_provider
+  n_assistant_runtime -.-&gt;|provider secrets stay server-side| n_openrouter_provider
+  n_fly_staging --&gt;|runs in staging| n_next_app
+  n_fly_staging --&gt;|runs in staging| n_langgraph_backend
+  n_framework_contracts -.-&gt;|defines| n_tenant_scope
+  n_framework_contracts -.-&gt;|defines| n_execution_policy
+  n_durable_entity_contracts -.-&gt;|defines| n_decision_record
+  n_durable_entity_contracts -.-&gt;|defines| n_audit_event
+  n_durable_entity_contracts -.-&gt;|defines| n_artifact_metadata
+  n_durable_entity_contracts -.-&gt;|defines| n_workflow_intent
+  n_durable_entity_contracts -.-&gt;|defines| n_tool_call_record
+  n_durable_entity_contracts -.-&gt;|defines| n_managed_state
+  n_durable_entity_contracts -.-&gt;|defines| n_ledger_entry
+  n_durable_entity_contracts -.-&gt;|defines| n_trigger_record
+  n_durable_entity_contracts -.-&gt;|defines| n_tool_metadata
+  n_data_client_contract --&gt;|create, list, supersede| n_decision_record
+  n_data_client_contract --&gt;|append| n_audit_event
+  n_data_client_contract --&gt;|metadata, upload URL| n_artifact_metadata
+  n_data_client_contract --&gt;|create, update status| n_workflow_intent
+  n_data_client_contract --&gt;|started, finished| n_tool_call_record
+  n_data_client_contract --&gt;|get, patch| n_managed_state
+  n_data_client_contract --&gt;|append, list| n_ledger_entry
+  n_data_client_contract --&gt;|scope first argument| n_tenant_scope
+  n_cloudflare_control_plane --&gt;|target user-facing stream| n_assistant_runtime
+  n_cloudflare_control_plane --&gt;|initial mediated implementation| n_data_client_contract
+  n_cloudflare_control_plane --&gt;|auth or trusted trigger context| n_tenant_scope
+  n_cloudflare_control_plane --&gt;|before escalation| n_policy_layer
+  n_cloudflare_control_plane --&gt;|typed escalation| n_workflow_intent
+  n_cloudflare_control_plane --&gt;|signed server request| n_fly_tool_runners
+  n_cloudflare_control_plane --&gt;|workflow escalation| n_langgraph_workflow_service
+  n_fly_tool_runners --&gt;|scoped reads/writes| n_data_client_contract
+  n_langgraph_workflow_service --&gt;|scoped reads/writes| n_data_client_contract
+  n_signed_tool_call --&gt;|typed execution request| n_fly_tool_runners
+  n_policy_layer --&gt;|ask, dry-run, execute| n_execution_policy
+  n_policy_layer --&gt;|approved tools only| n_secret_custody
+  n_assistant_runtime -.-&gt;|browser never receives secrets| n_secret_custody
+  n_d1_storage --&gt;|target relational records| n_durable_entity_contracts
+  n_r2_storage --&gt;|blob backing store| n_artifact_metadata
+  n_durable_object_state --&gt;|hot coordination state| n_cloudflare_control_plane
+  n_workflow_backend_state --&gt;|in-flight execution state| n_langgraph_workflow_service
+  n_workflow_lifecycle --&gt;|stage| n_observe_stage
+  n_observe_stage --&gt;|evidence| n_analyze_stage
+  n_analyze_stage --&gt;|options| n_propose_stage
+  n_propose_stage --&gt;|approved or dry-run action| n_execute_stage
+  n_execute_stage --&gt;|result| n_review_stage
+  n_review_stage --&gt;|why and provenance| n_decision_record
+  n_review_stage --&gt;|activity trail| n_audit_event
+  n_review_stage --&gt;|action record| n_ledger_entry
+  n_review_stage --&gt;|updated asset state| n_managed_state
+  n_fly_tool_runners --&gt;|execution attempt| n_tool_call_record
+  n_fly_tool_runners --&gt;|logs and outputs| n_artifact_metadata
+  n_fly_tool_runners --&gt;|audit summary| n_audit_event
+  n_external_trigger --&gt;|wake work| n_workflow_intent
+  n_external_trigger --&gt;|trusted metadata| n_tenant_scope
+  n_docs_architecture -.-&gt;|system source of truth| n_assistant_mk1
+  n_reference_apps -.-&gt;|generic mappings| n_durable_entity_contracts
+  n_reference_apps -.-&gt;|mutation gates| n_policy_layer
+  n_architecture_graph_tooling -.-&gt;|generated views| n_assistant_mk1
+  n_package_scripts --&gt;|graph scripts| n_architecture_graph_tooling
+  classDef app fill:#eef2ff,stroke:#4f46e5,color:#111827;
+  classDef runtime fill:#ecfeff,stroke:#0891b2,color:#111827;
+  classDef api_route fill:#f0fdf4,stroke:#16a34a,color:#111827;
+  classDef component fill:#f8fafc,stroke:#64748b,color:#111827;
+  classDef interface fill:#fff7ed,stroke:#ea580c,color:#111827;
+  classDef entity fill:#fefce8,stroke:#ca8a04,color:#111827;
+  classDef workflow fill:#fdf2f8,stroke:#db2777,color:#111827;
+  classDef policy fill:#fee2e2,stroke:#dc2626,color:#111827;
+  classDef storage fill:#f0f9ff,stroke:#0284c7,color:#111827;
+  classDef tooling fill:#f5f3ff,stroke:#7c3aed,color:#111827;
+  classDef doc fill:#f7fee7,stroke:#65a30d,color:#111827;
+  classDef config fill:#fafafa,stroke:#525252,color:#111827;
+  classDef external fill:#f1f5f9,stroke:#475569,color:#111827;
+  class n_assistant_mk1 app;
+  class n_next_app runtime;
+  class n_home_route app;
+  class n_assistant_runtime runtime;
+  class n_thread_ui component;
+  class n_attachment_ui component;
+  class n_markdown_ui component;
+  class n_reasoning_ui component;
+  class n_tool_call_ui component;
+  class n_ui_primitives component;
+  class n_chat_client interface;
+  class n_api_proxy api_route;
+  class n_external_signals_route api_route;
+  class n_health_route api_route;
+  class n_langgraph_backend runtime;
+  class n_openrouter_provider external;
+  class n_langgraph_config config;
+  class n_fly_staging runtime;
+  class n_package_scripts tooling;
+  class n_framework_contracts interface;
+  class n_durable_entity_contracts interface;
+  class n_data_client_contract interface;
+  class n_decision_record entity;
+  class n_audit_event entity;
+  class n_artifact_metadata entity;
+  class n_workflow_intent entity;
+  class n_tool_call_record entity;
+  class n_managed_state entity;
+  class n_ledger_entry entity;
+  class n_trigger_record entity;
+  class n_tool_metadata entity;
+  class n_cloudflare_control_plane runtime;
+  class n_fly_tool_runners runtime;
+  class n_langgraph_workflow_service runtime;
+  class n_policy_layer policy;
+  class n_secret_custody policy;
+  class n_tenant_scope policy;
+  class n_execution_policy policy;
+  class n_d1_storage storage;
+  class n_r2_storage storage;
+  class n_durable_object_state storage;
+  class n_workflow_backend_state storage;
+  class n_workflow_lifecycle workflow;
+  class n_observe_stage workflow;
+  class n_analyze_stage workflow;
+  class n_propose_stage workflow;
+  class n_execute_stage workflow;
+  class n_review_stage workflow;
+  class n_signed_tool_call interface;
+  class n_external_trigger external;
+  class n_docs_architecture doc;
+  class n_reference_apps doc;
+  class n_architecture_graph_tooling tooling;</pre
+            >
+          </div>
         </div>
       </details>
 
@@ -2464,6 +2736,7 @@ flowchart LR
       const nodeTag = document.getElementById("node-tag");
       const edgeSearch = document.getElementById("edge-search");
       const edgeKind = document.getElementById("edge-kind");
+      const viewButtons = document.querySelectorAll("[data-open-view]");
 
       const edgeKinds = [...new Set(graph.edges.map((edge) => edge.kind))].sort();
       for (const kind of edgeKinds) {
@@ -2607,6 +2880,17 @@ flowchart LR
 
       for (const input of [edgeSearch, edgeKind]) {
         input.addEventListener("input", renderEdges);
+      }
+
+      for (const button of viewButtons) {
+        button.addEventListener("click", () => {
+          const section = document.getElementById(button.dataset.openView);
+          if (!section) {
+            return;
+          }
+          section.open = true;
+          section.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
       }
 
       renderNodes();
