@@ -1,5 +1,8 @@
 # Hermes Lessons Runtime Plan
 
+Status: temporary input to the canonical roadmap in
+`docs/implementation-roadmap.md`.
+
 This is a temporary implementation plan for applying useful Hermes architecture
 lessons to Assistant-MK1 without turning this project into a local harness
 clone.

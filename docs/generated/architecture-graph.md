@@ -10,8 +10,8 @@ Developer-facing map of the current assistant-ui LangGraph starter and the targe
 
 ## Summary
 
-- Nodes: 56
-- Edges: 80
+- Nodes: 61
+- Edges: 88
 - Views: 7
 
 ## Graph Maintenance
@@ -29,14 +29,14 @@ Review the graph when a change does any of the following:
 
 The HTML explorer includes a collapsed Mega View generated from every canonical node and edge. Use scoped views for understanding; use the Mega View for completeness checks.
 
-- Nodes: 56
-- Edges: 80
+- Nodes: 61
+- Edges: 88
 - Node kind groups:
   - api_route: 3
   - app: 2
   - component: 6
   - config: 1
-  - doc: 2
+  - doc: 7
   - entity: 10
   - external: 2
   - interface: 5
@@ -145,7 +145,7 @@ Edges: `trigger-uses-scope`, `cloudflare-derives-scope`, `data-client-enforces-s
 - app: 2 (`assistant-mk1`, `home-route`)
 - component: 6 (`thread-ui`, `attachment-ui`, `markdown-ui`, `reasoning-ui`, `tool-call-ui`, `ui-primitives`)
 - config: 1 (`langgraph-config`)
-- doc: 2 (`docs-architecture`, `reference-apps`)
+- doc: 7 (`docs-architecture`, `implementation-roadmap-doc`, `runtime-spec-docs`, `tool-policy-spec-docs`, `context-control-ui-docs`, `observability-docs`, `reference-apps`)
 - entity: 10 (`decision-record`, `audit-event`, `artifact-metadata`, `workflow-intent`, `run-record`, `tool-call-record`, `managed-state`, `ledger-entry`, `trigger-record`, `tool-metadata`)
 - external: 2 (`openrouter-provider`, `external-trigger`)
 - interface: 5 (`chat-client`, `framework-contracts`, `durable-entity-contracts`, `data-client-contract`, `signed-tool-call`)
@@ -160,7 +160,7 @@ Edges: `trigger-uses-scope`, `cloudflare-derives-scope`, `data-client-enforces-s
 - calls: 11
 - configures: 1
 - derives_scope: 2
-- documents: 17
+- documents: 25
 - emits: 6
 - enforces: 5
 - must_not_access: 2
@@ -196,6 +196,16 @@ Changes to these source/config files should trigger a graph review if they alter
 - `components/ui/tooltip.tsx` -> ui-primitives
 - `Dockerfile` -> fly-staging
 - `docs/architecture.graph.ts` -> architecture-graph-tooling
+- `docs/context-assembly.md` -> context-control-ui-docs
+- `docs/control-plane-api.md` -> context-control-ui-docs
+- `docs/docs-completion-checklist.md` -> implementation-roadmap-doc
+- `docs/first-vertical-slice.md` -> runtime-spec-docs
+- `docs/implementation-roadmap.md` -> implementation-roadmap-doc
+- `docs/observability-and-audit.md` -> observability-docs
+- `docs/policy-model.md` -> tool-policy-spec-docs
+- `docs/run-lifecycle.md` -> runtime-spec-docs
+- `docs/tool-system.md` -> tool-policy-spec-docs
+- `docs/workbench-ui.md` -> context-control-ui-docs
 - `fly.toml` -> fly-staging
 - `goal.md` -> assistant-mk1
 - `langgraph.json` -> langgraph-backend, langgraph-config

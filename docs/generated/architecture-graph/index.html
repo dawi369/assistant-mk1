@@ -387,10 +387,10 @@
       </header>
 
       <div class="topline" aria-label="Graph summary">
-        <span class="meta-pill">56 nodes</span>
-        <span class="meta-pill">80 edges</span>
+        <span class="meta-pill">61 nodes</span>
+        <span class="meta-pill">88 edges</span>
         <span class="meta-pill">7 views</span>
-        <span class="meta-pill">46 current</span>
+        <span class="meta-pill">51 current</span>
         <span class="meta-pill">10 target</span>
       </div>
 
@@ -465,7 +465,7 @@
               this for completeness checks.
             </p>
           </div>
-          <span class="pill">56 nodes / 80 edges</span>
+          <span class="pill">61 nodes / 88 edges</span>
         </summary>
         <div class="panel-body">
           <div class="diagram-scroll">
@@ -493,6 +493,11 @@ flowchart LR
   end
   subgraph sg_doc[&quot;Doc&quot;]
     n_docs_architecture[&quot;Architecture Docs&quot;]
+    n_implementation_roadmap_doc[&quot;Implementation Roadmap&quot;]
+    n_runtime_spec_docs[&quot;Runtime Specs&quot;]
+    n_tool_policy_spec_docs[&quot;Tool And Policy Specs&quot;]
+    n_context_control_ui_docs[&quot;Context, Control Plane, And UI Specs&quot;]
+    n_observability_docs[&quot;Observability And Audit Specs&quot;]
     n_reference_apps[&quot;Reference App Docs&quot;]
   end
   subgraph sg_entity[&quot;Entity&quot;]
@@ -629,6 +634,14 @@ flowchart LR
   n_external_trigger --&gt;|wake work| n_workflow_intent
   n_external_trigger --&gt;|trusted metadata| n_tenant_scope
   n_docs_architecture -.-&gt;|system source of truth| n_assistant_mk1
+  n_implementation_roadmap_doc -.-&gt;|implementation path| n_assistant_mk1
+  n_runtime_spec_docs -.-&gt;|lifecycle rules| n_run_record
+  n_runtime_spec_docs -.-&gt;|event rules| n_lifecycle_events
+  n_tool_policy_spec_docs -.-&gt;|visibility policy| n_tool_exposure_resolver
+  n_tool_policy_spec_docs -.-&gt;|policy behavior| n_policy_layer
+  n_context_control_ui_docs -.-&gt;|operation contracts| n_data_client_contract
+  n_context_control_ui_docs -.-&gt;|ui substrate boundaries| n_assistant_runtime
+  n_observability_docs -.-&gt;|audit rules| n_audit_event
   n_reference_apps -.-&gt;|generic mappings| n_durable_entity_contracts
   n_reference_apps -.-&gt;|mutation gates| n_policy_layer
   n_architecture_graph_tooling -.-&gt;|generated views| n_assistant_mk1
@@ -700,6 +713,11 @@ flowchart LR
   class n_signed_tool_call interface;
   class n_external_trigger external;
   class n_docs_architecture doc;
+  class n_implementation_roadmap_doc doc;
+  class n_runtime_spec_docs doc;
+  class n_tool_policy_spec_docs doc;
+  class n_context_control_ui_docs doc;
+  class n_observability_docs doc;
   class n_reference_apps doc;
   class n_architecture_graph_tooling tooling;</pre
             >
@@ -1163,6 +1181,7 @@ flowchart LR
               <option value="assistant-ui">assistant-ui</option>
               <option value="audit">audit</option>
               <option value="config">config</option>
+              <option value="context">context</option>
               <option value="contracts">contracts</option>
               <option value="control-plane">control-plane</option>
               <option value="coordination">coordination</option>
@@ -1186,6 +1205,7 @@ flowchart LR
               <option value="ledger">ledger</option>
               <option value="model-provider">model-provider</option>
               <option value="network">network</option>
+              <option value="observability">observability</option>
               <option value="planned">planned</option>
               <option value="policy">policy</option>
               <option value="policy-gated">policy-gated</option>
@@ -1195,6 +1215,7 @@ flowchart LR
               <option value="reasoning">reasoning</option>
               <option value="reference-app">reference-app</option>
               <option value="repository">repository</option>
+              <option value="roadmap">roadmap</option>
               <option value="root">root</option>
               <option value="runtime">runtime</option>
               <option value="secrets">secrets</option>
@@ -1439,6 +1460,78 @@ flowchart LR
                     >
                   </td>
                   <td>architecture-graph-tooling</td>
+                </tr>
+                <tr>
+                  <td>
+                    <a href="../../docs/context-assembly.md"
+                      ><code>docs/context-assembly.md</code></a
+                    >
+                  </td>
+                  <td>context-control-ui-docs</td>
+                </tr>
+                <tr>
+                  <td>
+                    <a href="../../docs/control-plane-api.md"
+                      ><code>docs/control-plane-api.md</code></a
+                    >
+                  </td>
+                  <td>context-control-ui-docs</td>
+                </tr>
+                <tr>
+                  <td>
+                    <a href="../../docs/docs-completion-checklist.md"
+                      ><code>docs/docs-completion-checklist.md</code></a
+                    >
+                  </td>
+                  <td>implementation-roadmap-doc</td>
+                </tr>
+                <tr>
+                  <td>
+                    <a href="../../docs/first-vertical-slice.md"
+                      ><code>docs/first-vertical-slice.md</code></a
+                    >
+                  </td>
+                  <td>runtime-spec-docs</td>
+                </tr>
+                <tr>
+                  <td>
+                    <a href="../../docs/implementation-roadmap.md"
+                      ><code>docs/implementation-roadmap.md</code></a
+                    >
+                  </td>
+                  <td>implementation-roadmap-doc</td>
+                </tr>
+                <tr>
+                  <td>
+                    <a href="../../docs/observability-and-audit.md"
+                      ><code>docs/observability-and-audit.md</code></a
+                    >
+                  </td>
+                  <td>observability-docs</td>
+                </tr>
+                <tr>
+                  <td>
+                    <a href="../../docs/policy-model.md"><code>docs/policy-model.md</code></a>
+                  </td>
+                  <td>tool-policy-spec-docs</td>
+                </tr>
+                <tr>
+                  <td>
+                    <a href="../../docs/run-lifecycle.md"><code>docs/run-lifecycle.md</code></a>
+                  </td>
+                  <td>runtime-spec-docs</td>
+                </tr>
+                <tr>
+                  <td>
+                    <a href="../../docs/tool-system.md"><code>docs/tool-system.md</code></a>
+                  </td>
+                  <td>tool-policy-spec-docs</td>
+                </tr>
+                <tr>
+                  <td>
+                    <a href="../../docs/workbench-ui.md"><code>docs/workbench-ui.md</code></a>
+                  </td>
+                  <td>context-control-ui-docs</td>
                 </tr>
                 <tr>
                   <td>
@@ -1971,6 +2064,50 @@ flowchart LR
             "summary": "Repo-native Markdown docs for system shape, infrastructure, runtime, data, and risk boundaries.",
             "kind": "doc",
             "tags": ["current", "docs"]
+          },
+          {
+            "id": "implementation-roadmap-doc",
+            "label": "Implementation Roadmap",
+            "summary": "Phased path from the current assistant-ui LangGraph starter to the target workbench.",
+            "kind": "doc",
+            "tags": ["current", "docs", "roadmap"],
+            "fileRefs": ["docs/implementation-roadmap.md", "docs/docs-completion-checklist.md"]
+          },
+          {
+            "id": "runtime-spec-docs",
+            "label": "Runtime Specs",
+            "summary": "Build-ready run lifecycle and vertical-slice execution specs.",
+            "kind": "doc",
+            "tags": ["current", "docs", "runtime"],
+            "fileRefs": ["docs/run-lifecycle.md", "docs/first-vertical-slice.md"]
+          },
+          {
+            "id": "tool-policy-spec-docs",
+            "label": "Tool And Policy Specs",
+            "summary": "Build-ready tool system and policy model specs.",
+            "kind": "doc",
+            "tags": ["current", "docs", "tools", "policy"],
+            "fileRefs": ["docs/tool-system.md", "docs/policy-model.md"]
+          },
+          {
+            "id": "context-control-ui-docs",
+            "label": "Context, Control Plane, And UI Specs",
+            "summary": "Context assembly, control-plane operations, and workbench UI information architecture.",
+            "kind": "doc",
+            "tags": ["current", "docs", "context", "ui", "api"],
+            "fileRefs": [
+              "docs/context-assembly.md",
+              "docs/control-plane-api.md",
+              "docs/workbench-ui.md"
+            ]
+          },
+          {
+            "id": "observability-docs",
+            "label": "Observability And Audit Specs",
+            "summary": "Lifecycle events, audit records, artifacts, logs, heartbeats, and inspection rules.",
+            "kind": "doc",
+            "tags": ["current", "docs", "audit", "observability"],
+            "fileRefs": ["docs/observability-and-audit.md"]
           },
           {
             "id": "reference-apps",
@@ -2522,6 +2659,62 @@ flowchart LR
             "label": "system source of truth"
           },
           {
+            "id": "roadmap-documents-workbench",
+            "from": "implementation-roadmap-doc",
+            "to": "assistant-mk1",
+            "kind": "documents",
+            "label": "implementation path"
+          },
+          {
+            "id": "runtime-spec-documents-runs",
+            "from": "runtime-spec-docs",
+            "to": "run-record",
+            "kind": "documents",
+            "label": "lifecycle rules"
+          },
+          {
+            "id": "runtime-spec-documents-lifecycle",
+            "from": "runtime-spec-docs",
+            "to": "lifecycle-events",
+            "kind": "documents",
+            "label": "event rules"
+          },
+          {
+            "id": "tool-policy-documents-exposure",
+            "from": "tool-policy-spec-docs",
+            "to": "tool-exposure-resolver",
+            "kind": "documents",
+            "label": "visibility policy"
+          },
+          {
+            "id": "tool-policy-documents-policy",
+            "from": "tool-policy-spec-docs",
+            "to": "policy-layer",
+            "kind": "documents",
+            "label": "policy behavior"
+          },
+          {
+            "id": "context-control-documents-data-client",
+            "from": "context-control-ui-docs",
+            "to": "data-client-contract",
+            "kind": "documents",
+            "label": "operation contracts"
+          },
+          {
+            "id": "context-control-documents-assistant-runtime",
+            "from": "context-control-ui-docs",
+            "to": "assistant-runtime",
+            "kind": "documents",
+            "label": "ui substrate boundaries"
+          },
+          {
+            "id": "observability-documents-audit",
+            "from": "observability-docs",
+            "to": "audit-event",
+            "kind": "documents",
+            "label": "audit rules"
+          },
+          {
             "id": "reference-apps-stress-contracts",
             "from": "reference-apps",
             "to": "durable-entity-contracts",
@@ -2827,6 +3020,16 @@ flowchart LR
           ["components/ui/tooltip.tsx", ["ui-primitives"]],
           ["Dockerfile", ["fly-staging"]],
           ["docs/architecture.graph.ts", ["architecture-graph-tooling"]],
+          ["docs/context-assembly.md", ["context-control-ui-docs"]],
+          ["docs/control-plane-api.md", ["context-control-ui-docs"]],
+          ["docs/docs-completion-checklist.md", ["implementation-roadmap-doc"]],
+          ["docs/first-vertical-slice.md", ["runtime-spec-docs"]],
+          ["docs/implementation-roadmap.md", ["implementation-roadmap-doc"]],
+          ["docs/observability-and-audit.md", ["observability-docs"]],
+          ["docs/policy-model.md", ["tool-policy-spec-docs"]],
+          ["docs/run-lifecycle.md", ["runtime-spec-docs"]],
+          ["docs/tool-system.md", ["tool-policy-spec-docs"]],
+          ["docs/workbench-ui.md", ["context-control-ui-docs"]],
           ["fly.toml", ["fly-staging"]],
           ["goal.md", ["assistant-mk1"]],
           ["langgraph.json", ["langgraph-backend", "langgraph-config"]],

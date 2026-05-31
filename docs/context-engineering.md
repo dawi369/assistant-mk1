@@ -2,6 +2,10 @@
 
 Assistant-MK1 should not rely on vague chat memory for important decisions. The framework needs durable, inspectable context records that explain what the agent believed, why it believed it, and what would change its mind.
 
+For the build-ready context assembly algorithm, see
+`docs/context-assembly.md`. This page focuses on durable reasoning records and
+recall behavior.
+
 ## Decision Records
 
 A `DecisionRecord` is the generic unit for durable reasoning. It works across deployments, documents, research, ticket triage, market workflows, and other domains.

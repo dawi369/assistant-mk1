@@ -6,6 +6,12 @@ The conversational agent handles fast user interaction: answering from notes/sta
 
 The workflow plane handles explicit multi-step work: tool calls, approvals, execution policy gates, background checks, and durable audit outputs. LangGraph is the preferred engine for complex workflows, but it is not the only possible backend.
 
+assistant-ui remains the UI/runtime substrate for the thread, composer,
+messages, stream ergonomics, attachments, and tool-call rendering where those
+primitives fit. Assistant-MK1 owns product-level runtime concepts around that
+substrate: tenant scope, policy, durable run control, ledgers, managed state,
+decision records, and external triggers.
+
 ## Workflow Lifecycle
 
 Generic workflow stages:

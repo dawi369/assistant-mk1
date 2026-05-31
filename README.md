@@ -59,14 +59,24 @@ langgraph.json      LangGraph CLI config (graph id, node version, env file)
 - `AGENTS.md` — repo instructions for coding agents
 - `goal.md` — product goal, phases, and done bar
 - `docs/architecture.md` — system shape and seams
+- `docs/implementation-roadmap.md` — staged path from current starter to target workbench
 - `docs/infrastructure.md` — infrastructure topology and request flow
 - `docs/cloudflare-control-plane.md` — target live multi-user control plane
 - `docs/fly-tool-runners.md` — heavy tool and workflow execution plane
 - `docs/data-and-state.md` — storage responsibilities and canonical entities
 - `docs/db-contracts.md` — durable entity contracts and data-client boundaries
+- `docs/run-lifecycle.md` — run status, child runs, interrupts, cancellation, and durable outputs
+- `docs/tool-system.md` — tool registration, exposure, execution, adapters, artifacts, and redaction
+- `docs/policy-model.md` — execution modes, approvals, limits, kill switches, and mutation gates
+- `docs/context-assembly.md` — stable/scoped/retrieved/volatile model context algorithm
+- `docs/control-plane-api.md` — operation-level control-plane API contracts
 - `docs/secrets-and-risk.md` — secret custody, execution modes, and production gates
 - `docs/agent-workbench.md` — reusable workbench UX model
+- `docs/workbench-ui.md` — assistant-ui leverage map and workbench surfaces
 - `docs/context-engineering.md` — decision records and provenance-backed recall
+- `docs/observability-and-audit.md` — lifecycle events, audit records, logs, artifacts, and health
+- `docs/first-vertical-slice.md` — first implementation proof and acceptance criteria
+- `docs/docs-completion-checklist.md` — build-ready/partial/deferred docs status
 - `docs/runtime.md` — threads, runs, interrupts, crons, and external signals
 - `docs/tenancy.md` — user/workspace scoping and isolation rules
 - `docs/hermes-lessons-runtime-plan.md` — temporary plan for applying useful harness lessons without changing the product architecture

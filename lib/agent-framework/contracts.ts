@@ -26,6 +26,15 @@ export type ExecutionPolicy = {
   policy?: string;
 };
 
+export type PolicyDecision = {
+  allowed: boolean;
+  execution: ExecutionPolicy;
+  reason?: string;
+  approvalRequired?: boolean;
+  auditSummary?: string;
+  data?: Record<string, unknown>;
+};
+
 export type ArtifactRef = {
   id: Id;
   kind: "file" | "log" | "report" | "screenshot" | "trace" | "other";
@@ -113,6 +122,27 @@ export type LifecycleEvent = {
   toolName?: string;
   summary?: string;
   occurredAt: string;
+  data?: Record<string, unknown>;
+};
+
+export type ContextTier = "stable" | "scoped" | "retrieved" | "volatile";
+
+export type ContextBlock = {
+  tier: ContextTier;
+  title: string;
+  content: string;
+  provenance?: ProvenanceRef[];
+  tokenEstimate?: number;
+  data?: Record<string, unknown>;
+};
+
+export type ContextPack = {
+  scope: TenantScope;
+  agentId: Id;
+  threadId?: Id;
+  runId?: Id;
+  builtAt: string;
+  blocks: ContextBlock[];
   data?: Record<string, unknown>;
 };
 
