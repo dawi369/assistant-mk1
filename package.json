@@ -16,6 +16,7 @@
     "format": "oxfmt --check",
     "format:fix": "oxfmt",
     "lint:fix": "oxlint --fix && oxfmt",
+    "smoke:data-client:isolation": "tsx scripts/smoke-data-client-isolation.ts",
     "smoke:workbench": "tsx scripts/smoke-workbench.ts",
     "smoke:workbench:local": "SMOKE_BASE_URL=http://localhost:3000 tsx scripts/smoke-workbench.ts",
     "graph:render": "tsx scripts/render-architecture-graph.ts render",

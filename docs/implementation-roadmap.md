@@ -128,6 +128,11 @@ Exit criteria:
 
 Goal: replace mock state with a scoped data-client implementation.
 
+Current local target: file-backed JSON state behind `AgentFrameworkDataClient`.
+This proves restart survival and tenant isolation before Cloudflare resources
+are provisioned. The JSON backing is temporary; the repository behavior and
+smokes are intended to carry forward.
+
 Implement:
 
 - Data-client backing implementation behind the existing repository interface.

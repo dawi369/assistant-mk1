@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 
 export async function GET() {
   return NextResponse.json({
-    snapshot: getLatestDemoRunSnapshot(),
+    snapshot: await getLatestDemoRunSnapshot(),
   });
 }
 

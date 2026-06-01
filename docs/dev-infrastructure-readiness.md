@@ -33,6 +33,14 @@ Committed Fly env:
 - `OPENROUTER_APP_NAME=assistant-mk1-dev`
 - `OPENROUTER_SITE_URL=https://assistant-mk1-dev.fly.dev`
 
+## Local Durable Store
+
+The local data-client backing writes JSON state to
+`.assistant-mk1/local-store.json` by default. Override it with
+`WORKBENCH_STORE_PATH` when running isolated local smokes. This store is dev
+infrastructure only; Cloudflare D1/R2/Durable Object resources remain
+unprovisioned until the data-client access patterns are proven.
+
 ## Future Cloudflare Resources
 
 Do not create these until the first Cloudflare-backed data-client slice is

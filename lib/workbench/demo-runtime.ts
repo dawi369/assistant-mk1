@@ -7,13 +7,7 @@ import type {
   ToolCallRecord,
   WorkflowIntentRecord,
 } from "@/lib/agent-framework/db-contracts";
-import {
-  DEMO_AGENT_ID,
-  DEMO_SCOPE,
-  createDemoId,
-  demoDataClient,
-  getDemoStore,
-} from "@/lib/workbench/demo-data-client";
+import { DEMO_AGENT_ID, DEMO_SCOPE, demoDataClient } from "@/lib/workbench/demo-data-client";
 import { demoInspectTool } from "@/lib/workbench/demo-tool";
 
 export type DemoRunSnapshot = {
@@ -49,34 +43,36 @@ const appendAudit = async (
     },
   });
 
-const getIntentForRun = (run: RunRecord | null) => {
+const getIntentForRun = async (run: RunRecord | null) => {
   if (!run?.workflowIntentId) return null;
-  return (
-    getDemoStore().workflowIntents.find((intent) => intent.id === run.workflowIntentId) ?? null
-  );
+  const intents = await demoDataClient.listWorkflowIntents(DEMO_SCOPE);
+  return intents.find((intent) => intent.id === run.workflowIntentId) ?? null;
 };
 
-export const getDemoRunSnapshot = (runId: Id): DemoRunSnapshot | null => {
-  const store = getDemoStore();
-  const run = store.runs.find((record) => record.id === runId) ?? null;
+export const getDemoRunSnapshot = async (runId: Id): Promise<DemoRunSnapshot | null> => {
+  const run = (await demoDataClient.getRun(DEMO_SCOPE, runId)) ?? null;
   if (!run) return null;
-  const intent = getIntentForRun(run);
+  const intent = await getIntentForRun(run);
+  const toolCalls = await demoDataClient.listToolCalls(DEMO_SCOPE);
+  const artifacts = await demoDataClient.listArtifacts(DEMO_SCOPE);
+  const decisions = await demoDataClient.decisions.list(DEMO_SCOPE);
+  const auditEvents = await demoDataClient.listAuditEvents(DEMO_SCOPE);
 
   return {
     scope: DEMO_SCOPE,
     intent,
     run,
-    toolCalls: store.toolCalls.filter((record) => record.workflowIntentId === run.workflowIntentId),
-    artifacts: store.artifacts.filter((record) =>
+    toolCalls: toolCalls.filter((record) => record.workflowIntentId === run.workflowIntentId),
+    artifacts: artifacts.filter((record) =>
       run.artifactRefs?.some((artifactRef) => artifactRef.id === record.id),
     ),
-    decisions: store.decisions.filter((record) => run.decisionRecordIds?.includes(record.id)),
-    auditEvents: store.auditEvents.filter((record) => record.data?.runId === run.id),
+    decisions: decisions.filter((record) => run.decisionRecordIds?.includes(record.id)),
+    auditEvents: auditEvents.filter((record) => record.data?.runId === run.id),
   };
 };
 
-export const getLatestDemoRunSnapshot = () => {
-  const latestRunId = getDemoStore().latestRunId;
+export const getLatestDemoRunSnapshot = async () => {
+  const latestRunId = await demoDataClient.getLatestRunId(DEMO_SCOPE);
   return latestRunId ? getDemoRunSnapshot(latestRunId) : null;
 };
 
@@ -101,7 +97,7 @@ export const startDemoInspectRun = async () => {
     execution,
     stage: "observe",
     engine: "fixture",
-    externalRunId: createDemoId("fixture-engine-run"),
+    externalRunId: await demoDataClient.createId("fixture-engine-run"),
     heartbeatAt: queuedAt,
     lastEventAt: queuedAt,
     data: {
@@ -165,7 +161,7 @@ const markDemoRunRunning = async (runId: Id, workflowIntentId: Id) => {
     startedAt: timestamp,
   });
 
-  run.toolCallIds = [...(run.toolCallIds ?? []), toolCall.id];
+  await demoDataClient.linkRunToolCall(DEMO_SCOPE, { runId: run.id, toolCallId: toolCall.id });
   await appendAudit("tool.started", "Started demo.inspect tool call.", {
     runId,
     workflowIntentId,
@@ -175,11 +171,11 @@ const markDemoRunRunning = async (runId: Id, workflowIntentId: Id) => {
 };
 
 const completeDemoRun = async (runId: Id, workflowIntentId: Id) => {
-  const store = getDemoStore();
-  const run = store.runs.find((record) => record.id === runId);
+  const run = await demoDataClient.getRun(DEMO_SCOPE, runId);
   if (!run || run.status !== "running") return;
 
-  const toolCall = store.toolCalls.find(
+  const toolCalls = await demoDataClient.listToolCalls(DEMO_SCOPE);
+  const toolCall = toolCalls.find(
     (record) => record.workflowIntentId === workflowIntentId && record.status === "running",
   );
   const toolResult = await demoInspectTool.execute(
@@ -268,16 +264,18 @@ const completeDemoRun = async (runId: Id, workflowIntentId: Id) => {
     ],
   });
 
-  run.artifactRefs = [
-    {
-      id: artifact.id,
-      kind: artifact.kind,
-      uri: artifact.uri,
-      title: artifact.title,
-      mimeType: artifact.mimeType,
-    },
-  ];
-  run.decisionRecordIds = [decision.id];
+  const artifactRef = {
+    id: artifact.id,
+    kind: artifact.kind,
+    uri: artifact.uri,
+    title: artifact.title,
+    mimeType: artifact.mimeType,
+  };
+  await demoDataClient.linkRunOutputs(DEMO_SCOPE, {
+    runId,
+    artifactRef,
+    decisionRecordId: decision.id,
+  });
 
   await appendAudit("artifact.created", "Created demo inspect artifact metadata.", {
     runId,

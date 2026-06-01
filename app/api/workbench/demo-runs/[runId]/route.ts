@@ -10,7 +10,7 @@ type Params = {
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<Params> }) {
   const { runId } = await params;
-  const snapshot = getDemoRunSnapshot(runId);
+  const snapshot = await getDemoRunSnapshot(runId);
   if (!snapshot) {
     return NextResponse.json({ error: "Demo run not found" }, { status: 404 });
   }
