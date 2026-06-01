@@ -109,6 +109,11 @@ Exit criteria:
 
 Goal: make tools boring to add.
 
+Current local target: a runtime tool registry and exposure resolver path. The
+first registered tool remains the deterministic `demo.inspect` dry-run tool;
+the implementation should prove registration and visibility before adding real
+CLI or mutation-capable tools.
+
 Implement:
 
 - Runtime tool registry.
@@ -128,10 +133,17 @@ Exit criteria:
 
 Goal: replace mock state with a scoped data-client implementation.
 
-Current local target: file-backed JSON state behind `AgentFrameworkDataClient`.
-This proves restart survival and tenant isolation before Cloudflare resources
-are provisioned. The JSON backing is temporary; the repository behavior and
-smokes are intended to carry forward.
+Current local target: file-backed JSON state behind `AgentFrameworkDataClient`,
+plus a local Wrangler Worker with local D1 for a mediated run-status probe.
+This proves restart survival, tenant isolation, and the first
+Next/Fly-to-Cloudflare API path before remote Cloudflare resources are
+provisioned. The JSON and local D1 backings are temporary; the repository
+behavior, scoped API shape, and smokes are intended to carry forward.
+
+The current `Next -> Cloudflare Worker` call path is a bridge from the starter
+architecture, not the final control-plane ownership model. The production target
+is `browser -> Cloudflare control plane -> Fly/LangGraph execution`, with
+Cloudflare owning run coordination and user-facing status streams.
 
 Implement:
 
@@ -146,6 +158,8 @@ Exit criteria:
 - State survives local restart where expected.
 - Two fixture tenants cannot read each other's state.
 - Run status, history, and artifacts are inspectable.
+- A local Cloudflare Worker can receive tenant-scoped run status through a
+  mediated API.
 
 ## Phase 5: Hosted Control Plane Split
 

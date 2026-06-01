@@ -41,10 +41,52 @@ The local data-client backing writes JSON state to
 infrastructure only; Cloudflare D1/R2/Durable Object resources remain
 unprovisioned until the data-client access patterns are proven.
 
+## Local Cloudflare Control-Plane Probe
+
+The first Cloudflare-in-the-loop slice is local only. It adds a Wrangler Worker
+with a local D1 binding named `DB` and a scoped run-probe table. It proves the
+mediated path from the Next/Fly workbench runtime to a Cloudflare API without
+creating remote Cloudflare resources.
+
+Local commands:
+
+```bash
+printf 'CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=local-dev-token\n' > cloudflare/control-plane/.dev.vars
+pnpm db:cloudflare:migrate:local
+pnpm dev:cloudflare
+pnpm smoke:cloudflare:local
+```
+
+To include the Worker in the workbench demo, run the Next app with:
+
+```bash
+CLOUDFLARE_CONTROL_PLANE_URL=http://localhost:8787 \
+CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=local-dev-token \
+pnpm dev
+```
+
+`POST /api/workbench/demo-runs` remains the demo ingress. When the control-plane
+env vars are set, the demo runtime reports queued, running, and terminal run
+status to the local Worker and records a safe probe summary in audit events.
+When the env vars are absent, the existing JSON-backed demo path is unchanged.
+
+This local path is transitional. It proves that the workbench runtime can write
+status through a mediated Cloudflare API, but it does not mean Next.js remains
+the long-term control plane. In the production target, the browser starts with
+Cloudflare, Cloudflare derives tenant scope and owns run coordination, and
+Fly/LangGraph report heavy-work progress back through Cloudflare.
+
+## Local Tool Adapter Foundation
+
+The first tool adapter slice uses an in-process runtime registry and exposure
+resolver. `demo.inspect` is exposed only for dry-run observe workflows. This is
+the server-side seam that future Cloudflare/Fly tool execution should preserve;
+it is not a durable tool registry or permission store yet.
+
 ## Future Cloudflare Resources
 
-Do not create these until the first Cloudflare-backed data-client slice is
-scoped.
+Do not create these until the local Cloudflare-mediated data-client path has
+passed smoke checks and the first remote-backed repository group is scoped.
 
 Planned dev resource names:
 
@@ -74,7 +116,7 @@ Before creating Cloudflare resources, define:
 
 - Production auth provider.
 - Secret custody implementation.
-- D1/R2 migrations.
+- Remote D1/R2 migrations.
 - Direct D1/R2 access from Fly or LangGraph workers.
 - Mutation-capable tools.
-- Cloudflare Worker, Agent, or Wrangler deployment.
+- Cloudflare Worker, Agent, D1, R2, or Durable Object deployment.

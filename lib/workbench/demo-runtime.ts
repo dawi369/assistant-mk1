@@ -1,4 +1,5 @@
 import type { Id, LifecycleEventName } from "@/lib/agent-framework/contracts";
+import { executeRegisteredTool, getVisibleTools } from "@/lib/agent-framework/tool-runtime";
 import type {
   ArtifactMetadataRecord,
   AuditEventRecord,
@@ -7,8 +8,15 @@ import type {
   ToolCallRecord,
   WorkflowIntentRecord,
 } from "@/lib/agent-framework/db-contracts";
+import { recordCloudflareRunProbe } from "@/lib/workbench/cloudflare-control-plane-client";
 import { DEMO_AGENT_ID, DEMO_SCOPE, demoDataClient } from "@/lib/workbench/demo-data-client";
-import { demoInspectTool } from "@/lib/workbench/demo-tool";
+import {
+  type DemoInspectInput,
+  type DemoInspectOutput,
+  DEMO_INSPECT_TOOL_NAME,
+  workbenchToolExposureResolver,
+  workbenchToolRegistry,
+} from "@/lib/workbench/tool-registry";
 
 export type DemoRunSnapshot = {
   scope: typeof DEMO_SCOPE;
@@ -22,11 +30,13 @@ export type DemoRunSnapshot = {
 
 const actor = { type: "system", name: "Fixture Runtime" };
 const execution = { mode: "dry_run" as const, policy: "fixture-demo" };
+const demoInspectInput = { target: "workspace" as const };
 
 const appendAudit = async (
   action: LifecycleEventName,
   summary: string,
   links: { runId?: Id; workflowIntentId?: Id; targetId?: Id; targetType?: string },
+  data?: Record<string, unknown>,
 ) =>
   demoDataClient.audit.append(DEMO_SCOPE, {
     actor,
@@ -40,8 +50,73 @@ const appendAudit = async (
       eventName: action,
       runId: links.runId,
       workflowIntentId: links.workflowIntentId,
+      ...data,
     },
   });
+
+const cloudflareProbeAuditData = (
+  result: Awaited<ReturnType<typeof recordCloudflareRunProbe>>,
+): Record<string, unknown> => {
+  if (!result.enabled) {
+    return { cloudflareControlPlane: { enabled: false } };
+  }
+
+  if (!result.ok) {
+    return {
+      cloudflareControlPlane: {
+        enabled: true,
+        ok: false,
+        status: result.status,
+        error: result.error,
+      },
+    };
+  }
+
+  return {
+    cloudflareControlPlane: {
+      enabled: true,
+      ok: true,
+      runId: result.probe.runId,
+      status: result.probe.status,
+      updatedAt: result.probe.updatedAt,
+    },
+  };
+};
+
+const reportCloudflareRunProbe = async (input: {
+  runId: Id;
+  workflowIntentId: Id;
+  status: RunRecord["status"];
+  action: LifecycleEventName;
+  summary: string;
+}) => {
+  const result = await recordCloudflareRunProbe({
+    runId: input.runId,
+    workflowIntentId: input.workflowIntentId,
+    status: input.status,
+    summary: input.summary,
+    data: {
+      source: "next-workbench-demo-runtime",
+      agentId: DEMO_AGENT_ID,
+    },
+  });
+
+  if (!result.enabled) return;
+
+  await appendAudit(
+    input.action,
+    result.ok
+      ? `${input.summary} Cloudflare control-plane probe recorded.`
+      : `${input.summary} Cloudflare control-plane probe failed.`,
+    {
+      runId: input.runId,
+      workflowIntentId: input.workflowIntentId,
+      targetId: input.runId,
+      targetType: "run",
+    },
+    cloudflareProbeAuditData(result),
+  );
+};
 
 const getIntentForRun = async (run: RunRecord | null) => {
   if (!run?.workflowIntentId) return null;
@@ -117,6 +192,13 @@ export const startDemoInspectRun = async () => {
     targetId: run.id,
     targetType: "run",
   });
+  await reportCloudflareRunProbe({
+    runId: run.id,
+    workflowIntentId: intent.id,
+    status: "queued",
+    action: "run.queued",
+    summary: "Reported queued demo run to local Cloudflare control plane.",
+  });
 
   scheduleDemoRun(run.id, intent.id);
   return getDemoRunSnapshot(run.id);
@@ -150,6 +232,47 @@ const markDemoRunRunning = async (runId: Id, workflowIntentId: Id) => {
     targetId: run.id,
     targetType: "run",
   });
+  await reportCloudflareRunProbe({
+    runId,
+    workflowIntentId,
+    status: "running",
+    action: "run.started",
+    summary: "Reported running demo run to local Cloudflare control plane.",
+  });
+
+  const visibleTools = await getVisibleTools(
+    workbenchToolRegistry,
+    {
+      scope: DEMO_SCOPE,
+      agentId: DEMO_AGENT_ID,
+      runId,
+      execution,
+      stage: "observe",
+    },
+    workbenchToolExposureResolver,
+  );
+  const demoInspectTool = visibleTools.find((tool) => tool.name === DEMO_INSPECT_TOOL_NAME);
+  if (!demoInspectTool) {
+    await demoDataClient.runs.updateStatus(DEMO_SCOPE, {
+      id: runId,
+      status: "failed",
+      data: { failureSummary: "Demo inspect tool was not exposed by policy." },
+    });
+    await appendAudit("run.failed", "Demo inspect tool was not exposed by policy.", {
+      runId,
+      workflowIntentId,
+      targetId: runId,
+      targetType: "run",
+    });
+    await reportCloudflareRunProbe({
+      runId,
+      workflowIntentId,
+      status: "failed",
+      action: "run.failed",
+      summary: "Reported failed demo run to local Cloudflare control plane.",
+    });
+    return;
+  }
 
   const toolCall = await demoDataClient.toolCalls.recordStarted(DEMO_SCOPE, {
     toolId: demoInspectTool.name,
@@ -178,12 +301,16 @@ const completeDemoRun = async (runId: Id, workflowIntentId: Id) => {
   const toolCall = toolCalls.find(
     (record) => record.workflowIntentId === workflowIntentId && record.status === "running",
   );
-  const toolResult = await demoInspectTool.execute(
-    { target: "workspace" },
+  const toolResult = await executeRegisteredTool<DemoInspectInput, DemoInspectOutput>(
+    workbenchToolRegistry,
     {
-      scope: DEMO_SCOPE,
-      execution,
-      workflowIntentId,
+      toolName: DEMO_INSPECT_TOOL_NAME,
+      input: demoInspectInput,
+      context: {
+        scope: DEMO_SCOPE,
+        execution,
+        workflowIntentId,
+      },
     },
   );
 
@@ -198,6 +325,13 @@ const completeDemoRun = async (runId: Id, workflowIntentId: Id) => {
       workflowIntentId,
       targetId: runId,
       targetType: "run",
+    });
+    await reportCloudflareRunProbe({
+      runId,
+      workflowIntentId,
+      status: "failed",
+      action: "run.failed",
+      summary: "Reported failed demo run to local Cloudflare control plane.",
     });
     return;
   }
@@ -306,5 +440,12 @@ const completeDemoRun = async (runId: Id, workflowIntentId: Id) => {
     workflowIntentId,
     targetId: runId,
     targetType: "run",
+  });
+  await reportCloudflareRunProbe({
+    runId,
+    workflowIntentId,
+    status: "completed",
+    action: "run.completed",
+    summary: "Reported completed demo run to local Cloudflare control plane.",
   });
 };

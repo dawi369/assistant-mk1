@@ -46,3 +46,7 @@ next-env.d.ts
 
 # Local workbench durable state
 .assistant-mk1/
+
+# Local Cloudflare Worker secrets and state
+cloudflare/control-plane/.dev.vars
+cloudflare/control-plane/.wrangler/

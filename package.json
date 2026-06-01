@@ -16,7 +16,11 @@
     "format": "oxfmt --check",
     "format:fix": "oxfmt",
     "lint:fix": "oxlint --fix && oxfmt",
+    "db:cloudflare:migrate:local": "wrangler d1 migrations apply assistant_mk1_dev --local --config cloudflare/control-plane/wrangler.jsonc",
+    "dev:cloudflare": "wrangler dev --config cloudflare/control-plane/wrangler.jsonc --local --port 8787",
+    "smoke:cloudflare:local": "tsx scripts/smoke-cloudflare-control-plane.ts",
     "smoke:data-client:isolation": "tsx scripts/smoke-data-client-isolation.ts",
+    "smoke:tool-registry": "tsx scripts/smoke-tool-registry.ts",
     "smoke:workbench": "tsx scripts/smoke-workbench.ts",
     "smoke:workbench:local": "SMOKE_BASE_URL=http://localhost:3000 tsx scripts/smoke-workbench.ts",
     "graph:render": "tsx scripts/render-architecture-graph.ts render",
@@ -61,7 +65,8 @@
     "oxlint": "^1.66.0",
     "tailwindcss": "^4.3.0",
     "tsx": "^4.22.3",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "wrangler": "^4.96.0"
   },
   "packageManager": "pnpm@10.33.0"
 }
