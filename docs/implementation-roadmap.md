@@ -145,6 +145,11 @@ architecture, not the final control-plane ownership model. The production target
 is `browser -> Cloudflare control plane -> Fly/LangGraph execution`, with
 Cloudflare owning run coordination and user-facing status streams.
 
+Thin production-shaped target: Cloudflare-owned demo run control. The local
+Worker creates the run in D1, delegates deterministic execution to a signed
+Next/Fly-style executor, receives progress/result callbacks, and serves the
+completed snapshot from Cloudflare-owned state.
+
 Implement:
 
 - Data-client backing implementation behind the existing repository interface.
@@ -160,6 +165,8 @@ Exit criteria:
 - Run status, history, and artifacts are inspectable.
 - A local Cloudflare Worker can receive tenant-scoped run status through a
   mediated API.
+- A local Cloudflare Worker can own a fixture demo run while a signed executor
+  performs the work and reports callbacks.
 
 ## Phase 5: Hosted Control Plane Split
 

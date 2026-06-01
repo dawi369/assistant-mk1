@@ -18,6 +18,7 @@
     "lint:fix": "oxlint --fix && oxfmt",
     "db:cloudflare:migrate:local": "wrangler d1 migrations apply assistant_mk1_dev --local --config cloudflare/control-plane/wrangler.jsonc",
     "dev:cloudflare": "wrangler dev --config cloudflare/control-plane/wrangler.jsonc --local --port 8787",
+    "smoke:cloudflare-owned-run:local": "SMOKE_BASE_URL=http://localhost:3000 tsx scripts/smoke-cloudflare-owned-run.ts",
     "smoke:cloudflare:local": "tsx scripts/smoke-cloudflare-control-plane.ts",
     "smoke:data-client:isolation": "tsx scripts/smoke-data-client-isolation.ts",
     "smoke:tool-registry": "tsx scripts/smoke-tool-registry.ts",

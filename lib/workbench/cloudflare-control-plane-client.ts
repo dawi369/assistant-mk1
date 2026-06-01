@@ -14,6 +14,30 @@ export type CloudflareRunProbeRecord = {
   updatedAt: string;
 };
 
+export type CloudflareOwnedDemoRunSnapshot = {
+  scope: {
+    userId: Id;
+    workspaceId: Id;
+  };
+  intent: Record<string, unknown> | null;
+  run: {
+    id: Id;
+    status: RunStatus;
+    workflowIntentId?: Id;
+    data?: Record<string, unknown>;
+  } | null;
+  toolCalls: Array<Record<string, unknown>>;
+  artifacts: Array<Record<string, unknown>>;
+  decisions: Array<Record<string, unknown>>;
+  auditEvents: Array<Record<string, unknown>>;
+};
+
+export type CloudflareOwnedDemoRunResponse = {
+  ok?: boolean;
+  snapshot?: CloudflareOwnedDemoRunSnapshot | null;
+  error?: string;
+};
+
 export type CloudflareRunProbeResult =
   | {
       enabled: false;
@@ -69,6 +93,43 @@ const parseErrorBody = async (response: Response) => {
     return body;
   }
 };
+
+const requestControlPlane = async <T>(path: string, init?: RequestInit): Promise<T> => {
+  const config = getControlPlaneConfig();
+  if (!config) {
+    throw new Error(
+      "CLOUDFLARE_CONTROL_PLANE_URL and CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN are required",
+    );
+  }
+
+  const response = await fetchWithTimeout(`${config.baseUrl}${path}`, {
+    ...init,
+    headers: {
+      authorization: `Bearer ${config.token}`,
+      "content-type": "application/json",
+      ...init?.headers,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(await parseErrorBody(response));
+  }
+
+  return (await response.json()) as T;
+};
+
+export const startCloudflareOwnedDemoRun = () =>
+  requestControlPlane<CloudflareOwnedDemoRunResponse>("/workbench/demo-runs", {
+    method: "POST",
+  });
+
+export const getLatestCloudflareOwnedDemoRunSnapshot = () =>
+  requestControlPlane<CloudflareOwnedDemoRunResponse>("/workbench/demo-runs/latest");
+
+export const getCloudflareOwnedDemoRunSnapshot = (runId: Id) =>
+  requestControlPlane<CloudflareOwnedDemoRunResponse>(
+    `/workbench/demo-runs/${encodeURIComponent(runId)}`,
+  );
 
 export const recordCloudflareRunProbe = async (
   input: RecordRunProbeInput,

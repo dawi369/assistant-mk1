@@ -51,7 +51,11 @@ creating remote Cloudflare resources.
 Local commands:
 
 ```bash
-printf 'CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=local-dev-token\n' > cloudflare/control-plane/.dev.vars
+cat > cloudflare/control-plane/.dev.vars <<'EOF'
+CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=local-dev-token
+WORKBENCH_EXECUTOR_URL=http://localhost:3000/api/workbench/executors/demo-inspect
+WORKBENCH_EXECUTOR_TOKEN=local-executor-token
+EOF
 pnpm db:cloudflare:migrate:local
 pnpm dev:cloudflare
 pnpm smoke:cloudflare:local
@@ -62,6 +66,7 @@ To include the Worker in the workbench demo, run the Next app with:
 ```bash
 CLOUDFLARE_CONTROL_PLANE_URL=http://localhost:8787 \
 CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=local-dev-token \
+WORKBENCH_EXECUTOR_TOKEN=local-executor-token \
 pnpm dev
 ```
 
@@ -75,6 +80,16 @@ status through a mediated Cloudflare API, but it does not mean Next.js remains
 the long-term control plane. In the production target, the browser starts with
 Cloudflare, Cloudflare derives tenant scope and owns run coordination, and
 Fly/LangGraph report heavy-work progress back through Cloudflare.
+
+The next thin production-shaped path is the Cloudflare-owned demo run:
+
+```bash
+pnpm smoke:cloudflare-owned-run:local
+```
+
+That smoke starts at the Next proxy, creates the run in the local Cloudflare
+Worker, delegates execution to the signed Next executor, receives callbacks,
+and reads the completed run snapshot from D1-owned Cloudflare state.
 
 ## Local Tool Adapter Foundation
 
