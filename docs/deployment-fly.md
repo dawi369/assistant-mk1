@@ -47,6 +47,17 @@ Health:
 curl https://assistant-mk1-dev.fly.dev/api/health
 ```
 
+Workbench vertical slice:
+
+```bash
+SMOKE_BASE_URL=https://assistant-mk1-dev.fly.dev pnpm smoke:workbench
+```
+
+This verifies `/api/health`, starts a local fixture workbench run through
+`/api/workbench/demo-runs`, polls `/api/workbench/demo-runs/latest`, and fails
+unless the completed snapshot includes intent, run, tool call, artifact,
+decision, and audit records.
+
 External signal:
 
 ```bash
@@ -59,6 +70,8 @@ curl -X POST https://assistant-mk1-dev.fly.dev/api/external-signals \
 Frontend:
 
 - Open the Fly URL.
+- Run "Run demo inspect" and confirm the workbench panel shows completed run,
+  tool call, artifact, decision, and audit timeline.
 - Send a message.
 - Confirm a thread is created and streaming works.
 - Confirm server logs do not expose provider secrets.

@@ -5,12 +5,12 @@
  * workbench panels can wrap this route over time without turning the app into a
  * marketing or demo landing page.
  */
-import { Assistant } from "./assistant";
+import { WorkbenchShell } from "@/components/workbench/workbench-shell";
 
 export default function Home() {
   return (
     <main className="h-dvh">
-      <Assistant />
+      <WorkbenchShell />
     </main>
   );
 }

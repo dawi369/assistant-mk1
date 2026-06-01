@@ -24,3 +24,8 @@ timeout = "2s"
 grace_period = "20s"
 method = "GET"
 path = "/api/health"
+
+[vm]
+cpu_kind = "shared"
+cpus = 1
+memory = "1gb"
