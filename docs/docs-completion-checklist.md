@@ -11,32 +11,32 @@ Status values:
 
 ## Current Status
 
-| Area                          | Status      | Source                                                       |
-| ----------------------------- | ----------- | ------------------------------------------------------------ |
-| Product goal                  | build-ready | `goal.md`                                                    |
-| System architecture           | build-ready | `docs/architecture.md`                                       |
-| Implementation roadmap        | build-ready | `docs/implementation-roadmap.md`                             |
-| Runtime model                 | build-ready | `docs/runtime.md`, `docs/run-lifecycle.md`                   |
-| Run lifecycle                 | build-ready | `docs/run-lifecycle.md`                                      |
-| Tool system                   | build-ready | `docs/tool-system.md`                                        |
-| Policy model                  | build-ready | `docs/policy-model.md`                                       |
-| Context assembly              | build-ready | `docs/context-assembly.md`                                   |
-| Durable entities              | build-ready | `docs/db-contracts.md`                                       |
-| Data-client boundary          | build-ready | `docs/db-contracts.md`, `lib/agent-framework/data-client.ts` |
-| Control-plane operations      | build-ready | `docs/control-plane-api.md`                                  |
-| Workbench UI IA               | build-ready | `docs/workbench-ui.md`                                       |
-| Observability and audit       | build-ready | `docs/observability-and-audit.md`                            |
-| First vertical slice          | build-ready | `docs/first-vertical-slice.md`                               |
-| Tenancy principles            | build-ready | `docs/tenancy.md`                                            |
-| Secret/risk principles        | build-ready | `docs/secrets-and-risk.md`                                   |
-| Fly staging                   | build-ready | `docs/deployment-fly.md`                                     |
-| Cloudflare target             | partial     | `docs/cloudflare-control-plane.md`                           |
-| Fly tool runners target       | partial     | `docs/fly-tool-runners.md`                                   |
-| Production auth provider      | deferred    | future auth implementation plan                              |
-| Secret storage implementation | deferred    | future secret custody implementation                         |
-| D1/R2 migrations              | deferred    | future storage implementation                                |
-| Cloudflare IaC                | deferred    | future hosted control-plane slice                            |
-| Live mutation tools           | deferred    | blocked by production mutation gate                          |
+| Area                          | Status                      | Source                                                       |
+| ----------------------------- | --------------------------- | ------------------------------------------------------------ |
+| Product goal                  | build-ready                 | `goal.md`                                                    |
+| System architecture           | build-ready                 | `docs/architecture.md`                                       |
+| Implementation roadmap        | build-ready                 | `docs/implementation-roadmap.md`                             |
+| Runtime model                 | build-ready                 | `docs/runtime.md`, `docs/run-lifecycle.md`                   |
+| Run lifecycle                 | build-ready                 | `docs/run-lifecycle.md`                                      |
+| Tool system                   | build-ready                 | `docs/tool-system.md`                                        |
+| Policy model                  | build-ready                 | `docs/policy-model.md`                                       |
+| Context assembly              | build-ready                 | `docs/context-assembly.md`                                   |
+| Durable entities              | build-ready                 | `docs/db-contracts.md`                                       |
+| Data-client boundary          | build-ready                 | `docs/db-contracts.md`, `lib/agent-framework/data-client.ts` |
+| Control-plane operations      | build-ready for first slice | `docs/control-plane-api.md`                                  |
+| Workbench UI IA               | build-ready                 | `docs/workbench-ui.md`                                       |
+| Observability and audit       | build-ready                 | `docs/observability-and-audit.md`                            |
+| First vertical slice          | build-ready                 | `docs/first-vertical-slice.md`                               |
+| Tenancy principles            | build-ready                 | `docs/tenancy.md`                                            |
+| Secret/risk principles        | build-ready                 | `docs/secrets-and-risk.md`                                   |
+| Fly staging                   | build-ready                 | `docs/deployment-fly.md`                                     |
+| Cloudflare target             | partial                     | `docs/cloudflare-control-plane.md`                           |
+| Fly tool runners target       | partial                     | `docs/fly-tool-runners.md`                                   |
+| Production auth provider      | deferred                    | future auth implementation plan                              |
+| Secret storage implementation | deferred                    | future secret custody implementation                         |
+| D1/R2 migrations              | deferred                    | future storage implementation                                |
+| Cloudflare IaC                | deferred                    | future hosted control-plane slice                            |
+| Live mutation tools           | deferred                    | blocked by production mutation gate                          |
 
 ## Required Before Main Implementation
 
@@ -46,6 +46,11 @@ Status values:
 - First vertical slice has clear acceptance criteria.
 - assistant-ui leverage boundaries are documented.
 - Current known lint/formatter drift is reported if full lint still fails.
+
+`build-ready for first slice` means the first vertical slice should not need
+major product decisions. Production auth, trigger operations, storage
+implementation, and Cloudflare/Fly infrastructure details remain deferred until
+their implementation phases.
 
 ## Definition Of 90%
 

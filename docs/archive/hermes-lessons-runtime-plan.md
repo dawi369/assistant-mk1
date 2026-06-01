@@ -1,9 +1,17 @@
 # Hermes Lessons Runtime Plan
 
-Status: temporary input to the canonical roadmap in
-`docs/implementation-roadmap.md`.
+Status: archived historical rationale.
 
-This is a temporary implementation plan for applying useful Hermes architecture
+The useful lessons from this plan have been integrated into the active roadmap,
+run lifecycle, tool system, context assembly, and observability docs:
+
+- `docs/implementation-roadmap.md`
+- `docs/run-lifecycle.md`
+- `docs/tool-system.md`
+- `docs/context-assembly.md`
+- `docs/observability-and-audit.md`
+
+This was a temporary implementation plan for applying useful Hermes architecture
 lessons to Assistant-MK1 without turning this project into a local harness
 clone.
 

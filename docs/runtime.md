@@ -85,24 +85,11 @@ library.
 Runtime behavior should emit typed lifecycle events before Assistant-MK1 adds
 any user-installed hook system.
 
-Initial events:
-
-- `intent.created`
-- `run.queued`
-- `run.started`
-- `run.interrupted`
-- `approval.requested`
-- `tool.requested`
-- `tool.started`
-- `tool.finished`
-- `artifact.created`
-- `decision.created`
-- `run.completed`
-- `run.failed`
-- `run.cancelled`
-
-These events feed audit logs, UI timelines, policy checks, and future extension
-points. Arbitrary filesystem hooks are not part of the first implementation.
+The canonical event vocabulary is documented in
+`docs/observability-and-audit.md` and backed by `LifecycleEventName` in
+`lib/agent-framework/contracts.ts`. These events feed audit logs, UI timelines,
+policy checks, and future extension points. Arbitrary filesystem hooks are not
+part of the first implementation.
 
 ## Crons
 
