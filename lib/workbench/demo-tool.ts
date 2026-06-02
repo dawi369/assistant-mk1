@@ -16,10 +16,10 @@ export type DemoInspectOutput = {
 
 export const demoInspectTool: ToolDefinition<DemoInspectInput, DemoInspectOutput> = {
   name: "demo.inspect",
-  description: "Inspect the fixture workspace and return a deterministic dry-run report.",
+  description: "Inspect the trusted dev workspace and return a deterministic dry-run report.",
   kind: "native",
   timeoutMs: 1_000,
-  execute: async (input) => ({
+  execute: async (input, context) => ({
     ok: true,
     output: {
       inspectedTarget: input.target,
@@ -27,7 +27,7 @@ export const demoInspectTool: ToolDefinition<DemoInspectInput, DemoInspectOutput
         {
           name: "tenant_scope",
           status: "pass",
-          summary: "Fixture tenant scope was applied by runtime code.",
+          summary: `Trusted tenant scope was applied by runtime code for workspace ${context.scope.workspaceId}.`,
         },
         {
           name: "tool_policy",
@@ -40,7 +40,7 @@ export const demoInspectTool: ToolDefinition<DemoInspectInput, DemoInspectOutput
           summary: "The run produced audit, artifact, and decision records.",
         },
       ],
-      summary: "Fixture workspace inspection completed without external mutation.",
+      summary: "Trusted dev workspace inspection completed without external mutation.",
     },
     auditSummary: "demo.inspect returned a deterministic dry-run report.",
   }),

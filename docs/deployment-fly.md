@@ -27,6 +27,9 @@ For the remote Cloudflare-owned run baseline, also set:
 fly secrets set CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url>
 fly secrets set CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=...
 fly secrets set WORKBENCH_EXECUTOR_TOKEN=...
+fly secrets set WORKBENCH_DEV_USER_ID=dev-user
+fly secrets set WORKBENCH_DEV_WORKSPACE_ID=dev-workspace
+fly secrets set WORKBENCH_DEV_AGENT_ID=dev-agent
 ```
 
 Optional:
@@ -70,9 +73,20 @@ Fly/Next proxy -> remote Cloudflare Worker -> remote D1
 ```
 
 The Fly app must have `CLOUDFLARE_CONTROL_PLANE_URL`,
-`CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN`, and `WORKBENCH_EXECUTOR_TOKEN` set before
-this smoke can pass. `pnpm smoke:workbench` is an alias for the
-Cloudflare-owned run smoke.
+`CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN`, `WORKBENCH_EXECUTOR_TOKEN`, and the three
+`WORKBENCH_DEV_*` identity values set before this smoke can pass.
+`pnpm smoke:workbench` is an alias for the Cloudflare-owned run smoke.
+
+To prove scoped remote D1 reads and writes, run:
+
+```bash
+CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
+CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
+pnpm smoke:tenant-isolation
+```
+
+That smoke calls the Worker with two trusted dev tenant identities and confirms
+cross-tenant run reads return `404`.
 
 Cloudflare remote deploy sequence:
 

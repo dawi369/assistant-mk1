@@ -1,4 +1,9 @@
-import type { Id, RunStatus } from "@/lib/agent-framework/contracts";
+import type { Id, RunStatus, TenantScope } from "@/lib/agent-framework/contracts";
+
+type WorkbenchDevAgentIdentity = {
+  scope: TenantScope;
+  agentId: Id;
+};
 
 export type CloudflareOwnedDemoRunSnapshot = {
   scope: {
@@ -32,6 +37,23 @@ const getControlPlaneConfig = () => {
   return baseUrl && token ? { baseUrl, token } : null;
 };
 
+const getWorkbenchDevAgentIdentity = (): WorkbenchDevAgentIdentity => {
+  const userId = process.env.WORKBENCH_DEV_USER_ID?.trim();
+  const workspaceId = process.env.WORKBENCH_DEV_WORKSPACE_ID?.trim();
+  const agentId = process.env.WORKBENCH_DEV_AGENT_ID?.trim();
+
+  if (!userId || !workspaceId || !agentId) {
+    throw new Error(
+      "WORKBENCH_DEV_USER_ID, WORKBENCH_DEV_WORKSPACE_ID, and WORKBENCH_DEV_AGENT_ID are required",
+    );
+  }
+
+  return {
+    scope: { userId, workspaceId },
+    agentId,
+  };
+};
+
 const fetchWithTimeout = async (url: string, init: RequestInit) => {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
@@ -62,12 +84,16 @@ const requestControlPlane = async <T>(path: string, init?: RequestInit): Promise
       "CLOUDFLARE_CONTROL_PLANE_URL and CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN are required",
     );
   }
+  const identity = getWorkbenchDevAgentIdentity();
 
   const response = await fetchWithTimeout(`${config.baseUrl}${path}`, {
     ...init,
     headers: {
       authorization: `Bearer ${config.token}`,
       "content-type": "application/json",
+      "x-assistant-mk1-user-id": identity.scope.userId,
+      "x-assistant-mk1-workspace-id": identity.scope.workspaceId,
+      "x-assistant-mk1-agent-id": identity.agentId,
       ...init?.headers,
     },
   });

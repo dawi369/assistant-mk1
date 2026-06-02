@@ -77,3 +77,9 @@ Scoped direct storage access from Fly/LangGraph is a future optimization, not a 
 Every Cloudflare entry point must derive tenant scope from trusted auth/session/trigger context. The model must not provide `userId` or `workspaceId`.
 
 All D1 queries, R2 object keys, Durable Object IDs, and tool-runner calls must include tenant scope.
+
+The current dev baseline uses server-derived `WORKBENCH_DEV_*` identity values
+from Fly/Next and forwards them to the Worker as trusted headers. This is a
+temporary auth stand-in; the durable rule is that Worker storage operations take
+trusted scope explicitly and executor callbacks resolve scope from the stored
+run record.

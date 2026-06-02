@@ -12,9 +12,11 @@ import {
 } from "../lib/workbench/tool-registry";
 
 const scope = {
-  userId: "fixture-user",
-  workspaceId: "fixture-workspace",
+  userId: "dev-user",
+  workspaceId: "dev-workspace",
 };
+
+const agentId = "dev-agent";
 
 const visibleTool: ToolDefinition<{ value: string }, { value: string }> = {
   name: "smoke.visible",
@@ -67,7 +69,7 @@ const main = async () => {
     registry,
     {
       scope,
-      agentId: "fixture-agent",
+      agentId,
       execution: { mode: "dry_run" },
     },
     defaultToolExposureResolver,
@@ -78,7 +80,7 @@ const main = async () => {
     registry,
     {
       scope,
-      agentId: "fixture-agent",
+      agentId,
       execution: { mode: "dry_run" },
     },
     filteringResolver,
@@ -101,7 +103,7 @@ const main = async () => {
     workbenchToolRegistry,
     {
       scope,
-      agentId: "fixture-agent",
+      agentId,
       execution: { mode: "dry_run" },
       stage: "observe",
     },
@@ -113,7 +115,7 @@ const main = async () => {
     workbenchToolRegistry,
     {
       scope,
-      agentId: "fixture-agent",
+      agentId,
       execution: { mode: "execute" },
       stage: "execute",
     },

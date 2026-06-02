@@ -22,6 +22,7 @@
     "dev:cloudflare": "wrangler dev --config cloudflare/control-plane/wrangler.jsonc --local --port 8787",
     "smoke:cloudflare-owned-run": "tsx scripts/smoke-cloudflare-owned-run.ts",
     "smoke:cloudflare-owned-run:local": "SMOKE_BASE_URL=http://localhost:3000 tsx scripts/smoke-cloudflare-owned-run.ts",
+    "smoke:tenant-isolation": "tsx scripts/smoke-tenant-isolation.ts",
     "smoke:tool-registry": "tsx scripts/smoke-tool-registry.ts",
     "smoke:workbench": "tsx scripts/smoke-cloudflare-owned-run.ts",
     "smoke:workbench:local": "SMOKE_BASE_URL=http://localhost:3000 tsx scripts/smoke-cloudflare-owned-run.ts",

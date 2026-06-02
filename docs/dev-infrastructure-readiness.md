@@ -27,6 +27,9 @@ Required secrets:
 - `CLOUDFLARE_CONTROL_PLANE_URL`
 - `CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN`
 - `WORKBENCH_EXECUTOR_TOKEN`
+- `WORKBENCH_DEV_USER_ID`
+- `WORKBENCH_DEV_WORKSPACE_ID`
+- `WORKBENCH_DEV_AGENT_ID`
 
 Optional secrets:
 
@@ -66,6 +69,9 @@ In another terminal, run the Next app with:
 CLOUDFLARE_CONTROL_PLANE_URL=http://localhost:8787 \
 CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=local-dev-token \
 WORKBENCH_EXECUTOR_TOKEN=local-executor-token \
+WORKBENCH_DEV_USER_ID=dev-user \
+WORKBENCH_DEV_WORKSPACE_ID=dev-workspace \
+WORKBENCH_DEV_AGENT_ID=dev-agent \
 pnpm dev
 ```
 
@@ -78,6 +84,15 @@ pnpm smoke:workbench:local
 That smoke starts at the Next proxy, creates the run in the local Cloudflare
 Worker, delegates execution to the signed Next executor, receives callbacks,
 and reads the completed run snapshot from D1-owned Cloudflare state.
+
+To prove D1 tenant isolation at the Worker boundary, run:
+
+```bash
+pnpm smoke:tenant-isolation
+```
+
+That smoke uses two trusted dev tenant identities and verifies each tenant sees
+only its own latest run.
 
 The local Worker code is split by responsibility: route dispatch, HTTP/auth
 helpers, Cloudflare-owned demo-run handlers, and D1-backed demo run storage.
@@ -128,6 +143,11 @@ The browser-visible `Run demo inspect` button uses the Cloudflare-owned route by
 default. Missing Cloudflare configuration should fail visibly; there is no
 secondary local demo route.
 
+Tenant scope for the current dev baseline is temporary and server-derived.
+Fly/Next reads `WORKBENCH_DEV_USER_ID`, `WORKBENCH_DEV_WORKSPACE_ID`, and
+`WORKBENCH_DEV_AGENT_ID`, then forwards those values to the Worker as trusted
+headers. Browser requests never choose tenant scope.
+
 ## Local Tool Adapter Foundation
 
 The first tool adapter slice uses an in-process runtime registry and exposure
@@ -156,11 +176,12 @@ Planned bindings:
 Before creating additional Cloudflare resources, define:
 
 - Which `AgentFrameworkDataClient` repository group is implemented first.
-- The tenant-scope derivation path for local/dev requests.
+- The production auth/session source that replaces the temporary dev tenant
+  env vars.
 - The minimum D1 tables or Durable Object storage required for that repository
   group.
 - The R2 object key convention for artifact metadata produced by the demo slice.
-- A smoke command that proves two fixture tenants cannot read each other's state.
+- A smoke command that proves two dev tenants cannot read each other's state.
 
 ## Out Of Scope For This Step
 

@@ -4,7 +4,7 @@ import {
   handleRunCallback,
   handleStartCloudflareDemoRun,
 } from "./demo-runs";
-import { json, requireAuth } from "./http";
+import { json, requireAgentIdentity, requireAuth } from "./http";
 import type { Env, WorkerExecutionContext } from "./types";
 
 const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionContext) => {
@@ -21,21 +21,25 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
   const authResponse = requireAuth(request, env);
   if (authResponse) return authResponse;
 
+  if (request.method === "POST" && url.pathname === "/internal/workbench/run-callbacks") {
+    return handleRunCallback(request, env);
+  }
+
+  const identityResult = requireAgentIdentity(request);
+  if (!identityResult.ok) return identityResult.response;
+  const { identity } = identityResult;
+
   if (request.method === "POST" && url.pathname === "/workbench/demo-runs") {
-    return handleStartCloudflareDemoRun(request, env, ctx);
+    return handleStartCloudflareDemoRun(request, env, ctx, identity);
   }
 
   if (request.method === "GET" && url.pathname === "/workbench/demo-runs/latest") {
-    return handleLatestCloudflareDemoRun(env);
+    return handleLatestCloudflareDemoRun(env, identity.scope);
   }
 
   const demoRunMatch = url.pathname.match(/^\/workbench\/demo-runs\/([^/]+)$/);
   if (request.method === "GET" && demoRunMatch?.[1]) {
-    return handleGetCloudflareDemoRun(env, demoRunMatch[1]);
-  }
-
-  if (request.method === "POST" && url.pathname === "/internal/workbench/run-callbacks") {
-    return handleRunCallback(request, env);
+    return handleGetCloudflareDemoRun(env, identity.scope, demoRunMatch[1]);
   }
 
   return json({ ok: false, error: "not found" }, { status: 404 });

@@ -27,7 +27,7 @@ transcript state.
 
 ## In Scope
 
-- Local-only fixture tenant scope.
+- Temporary trusted dev tenant scope.
 - One workflow intent type, such as `demo.inspect`.
 - One run record.
 - One harmless typed tool.

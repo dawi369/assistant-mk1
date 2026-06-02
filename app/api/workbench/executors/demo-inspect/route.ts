@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import type { Id, TenantScope } from "@/lib/agent-framework/contracts";
 import { executeRegisteredTool } from "@/lib/agent-framework/tool-runtime";
 import {
   type DemoInspectInput,
@@ -13,16 +14,13 @@ export const runtime = "nodejs";
 type ExecutorRequest = {
   runId?: string;
   workflowIntentId?: string;
+  scope?: Partial<TenantScope>;
+  agentId?: Id;
   callbackUrl?: string;
   callbackToken?: string;
 };
 
-const scope = {
-  userId: "fixture-user",
-  workspaceId: "fixture-workspace",
-};
-
-const execution = { mode: "dry_run" as const, policy: "fixture-demo" };
+const execution = { mode: "dry_run" as const, policy: "dev-demo" };
 
 const readRequest = async (request: NextRequest): Promise<ExecutorRequest> => {
   try {
@@ -30,6 +28,21 @@ const readRequest = async (request: NextRequest): Promise<ExecutorRequest> => {
   } catch {
     return {};
   }
+};
+
+const readExecutorIdentity = (body: ExecutorRequest) => {
+  const userId = body.scope?.userId?.trim();
+  const workspaceId = body.scope?.workspaceId?.trim();
+  const agentId = body.agentId?.trim();
+
+  if (!userId || !workspaceId || !agentId) {
+    return null;
+  }
+
+  return {
+    scope: { userId, workspaceId },
+    agentId,
+  };
 };
 
 const postCallback = async (
@@ -87,6 +100,13 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   }
+  const identity = readExecutorIdentity(body);
+  if (!identity) {
+    return NextResponse.json(
+      { error: "scope.userId, scope.workspaceId, and agentId are required" },
+      { status: 400 },
+    );
+  }
 
   const callbackInput = {
     runId: body.runId,
@@ -107,7 +127,7 @@ export async function POST(request: NextRequest) {
       toolName: DEMO_INSPECT_TOOL_NAME,
       input: { target: "workspace" },
       context: {
-        scope,
+        scope: identity.scope,
         execution,
         workflowIntentId: body.workflowIntentId,
       },

@@ -149,9 +149,9 @@ Implement:
 Exit criteria:
 
 - State survives local restart where expected.
-- Two fixture tenants cannot read each other's state.
+- Two dev tenants cannot read each other's state.
 - Run status, history, and artifacts are inspectable.
-- A local Cloudflare Worker can own a fixture demo run while a signed executor
+- A local Cloudflare Worker can own a dev demo run while a signed executor
   performs the work and reports callbacks.
 
 ## Phase 5: Hosted Control Plane Split

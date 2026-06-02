@@ -29,6 +29,16 @@ export type WorkerExecutionContext = {
   waitUntil(promise: Promise<unknown>): void;
 };
 
+export type TenantScope = {
+  userId: string;
+  workspaceId: string;
+};
+
+export type AgentIdentity = {
+  scope: TenantScope;
+  agentId: string;
+};
+
 export type ControlIntentRow = {
   id: string;
   user_id: string;
@@ -120,13 +130,7 @@ export type ControlAuditRow = {
   created_at: string;
 };
 
-export const fixtureScope = {
-  userId: "fixture-user",
-  workspaceId: "fixture-workspace",
-};
-
-export const fixtureAgentId = "fixture-agent";
-export const demoExecution = { mode: "dry_run", policy: "fixture-demo" };
+export const demoExecution = { mode: "dry_run", policy: "dev-demo" };
 export const demoWorkflowType = "demo.inspect";
 
 export const allowedStatuses = new Set<RunStatus>([

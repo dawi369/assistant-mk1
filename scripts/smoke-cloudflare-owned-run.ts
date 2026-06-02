@@ -1,4 +1,8 @@
 type SmokeSnapshot = {
+  scope?: {
+    userId?: string;
+    workspaceId?: string;
+  };
   intent?: unknown;
   run?: {
     id?: string;
@@ -19,6 +23,13 @@ type SmokeResponse = {
 const baseUrl = (process.env.SMOKE_BASE_URL ?? "http://localhost:3000").replace(/\/$/, "");
 const pollTimeoutMs = Number(process.env.SMOKE_TIMEOUT_MS ?? 10_000);
 const pollIntervalMs = Number(process.env.SMOKE_POLL_INTERVAL_MS ?? 400);
+const expectedScope =
+  process.env.WORKBENCH_DEV_USER_ID && process.env.WORKBENCH_DEV_WORKSPACE_ID
+    ? {
+        userId: process.env.WORKBENCH_DEV_USER_ID,
+        workspaceId: process.env.WORKBENCH_DEV_WORKSPACE_ID,
+      }
+    : null;
 
 const readJson = async <T>(path: string, init?: RequestInit): Promise<T> => {
   const response = await fetch(`${baseUrl}${path}`, init);
@@ -40,6 +51,16 @@ const requireArray = (snapshot: SmokeSnapshot, key: keyof SmokeSnapshot) => {
   const value = snapshot[key];
   if (!Array.isArray(value) || value.length === 0) {
     throw new Error(`completed snapshot is missing ${key}`);
+  }
+};
+
+const requireExpectedScope = (snapshot: SmokeSnapshot, label: string) => {
+  if (!expectedScope) return;
+  if (
+    snapshot.scope?.userId !== expectedScope.userId ||
+    snapshot.scope.workspaceId !== expectedScope.workspaceId
+  ) {
+    throw new Error(`${label} returned the wrong tenant scope`);
   }
 };
 
@@ -79,11 +100,13 @@ const main = async () => {
   if (started.run?.status !== "queued") {
     throw new Error(`expected new run to start queued, got ${started.run?.status ?? "missing"}`);
   }
+  requireExpectedScope(started, "started snapshot");
   if (!started.run.id) throw new Error("started snapshot is missing run id");
 
   const completed = await waitForCompletedRun(started.run.id);
   if (!completed.intent) throw new Error("completed snapshot is missing intent");
   if (!completed.run) throw new Error("completed snapshot is missing run");
+  requireExpectedScope(completed, "completed snapshot");
 
   requireArray(completed, "toolCalls");
   requireArray(completed, "artifacts");

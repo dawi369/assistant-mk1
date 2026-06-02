@@ -3,11 +3,12 @@ import {
   getControlRunSnapshot,
   markControlRunFailed,
   readLatestControlRun,
+  readStoredRunIdentity,
   recordDemoRunCompleted,
   recordDemoRunStarted,
 } from "./demo-run-store";
 import { isRecord, json } from "./http";
-import type { Env, WorkerExecutionContext } from "./types";
+import type { AgentIdentity, Env, TenantScope, WorkerExecutionContext } from "./types";
 
 type RunIdentity = {
   runId: string;
@@ -16,12 +17,14 @@ type RunIdentity = {
 
 const dispatchDemoExecutor = async (
   env: Env,
+  identity: AgentIdentity,
   origin: string,
   runId: string,
   workflowIntentId: string,
 ) => {
   if (!env.WORKBENCH_EXECUTOR_URL || !env.WORKBENCH_EXECUTOR_TOKEN) {
     await markControlRunFailed(env, {
+      ...identity,
       runId,
       workflowIntentId,
       summary: "Workbench executor is not configured.",
@@ -39,6 +42,8 @@ const dispatchDemoExecutor = async (
       body: JSON.stringify({
         runId,
         workflowIntentId,
+        scope: identity.scope,
+        agentId: identity.agentId,
         callbackUrl: `${origin}/internal/workbench/run-callbacks`,
         callbackToken: env.CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN,
       }),
@@ -46,6 +51,7 @@ const dispatchDemoExecutor = async (
 
     if (!response.ok) {
       await markControlRunFailed(env, {
+        ...identity,
         runId,
         workflowIntentId,
         summary: "Workbench executor request failed.",
@@ -54,6 +60,7 @@ const dispatchDemoExecutor = async (
     }
   } catch (error) {
     await markControlRunFailed(env, {
+      ...identity,
       runId,
       workflowIntentId,
       summary: "Workbench executor request failed.",
@@ -103,36 +110,45 @@ export const handleStartCloudflareDemoRun = async (
   request: Request,
   env: Env,
   ctx: WorkerExecutionContext,
+  identity: AgentIdentity,
 ) => {
-  const { runId, workflowIntentId } = await createQueuedDemoRun(env);
+  const { runId, workflowIntentId } = await createQueuedDemoRun(env, identity);
 
-  ctx.waitUntil(dispatchDemoExecutor(env, new URL(request.url).origin, runId, workflowIntentId));
+  ctx.waitUntil(
+    dispatchDemoExecutor(env, identity, new URL(request.url).origin, runId, workflowIntentId),
+  );
 
-  return json({ ok: true, snapshot: await getControlRunSnapshot(env, runId) }, { status: 201 });
+  return json(
+    { ok: true, snapshot: await getControlRunSnapshot(env, identity.scope, runId) },
+    { status: 201 },
+  );
 };
 
-export const handleLatestCloudflareDemoRun = async (env: Env) => {
-  const run = await readLatestControlRun(env);
+export const handleLatestCloudflareDemoRun = async (env: Env, scope: TenantScope) => {
+  const run = await readLatestControlRun(env, scope);
   return json({
     ok: true,
-    snapshot: run ? await getControlRunSnapshot(env, run.id) : null,
+    snapshot: run ? await getControlRunSnapshot(env, scope, run.id) : null,
   });
 };
 
-export const handleGetCloudflareDemoRun = async (env: Env, runId: string) => {
-  const snapshot = await getControlRunSnapshot(env, runId);
+export const handleGetCloudflareDemoRun = async (env: Env, scope: TenantScope, runId: string) => {
+  const snapshot = await getControlRunSnapshot(env, scope, runId);
   if (!snapshot) return json({ ok: false, error: "Demo run not found" }, { status: 404 });
   return json({ ok: true, snapshot });
 };
 
-const handleStartedCallback = async (env: Env, identity: RunIdentity) => {
+const handleStartedCallback = async (env: Env, identity: AgentIdentity & RunIdentity) => {
   await recordDemoRunStarted(env, identity);
-  return json({ ok: true, snapshot: await getControlRunSnapshot(env, identity.runId) });
+  return json({
+    ok: true,
+    snapshot: await getControlRunSnapshot(env, identity.scope, identity.runId),
+  });
 };
 
 const handleCompletedCallback = async (
   env: Env,
-  identity: RunIdentity,
+  identity: AgentIdentity & RunIdentity,
   body: Record<string, unknown>,
 ) => {
   await recordDemoRunCompleted(env, {
@@ -140,12 +156,15 @@ const handleCompletedCallback = async (
     output: isRecord(body.output) ? body.output : {},
     outputSummary: typeof body.outputSummary === "string" ? body.outputSummary : undefined,
   });
-  return json({ ok: true, snapshot: await getControlRunSnapshot(env, identity.runId) });
+  return json({
+    ok: true,
+    snapshot: await getControlRunSnapshot(env, identity.scope, identity.runId),
+  });
 };
 
 const handleFailedCallback = async (
   env: Env,
-  identity: RunIdentity,
+  identity: AgentIdentity & RunIdentity,
   body: Record<string, unknown>,
 ) => {
   await markControlRunFailed(env, {
@@ -153,23 +172,29 @@ const handleFailedCallback = async (
     summary: typeof body.summary === "string" ? body.summary : "Executor reported failure.",
     error: typeof body.error === "string" ? body.error : undefined,
   });
-  return json({ ok: true, snapshot: await getControlRunSnapshot(env, identity.runId) });
+  return json({
+    ok: true,
+    snapshot: await getControlRunSnapshot(env, identity.scope, identity.runId),
+  });
 };
 
 export const handleRunCallback = async (request: Request, env: Env) => {
   const parsed = await readCallbackBody(request);
   if (!parsed.ok) return parsed.response;
 
+  const identity = await readStoredRunIdentity(env, parsed.identity);
+  if (!identity) return json({ ok: false, error: "Demo run not found" }, { status: 404 });
+
   if (parsed.body.event === "run.started") {
-    return handleStartedCallback(env, parsed.identity);
+    return handleStartedCallback(env, identity);
   }
 
   if (parsed.body.event === "run.completed") {
-    return handleCompletedCallback(env, parsed.identity, parsed.body);
+    return handleCompletedCallback(env, identity, parsed.body);
   }
 
   if (parsed.body.event === "run.failed") {
-    return handleFailedCallback(env, parsed.identity, parsed.body);
+    return handleFailedCallback(env, identity, parsed.body);
   }
 
   return json({ ok: false, error: "unsupported callback event" }, { status: 400 });

@@ -3,9 +3,8 @@ import {
   createId,
   demoExecution,
   demoWorkflowType,
-  fixtureAgentId,
-  fixtureScope,
   toJson,
+  type AgentIdentity,
   type ControlArtifactRow,
   type ControlAuditRow,
   type ControlDecisionRow,
@@ -14,11 +13,10 @@ import {
   type ControlToolCallRow,
   type Env,
   type RunStatus,
+  type TenantScope,
 } from "./types";
 
-type ControlAuditInput = {
-  runId: string;
-  workflowIntentId: string;
+type ControlAuditInput = ScopedRunIdentity & {
   action: string;
   summary: string;
   targetType?: string;
@@ -26,9 +24,7 @@ type ControlAuditInput = {
   data?: Record<string, unknown>;
 };
 
-type ControlRunStatusInput = {
-  runId: string;
-  workflowIntentId: string;
+type ControlRunStatusInput = ScopedRunIdentity & {
   status: RunStatus;
   summary?: string;
   data?: Record<string, unknown>;
@@ -39,9 +35,16 @@ type RunIdentity = {
   workflowIntentId: string;
 };
 
+type ScopedRunIdentity = AgentIdentity & RunIdentity;
+
+const scopeFromRow = (row: { user_id: string; workspace_id: string }): TenantScope => ({
+  userId: row.user_id,
+  workspaceId: row.workspace_id,
+});
+
 const toIntent = (row: ControlIntentRow) => ({
   id: row.id,
-  scope: fixtureScope,
+  scope: scopeFromRow(row),
   agentId: row.agent_id,
   stage: row.stage,
   type: row.type,
@@ -54,7 +57,7 @@ const toIntent = (row: ControlIntentRow) => ({
 
 const toRun = (row: ControlRunRow) => ({
   id: row.id,
-  scope: fixtureScope,
+  scope: scopeFromRow(row),
   agentId: row.agent_id,
   workflowIntentId: row.workflow_intent_id,
   status: row.status,
@@ -72,7 +75,7 @@ const toRun = (row: ControlRunRow) => ({
 
 const toToolCall = (row: ControlToolCallRow) => ({
   id: row.id,
-  scope: fixtureScope,
+  scope: scopeFromRow(row),
   agentId: row.agent_id,
   workflowIntentId: row.workflow_intent_id,
   runId: row.run_id,
@@ -89,7 +92,7 @@ const toToolCall = (row: ControlToolCallRow) => ({
 
 const toArtifact = (row: ControlArtifactRow) => ({
   id: row.id,
-  scope: fixtureScope,
+  scope: scopeFromRow(row),
   kind: row.kind,
   uri: row.uri,
   title: row.title ?? undefined,
@@ -101,7 +104,7 @@ const toArtifact = (row: ControlArtifactRow) => ({
 
 const toDecision = (row: ControlDecisionRow) => ({
   id: row.id,
-  scope: fixtureScope,
+  scope: scopeFromRow(row),
   agentId: row.agent_id,
   title: row.title,
   summary: row.summary,
@@ -115,7 +118,7 @@ const toDecision = (row: ControlDecisionRow) => ({
 
 const toAuditEvent = (row: ControlAuditRow) => ({
   id: row.id,
-  scope: fixtureScope,
+  scope: scopeFromRow(row),
   actor: { type: "system", name: "Cloudflare Control Plane" },
   action: row.action,
   summary: row.summary,
@@ -135,8 +138,8 @@ export const appendControlAudit = async (env: Env, input: ControlAuditInput) => 
   )
     .bind(
       createId("cf-audit"),
-      fixtureScope.userId,
-      fixtureScope.workspaceId,
+      input.scope.userId,
+      input.scope.workspaceId,
       input.action,
       input.summary,
       input.targetType,
@@ -152,7 +155,7 @@ export const appendControlAudit = async (env: Env, input: ControlAuditInput) => 
     .run();
 };
 
-const readControlRun = async (env: Env, runId: string) =>
+const readControlRun = async (env: Env, scope: TenantScope, runId: string) =>
   env.DB.prepare(
     `SELECT id, user_id, workspace_id, agent_id, workflow_intent_id, status, execution_json,
             stage, engine, heartbeat_at, last_event_at, completed_at, failed_at, data_json,
@@ -161,10 +164,10 @@ const readControlRun = async (env: Env, runId: string) =>
      WHERE user_id = ? AND workspace_id = ? AND id = ?
      LIMIT 1`,
   )
-    .bind(fixtureScope.userId, fixtureScope.workspaceId, runId)
+    .bind(scope.userId, scope.workspaceId, runId)
     .first<ControlRunRow>();
 
-export const readLatestControlRun = async (env: Env) =>
+export const readLatestControlRun = async (env: Env, scope: TenantScope) =>
   env.DB.prepare(
     `SELECT id, user_id, workspace_id, agent_id, workflow_intent_id, status, execution_json,
             stage, engine, heartbeat_at, last_event_at, completed_at, failed_at, data_json,
@@ -174,11 +177,36 @@ export const readLatestControlRun = async (env: Env) =>
      ORDER BY updated_at DESC, created_at DESC
      LIMIT 1`,
   )
-    .bind(fixtureScope.userId, fixtureScope.workspaceId)
+    .bind(scope.userId, scope.workspaceId)
     .first<ControlRunRow>();
 
-export const getControlRunSnapshot = async (env: Env, runId: string) => {
-  const runRow = await readControlRun(env, runId);
+export const readStoredRunIdentity = async (
+  env: Env,
+  input: RunIdentity,
+): Promise<ScopedRunIdentity | null> => {
+  const run = await env.DB.prepare(
+    `SELECT id, user_id, workspace_id, agent_id, workflow_intent_id, status, execution_json,
+            stage, engine, heartbeat_at, last_event_at, completed_at, failed_at, data_json,
+            created_at, updated_at
+     FROM control_runs
+     WHERE id = ? AND workflow_intent_id = ?
+     LIMIT 1`,
+  )
+    .bind(input.runId, input.workflowIntentId)
+    .first<ControlRunRow>();
+
+  if (!run) return null;
+
+  return {
+    scope: scopeFromRow(run),
+    agentId: run.agent_id,
+    runId: run.id,
+    workflowIntentId: run.workflow_intent_id,
+  };
+};
+
+export const getControlRunSnapshot = async (env: Env, scope: TenantScope, runId: string) => {
+  const runRow = await readControlRun(env, scope, runId);
   if (!runRow) return null;
 
   const intentRow = await env.DB.prepare(
@@ -188,7 +216,7 @@ export const getControlRunSnapshot = async (env: Env, runId: string) => {
      WHERE user_id = ? AND workspace_id = ? AND id = ?
      LIMIT 1`,
   )
-    .bind(fixtureScope.userId, fixtureScope.workspaceId, runRow.workflow_intent_id)
+    .bind(scope.userId, scope.workspaceId, runRow.workflow_intent_id)
     .first<ControlIntentRow>();
 
   const toolCalls = await env.DB.prepare(
@@ -199,7 +227,7 @@ export const getControlRunSnapshot = async (env: Env, runId: string) => {
      WHERE user_id = ? AND workspace_id = ? AND run_id = ?
      ORDER BY created_at ASC`,
   )
-    .bind(fixtureScope.userId, fixtureScope.workspaceId, runId)
+    .bind(scope.userId, scope.workspaceId, runId)
     .all<ControlToolCallRow>();
 
   const artifacts = await env.DB.prepare(
@@ -208,7 +236,7 @@ export const getControlRunSnapshot = async (env: Env, runId: string) => {
      WHERE user_id = ? AND workspace_id = ? AND id LIKE ?
      ORDER BY created_at ASC`,
   )
-    .bind(fixtureScope.userId, fixtureScope.workspaceId, `${runId}-%`)
+    .bind(scope.userId, scope.workspaceId, `${runId}-%`)
     .all<ControlArtifactRow>();
 
   const decisions = await env.DB.prepare(
@@ -218,7 +246,7 @@ export const getControlRunSnapshot = async (env: Env, runId: string) => {
      WHERE user_id = ? AND workspace_id = ? AND id LIKE ?
      ORDER BY created_at ASC`,
   )
-    .bind(fixtureScope.userId, fixtureScope.workspaceId, `${runId}-%`)
+    .bind(scope.userId, scope.workspaceId, `${runId}-%`)
     .all<ControlDecisionRow>();
 
   const auditEvents = await env.DB.prepare(
@@ -228,11 +256,11 @@ export const getControlRunSnapshot = async (env: Env, runId: string) => {
      WHERE user_id = ? AND workspace_id = ? AND json_extract(data_json, '$.runId') = ?
      ORDER BY created_at ASC`,
   )
-    .bind(fixtureScope.userId, fixtureScope.workspaceId, runId)
+    .bind(scope.userId, scope.workspaceId, runId)
     .all<ControlAuditRow>();
 
   return {
-    scope: fixtureScope,
+    scope,
     intent: intentRow ? toIntent(intentRow) : null,
     run: toRun(runRow),
     toolCalls: toolCalls.results.map(toToolCall),
@@ -262,8 +290,8 @@ export const updateControlRunStatus = async (env: Env, input: ControlRunStatusIn
         ...input.data,
       }),
       timestamp,
-      fixtureScope.userId,
-      fixtureScope.workspaceId,
+      input.scope.userId,
+      input.scope.workspaceId,
       input.runId,
     )
     .run();
@@ -276,8 +304,8 @@ export const updateControlRunStatus = async (env: Env, input: ControlRunStatusIn
     .bind(
       input.status,
       timestamp,
-      fixtureScope.userId,
-      fixtureScope.workspaceId,
+      input.scope.userId,
+      input.scope.workspaceId,
       input.workflowIntentId,
     )
     .run();
@@ -285,9 +313,10 @@ export const updateControlRunStatus = async (env: Env, input: ControlRunStatusIn
 
 export const markControlRunFailed = async (
   env: Env,
-  input: { runId: string; workflowIntentId: string; summary: string; error?: string },
+  input: ScopedRunIdentity & { summary: string; error?: string },
 ) => {
   await updateControlRunStatus(env, {
+    ...input,
     runId: input.runId,
     workflowIntentId: input.workflowIntentId,
     status: "failed",
@@ -295,6 +324,7 @@ export const markControlRunFailed = async (
     data: { error: input.error },
   });
   await appendControlAudit(env, {
+    ...input,
     runId: input.runId,
     workflowIntentId: input.workflowIntentId,
     action: "run.failed",
@@ -305,7 +335,10 @@ export const markControlRunFailed = async (
   });
 };
 
-export const createQueuedDemoRun = async (env: Env): Promise<RunIdentity> => {
+export const createQueuedDemoRun = async (
+  env: Env,
+  identity: AgentIdentity,
+): Promise<RunIdentity> => {
   const timestamp = new Date().toISOString();
   const workflowIntentId = createId("cf-intent");
   const runId = createId("cf-run");
@@ -319,9 +352,9 @@ export const createQueuedDemoRun = async (env: Env): Promise<RunIdentity> => {
   )
     .bind(
       workflowIntentId,
-      fixtureScope.userId,
-      fixtureScope.workspaceId,
-      fixtureAgentId,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.agentId,
       "observe",
       demoWorkflowType,
       toJson(demoExecution),
@@ -341,9 +374,9 @@ export const createQueuedDemoRun = async (env: Env): Promise<RunIdentity> => {
   )
     .bind(
       runId,
-      fixtureScope.userId,
-      fixtureScope.workspaceId,
-      fixtureAgentId,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.agentId,
       workflowIntentId,
       "queued",
       toJson(demoExecution),
@@ -358,6 +391,7 @@ export const createQueuedDemoRun = async (env: Env): Promise<RunIdentity> => {
     .run();
 
   await appendControlAudit(env, {
+    ...identity,
     runId,
     workflowIntentId,
     action: "intent.created",
@@ -366,6 +400,7 @@ export const createQueuedDemoRun = async (env: Env): Promise<RunIdentity> => {
     targetId: workflowIntentId,
   });
   await appendControlAudit(env, {
+    ...identity,
     runId,
     workflowIntentId,
     action: "run.queued",
@@ -377,7 +412,7 @@ export const createQueuedDemoRun = async (env: Env): Promise<RunIdentity> => {
   return { runId, workflowIntentId };
 };
 
-export const recordDemoRunStarted = async (env: Env, input: RunIdentity) => {
+export const recordDemoRunStarted = async (env: Env, input: ScopedRunIdentity) => {
   const timestamp = new Date().toISOString();
   const toolCallId = `${input.runId}-tool-demo-inspect`;
   await updateControlRunStatus(env, {
@@ -395,14 +430,14 @@ export const recordDemoRunStarted = async (env: Env, input: RunIdentity) => {
   )
     .bind(
       toolCallId,
-      fixtureScope.userId,
-      fixtureScope.workspaceId,
-      fixtureAgentId,
+      input.scope.userId,
+      input.scope.workspaceId,
+      input.agentId,
       input.workflowIntentId,
       input.runId,
       demoWorkflowType,
       "running",
-      "Inspect fixture workspace in dry-run mode.",
+      "Inspect trusted dev workspace in dry-run mode.",
       "[]",
       toJson({ source: "next-workbench-executor" }),
       timestamp,
@@ -427,7 +462,7 @@ export const recordDemoRunStarted = async (env: Env, input: RunIdentity) => {
 
 export const recordDemoRunCompleted = async (
   env: Env,
-  input: RunIdentity & { output: Record<string, unknown>; outputSummary?: string },
+  input: ScopedRunIdentity & { output: Record<string, unknown>; outputSummary?: string },
 ) => {
   const timestamp = new Date().toISOString();
   const toolCallId = `${input.runId}-tool-demo-inspect`;
@@ -450,8 +485,8 @@ export const recordDemoRunCompleted = async (
   )
     .bind(
       artifactId,
-      fixtureScope.userId,
-      fixtureScope.workspaceId,
+      input.scope.userId,
+      input.scope.workspaceId,
       "report",
       artifactRef.uri,
       artifactRef.title,
@@ -473,8 +508,8 @@ export const recordDemoRunCompleted = async (
       toJson({ output: input.output }),
       timestamp,
       toolCallId,
-      fixtureScope.userId,
-      fixtureScope.workspaceId,
+      input.scope.userId,
+      input.scope.workspaceId,
     )
     .run();
   await env.DB.prepare(
@@ -487,11 +522,11 @@ export const recordDemoRunCompleted = async (
   )
     .bind(
       decisionId,
-      fixtureScope.userId,
-      fixtureScope.workspaceId,
-      fixtureAgentId,
+      input.scope.userId,
+      input.scope.workspaceId,
+      input.agentId,
       "Cloudflare-owned demo inspect completed",
-      "The Cloudflare-owned fixture run delegated execution and persisted callbacks.",
+      "The Cloudflare-owned dev run delegated execution and persisted callbacks.",
       "Assistant-MK1 can let Cloudflare own run coordination while Next/Fly executes work.",
       "active",
       toJson([

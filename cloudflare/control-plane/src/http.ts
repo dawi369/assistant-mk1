@@ -1,4 +1,8 @@
-import type { Env } from "./types";
+import type { AgentIdentity, Env } from "./types";
+
+const userIdHeader = "x-assistant-mk1-user-id";
+const workspaceIdHeader = "x-assistant-mk1-workspace-id";
+const agentIdHeader = "x-assistant-mk1-agent-id";
 
 export const json = (body: unknown, init?: ResponseInit) =>
   new Response(JSON.stringify(body), {
@@ -27,6 +31,41 @@ export const requireAuth = (request: Request, env: Env) => {
   }
 
   return null;
+};
+
+const readRequiredHeader = (request: Request, name: string) => {
+  const value = request.headers.get(name)?.trim();
+  return value ? value : null;
+};
+
+export const requireAgentIdentity = (
+  request: Request,
+): { ok: true; identity: AgentIdentity } | { ok: false; response: Response } => {
+  const userId = readRequiredHeader(request, userIdHeader);
+  const workspaceId = readRequiredHeader(request, workspaceIdHeader);
+  const agentId = readRequiredHeader(request, agentIdHeader);
+
+  if (!userId || !workspaceId || !agentId) {
+    return {
+      ok: false,
+      response: json(
+        {
+          ok: false,
+          error:
+            "x-assistant-mk1-user-id, x-assistant-mk1-workspace-id, and x-assistant-mk1-agent-id are required",
+        },
+        { status: 400 },
+      ),
+    };
+  }
+
+  return {
+    ok: true,
+    identity: {
+      scope: { userId, workspaceId },
+      agentId,
+    },
+  };
 };
 
 export const parseDataJson = (raw: string) => {
