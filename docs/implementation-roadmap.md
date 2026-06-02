@@ -133,26 +133,14 @@ Exit criteria:
 
 Goal: replace mock state with a scoped data-client implementation.
 
-Current local target: file-backed JSON state behind `AgentFrameworkDataClient`,
-plus a local Wrangler Worker with local D1 for a mediated run-status probe.
-This proves restart survival, tenant isolation, and the first
-Next/Fly-to-Cloudflare API path before remote Cloudflare resources are
-provisioned. The JSON and local D1 backings are temporary; the repository
-behavior, scoped API shape, and smokes are intended to carry forward.
-
-The current `Next -> Cloudflare Worker` call path is a bridge from the starter
-architecture, not the final control-plane ownership model. The production target
-is `browser -> Cloudflare control plane -> Fly/LangGraph execution`, with
-Cloudflare owning run coordination and user-facing status streams.
-
-Thin production-shaped target: Cloudflare-owned demo run control. The local
-Worker creates the run in D1, delegates deterministic execution to a signed
+Current target: Cloudflare-owned demo run control. The local or remote Worker
+creates the run in D1, delegates deterministic execution to a signed
 Next/Fly-style executor, receives progress/result callbacks, and serves the
-completed snapshot from Cloudflare-owned state.
+completed snapshot from Cloudflare-owned state. The browser-visible workbench
+button now uses this path by default.
 
 Implement:
 
-- Data-client backing implementation behind the existing repository interface.
 - Durable run records, workflow intents, tool calls, audit events, artifacts,
   managed state, ledgers, and decision records.
 - Artifact storage path for logs and generated outputs.
@@ -163,8 +151,6 @@ Exit criteria:
 - State survives local restart where expected.
 - Two fixture tenants cannot read each other's state.
 - Run status, history, and artifacts are inspectable.
-- A local Cloudflare Worker can receive tenant-scoped run status through a
-  mediated API.
 - A local Cloudflare Worker can own a fixture demo run while a signed executor
   performs the work and reports callbacks.
 

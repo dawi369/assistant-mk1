@@ -6,6 +6,8 @@ implementation starts.
 Status values:
 
 - `build-ready`: implementation should not need major product decisions.
+- `active first slice`: implemented for the current Cloudflare-owned demo slice,
+  not complete for the full product.
 - `partial`: direction exists, but implementation would still invent details.
 - `deferred`: intentionally postponed until a later implementation phase.
 
@@ -34,8 +36,9 @@ Status values:
 | Fly tool runners target       | partial                     | `docs/fly-tool-runners.md`                                   |
 | Production auth provider      | deferred                    | future auth implementation plan                              |
 | Secret storage implementation | deferred                    | future secret custody implementation                         |
-| D1/R2 migrations              | deferred                    | future storage implementation                                |
-| Cloudflare IaC                | deferred                    | future hosted control-plane slice                            |
+| D1 Worker migrations          | active first slice          | `cloudflare/control-plane/migrations`                        |
+| R2/DO migrations              | deferred                    | future artifact and coordination storage                     |
+| Cloudflare deployment         | active first slice          | `docs/dev-infrastructure-readiness.md`                       |
 | Live mutation tools           | deferred                    | blocked by production mutation gate                          |
 
 ## Required Before Main Implementation

@@ -15,12 +15,54 @@ import {
 import { Assistant } from "@/app/assistant";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { DemoRunSnapshot } from "@/lib/workbench/demo-runtime";
 
-type DemoRunResponse = {
-  snapshot: DemoRunSnapshot | null;
+type WorkbenchDisplaySnapshot = {
+  intent: {
+    type?: string;
+  } | null;
+  run: {
+    id?: string;
+    status?: string;
+    execution?: {
+      mode?: string;
+    };
+    stage?: string;
+    updatedAt?: string;
+  } | null;
+  toolCalls: Array<{
+    id: string;
+    toolId?: string;
+    status?: string;
+    inputSummary?: string;
+    outputSummary?: string;
+  }>;
+  artifacts: Array<{
+    id: string;
+    title?: string;
+    uri?: string;
+    mimeType?: string;
+  }>;
+  decisions: Array<{
+    id: string;
+    title?: string;
+    summary?: string;
+    thesis?: string;
+  }>;
+  auditEvents: Array<{
+    id: string;
+    action?: string;
+    summary?: string;
+    createdAt?: string;
+  }>;
 };
 
+type DemoRunResponse = {
+  snapshot: WorkbenchDisplaySnapshot | null;
+  error?: string;
+};
+
+const cloudflareDemoRunsPath = "/api/workbench/cloudflare-demo-runs";
+const cloudflareLatestDemoRunPath = "/api/workbench/cloudflare-demo-runs/latest";
 const terminalStatuses = new Set(["completed", "failed", "cancelled"]);
 
 const statusTone = (status?: string) => {
@@ -49,24 +91,29 @@ const formatTime = (value?: string) => {
 };
 
 export function WorkbenchShell() {
-  const [snapshot, setSnapshot] = useState<DemoRunSnapshot | null>(null);
+  const [snapshot, setSnapshot] = useState<WorkbenchDisplaySnapshot | null>(null);
   const [isStarting, setIsStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const run = snapshot?.run;
-  const isActive = run ? !terminalStatuses.has(run.status) : false;
+  const isActive = run?.status ? !terminalStatuses.has(run.status) : false;
 
   const latestToolCall = snapshot?.toolCalls.at(-1);
   const latestArtifact = snapshot?.artifacts.at(-1);
   const latestDecision = snapshot?.decisions.at(-1);
   const auditEvents = useMemo(() => snapshot?.auditEvents ?? [], [snapshot]);
 
+  const readDemoRunResponse = async (response: Response, fallback: string) => {
+    const body = (await response.json().catch(() => ({}))) as DemoRunResponse;
+    if (!response.ok) throw new Error(body.error ?? fallback);
+    return body;
+  };
+
   const loadLatest = async () => {
-    const response = await fetch("/api/workbench/demo-runs/latest", {
+    const response = await fetch(cloudflareLatestDemoRunPath, {
       cache: "no-store",
     });
-    if (!response.ok) throw new Error("Failed to load demo run");
-    const body = (await response.json()) as DemoRunResponse;
+    const body = await readDemoRunResponse(response, "Failed to load Cloudflare demo run");
     setSnapshot(body.snapshot);
   };
 
@@ -80,7 +127,9 @@ export function WorkbenchShell() {
     if (!isActive) return;
     const interval = window.setInterval(() => {
       void loadLatest().catch((loadError: unknown) => {
-        setError(loadError instanceof Error ? loadError.message : "Failed to poll demo run");
+        setError(
+          loadError instanceof Error ? loadError.message : "Failed to poll Cloudflare demo run",
+        );
       });
     }, 350);
     return () => window.clearInterval(interval);
@@ -90,14 +139,15 @@ export function WorkbenchShell() {
     setIsStarting(true);
     setError(null);
     try {
-      const response = await fetch("/api/workbench/demo-runs", {
+      const response = await fetch(cloudflareDemoRunsPath, {
         method: "POST",
       });
-      if (!response.ok) throw new Error("Failed to start demo run");
-      const body = (await response.json()) as DemoRunResponse;
+      const body = await readDemoRunResponse(response, "Failed to start Cloudflare demo run");
       setSnapshot(body.snapshot);
     } catch (startError) {
-      setError(startError instanceof Error ? startError.message : "Failed to start demo run");
+      setError(
+        startError instanceof Error ? startError.message : "Failed to start Cloudflare demo run",
+      );
     } finally {
       setIsStarting(false);
     }
@@ -128,7 +178,7 @@ export function WorkbenchShell() {
           <WorkbenchPanel>
             <div className="grid grid-cols-2 gap-3 text-sm">
               <Metric label="Status" value={run?.status ?? "idle"} tone={statusTone(run?.status)} />
-              <Metric label="Mode" value={run?.execution.mode ?? "dry_run"} />
+              <Metric label="Mode" value={run?.execution?.mode ?? "dry_run"} />
               <Metric label="Intent" value={snapshot?.intent?.type ?? "not created"} />
               <Metric label="Stage" value={run?.stage ?? "observe"} />
             </div>
@@ -138,9 +188,11 @@ export function WorkbenchShell() {
             <PanelSection icon={WrenchIcon} title="Tool Call" />
             {latestToolCall ? (
               <div className="mt-3 space-y-2 text-sm">
-                <p className="font-medium">{latestToolCall.toolId}</p>
+                <p className="font-medium">{latestToolCall.toolId ?? "demo.inspect"}</p>
                 <p className="text-muted-foreground">
-                  {latestToolCall.outputSummary ?? latestToolCall.inputSummary}
+                  {latestToolCall.outputSummary ??
+                    latestToolCall.inputSummary ??
+                    "Tool call summary is pending."}
                 </p>
                 <span
                   className={cn(
@@ -160,9 +212,13 @@ export function WorkbenchShell() {
             <PanelSection icon={FileTextIcon} title="Artifact" />
             {latestArtifact ? (
               <div className="mt-3 space-y-2 text-sm">
-                <p className="font-medium">{latestArtifact.title}</p>
-                <p className="text-muted-foreground font-mono text-xs">{latestArtifact.uri}</p>
-                <p className="text-muted-foreground">{latestArtifact.mimeType}</p>
+                <p className="font-medium">{latestArtifact.title ?? "Artifact"}</p>
+                <p className="text-muted-foreground font-mono text-xs">
+                  {latestArtifact.uri ?? "Artifact URI pending"}
+                </p>
+                <p className="text-muted-foreground">
+                  {latestArtifact.mimeType ?? "application/octet-stream"}
+                </p>
               </div>
             ) : (
               <EmptyPanelText>
@@ -175,10 +231,12 @@ export function WorkbenchShell() {
             <PanelSection icon={ShieldCheckIcon} title="Decision" />
             {latestDecision ? (
               <div className="mt-3 space-y-2 text-sm">
-                <p className="font-medium">{latestDecision.title}</p>
-                <p className="text-muted-foreground">{latestDecision.summary}</p>
+                <p className="font-medium">{latestDecision.title ?? "Decision"}</p>
+                <p className="text-muted-foreground">
+                  {latestDecision.summary ?? "Decision summary is pending."}
+                </p>
                 <p className="text-muted-foreground border-border border-l pl-3 text-xs">
-                  {latestDecision.thesis}
+                  {latestDecision.thesis ?? "Decision thesis is pending."}
                 </p>
               </div>
             ) : (
@@ -196,8 +254,10 @@ export function WorkbenchShell() {
                   <li key={event.id} className="grid grid-cols-[0.75rem_1fr] gap-3 text-sm">
                     <span className="bg-primary mt-1.5 size-2 rounded-full" />
                     <span>
-                      <span className="block font-medium">{event.action}</span>
-                      <span className="text-muted-foreground block">{event.summary}</span>
+                      <span className="block font-medium">{event.action ?? "audit.event"}</span>
+                      <span className="text-muted-foreground block">
+                        {event.summary ?? "Audit summary is pending."}
+                      </span>
                       <span className="text-muted-foreground/80 block text-xs">
                         {formatTime(event.createdAt)}
                       </span>
@@ -221,13 +281,13 @@ function WorkbenchStatusStrip({
   onStart,
   error,
 }: {
-  snapshot: DemoRunSnapshot | null;
+  snapshot: WorkbenchDisplaySnapshot | null;
   isStarting: boolean;
   onStart: () => void;
   error: string | null;
 }) {
   const status = snapshot?.run?.status ?? "idle";
-  const isActive = snapshot?.run ? !terminalStatuses.has(snapshot.run.status) : false;
+  const isActive = snapshot?.run?.status ? !terminalStatuses.has(snapshot.run.status) : false;
 
   return (
     <div className="border-border/80 bg-background/95 flex flex-col gap-3 border-b px-4 py-3 md:flex-row md:items-center md:justify-between">
@@ -244,7 +304,9 @@ function WorkbenchStatusStrip({
         <div className="min-w-0">
           <p className="truncate text-sm font-medium">Assistant-MK1 Workbench</p>
           <p className="text-muted-foreground truncate text-xs">
-            {snapshot?.intent?.type ?? "Run the local demo inspect slice"}
+            {snapshot?.intent?.type
+              ? `Cloudflare-owned ${snapshot.intent.type}`
+              : "Run the Cloudflare-owned demo inspect slice"}
             {error ? ` - ${error}` : ""}
           </p>
         </div>

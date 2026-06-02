@@ -21,6 +21,14 @@ fly secrets set OPENROUTER_API_KEY=...
 fly secrets set EXTERNAL_SIGNAL_TOKEN=...
 ```
 
+For the remote Cloudflare-owned run baseline, also set:
+
+```bash
+fly secrets set CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url>
+fly secrets set CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=...
+fly secrets set WORKBENCH_EXECUTOR_TOKEN=...
+```
+
 Optional:
 
 ```bash
@@ -53,10 +61,32 @@ Workbench vertical slice:
 SMOKE_BASE_URL=https://assistant-mk1-dev.fly.dev pnpm smoke:workbench
 ```
 
-This verifies `/api/health`, starts a local fixture workbench run through
-`/api/workbench/demo-runs`, polls `/api/workbench/demo-runs/latest`, and fails
-unless the completed snapshot includes intent, run, tool call, artifact,
-decision, and audit records.
+This verifies the production-shaped dev path:
+
+```text
+Fly/Next proxy -> remote Cloudflare Worker -> remote D1
+              -> signed Fly/Next executor
+              -> Worker callbacks -> remote D1 snapshot
+```
+
+The Fly app must have `CLOUDFLARE_CONTROL_PLANE_URL`,
+`CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN`, and `WORKBENCH_EXECUTOR_TOKEN` set before
+this smoke can pass. `pnpm smoke:workbench` is an alias for the
+Cloudflare-owned run smoke.
+
+Cloudflare remote deploy sequence:
+
+```bash
+pnpm wrangler d1 list
+pnpm wrangler d1 create assistant_mk1_dev --config cloudflare/control-plane/wrangler.jsonc
+pnpm db:cloudflare:migrate:remote
+pnpm deploy:cloudflare
+SMOKE_BASE_URL=https://assistant-mk1-dev.fly.dev pnpm smoke:workbench
+```
+
+Only run `d1 create` if the database is missing, and copy its returned
+`database_id` into `cloudflare/control-plane/wrangler.jsonc` before remote
+migration.
 
 External signal:
 

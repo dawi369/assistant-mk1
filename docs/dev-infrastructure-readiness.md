@@ -1,7 +1,8 @@
 # Dev Infrastructure Readiness
 
-This checklist prepares Assistant-MK1 dev infrastructure without provisioning
-Cloudflare resources before the data-client backing implementation is scoped.
+This checklist tracks the tiny dev infrastructure baseline for Assistant-MK1.
+The current remote Cloudflare scope is intentionally narrow: one Worker, one D1
+database, and the existing Fly staging app as the signed executor.
 
 ## Current Remote Baseline
 
@@ -10,6 +11,11 @@ Cloudflare resources before the data-client backing implementation is scoped.
 - URL: `https://assistant-mk1-dev.fly.dev`
 - Runtime shape: one Fly Machine runs Next.js and the LangGraph dev server.
 - Required smoke: `SMOKE_BASE_URL=https://assistant-mk1-dev.fly.dev pnpm smoke:workbench`
+- Cloudflare Worker: `assistant-mk1-dev-control-plane`
+- Cloudflare D1 database: `assistant_mk1_dev`
+- D1 binding: `DB`
+- Workbench smoke alias: `pnpm smoke:workbench` runs the Cloudflare-owned run
+  smoke.
 
 ## Fly Configuration
 
@@ -18,6 +24,9 @@ Required secrets:
 - `OPENROUTER_API_KEY`
 - `OPENROUTER_MODEL`
 - `EXTERNAL_SIGNAL_TOKEN`
+- `CLOUDFLARE_CONTROL_PLANE_URL`
+- `CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN`
+- `WORKBENCH_EXECUTOR_TOKEN`
 
 Optional secrets:
 
@@ -33,20 +42,11 @@ Committed Fly env:
 - `OPENROUTER_APP_NAME=assistant-mk1-dev`
 - `OPENROUTER_SITE_URL=https://assistant-mk1-dev.fly.dev`
 
-## Local Durable Store
+## Local Cloudflare Control Plane
 
-The local data-client backing writes JSON state to
-`.assistant-mk1/local-store.json` by default. Override it with
-`WORKBENCH_STORE_PATH` when running isolated local smokes. This store is dev
-infrastructure only; Cloudflare D1/R2/Durable Object resources remain
-unprovisioned until the data-client access patterns are proven.
-
-## Local Cloudflare Control-Plane Probe
-
-The first Cloudflare-in-the-loop slice is local only. It adds a Wrangler Worker
-with a local D1 binding named `DB` and a scoped run-probe table. It proves the
-mediated path from the Next/Fly workbench runtime to a Cloudflare API without
-creating remote Cloudflare resources.
+The local Cloudflare loop uses Wrangler with a local D1 binding named `DB` and
+the same Worker run-control routes as remote dev. It remains the cheapest inner
+loop for Worker changes.
 
 Local commands:
 
@@ -58,10 +58,9 @@ WORKBENCH_EXECUTOR_TOKEN=local-executor-token
 EOF
 pnpm db:cloudflare:migrate:local
 pnpm dev:cloudflare
-pnpm smoke:cloudflare:local
 ```
 
-To include the Worker in the workbench demo, run the Next app with:
+In another terminal, run the Next app with:
 
 ```bash
 CLOUDFLARE_CONTROL_PLANE_URL=http://localhost:8787 \
@@ -70,26 +69,64 @@ WORKBENCH_EXECUTOR_TOKEN=local-executor-token \
 pnpm dev
 ```
 
-`POST /api/workbench/demo-runs` remains the demo ingress. When the control-plane
-env vars are set, the demo runtime reports queued, running, and terminal run
-status to the local Worker and records a safe probe summary in audit events.
-When the env vars are absent, the existing JSON-backed demo path is unchanged.
-
-This local path is transitional. It proves that the workbench runtime can write
-status through a mediated Cloudflare API, but it does not mean Next.js remains
-the long-term control plane. In the production target, the browser starts with
-Cloudflare, Cloudflare derives tenant scope and owns run coordination, and
-Fly/LangGraph report heavy-work progress back through Cloudflare.
-
-The next thin production-shaped path is the Cloudflare-owned demo run:
+Then smoke the same Cloudflare-owned path locally:
 
 ```bash
-pnpm smoke:cloudflare-owned-run:local
+pnpm smoke:workbench:local
 ```
 
 That smoke starts at the Next proxy, creates the run in the local Cloudflare
 Worker, delegates execution to the signed Next executor, receives callbacks,
 and reads the completed run snapshot from D1-owned Cloudflare state.
+
+The local Worker code is split by responsibility: route dispatch, HTTP/auth
+helpers, Cloudflare-owned demo-run handlers, and D1-backed demo run storage.
+
+## Remote Cloudflare Control Plane
+
+The remote dev baseline proves this production-shaped path:
+
+```text
+Fly/Next proxy -> remote Cloudflare Worker -> remote D1
+              -> signed Fly/Next executor
+              -> Worker callbacks -> remote D1 snapshot
+```
+
+Provisioning and deploy commands:
+
+```bash
+pnpm wrangler d1 list
+pnpm wrangler d1 create assistant_mk1_dev --config cloudflare/control-plane/wrangler.jsonc
+pnpm db:cloudflare:migrate:remote
+pnpm deploy:cloudflare
+```
+
+Only run `d1 create` when `assistant_mk1_dev` is missing. After creation, copy
+the returned `database_id` into `cloudflare/control-plane/wrangler.jsonc`.
+
+Remote Worker secrets and vars:
+
+```bash
+pnpm wrangler secret put CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN --config cloudflare/control-plane/wrangler.jsonc
+pnpm wrangler secret put WORKBENCH_EXECUTOR_TOKEN --config cloudflare/control-plane/wrangler.jsonc
+pnpm wrangler secret put WORKBENCH_EXECUTOR_URL --config cloudflare/control-plane/wrangler.jsonc
+```
+
+Use `https://assistant-mk1-dev.fly.dev/api/workbench/executors/demo-inspect` as
+the remote executor URL. Do not commit token values.
+
+Remote Worker smoke:
+
+```bash
+SMOKE_BASE_URL=https://assistant-mk1-dev.fly.dev pnpm smoke:workbench
+```
+
+`pnpm smoke:workbench` is intentionally the same Cloudflare-owned run smoke as
+`pnpm smoke:cloudflare-owned-run`.
+
+The browser-visible `Run demo inspect` button uses the Cloudflare-owned route by
+default. Missing Cloudflare configuration should fail visibly; there is no
+secondary local demo route.
 
 ## Local Tool Adapter Foundation
 
@@ -100,25 +137,23 @@ it is not a durable tool registry or permission store yet.
 
 ## Future Cloudflare Resources
 
-Do not create these until the local Cloudflare-mediated data-client path has
-passed smoke checks and the first remote-backed repository group is scoped.
+The Worker and D1 resources above are now the remote dev baseline. Do not create
+R2, Durable Object, Access, or production auth resources until the first
+remote-backed repository group is explicitly scoped.
 
 Planned dev resource names:
 
-- D1 database: `assistant_mk1_dev`
 - R2 bucket: `assistant-mk1-dev-artifacts`
 - Durable Object namespace: `ASSISTANT_MK1_DEV_AGENTS`
-- Worker or Agent service: `assistant-mk1-dev-control-plane`
 
 Planned bindings:
 
-- `DB` for D1 relational records.
 - `ARTIFACTS` for R2 artifact blobs.
 - `AGENTS` for per-agent hot coordination state.
 
 ## Provisioning Gates
 
-Before creating Cloudflare resources, define:
+Before creating additional Cloudflare resources, define:
 
 - Which `AgentFrameworkDataClient` repository group is implemented first.
 - The tenant-scope derivation path for local/dev requests.
@@ -131,7 +166,8 @@ Before creating Cloudflare resources, define:
 
 - Production auth provider.
 - Secret custody implementation.
-- Remote D1/R2 migrations.
+- R2 migrations or bucket provisioning.
+- Durable Object provisioning.
 - Direct D1/R2 access from Fly or LangGraph workers.
 - Mutation-capable tools.
-- Cloudflare Worker, Agent, D1, R2, or Durable Object deployment.
+- Cloudflare Agent, R2, or Durable Object deployment.

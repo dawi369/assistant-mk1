@@ -7,7 +7,7 @@
     {
       "binding": "DB",
       "database_name": "assistant_mk1_dev",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "1b5ba1b2-e19e-4db4-825b-d911b1ddf9db",
       "migrations_dir": "migrations",
     },
   ],
