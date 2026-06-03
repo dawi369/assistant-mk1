@@ -4,7 +4,7 @@ import {
   handleRunCallback,
   handleStartCloudflareDemoRun,
 } from "./demo-runs";
-import { handleLangGraphFacade } from "./langgraph-facade";
+import { handleChatBoundarySnapshot, handleLangGraphFacade } from "./langgraph-facade";
 import { json, requireAgentIdentity, requireAuth } from "./http";
 import type { Env, WorkerExecutionContext } from "./types";
 
@@ -30,8 +30,15 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
   if (!identityResult.ok) return identityResult.response;
   const { identity } = identityResult;
 
+  const chatBoundaryMatch = url.pathname.match(
+    /^\/internal\/chat-boundary\/threads\/([^/]+)\/snapshot$/,
+  );
+  if (request.method === "GET" && chatBoundaryMatch?.[1]) {
+    return handleChatBoundarySnapshot(env, identity, chatBoundaryMatch[1]);
+  }
+
   if (url.pathname === "/langgraph" || url.pathname.startsWith("/langgraph/")) {
-    return handleLangGraphFacade(request, env, url);
+    return handleLangGraphFacade(request, env, ctx, identity, url);
   }
 
   if (request.method === "POST" && url.pathname === "/workbench/demo-runs") {

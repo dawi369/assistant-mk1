@@ -74,6 +74,14 @@ CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
 pnpm smoke:cloudflare-langgraph-facade
 ```
 
+Cloudflare chat thread boundary:
+
+```bash
+CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
+CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
+pnpm smoke:cloudflare-chat-boundary
+```
+
 Workbench vertical slice from Vercel:
 
 ```bash
@@ -104,14 +112,17 @@ Cloudflare remote deploy sequence:
 ```bash
 pnpm wrangler d1 list
 pnpm wrangler d1 create assistant_mk1_dev --config cloudflare/control-plane/wrangler.jsonc
-pnpm db:cloudflare:migrate:remote
+pnpm db:cloudflare:apply:remote
 pnpm deploy:cloudflare
+CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
+CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
+pnpm smoke:cloudflare-chat-boundary
 SMOKE_TIMEOUT_MS=30000 SMOKE_BASE_URL=https://assistant-mk1.vercel.app pnpm smoke:workbench
 ```
 
 Only run `d1 create` if the database is missing, and copy its returned
-`database_id` into `cloudflare/control-plane/wrangler.jsonc` before remote
-migration.
+`database_id` into `cloudflare/control-plane/wrangler.jsonc` before applying
+the current schema.
 
 Frontend:
 

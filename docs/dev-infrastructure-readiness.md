@@ -23,6 +23,10 @@ LangGraph proxy points at the Cloudflare `/langgraph` facade, which
 authenticates Vercel with the dev control-plane token and then authenticates to
 the Fly gateway with `LANGGRAPH_UPSTREAM_TOKEN`.
 
+The `/langgraph` facade also stores tenant-scoped chat thread ownership and
+minimal chat run envelopes in D1. This proves the dev multi-tenant boundary
+without adding frontend auth, sessions, Durable Objects, or transcript storage.
+
 ## Fly Configuration
 
 Required secrets:
@@ -60,7 +64,7 @@ CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=local-dev-token
 WORKBENCH_EXECUTOR_URL=http://localhost:3000/api/workbench/executors/demo-inspect
 WORKBENCH_EXECUTOR_TOKEN=local-executor-token
 EOF
-pnpm db:cloudflare:migrate:local
+pnpm db:cloudflare:apply:local
 pnpm dev:cloudflare
 ```
 
@@ -79,7 +83,7 @@ pnpm dev
 Then smoke the same Cloudflare-owned path locally:
 
 ```bash
-pnpm smoke:workbench:local
+SMOKE_BASE_URL=http://localhost:3000 pnpm smoke:workbench
 ```
 
 That smoke starts at the Next proxy, creates the run in the local Cloudflare
@@ -90,10 +94,11 @@ To prove D1 tenant isolation at the Worker boundary, run:
 
 ```bash
 pnpm smoke:tenant-isolation
+pnpm smoke:cloudflare-chat-boundary
 ```
 
-That smoke uses two trusted dev tenant identities and verifies each tenant sees
-only its own latest run.
+Those smokes use two trusted dev tenant identities. They verify each tenant sees
+only its own workbench runs and only its own LangGraph chat threads.
 
 The local Worker code is split by responsibility: route dispatch, HTTP/auth
 helpers, Cloudflare-owned demo-run handlers, and D1-backed demo run storage.
@@ -113,7 +118,7 @@ Provisioning and deploy commands:
 ```bash
 pnpm wrangler d1 list
 pnpm wrangler d1 create assistant_mk1_dev --config cloudflare/control-plane/wrangler.jsonc
-pnpm db:cloudflare:migrate:remote
+pnpm db:cloudflare:apply:remote
 pnpm deploy:cloudflare
 ```
 
@@ -145,14 +150,21 @@ CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
 pnpm smoke:cloudflare-langgraph-facade
 ```
 
+Cloudflare chat boundary smoke:
+
+```bash
+CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
+CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
+pnpm smoke:cloudflare-chat-boundary
+```
+
 Remote Worker smoke:
 
 ```bash
 SMOKE_TIMEOUT_MS=30000 SMOKE_BASE_URL=https://assistant-mk1.vercel.app pnpm smoke:workbench
 ```
 
-`pnpm smoke:workbench` is intentionally the same Cloudflare-owned run smoke as
-`pnpm smoke:cloudflare-owned-run`.
+`pnpm smoke:workbench` is the Cloudflare-owned run smoke.
 
 The browser-visible `Run demo inspect` button uses the Cloudflare-owned route by
 default. Missing Cloudflare configuration should fail visibly; there is no
@@ -162,6 +174,10 @@ Tenant scope for the current dev baseline is temporary and server-derived.
 Vercel/Next reads `WORKBENCH_DEV_USER_ID`, `WORKBENCH_DEV_WORKSPACE_ID`, and
 `WORKBENCH_DEV_AGENT_ID`, then forwards those values to the Worker as trusted
 headers. Browser requests never choose tenant scope.
+
+This is not production auth. The next auth slice should replace the
+server-derived dev identity source with session-derived identity while keeping
+the same Worker-side tenant checks.
 
 ## Local Tool Adapter Foundation
 
@@ -202,7 +218,7 @@ Before creating additional Cloudflare resources, define:
 
 - Production auth provider.
 - Secret custody implementation.
-- R2 migrations or bucket provisioning.
+- R2 schema/resource provisioning.
 - Durable Object provisioning.
 - Direct D1/R2 access from Fly or LangGraph workers.
 - Mutation-capable tools.

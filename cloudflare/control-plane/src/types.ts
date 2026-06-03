@@ -132,6 +132,34 @@ export type ControlAuditRow = {
   created_at: string;
 };
 
+export type ChatThreadRow = {
+  thread_id: string;
+  user_id: string;
+  workspace_id: string;
+  agent_id: string;
+  status: string;
+  upstream_json: string;
+  created_at: string;
+  updated_at: string;
+  last_seen_at: string;
+};
+
+export type ChatRunRow = {
+  id: string;
+  thread_id: string;
+  user_id: string;
+  workspace_id: string;
+  agent_id: string;
+  upstream_run_id: string | null;
+  status: string;
+  metadata_json: string;
+  error: string | null;
+  started_at: string;
+  completed_at: string | null;
+  failed_at: string | null;
+  updated_at: string;
+};
+
 export const demoExecution = { mode: "dry_run", policy: "dev-demo" };
 export const demoWorkflowType = "demo.inspect";
 

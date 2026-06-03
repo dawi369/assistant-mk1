@@ -97,3 +97,37 @@ CREATE TABLE IF NOT EXISTS control_audit_events (
 
 CREATE INDEX IF NOT EXISTS idx_control_audit_scope_time
   ON control_audit_events (user_id, workspace_id, created_at ASC);
+
+CREATE TABLE IF NOT EXISTS chat_threads (
+  thread_id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  workspace_id TEXT NOT NULL,
+  agent_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  upstream_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  last_seen_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_threads_scope_latest
+  ON chat_threads (user_id, workspace_id, updated_at DESC, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS chat_runs (
+  id TEXT PRIMARY KEY,
+  thread_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  workspace_id TEXT NOT NULL,
+  agent_id TEXT NOT NULL,
+  upstream_run_id TEXT,
+  status TEXT NOT NULL,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  error TEXT,
+  started_at TEXT NOT NULL,
+  completed_at TEXT,
+  failed_at TEXT,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_runs_thread_latest
+  ON chat_runs (user_id, workspace_id, thread_id, updated_at DESC, started_at DESC);

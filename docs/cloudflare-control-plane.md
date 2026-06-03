@@ -40,6 +40,11 @@ Those belong in Fly tool runners or other server-side execution services.
 
 R2 is object storage, not a general application database.
 
+The current D1 schema is early-dev and rebuildable. Keep the active schema in
+`cloudflare/control-plane/schema.sql` instead of preserving incremental
+migration history. If the dev schema changes incompatibly, rebuild the dev
+database deliberately and re-apply the current schema.
+
 ## Agent Shape
 
 A future Cloudflare Agent should be scoped to a user/workspace/agent identity. It can:
@@ -94,6 +99,14 @@ contract, but the server-side proxy authenticates to Cloudflare with trusted
 dev identity headers. Cloudflare then streams the request to the Fly LangGraph
 gateway with the upstream gateway token.
 
-This facade should remain thin until Cloudflare owns durable thread/session
-state. It must not buffer streaming responses, expose the Fly token to Vercel or
-the browser, or become the permanent product API by accident.
+Cloudflare now owns the first chat boundary invariant: LangGraph thread ids are
+registered in D1 with trusted tenant scope, and thread-scoped facade requests
+must match that stored ownership before they are proxied to Fly. Streamed chat
+runs also get a minimal Cloudflare run envelope so the control plane can prove a
+tenant-scoped request happened without storing the full transcript.
+
+This is still not production auth. `WORKBENCH_DEV_*` is a temporary
+server-derived identity source. The durable rule is that Cloudflare enforces
+thread and run ownership from trusted scope, while Fly remains the execution
+plane. The facade must not expose the Fly token to Vercel or the browser, and it
+must not become the permanent product API by accident.

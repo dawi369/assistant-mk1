@@ -18,7 +18,8 @@ Browser -> Vercel Next.js /api proxy
 ```
 
 Vercel owns frontend rendering and browser-facing API proxying. Cloudflare owns
-run control and tenant state. Fly owns LangGraph and signed executor work.
+run control, tenant state, and chat thread ownership. Fly owns LangGraph and
+signed executor work.
 
 ## Required Environment
 
@@ -38,6 +39,7 @@ WORKBENCH_DEV_AGENT_ID=dev-agent
 The Vercel `/api` proxy authenticates to Cloudflare with
 `CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN` and trusted dev identity headers.
 Cloudflare stores the Fly gateway token as `LANGGRAPH_UPSTREAM_TOKEN`.
+Browser requests never provide tenant ids directly.
 
 ## Deploy
 
@@ -66,6 +68,8 @@ SMOKE_TIMEOUT_MS=30000 SMOKE_BASE_URL=https://assistant-mk1.vercel.app pnpm smok
 ```
 
 The workbench smoke may need the longer timeout when Fly is cold-starting.
+Run `pnpm smoke:cloudflare-chat-boundary` against the Worker after applying the
+current D1 schema to prove tenant-scoped thread ownership.
 
 ## Runtime Dependency
 
