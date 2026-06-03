@@ -21,15 +21,12 @@ state stores, or external mutation boundaries. The canvas should be explicit
 enough for an implementing agent to reason about ownership and handoffs without
 adding dense prose to the drawing.
 
-## Scene Metadata
+## Diagram Source
 
-- Excalidraw collection: `assitant-mk1`
-- Collection ID: `AKvvdxjb2JT`
-- Scene name: `North-Star Production Architecture`
-- Scene ID: `45QPwyuJsdP`
-- Scene URL: `https://app.excalidraw.com/s/9kkAn7igiCf/45QPwyuJsdP`
-- Canonical source: this brief
-- Visual artifact: editable Excalidraw+ scene
+- Mermaid source: `docs/diagrams/north-star-implementation-topology.mmd`
+- Canonical visual source: the Mermaid file
+- Evidence source: this brief
+- Visual artifact: paste the Mermaid source into Excalidraw's Mermaid import
 
 ## Source Evidence
 
@@ -51,21 +48,19 @@ adding dense prose to the drawing.
 
 ## Intended Diagram
 
-Use five visibly separated regions:
+Use four visibly separated pillars plus one sidecar cluster:
 
-- `Users/client`: Workbench UI, thread surface, run/status panels, approvals,
-  and artifacts plus managed state.
-- `Cloudflare control plane`: auth/session/trigger ingress, tenant scope
-  derivation, agent hot state, intent router, tool exposure resolver,
-  `PolicyDecision`, approval interrupt, run control, streaming gateway, and
-  mediated data API.
-- `Fly execution plane`: signed tool gateway, tool runners, CLI/OSS adapters,
-  browser automation, LangGraph workflow workers, and progress callbacks.
-- `External systems`: model providers, approved APIs/tools, schedules/webhooks,
-  GitHub/Vercel/Railway/Supabase-like services, and mutation targets.
-- `Durable canonical state`: D1 users/workspaces/tools/runs, D1
-  audit/decisions/ledgers/triggers, R2 logs/reports/screenshots/exports, Durable
-  Object hot per-agent state, and workflow backend in-flight checkpoints.
+- `Vercel / Frontend`: operator cockpit, thread surface, approvals, run/status
+  panels, and artifacts view.
+- `Cloudflare / Worker Control Plane`: auth/session/trigger ingress, tenant
+  scope derivation, policy plus tool exposure, run control, streaming gateway,
+  and mediated data API.
+- `Fly.io / LangGraph Execution`: signed tool gateway, tool runners, browser
+  automation, LangGraph workflow workers, and progress callbacks.
+- `Durable Data Plane`: D1 control records, D1 audit and ledgers, R2 artifacts,
+  Durable Object hot state, and workflow checkpoints.
+- `External sidecars`: schedules/webhooks, model providers, approved APIs/tools,
+  and mutation targets. Keep this as one sidecar cluster, not a fifth pillar.
 
 Typed arrow categories:
 
@@ -93,23 +88,33 @@ Typed arrow categories:
 
 - Draw this as production target only; do not mix current starter/Fly-staging
   shortcuts into this diagram.
+- Use exactly four primary pillars: Vercel/frontend, Cloudflare/Worker, Fly.io
+  LangGraph execution, and durable data.
+- Keep external providers, schedules, APIs, and mutation targets in one sidecar
+  cluster.
 - Make Cloudflare the visual center of ownership.
 - Make Fly clearly execution-only, not the user-facing stream owner.
 - Show tenant scope and policy before execution.
 - Show durable state as the place final truth lands.
 - Keep labels short and use brief text for detail.
-- Use routed elbow arrows; do not run connectors through unrelated boxes.
+- Keep Mermaid node labels short enough to survive Excalidraw import.
+- Do not add generated Markdown, generated HTML, or a TypeScript graph pipeline.
 - Use callout badges for invariants: tenant scope is derived, model never
   supplies scope, Cloudflare owns canonical writes, and Fly executes only.
 
 ## Acceptance Checklist
 
-- The scene exists in collection `AKvvdxjb2JT`.
-- The scene is separate from the current architecture overview scene.
-- Cloudflare, Fly, durable state, browser/workbench, and external systems are
-  visually distinct.
+- The Mermaid source exists at
+  `docs/diagrams/north-star-implementation-topology.mmd`.
+- The source is separate from the current implementation topology source.
+- The source has exactly four primary pillars and no more than one sidecar
+  cluster.
+- Vercel/frontend, Cloudflare/Worker, Fly.io LangGraph execution, and durable
+  data are visually distinct.
 - Tenant scope and policy appear before any execution path.
 - Heavy execution goes through signed Fly services.
 - Final durable outputs return to auditable canonical state.
+- No Fly-to-browser source-of-truth path exists.
 - Every arrow maps to one typed arrow category listed in this brief.
-- Scene metadata in this file includes the final scene ID and URL.
+- The Mermaid source can be pasted into Excalidraw for a manual editable
+  rendering.

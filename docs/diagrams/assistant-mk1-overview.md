@@ -4,11 +4,11 @@ Last updated: 2026-06-03
 
 ## Purpose
 
-Show the durable system-level shape of Assistant-MK1 after replacing the old
-graph-as-code diagram pipeline. This diagram is an overview only: it should help
-a maintainer see the current browser/runtime path, the current execution path,
-and the target workbench control/execution/storage split without recreating
-every detailed architecture view.
+Show the current hosted implementation topology of Assistant-MK1 after replacing
+the old graph-as-code diagram pipeline. This diagram is an overview only: it
+should help a maintainer see the active Vercel frontend, Cloudflare Worker
+control-plane slice, Fly LangGraph/runtime executor, and durable data boundary
+without recreating every detailed architecture view.
 
 ## Detail Level
 
@@ -17,15 +17,12 @@ represent real runtime seams, contracts, policy gates, storage responsibilities,
 or trust boundaries. The canvas should be explicit enough for an implementing
 agent to update adjacent docs or code without needing the old graph generator.
 
-## Scene Metadata
+## Diagram Source
 
-- Excalidraw collection: `assitant-mk1`
-- Collection ID: `AKvvdxjb2JT`
-- Scene name: `Assistant-MK1 Architecture Overview`
-- Scene ID: `4T59psgkJDe`
-- Scene URL: `https://app.excalidraw.com/s/9kkAn7igiCf/4T59psgkJDe`
-- Canonical source: this brief
-- Visual artifact: editable Excalidraw+ scene
+- Mermaid source: `docs/diagrams/current-implementation-topology.mmd`
+- Canonical visual source: the Mermaid file
+- Evidence source: this brief
+- Visual artifact: paste the Mermaid source into Excalidraw's Mermaid import
 
 ## Source Evidence
 
@@ -41,60 +38,73 @@ agent to update adjacent docs or code without needing the old graph generator.
 - `app/assistant.tsx`: frontend assistant-ui runtime integration seam
 - `app/api/[..._path]/route.ts`: Next.js proxy to LangGraph API
 - `app/api/external-signals/route.ts`: token-protected external-signal ingress
+- `app/api/workbench/cloudflare-demo-runs/route.ts`: Vercel workbench facade to
+  the Cloudflare control-plane Worker
+- `cloudflare/control-plane/src/index.ts`: Worker routing for demo runs and run
+  callbacks
+- `scripts/langgraph-runtime-gateway.ts`: Fly runtime gateway, LangGraph proxy,
+  and signed demo executor endpoint
 - `backend/agent.ts`: current LangGraph backend/provider seam
 - `langgraph.json`: graph id mapping for local and hosted LangGraph execution
 
 ## Intended Diagram
 
-Use three visibly separated regions plus a storage row:
+Use four visibly separated pillars plus one sidecar cluster:
 
-- `Current browser path`: `app/assistant.tsx`, assistant-ui runtime,
-  `lib/chatApi.ts`, Next.js `/api` proxy, and `external-signals` route.
-- `Current execution path`: Fly staging container, `backend/agent.ts`,
-  LangGraph Agent Server, and OpenRouter provider.
-- `Target workbench path`: Cloudflare Agent/control plane, trusted tenant
-  scope, intent router, `PolicyDecision`, `RunRecord`, tool exposure resolver,
-  signed Fly dispatch, LangGraph workflow service, data-client contract, and
-  `LifecycleEvent -> audit`.
-- `Storage responsibilities`: D1 tenant/control records, R2 artifacts, Durable
-  Object hot coordination, and workflow backend checkpoints.
+- `Vercel / Frontend`: Next.js app, assistant-ui thread, `/api` LangGraph
+  facade, `external-signals` API, and workbench API routes.
+- `Cloudflare / Worker Control Plane`: control-plane Worker, trusted dev
+  identity, demo run APIs, and run callback endpoint.
+- `Fly.io / LangGraph Execution`: runtime gateway, LangGraph server,
+  `backend/agent.ts`, and signed demo executor.
+- `Durable Data Plane`: current D1 demo/control records plus planned R2,
+  Durable Object, and workflow checkpoint responsibilities.
+- `External sidecars`: external triggers and OpenRouter provider. Keep this as
+  one sidecar cluster, not a fifth pillar.
 
 Typed arrow categories:
 
-- `request`: browser/runtime requests through assistant-ui, chat API, and
-  Next.js proxy.
-- `trusted ingress`: external signals enter through the token-protected route,
-  then derive scope server-side.
-- `current execution`: current proxy and external-signal requests reach
-  LangGraph, which invokes OpenRouter server-side.
-- `target control`: Cloudflare derives trusted tenant scope, creates typed
-  workflow intent, applies policy, and creates/updates run control.
-- `tool exposure`: policy/runtime narrows registered tools before model-visible
-  or execution-visible use.
-- `signed dispatch`: Cloudflare dispatches approved work to Fly and escalates
-  complex workflows to LangGraph workflow service.
-- `durable write`: execution results return through data-client into D1, R2,
-  Durable Object state, workflow checkpoints, and audit events.
-- `stream update`: progress and final results return to the browser through
-  Cloudflare-owned stream/status surfaces in the target architecture.
+- `chat request`: assistant-ui traffic flows through the Vercel `/api` facade to
+  the Fly LangGraph gateway.
+- `trusted ingress`: external signals enter through the Vercel API route before
+  calling the server-side runtime.
+- `workbench action`: Vercel workbench routes call the Cloudflare Worker with
+  trusted dev identity headers.
+- `signed dispatch`: Cloudflare dispatches demo work to the signed Fly executor.
+- `progress callback`: Fly executor reports run events back to the Cloudflare
+  callback endpoint.
+- `canonical write`: Cloudflare writes current run, tool, artifact, decision,
+  and audit data to D1.
+- `planned storage`: R2, Durable Object hot state, and workflow checkpoints are
+  shown as planned responsibilities, not current durable implementation.
 
 ## Visual Rules
 
-- Keep current implementation and target/planned architecture visually distinct.
+- Draw current hosted implementation only; put north-star production topology in
+  `docs/diagrams/north-star-implementation-topology.mmd`.
+- Use exactly four primary pillars: Vercel/frontend, Cloudflare/Worker, Fly.io
+  LangGraph execution, and durable data.
+- Keep external providers and triggers in one sidecar cluster.
 - Keep text short enough to read when zoomed out.
 - Use concrete repo/runtime names.
 - Keep source/evidence detail in this brief, not as dense canvas text.
-- Use editable shapes with labels and bound arrows.
-- Use routed elbow arrows; do not run connectors through unrelated boxes.
-- Use callout badges for invariants: tenant scope is derived, model never
-  supplies scope, Cloudflare owns canonical writes, and Fly executes only.
+- Keep Mermaid node labels short enough to survive Excalidraw import.
+- Do not add generated Markdown, generated HTML, or a TypeScript graph pipeline.
+- Route storage writes into the data pillar.
+- Do not draw any Fly-to-browser source-of-truth path.
 
 ## Acceptance Checklist
 
-- The scene exists in collection `AKvvdxjb2JT`.
-- The scene contains one high-level overview, not seven detailed views.
-- Current and target/planned regions are visually separated.
-- All required systems listed in this brief appear on the canvas.
-- Directional relationships are represented by editable, bound arrows.
+- The Mermaid source exists at `docs/diagrams/current-implementation-topology.mmd`.
+- The source contains one high-level topology, not seven detailed views.
+- The source has exactly four primary pillars and no more than one sidecar
+  cluster.
+- Vercel/frontend, Cloudflare/Worker, Fly.io LangGraph execution, and durable
+  data are visually separated.
+- All required systems listed in this brief appear in the Mermaid topology.
+- Directional relationships are represented by typed Mermaid edges.
 - Every arrow maps to one typed arrow category listed in this brief.
-- Scene metadata in this file includes the final scene ID and URL.
+- Cloudflare remains the current canonical owner for demo run state.
+- Data writes route into the durable data pillar.
+- The Mermaid source can be pasted into Excalidraw for a manual editable
+  rendering.

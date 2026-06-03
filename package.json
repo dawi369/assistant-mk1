@@ -10,7 +10,6 @@
     "start": "next start",
     "start:frontend": "next start -H 0.0.0.0 -p ${PORT:-3000}",
     "start:backend": "langgraphjs dev --host 0.0.0.0 --port ${LANGGRAPH_PORT:-2024} --no-browser",
-    "start:fly": "concurrently -n frontend,backend -c cyan,magenta \"pnpm start:frontend\" \"pnpm start:backend\"",
     "start:langgraph-gateway": "tsx scripts/langgraph-runtime-gateway.ts",
     "start:langgraph-runtime": "concurrently -n gateway,langgraph -c cyan,magenta \"pnpm start:langgraph-gateway\" \"pnpm start:backend\"",
     "typecheck": "tsc --noEmit",

@@ -59,7 +59,7 @@ langgraph.json      LangGraph CLI config (graph id, node version, env file)
 - `AGENTS.md` — repo instructions for coding agents
 - `goal.md` — product goal, phases, and done bar
 - `docs/architecture.md` — system shape and seams
-- `docs/diagrams/README.md` — Excalidraw-backed architecture diagram workflow
+- `docs/diagrams/README.md` — git-tracked Mermaid topology diagram workflow
 - `docs/implementation-roadmap.md` — staged path from current starter to target workbench
 - `docs/infrastructure.md` — infrastructure topology and request flow
 - `docs/cloudflare-control-plane.md` — target live multi-user control plane
@@ -107,4 +107,5 @@ The active hosted dev baseline is split by responsibility:
 - Cloudflare owns durable workbench run control, tenant state, audit records, and D1-backed snapshots.
 - Fly runs the LangGraph runtime gateway and signed server-side executors.
 
-The older `assistant-mk1-dev` Fly app combined Next.js and LangGraph in one Machine. Keep it only as a compatibility fallback while the split runtime stabilizes. See `docs/deployment-vercel.md`, `docs/deployment-fly.md`, and `docs/dev-infrastructure-readiness.md`.
+See `docs/deployment-vercel.md`, `docs/deployment-fly.md`, and
+`docs/dev-infrastructure-readiness.md`.

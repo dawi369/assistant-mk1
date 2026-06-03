@@ -74,7 +74,6 @@ LangGraph workflows may need to read and write context. The initial implementati
 ## Deployment Modes
 
 - Current dev/staging mode: `assistant-mk1-langgraph-dev` runs a dedicated Fly gateway, the LangGraph runtime, and signed executor endpoints.
-- Legacy compatibility mode: `assistant-mk1-dev` can still run the older combined Next.js + LangGraph shape while migration risk is retired.
 - Target execution mode: one or more Fly services run tool runners and LangGraph workflow workers behind signed internal APIs.
 
 Do not store important durable state on a Fly filesystem unless the storage strategy explicitly says so.

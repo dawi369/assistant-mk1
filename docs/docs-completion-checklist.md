@@ -45,7 +45,7 @@ Status values:
 ## Required Before Main Implementation
 
 - Docs index includes every canonical doc.
-- Architecture overview diagram brief and Excalidraw scene are current.
+- Architecture topology Mermaid sources and diagram briefs are current.
 - Provisional TypeScript contracts match durable/runtime docs.
 - First vertical slice has clear acceptance criteria.
 - assistant-ui leverage boundaries are documented.

@@ -75,7 +75,7 @@ Exit criteria:
 - `docs/docs-completion-checklist.md` marks core runtime/tool/control-plane/UI
   areas as build-ready or explicitly deferred.
 - Provisional TypeScript contracts are synchronized with docs where needed.
-- Architecture overview diagram brief, Excalidraw scene, and README doc index
+- Architecture topology Mermaid sources, diagram briefs, and README doc index
   are current.
 
 ## Phase 2: Local Mock Vertical Slice

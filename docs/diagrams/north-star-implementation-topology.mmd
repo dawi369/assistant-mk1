@@ -1,0 +1,96 @@
+flowchart LR
+  %% Assistant-MK1 north-star production topology.
+  %% Four-pillar source for paste-into-Excalidraw rendering.
+
+  classDef vercel fill:#e7f5ff,stroke:#228be6,color:#0b4073
+  classDef cloudflare fill:#fff9db,stroke:#fab005,color:#704800
+  classDef fly fill:#e6fcf5,stroke:#12b886,color:#064f3a
+  classDef data fill:#fff4e6,stroke:#fd7e14,color:#7a3300
+  classDef sidecar fill:#f8f9fa,stroke:#868e96,color:#343a40
+  classDef invariant fill:#edf2ff,stroke:#868e96,color:#343a40
+
+  subgraph sg_vercel["Vercel / Frontend"]
+    direction TB
+    cockpit["operator cockpit"]
+    thread["thread surface"]
+    approvals["approvals"]
+    status["run/status panels"]
+    artifactsUi["artifacts view"]
+  end
+
+  subgraph sg_cf["Cloudflare / Worker Control Plane"]
+    direction TB
+    ingress["auth/session/trigger ingress"]
+    scope["tenant scope derivation"]
+    policy["policy + tool exposure"]
+    runControl["run control"]
+    stream["streaming gateway"]
+    dataApi["mediated data API"]
+  end
+
+  subgraph sg_fly["Fly.io / LangGraph Execution"]
+    direction TB
+    signedGateway["signed tool gateway"]
+    runners["tool runners"]
+    browserAuto["browser automation"]
+    langgraphWorkers["LangGraph workers"]
+    progress["progress callbacks"]
+  end
+
+  subgraph sg_data["Durable Data Plane"]
+    direction TB
+    d1Control["D1 control records"]
+    d1Audit["D1 audit + ledgers"]
+    r2["R2 artifacts"]
+    durableObject["Durable Object hot state"]
+    workflowState["workflow checkpoints"]
+  end
+
+  subgraph sg_sidecar["External sidecars"]
+    direction TB
+    schedules["schedules/webhooks"]
+    models["model providers"]
+    approvedApis["approved APIs/tools"]
+    mutationTargets["mutation targets"]
+  end
+
+  cockpit -- "user interaction" --> ingress
+  thread -- "message" --> cockpit
+  approvals -- "approve/resume" --> ingress
+  schedules -- "trusted trigger" --> ingress
+
+  ingress -- "trusted scope" --> scope
+  scope -- "policy input" --> policy
+  policy -- "execution gate" --> runControl
+  runControl -- "signed work" --> signedGateway
+
+  signedGateway -- "dispatch" --> runners
+  runners -- "workflow work" --> langgraphWorkers
+  runners -- "browser work" --> browserAuto
+  langgraphWorkers -- "progress" --> progress
+  progress -- "callback" --> dataApi
+
+  langgraphWorkers -- "model call" --> models
+  runners -- "API call" --> approvedApis
+  browserAuto -- "external mutation" --> mutationTargets
+
+  dataApi -- "canonical write" --> d1Control
+  dataApi -- "audit write" --> d1Audit
+  dataApi -- "artifact write" --> r2
+  dataApi -- "hot state" --> durableObject
+  dataApi -- "checkpoint status" --> workflowState
+  dataApi -- "source-of-truth state" --> stream
+
+  stream -- "messages" --> thread
+  stream -- "status" --> status
+  stream -- "artifacts" --> artifactsUi
+
+  scope -. "model never supplies scope" .-> policy
+  runControl -. "Cloudflare owns writes" .-> dataApi
+  signedGateway -. "Fly executes only" .-> progress
+
+  class cockpit,thread,approvals,status,artifactsUi vercel
+  class ingress,scope,policy,runControl,stream,dataApi cloudflare
+  class signedGateway,runners,browserAuto,langgraphWorkers,progress fly
+  class d1Control,d1Audit,r2,durableObject,workflowState data
+  class schedules,models,approvedApis,mutationTargets sidecar

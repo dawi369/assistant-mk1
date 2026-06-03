@@ -7,7 +7,6 @@ database, the Vercel frontend, and the dedicated Fly LangGraph runtime gateway.
 ## Current Remote Baseline
 
 - Fly runtime app: `assistant-mk1-langgraph-dev`
-- Fly compatibility app: `assistant-mk1-dev`
 - Region: `fra`
 - Runtime URL: `https://assistant-mk1-langgraph-dev.fly.dev`
 - Runtime shape: one Fly Machine runs the gateway and LangGraph dev server.

@@ -1,0 +1,79 @@
+flowchart LR
+  %% Assistant-MK1 current hosted implementation topology.
+  %% Four-pillar source for paste-into-Excalidraw rendering.
+
+  classDef vercel fill:#e7f5ff,stroke:#228be6,color:#0b4073
+  classDef cloudflare fill:#fff9db,stroke:#fab005,color:#704800
+  classDef fly fill:#e6fcf5,stroke:#12b886,color:#064f3a
+  classDef data fill:#fff4e6,stroke:#fd7e14,color:#7a3300
+  classDef sidecar fill:#f8f9fa,stroke:#868e96,color:#343a40
+  classDef planned fill:#f1f3f5,stroke:#adb5bd,color:#495057
+
+  subgraph sg_vercel["Vercel / Frontend"]
+    direction TB
+    nextApp["Next.js app"]
+    assistantUi["assistant-ui thread"]
+    apiFacade["/api LangGraph facade"]
+    signalApi["external-signals API"]
+    workbenchApi["workbench API routes"]
+  end
+
+  subgraph sg_cf["Cloudflare / Worker Control Plane"]
+    direction TB
+    worker["control-plane Worker"]
+    trustedIdentity["trusted dev identity"]
+    demoRuns["demo run APIs"]
+    callback["run callback endpoint"]
+  end
+
+  subgraph sg_fly["Fly.io / LangGraph Execution"]
+    direction TB
+    gateway["runtime gateway"]
+    langgraph["LangGraph server"]
+    agentGraph["backend/agent.ts"]
+    executor["signed demo executor"]
+  end
+
+  subgraph sg_data["Durable Data Plane"]
+    direction TB
+    d1["D1 demo/control records"]
+    r2["R2 artifacts planned"]
+    durableObject["Durable Object planned"]
+    workflowState["workflow checkpoints planned"]
+  end
+
+  subgraph sg_sidecar["External sidecars"]
+    direction TB
+    externalTriggers["external triggers"]
+    openrouter["OpenRouter provider"]
+  end
+
+  nextApp -- "renders" --> assistantUi
+  assistantUi -- "chat request" --> apiFacade
+  apiFacade -- "proxy" --> gateway
+  gateway -- "LangGraph API" --> langgraph
+  langgraph -- "loads graph" --> agentGraph
+  agentGraph -- "model call" --> openrouter
+
+  externalTriggers -- "trusted ingress" --> signalApi
+  signalApi -- "server request" --> gateway
+
+  nextApp -- "workbench action" --> workbenchApi
+  workbenchApi -- "trusted headers" --> worker
+  worker -- "derive dev scope" --> trustedIdentity
+  trustedIdentity -- "start/read run" --> demoRuns
+  demoRuns -- "canonical write" --> d1
+  demoRuns -- "signed dispatch" --> executor
+  executor -- "progress callback" --> callback
+  callback -- "canonical write" --> d1
+
+  worker -. "planned storage" .-> r2
+  worker -. "planned hot state" .-> durableObject
+  langgraph -. "planned checkpoints" .-> workflowState
+
+  class nextApp,assistantUi,apiFacade,signalApi,workbenchApi vercel
+  class worker,trustedIdentity,demoRuns,callback cloudflare
+  class gateway,langgraph,agentGraph,executor fly
+  class d1 data
+  class r2,durableObject,workflowState planned
+  class externalTriggers,openrouter sidecar

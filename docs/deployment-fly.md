@@ -15,12 +15,6 @@ Active runtime app:
 - Gateway proxies LangGraph traffic to `LANGGRAPH_UPSTREAM_URL`
 - Gateway serves signed workbench executor requests
 
-Compatibility app:
-
-- App: `assistant-mk1-dev`
-- Runs the older Next.js + LangGraph combined shape
-- Keep it until the dedicated runtime has been stable through hosted smokes
-
 This split removes the Vercel -> Fly Next proxy -> LangGraph hop.
 
 ## Required Secrets
@@ -40,7 +34,7 @@ Optional:
 ```bash
 fly secrets set LANGSMITH_API_KEY=...
 fly secrets set LANGSMITH_TRACING=true
-fly secrets set LANGSMITH_PROJECT=assistant-mk1-dev
+fly secrets set LANGSMITH_PROJECT=assistant-mk1-langgraph-dev
 fly secrets set LANGCHAIN_API_KEY=...
 ```
 
@@ -108,15 +102,6 @@ SMOKE_TIMEOUT_MS=30000 SMOKE_BASE_URL=https://assistant-mk1.vercel.app pnpm smok
 Only run `d1 create` if the database is missing, and copy its returned
 `database_id` into `cloudflare/control-plane/wrangler.jsonc` before remote
 migration.
-
-External signal through the compatibility app:
-
-```bash
-curl -X POST https://assistant-mk1-dev.fly.dev/api/external-signals \
-  -H "Authorization: Bearer $EXTERNAL_SIGNAL_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"action":"start","input":{"messages":[{"role":"user","content":"Say deployed smoke test ok."}]}}'
-```
 
 Frontend:
 

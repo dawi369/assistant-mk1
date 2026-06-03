@@ -90,5 +90,3 @@ Browser -> Vercel Next.js /api facade
 ```
 
 The Vercel -> Fly LangGraph proxy is a transitional assistant-ui chat path. It keeps the current starter usable while Cloudflare-owned conversational stream ownership is built out.
-
-The older `assistant-mk1-dev` Fly app ran Next.js and LangGraph together in one Machine. It is now a compatibility fallback, not the active topology.
