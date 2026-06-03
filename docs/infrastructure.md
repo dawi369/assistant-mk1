@@ -16,6 +16,18 @@ assistant-ui frontend
 
 The frontend streams from the conversational control plane. Fly and LangGraph services do not own the user-facing session; they report progress and results back through Cloudflare-managed state or callbacks.
 
+## Current Dev Baseline vs Target Runtime
+
+The current hosted dev baseline is intentionally split but not fully at the north-star runtime yet:
+
+- Vercel hosts the Next.js frontend and same-origin browser API facade.
+- Cloudflare owns the production-shaped workbench run-control path: tenant scope, D1 state, audit timeline, decisions, artifacts metadata, and executor callbacks.
+- Fly runs the LangGraph runtime gateway and signed executor endpoints.
+
+The current Vercel -> Fly LangGraph proxy exists because assistant-ui still talks to a LangGraph-compatible API for chat threads and streaming. Treat that as a transitional chat integration, not the final control-plane ownership model.
+
+The north-star runtime moves user-facing conversation and workflow progress streaming behind the Cloudflare control plane. Fly remains the execution plane for LangGraph workflows and heavy tools, and writes durable outputs back through mediated Cloudflare APIs or callbacks.
+
 ## Responsibilities
 
 - Frontend: operator cockpit for conversation, state, tools, approvals, artifacts, and run history.
@@ -47,7 +59,7 @@ Canonical durable entity contracts are defined in `docs/db-contracts.md`. This i
 
 Cloudflare-style Agents are the preferred future live control plane because they fit stateful multi-user coordination. Fly is the preferred execution plane for heavy tools and LangGraph workflow workers. LangGraph remains important for complex graph-shaped workflows, but it does not have to be the always-on per-user runtime.
 
-The current local/Fly LangGraph starter remains valid for development and staged validation while the target infrastructure is designed.
+The current Vercel/Fly LangGraph path remains valid for development and staged validation while the Cloudflare-owned conversational control plane is built.
 
 ## Stream Ownership
 

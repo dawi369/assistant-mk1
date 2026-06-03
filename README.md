@@ -15,7 +15,7 @@ This is a reusable agent workbench built from the [assistant-ui](https://github.
    - `OPENROUTER_MODEL` — override the default model id
    - `OPENROUTER_SITE_URL` / `OPENROUTER_APP_NAME` — OpenRouter attribution metadata
    - `LANGSMITH_TRACING` / `LANGSMITH_API_KEY` / `LANGSMITH_PROJECT` — tracing
-   - `LANGCHAIN_API_KEY` — only needed when pointing `LANGGRAPH_API_URL` at LangGraph Platform (cloud)
+   - `LANGCHAIN_API_KEY` — only needed when pointing `LANGGRAPH_API_URL` at a protected hosted LangGraph endpoint
 
 2. Install deps and run both the LangGraph backend and the Next.js frontend:
 
@@ -78,7 +78,7 @@ langgraph.json      LangGraph CLI config (graph id, node version, env file)
 - `docs/observability-and-audit.md` — lifecycle events, audit records, logs, artifacts, and health
 - `docs/first-vertical-slice.md` — first implementation proof and acceptance criteria
 - `docs/docs-completion-checklist.md` — build-ready/partial/deferred docs status
-- `docs/dev-infrastructure-readiness.md` — Fly baseline and future Cloudflare dev resource checklist
+- `docs/dev-infrastructure-readiness.md` — Vercel/Fly/Cloudflare dev baseline and resource checklist
 - `docs/runtime.md` — threads, runs, interrupts, crons, and external signals
 - `docs/tenancy.md` — user/workspace scoping and isolation rules
 - `docs/deployment-vercel.md` — Vercel frontend deployment workflow
@@ -99,6 +99,12 @@ curl -X POST http://localhost:3000/api/external-signals \
 
 See `docs/runtime.md` for start, resume, and cron payloads.
 
-## Fly dev/staging
+## Hosted dev/staging
 
-The first Fly target is a hosted staging runtime, not the primary editing environment. It runs Next and the LangGraph dev server together in one Machine for simple validation after feature slices. See `docs/deployment-fly.md`.
+The active hosted dev baseline is split by responsibility:
+
+- Vercel hosts the Next.js frontend and same-origin browser API facade.
+- Cloudflare owns durable workbench run control, tenant state, audit records, and D1-backed snapshots.
+- Fly runs the LangGraph runtime gateway and signed server-side executors.
+
+The older `assistant-mk1-dev` Fly app combined Next.js and LangGraph in one Machine. Keep it only as a compatibility fallback while the split runtime stabilizes. See `docs/deployment-vercel.md`, `docs/deployment-fly.md`, and `docs/dev-infrastructure-readiness.md`.

@@ -1,17 +1,19 @@
 # Architecture
 
-Assistant-MK1 is a reusable agent workbench with a conversational control plane, workflow execution plane, and hosted Fly.io dev/staging runtime.
+Assistant-MK1 is a reusable agent workbench with a conversational control plane, workflow execution plane, and hosted dev/staging split across Vercel, Cloudflare, and Fly.
 
 The architecture is generic, but it is evaluated against demanding reference apps such as Polymancer and deployment agents. Reference apps are stress tests for long-running autonomy, secrets, ledgers, execution policy, tools, external triggers, and multi-user isolation. The primitives must remain reusable across agent projects.
 
 ## System Shape
 
-- Next.js App Router serves the frontend and API routes.
+- Next.js App Router serves the frontend and browser-facing API facade.
 - assistant-ui renders the thread, composer, messages, reasoning, tools, and attachments.
 - `@assistant-ui/react-langgraph` adapts the UI runtime to LangGraph threads and streams.
+- Cloudflare owns durable workbench run control, tenant state, audit records, and mediated storage access.
+- Fly runs LangGraph and signed server-side executor work.
 - LangGraph currently runs the starter backend graph exported from `backend/agent.ts`.
 - OpenRouter is configured server-side through `ChatOpenRouter`.
-- Fly.io runs the staging environment after local feature implementation.
+- Vercel hosts the deployed Next.js frontend.
 
 ## Control Plane Shape
 
@@ -75,10 +77,18 @@ Local development runs both servers:
 pnpm dev
 ```
 
-Fly staging runs the same logical pair in one container:
+The active hosted dev baseline is split:
 
-```bash
-pnpm start:fly
+```txt
+Browser -> Vercel Next.js frontend
+        -> Cloudflare Worker/D1 for workbench run control
+        -> Fly runtime executor for signed work
+
+Browser -> Vercel Next.js /api facade
+        -> Fly LangGraph runtime gateway
+        -> LangGraph server
 ```
 
-That single-container Fly shape is intentional for the dev/staging phase. If this becomes production infrastructure, revisit whether Cloudflare Agents should own the live multi-user control plane while Fly runs LangGraph workflows and heavy tool runners.
+The Vercel -> Fly LangGraph proxy is a transitional assistant-ui chat path. It keeps the current starter usable while Cloudflare-owned conversational stream ownership is built out.
+
+The older `assistant-mk1-dev` Fly app ran Next.js and LangGraph together in one Machine. It is now a compatibility fallback, not the active topology.
