@@ -17,33 +17,55 @@ function getCorsHeaders() {
   };
 }
 
+const requiredEnv = (name: string) => {
+  const value = process.env[name]?.trim();
+  if (!value) throw new Error(`${name} is not configured`);
+  return value;
+};
+
+const proxyHeaders = () => {
+  const headers: Record<string, string> = {};
+
+  if (process.env.CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN) {
+    headers.authorization = `Bearer ${requiredEnv("CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN")}`;
+    headers["x-assistant-mk1-user-id"] = requiredEnv("WORKBENCH_DEV_USER_ID");
+    headers["x-assistant-mk1-workspace-id"] = requiredEnv("WORKBENCH_DEV_WORKSPACE_ID");
+    headers["x-assistant-mk1-agent-id"] = requiredEnv("WORKBENCH_DEV_AGENT_ID");
+    return headers;
+  }
+
+  if (process.env.LANGCHAIN_API_KEY) {
+    headers["x-api-key"] = process.env.LANGCHAIN_API_KEY;
+  }
+
+  return headers;
+};
+
 async function handleRequest(req: NextRequest, method: string) {
   try {
+    const apiUrl = requiredEnv("LANGGRAPH_API_URL").replace(/\/$/, "");
     const path = req.nextUrl.pathname.replace(/^\/?api\//, "");
     const url = new URL(req.url);
     const searchParams = new URLSearchParams(url.search);
     searchParams.delete("_path");
     searchParams.delete("nxtP_path");
-    const queryString = searchParams.toString()
-      ? `?${searchParams.toString()}`
-      : "";
+    const queryString = searchParams.toString() ? `?${searchParams.toString()}` : "";
 
     const options: RequestInit = {
       method,
-      headers: {
-        "x-api-key": process.env.LANGCHAIN_API_KEY || "",
-      },
+      headers: proxyHeaders(),
       signal: req.signal,
     };
 
     if (["POST", "PUT", "PATCH"].includes(method)) {
+      const contentType = req.headers.get("content-type");
+      if (contentType) {
+        (options.headers as Record<string, string>)["content-type"] = contentType;
+      }
       options.body = await req.text();
     }
 
-    const res = await fetch(
-      `${process.env.LANGGRAPH_API_URL}/${path}${queryString}`,
-      options,
-    );
+    const res = await fetch(`${apiUrl}/${path}${queryString}`, options);
 
     const headers = new Headers(res.headers);
     headers.delete("content-encoding");
@@ -62,10 +84,7 @@ async function handleRequest(req: NextRequest, method: string) {
   } catch (e: unknown) {
     if (e instanceof Error) {
       const typedError = e as Error & { status?: number };
-      return NextResponse.json(
-        { error: typedError.message },
-        { status: typedError.status ?? 500 },
-      );
+      return NextResponse.json({ error: typedError.message }, { status: typedError.status ?? 500 });
     }
     return NextResponse.json({ error: "Unknown error" }, { status: 500 });
   }

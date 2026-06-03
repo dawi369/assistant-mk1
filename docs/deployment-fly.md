@@ -16,6 +16,8 @@ Active runtime app:
 - Gateway serves signed workbench executor requests
 
 This split removes the Vercel -> Fly Next proxy -> LangGraph hop.
+Hosted chat traffic now reaches this gateway through the Cloudflare
+`/langgraph` facade.
 
 ## Required Secrets
 
@@ -62,6 +64,14 @@ LangGraph gateway:
 LANGGRAPH_RUNTIME_BASE_URL=https://assistant-mk1-langgraph-dev.fly.dev \
 LANGGRAPH_PROXY_TOKEN=<token> \
 pnpm smoke:langgraph-runtime
+```
+
+Cloudflare facade to this gateway:
+
+```bash
+CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
+CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
+pnpm smoke:cloudflare-langgraph-facade
 ```
 
 Workbench vertical slice from Vercel:

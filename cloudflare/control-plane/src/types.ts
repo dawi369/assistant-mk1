@@ -21,6 +21,8 @@ export type D1Database = {
 export type Env = {
   DB: D1Database;
   CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN?: string;
+  LANGGRAPH_UPSTREAM_URL?: string;
+  LANGGRAPH_UPSTREAM_TOKEN?: string;
   WORKBENCH_EXECUTOR_URL?: string;
   WORKBENCH_EXECUTOR_TOKEN?: string;
 };

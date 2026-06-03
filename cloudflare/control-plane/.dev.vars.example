@@ -1,3 +1,5 @@
 CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=replace-with-local-dev-token
+LANGGRAPH_UPSTREAM_URL=http://localhost:3000
+LANGGRAPH_UPSTREAM_TOKEN=replace-with-local-langgraph-proxy-token
 WORKBENCH_EXECUTOR_URL=http://localhost:3000/api/workbench/executors/demo-inspect
 WORKBENCH_EXECUTOR_TOKEN=replace-with-local-executor-token

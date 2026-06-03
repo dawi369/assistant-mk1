@@ -18,6 +18,8 @@ Use it for:
 - Tenant-scoped reads and writes to app data.
 - Policy checks before workflow or tool execution.
 - Streaming lightweight results back to the frontend.
+- LangGraph-compatible chat facade during the transition from assistant-ui's
+  direct LangGraph API shape to a product-specific control-plane API.
 
 Do not use it as the default place for:
 
@@ -83,3 +85,15 @@ from Fly/Next and forwards them to the Worker as trusted headers. This is a
 temporary auth stand-in; the durable rule is that Worker storage operations take
 trusted scope explicitly and executor callbacks resolve scope from the stored
 run record.
+
+## LangGraph Facade
+
+The current hosted chat path uses `/langgraph/*` on the Worker as a
+LangGraph-compatible facade. Vercel keeps the same browser-facing `/api/*`
+contract, but the server-side proxy authenticates to Cloudflare with trusted
+dev identity headers. Cloudflare then streams the request to the Fly LangGraph
+gateway with the upstream gateway token.
+
+This facade should remain thin until Cloudflare owns durable thread/session
+state. It must not buffer streaming responses, expose the Fly token to Vercel or
+the browser, or become the permanent product API by accident.

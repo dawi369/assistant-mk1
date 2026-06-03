@@ -26,7 +26,8 @@ export const requireAuth = (request: Request, env: Env) => {
   }
 
   const authorization = request.headers.get("authorization");
-  if (authorization !== `Bearer ${token}`) {
+  const apiKey = request.headers.get("x-api-key");
+  if (authorization !== `Bearer ${token}` && apiKey !== token) {
     return json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 

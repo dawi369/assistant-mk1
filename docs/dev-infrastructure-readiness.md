@@ -19,8 +19,9 @@ database, the Vercel frontend, and the dedicated Fly LangGraph runtime gateway.
   smoke.
 
 The Vercel frontend uses the same Cloudflare-owned workbench routes. Its
-LangGraph proxy points at `https://assistant-mk1-langgraph-dev.fly.dev`, which
-authenticates server-to-server proxy traffic with `LANGGRAPH_PROXY_TOKEN`.
+LangGraph proxy points at the Cloudflare `/langgraph` facade, which
+authenticates Vercel with the dev control-plane token and then authenticates to
+the Fly gateway with `LANGGRAPH_UPSTREAM_TOKEN`.
 
 ## Fly Configuration
 
@@ -123,6 +124,7 @@ Remote Worker secrets and vars:
 
 ```bash
 pnpm wrangler secret put CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN --config cloudflare/control-plane/wrangler.jsonc
+pnpm wrangler secret put LANGGRAPH_UPSTREAM_TOKEN --config cloudflare/control-plane/wrangler.jsonc
 pnpm wrangler secret put WORKBENCH_EXECUTOR_TOKEN --config cloudflare/control-plane/wrangler.jsonc
 pnpm wrangler secret put WORKBENCH_EXECUTOR_URL --config cloudflare/control-plane/wrangler.jsonc
 ```
@@ -130,6 +132,18 @@ pnpm wrangler secret put WORKBENCH_EXECUTOR_URL --config cloudflare/control-plan
 Use
 `https://assistant-mk1-langgraph-dev.fly.dev/workbench/executors/demo-inspect`
 as the remote executor URL. Do not commit token values.
+
+`LANGGRAPH_UPSTREAM_URL` is committed in `wrangler.jsonc` and points at
+`https://assistant-mk1-langgraph-dev.fly.dev`. `LANGGRAPH_UPSTREAM_TOKEN` must
+match the Fly `LANGGRAPH_PROXY_TOKEN`.
+
+Cloudflare LangGraph facade smoke:
+
+```bash
+CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
+CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
+pnpm smoke:cloudflare-langgraph-facade
+```
 
 Remote Worker smoke:
 

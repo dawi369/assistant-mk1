@@ -21,10 +21,13 @@ The frontend streams from the conversational control plane. Fly and LangGraph se
 The current hosted dev baseline is intentionally split but not fully at the north-star runtime yet:
 
 - Vercel hosts the Next.js frontend and same-origin browser API facade.
-- Cloudflare owns the production-shaped workbench run-control path: tenant scope, D1 state, audit timeline, decisions, artifacts metadata, and executor callbacks.
+- Cloudflare owns the production-shaped workbench run-control path and now
+  fronts hosted LangGraph-compatible chat traffic through `/langgraph`.
 - Fly runs the LangGraph runtime gateway and signed executor endpoints.
 
-The current Vercel -> Fly LangGraph proxy exists because assistant-ui still talks to a LangGraph-compatible API for chat threads and streaming. Treat that as a transitional chat integration, not the final control-plane ownership model.
+assistant-ui still talks to a LangGraph-compatible API for chat threads and
+streaming, but hosted traffic now flows through Cloudflare before Fly. Treat the
+facade as a transitional control-plane boundary, not the final product API.
 
 The north-star runtime moves user-facing conversation and workflow progress streaming behind the Cloudflare control plane. Fly remains the execution plane for LangGraph workflows and heavy tools, and writes durable outputs back through mediated Cloudflare APIs or callbacks.
 

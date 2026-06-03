@@ -12,6 +12,7 @@ Browser -> Vercel Next.js frontend
         -> Fly LangGraph runtime executor for demo.inspect callbacks
 
 Browser -> Vercel Next.js /api proxy
+        -> Cloudflare /langgraph facade
         -> Fly LangGraph runtime gateway
         -> Fly LangGraph server
 ```
@@ -25,8 +26,8 @@ Set these in Vercel Production before deploying:
 
 ```bash
 NEXT_PUBLIC_LANGGRAPH_ASSISTANT_ID=agent
-LANGGRAPH_API_URL=https://assistant-mk1-langgraph-dev.fly.dev
-LANGCHAIN_API_KEY=<shared-gateway-token>
+LANGGRAPH_API_URL=https://assistant-mk1-dev-control-plane.david-erwin-cz68.workers.dev/langgraph
+LANGCHAIN_API_KEY=
 CLOUDFLARE_CONTROL_PLANE_URL=https://assistant-mk1-dev-control-plane.david-erwin-cz68.workers.dev
 CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<secret>
 WORKBENCH_DEV_USER_ID=dev-user
@@ -34,8 +35,9 @@ WORKBENCH_DEV_WORKSPACE_ID=dev-workspace
 WORKBENCH_DEV_AGENT_ID=dev-agent
 ```
 
-`LANGCHAIN_API_KEY` is sent by the Vercel `/api` proxy as `x-api-key` and must
-match `LANGGRAPH_PROXY_TOKEN` on the Fly runtime gateway.
+The Vercel `/api` proxy authenticates to Cloudflare with
+`CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN` and trusted dev identity headers.
+Cloudflare stores the Fly gateway token as `LANGGRAPH_UPSTREAM_TOKEN`.
 
 ## Deploy
 
@@ -57,15 +59,16 @@ https://assistant-mk1.vercel.app
 
 ```bash
 curl https://assistant-mk1.vercel.app/api/health
-SMOKE_TIMEOUT_MS=30000 SMOKE_BASE_URL=https://assistant-mk1.vercel.app pnpm smoke:workbench
 curl -X POST https://assistant-mk1.vercel.app/api/threads \
   -H "Content-Type: application/json" \
   -d '{}'
+SMOKE_TIMEOUT_MS=30000 SMOKE_BASE_URL=https://assistant-mk1.vercel.app pnpm smoke:workbench
 ```
 
 The workbench smoke may need the longer timeout when Fly is cold-starting.
 
 ## Runtime Dependency
 
-Deploy `assistant-mk1-langgraph-dev` before deploying Vercel changes that point
-`LANGGRAPH_API_URL` at it. See `docs/deployment-fly.md`.
+Deploy `assistant-mk1-langgraph-dev` and the Cloudflare Worker before deploying
+Vercel changes that point `LANGGRAPH_API_URL` at `/langgraph`. See
+`docs/deployment-fly.md` and `docs/dev-infrastructure-readiness.md`.

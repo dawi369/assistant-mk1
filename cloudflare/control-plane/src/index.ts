@@ -4,6 +4,7 @@ import {
   handleRunCallback,
   handleStartCloudflareDemoRun,
 } from "./demo-runs";
+import { handleLangGraphFacade } from "./langgraph-facade";
 import { json, requireAgentIdentity, requireAuth } from "./http";
 import type { Env, WorkerExecutionContext } from "./types";
 
@@ -28,6 +29,10 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
   const identityResult = requireAgentIdentity(request);
   if (!identityResult.ok) return identityResult.response;
   const { identity } = identityResult;
+
+  if (url.pathname === "/langgraph" || url.pathname.startsWith("/langgraph/")) {
+    return handleLangGraphFacade(request, env, url);
+  }
 
   if (request.method === "POST" && url.pathname === "/workbench/demo-runs") {
     return handleStartCloudflareDemoRun(request, env, ctx, identity);

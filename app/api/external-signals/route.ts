@@ -37,7 +37,8 @@ const getClient = () => {
   }
   return new Client({
     apiUrl,
-    apiKey: process.env.LANGCHAIN_API_KEY || undefined,
+    apiKey:
+      process.env.LANGCHAIN_API_KEY || process.env.CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN || undefined,
   });
 };
 

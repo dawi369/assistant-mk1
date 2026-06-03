@@ -3,6 +3,9 @@
   "name": "assistant-mk1-dev-control-plane",
   "main": "src/index.ts",
   "compatibility_date": "2026-06-01",
+  "vars": {
+    "LANGGRAPH_UPSTREAM_URL": "https://assistant-mk1-langgraph-dev.fly.dev",
+  },
   "d1_databases": [
     {
       "binding": "DB",
