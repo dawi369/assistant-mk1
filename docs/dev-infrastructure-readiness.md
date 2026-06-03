@@ -10,12 +10,18 @@ database, and the existing Fly staging app as the signed executor.
 - Region: `fra`
 - URL: `https://assistant-mk1-dev.fly.dev`
 - Runtime shape: one Fly Machine runs Next.js and the LangGraph dev server.
+- Vercel frontend: `https://assistant-mk1.vercel.app`
 - Required smoke: `SMOKE_BASE_URL=https://assistant-mk1-dev.fly.dev pnpm smoke:workbench`
 - Cloudflare Worker: `assistant-mk1-dev-control-plane`
 - Cloudflare D1 database: `assistant_mk1_dev`
 - D1 binding: `DB`
 - Workbench smoke alias: `pnpm smoke:workbench` runs the Cloudflare-owned run
   smoke.
+
+The Vercel frontend uses the same Cloudflare-owned workbench routes. Its
+LangGraph proxy currently points at `https://assistant-mk1-dev.fly.dev/api`,
+which means Vercel reaches LangGraph through the Fly Next proxy until the
+LangGraph service is split out.
 
 ## Fly Configuration
 

@@ -80,6 +80,7 @@ langgraph.json      LangGraph CLI config (graph id, node version, env file)
 - `docs/dev-infrastructure-readiness.md` — Fly baseline and future Cloudflare dev resource checklist
 - `docs/runtime.md` — threads, runs, interrupts, crons, and external signals
 - `docs/tenancy.md` — user/workspace scoping and isolation rules
+- `docs/deployment-vercel.md` — Vercel frontend deployment workflow
 - `docs/deployment-fly.md` — Fly dev/staging workflow
 - `docs/reference-apps/polymancer.md` — reference target for a demanding 24/7 tool-using agent
 - `docs/reference-apps/deployment-agent.md` — operational reference target for deployment agents

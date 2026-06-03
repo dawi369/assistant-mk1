@@ -1,6 +1,12 @@
 # Fly.io Dev/Staging Deployment
 
-Fly is the hosted dev/staging runtime. Local development remains the primary coding loop.
+Fly is the hosted dev/staging execution runtime. Local development remains the
+primary coding loop.
+
+The current Fly app still runs Next.js and LangGraph together for staging
+compatibility, but the frontend is now also deployable on Vercel. In that
+Vercel shape, Fly remains the LangGraph/executor host and should eventually be
+split into a dedicated LangGraph/tool-runner service.
 
 ## Shape
 

@@ -32,6 +32,7 @@ Status values:
 | Tenancy principles            | build-ready                 | `docs/tenancy.md`                                            |
 | Secret/risk principles        | build-ready                 | `docs/secrets-and-risk.md`                                   |
 | Fly staging                   | build-ready                 | `docs/deployment-fly.md`                                     |
+| Vercel frontend               | active first slice          | `docs/deployment-vercel.md`                                  |
 | Cloudflare target             | partial                     | `docs/cloudflare-control-plane.md`                           |
 | Fly tool runners target       | partial                     | `docs/fly-tool-runners.md`                                   |
 | Production auth provider      | deferred                    | future auth implementation plan                              |
