@@ -59,6 +59,7 @@ langgraph.json      LangGraph CLI config (graph id, node version, env file)
 - `AGENTS.md` — repo instructions for coding agents
 - `goal.md` — product goal, phases, and done bar
 - `docs/architecture.md` — system shape and seams
+- `docs/diagrams/README.md` — Excalidraw-backed architecture diagram workflow
 - `docs/implementation-roadmap.md` — staged path from current starter to target workbench
 - `docs/infrastructure.md` — infrastructure topology and request flow
 - `docs/cloudflare-control-plane.md` — target live multi-user control plane

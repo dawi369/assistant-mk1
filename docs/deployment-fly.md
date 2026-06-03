@@ -1,41 +1,38 @@
 # Fly.io Dev/Staging Deployment
 
 Fly is the hosted dev/staging execution runtime. Local development remains the
-primary coding loop.
-
-The current Fly app still runs Next.js and LangGraph together for staging
-compatibility, but the frontend is now also deployable on Vercel. In that
-Vercel shape, Fly remains the LangGraph/executor host and should eventually be
-split into a dedicated LangGraph/tool-runner service.
+primary coding loop. Vercel owns the hosted frontend; Fly owns LangGraph and
+signed executor work.
 
 ## Shape
 
-The first Fly deployment runs both processes in one Machine:
+Active runtime app:
 
-- Next.js on `PORT`, default `3000`.
-- LangGraph dev server on `LANGGRAPH_PORT`, default `2024`.
-- Next proxies to LangGraph through `LANGGRAPH_API_URL=http://127.0.0.1:2024`.
+- App: `assistant-mk1-langgraph-dev`
+- Public gateway: `https://assistant-mk1-langgraph-dev.fly.dev`
+- Gateway on `PORT`, default `3000`
+- LangGraph dev server on `LANGGRAPH_PORT`, default `2024`
+- Gateway proxies LangGraph traffic to `LANGGRAPH_UPSTREAM_URL`
+- Gateway serves signed workbench executor requests
 
-This is intentionally simple for staging. Revisit service separation before treating it as production infrastructure.
+Compatibility app:
+
+- App: `assistant-mk1-dev`
+- Runs the older Next.js + LangGraph combined shape
+- Keep it until the dedicated runtime has been stable through hosted smokes
+
+This split removes the Vercel -> Fly Next proxy -> LangGraph hop.
 
 ## Required Secrets
 
 Set secrets with `fly secrets set`; do not commit them.
 
+For the dedicated LangGraph runtime, set:
+
 ```bash
 fly secrets set OPENROUTER_API_KEY=...
-fly secrets set EXTERNAL_SIGNAL_TOKEN=...
-```
-
-For the remote Cloudflare-owned run baseline, also set:
-
-```bash
-fly secrets set CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url>
-fly secrets set CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=...
 fly secrets set WORKBENCH_EXECUTOR_TOKEN=...
-fly secrets set WORKBENCH_DEV_USER_ID=dev-user
-fly secrets set WORKBENCH_DEV_WORKSPACE_ID=dev-workspace
-fly secrets set WORKBENCH_DEV_AGENT_ID=dev-agent
+fly secrets set LANGGRAPH_PROXY_TOKEN=...
 ```
 
 Optional:
@@ -50,38 +47,42 @@ fly secrets set LANGCHAIN_API_KEY=...
 ## First Deploy
 
 ```bash
-fly apps create assistant-mk1-dev --region fra
-fly deploy
+fly apps create assistant-mk1-langgraph-dev --region fra
+pnpm deploy:fly:langgraph
 ```
 
-If the app name is taken, change `app` and `OPENROUTER_SITE_URL` in `fly.toml`.
+If the app name is taken, change `app` and `OPENROUTER_SITE_URL` in
+`fly.langgraph.toml`.
 
 ## Smoke Checks
 
 Health:
 
 ```bash
-curl https://assistant-mk1-dev.fly.dev/api/health
+curl https://assistant-mk1-langgraph-dev.fly.dev/health
 ```
 
-Workbench vertical slice:
+LangGraph gateway:
 
 ```bash
-SMOKE_BASE_URL=https://assistant-mk1-dev.fly.dev pnpm smoke:workbench
+LANGGRAPH_RUNTIME_BASE_URL=https://assistant-mk1-langgraph-dev.fly.dev \
+LANGGRAPH_PROXY_TOKEN=<token> \
+pnpm smoke:langgraph-runtime
+```
+
+Workbench vertical slice from Vercel:
+
+```bash
+SMOKE_TIMEOUT_MS=30000 SMOKE_BASE_URL=https://assistant-mk1.vercel.app pnpm smoke:workbench
 ```
 
 This verifies the production-shaped dev path:
 
 ```text
-Fly/Next proxy -> remote Cloudflare Worker -> remote D1
-              -> signed Fly/Next executor
-              -> Worker callbacks -> remote D1 snapshot
+Vercel Next proxy -> remote Cloudflare Worker -> remote D1
+                  -> signed Fly runtime executor
+                  -> Worker callbacks -> remote D1 snapshot
 ```
-
-The Fly app must have `CLOUDFLARE_CONTROL_PLANE_URL`,
-`CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN`, `WORKBENCH_EXECUTOR_TOKEN`, and the three
-`WORKBENCH_DEV_*` identity values set before this smoke can pass.
-`pnpm smoke:workbench` is an alias for the Cloudflare-owned run smoke.
 
 To prove scoped remote D1 reads and writes, run:
 
@@ -101,14 +102,14 @@ pnpm wrangler d1 list
 pnpm wrangler d1 create assistant_mk1_dev --config cloudflare/control-plane/wrangler.jsonc
 pnpm db:cloudflare:migrate:remote
 pnpm deploy:cloudflare
-SMOKE_BASE_URL=https://assistant-mk1-dev.fly.dev pnpm smoke:workbench
+SMOKE_TIMEOUT_MS=30000 SMOKE_BASE_URL=https://assistant-mk1.vercel.app pnpm smoke:workbench
 ```
 
 Only run `d1 create` if the database is missing, and copy its returned
 `database_id` into `cloudflare/control-plane/wrangler.jsonc` before remote
 migration.
 
-External signal:
+External signal through the compatibility app:
 
 ```bash
 curl -X POST https://assistant-mk1-dev.fly.dev/api/external-signals \
@@ -119,7 +120,7 @@ curl -X POST https://assistant-mk1-dev.fly.dev/api/external-signals \
 
 Frontend:
 
-- Open the Fly URL.
+- Open the Vercel URL.
 - Run "Run demo inspect" and confirm the workbench panel shows completed run,
   tool call, artifact, decision, and audit timeline.
 - Send a message.
@@ -128,7 +129,9 @@ Frontend:
 
 ## Health Checks
 
-`fly.toml` checks `/api/health`. That endpoint confirms the Next server is up and reports the configured LangGraph API URL and assistant id. It does not call the model provider.
+`fly.langgraph.toml` checks `/health`. That endpoint confirms the runtime
+gateway is up and reports its configured LangGraph upstream URL. It does not
+call the model provider.
 
 ## Persistence Warning
 

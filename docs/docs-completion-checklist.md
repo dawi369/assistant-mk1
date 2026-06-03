@@ -34,7 +34,7 @@ Status values:
 | Fly staging                   | build-ready                 | `docs/deployment-fly.md`                                     |
 | Vercel frontend               | active first slice          | `docs/deployment-vercel.md`                                  |
 | Cloudflare target             | partial                     | `docs/cloudflare-control-plane.md`                           |
-| Fly tool runners target       | partial                     | `docs/fly-tool-runners.md`                                   |
+| Fly runtime gateway           | active first slice          | `docs/deployment-fly.md`, `docs/fly-tool-runners.md`         |
 | Production auth provider      | deferred                    | future auth implementation plan                              |
 | Secret storage implementation | deferred                    | future secret custody implementation                         |
 | D1 Worker migrations          | active first slice          | `cloudflare/control-plane/migrations`                        |
@@ -45,7 +45,7 @@ Status values:
 ## Required Before Main Implementation
 
 - Docs index includes every canonical doc.
-- Architecture graph includes every canonical runtime concept.
+- Architecture overview diagram brief and Excalidraw scene are current.
 - Provisional TypeScript contracts match durable/runtime docs.
 - First vertical slice has clear acceptance criteria.
 - assistant-ui leverage boundaries are documented.

@@ -1,0 +1,31 @@
+app = "assistant-mk1-langgraph-dev"
+primary_region = "fra"
+
+[build]
+dockerfile = "Dockerfile.langgraph"
+
+[env]
+LANGGRAPH_PORT = "2024"
+LANGGRAPH_UPSTREAM_URL = "http://127.0.0.1:2024"
+OPENROUTER_APP_NAME = "assistant-mk1-langgraph-dev"
+OPENROUTER_SITE_URL = "https://assistant-mk1-langgraph-dev.fly.dev"
+
+[http_service]
+internal_port = 3000
+force_https = true
+auto_stop_machines = "stop"
+auto_start_machines = true
+min_machines_running = 0
+processes = ["app"]
+
+[[http_service.checks]]
+interval = "15s"
+timeout = "2s"
+grace_period = "20s"
+method = "GET"
+path = "/health"
+
+[vm]
+cpu_kind = "shared"
+cpus = 1
+memory = "1gb"

@@ -2,16 +2,17 @@
 
 This checklist tracks the tiny dev infrastructure baseline for Assistant-MK1.
 The current remote Cloudflare scope is intentionally narrow: one Worker, one D1
-database, and the existing Fly staging app as the signed executor.
+database, the Vercel frontend, and the dedicated Fly LangGraph runtime gateway.
 
 ## Current Remote Baseline
 
-- Fly app: `assistant-mk1-dev`
+- Fly runtime app: `assistant-mk1-langgraph-dev`
+- Fly compatibility app: `assistant-mk1-dev`
 - Region: `fra`
-- URL: `https://assistant-mk1-dev.fly.dev`
-- Runtime shape: one Fly Machine runs Next.js and the LangGraph dev server.
+- Runtime URL: `https://assistant-mk1-langgraph-dev.fly.dev`
+- Runtime shape: one Fly Machine runs the gateway and LangGraph dev server.
 - Vercel frontend: `https://assistant-mk1.vercel.app`
-- Required smoke: `SMOKE_BASE_URL=https://assistant-mk1-dev.fly.dev pnpm smoke:workbench`
+- Required smoke: `SMOKE_TIMEOUT_MS=30000 SMOKE_BASE_URL=https://assistant-mk1.vercel.app pnpm smoke:workbench`
 - Cloudflare Worker: `assistant-mk1-dev-control-plane`
 - Cloudflare D1 database: `assistant_mk1_dev`
 - D1 binding: `DB`
@@ -19,9 +20,8 @@ database, and the existing Fly staging app as the signed executor.
   smoke.
 
 The Vercel frontend uses the same Cloudflare-owned workbench routes. Its
-LangGraph proxy currently points at `https://assistant-mk1-dev.fly.dev/api`,
-which means Vercel reaches LangGraph through the Fly Next proxy until the
-LangGraph service is split out.
+LangGraph proxy points at `https://assistant-mk1-langgraph-dev.fly.dev`, which
+authenticates server-to-server proxy traffic with `LANGGRAPH_PROXY_TOKEN`.
 
 ## Fly Configuration
 
@@ -29,13 +29,8 @@ Required secrets:
 
 - `OPENROUTER_API_KEY`
 - `OPENROUTER_MODEL`
-- `EXTERNAL_SIGNAL_TOKEN`
-- `CLOUDFLARE_CONTROL_PLANE_URL`
-- `CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN`
 - `WORKBENCH_EXECUTOR_TOKEN`
-- `WORKBENCH_DEV_USER_ID`
-- `WORKBENCH_DEV_WORKSPACE_ID`
-- `WORKBENCH_DEV_AGENT_ID`
+- `LANGGRAPH_PROXY_TOKEN`
 
 Optional secrets:
 
@@ -46,10 +41,10 @@ Optional secrets:
 
 Committed Fly env:
 
-- `LANGGRAPH_API_URL=http://127.0.0.1:2024`
-- `NEXT_PUBLIC_LANGGRAPH_ASSISTANT_ID=agent`
-- `OPENROUTER_APP_NAME=assistant-mk1-dev`
-- `OPENROUTER_SITE_URL=https://assistant-mk1-dev.fly.dev`
+- `LANGGRAPH_PORT=2024`
+- `LANGGRAPH_UPSTREAM_URL=http://127.0.0.1:2024`
+- `OPENROUTER_APP_NAME=assistant-mk1-langgraph-dev`
+- `OPENROUTER_SITE_URL=https://assistant-mk1-langgraph-dev.fly.dev`
 
 ## Local Cloudflare Control Plane
 
@@ -108,9 +103,9 @@ helpers, Cloudflare-owned demo-run handlers, and D1-backed demo run storage.
 The remote dev baseline proves this production-shaped path:
 
 ```text
-Fly/Next proxy -> remote Cloudflare Worker -> remote D1
-              -> signed Fly/Next executor
-              -> Worker callbacks -> remote D1 snapshot
+Vercel Next proxy -> remote Cloudflare Worker -> remote D1
+                  -> signed Fly runtime executor
+                  -> Worker callbacks -> remote D1 snapshot
 ```
 
 Provisioning and deploy commands:
@@ -133,13 +128,14 @@ pnpm wrangler secret put WORKBENCH_EXECUTOR_TOKEN --config cloudflare/control-pl
 pnpm wrangler secret put WORKBENCH_EXECUTOR_URL --config cloudflare/control-plane/wrangler.jsonc
 ```
 
-Use `https://assistant-mk1-dev.fly.dev/api/workbench/executors/demo-inspect` as
-the remote executor URL. Do not commit token values.
+Use
+`https://assistant-mk1-langgraph-dev.fly.dev/workbench/executors/demo-inspect`
+as the remote executor URL. Do not commit token values.
 
 Remote Worker smoke:
 
 ```bash
-SMOKE_BASE_URL=https://assistant-mk1-dev.fly.dev pnpm smoke:workbench
+SMOKE_TIMEOUT_MS=30000 SMOKE_BASE_URL=https://assistant-mk1.vercel.app pnpm smoke:workbench
 ```
 
 `pnpm smoke:workbench` is intentionally the same Cloudflare-owned run smoke as
@@ -150,7 +146,7 @@ default. Missing Cloudflare configuration should fail visibly; there is no
 secondary local demo route.
 
 Tenant scope for the current dev baseline is temporary and server-derived.
-Fly/Next reads `WORKBENCH_DEV_USER_ID`, `WORKBENCH_DEV_WORKSPACE_ID`, and
+Vercel/Next reads `WORKBENCH_DEV_USER_ID`, `WORKBENCH_DEV_WORKSPACE_ID`, and
 `WORKBENCH_DEV_AGENT_ID`, then forwards those values to the Worker as trusted
 headers. Browser requests never choose tenant scope.
 

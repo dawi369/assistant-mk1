@@ -11,6 +11,8 @@
     "start:frontend": "next start -H 0.0.0.0 -p ${PORT:-3000}",
     "start:backend": "langgraphjs dev --host 0.0.0.0 --port ${LANGGRAPH_PORT:-2024} --no-browser",
     "start:fly": "concurrently -n frontend,backend -c cyan,magenta \"pnpm start:frontend\" \"pnpm start:backend\"",
+    "start:langgraph-gateway": "tsx scripts/langgraph-runtime-gateway.ts",
+    "start:langgraph-runtime": "concurrently -n gateway,langgraph -c cyan,magenta \"pnpm start:langgraph-gateway\" \"pnpm start:backend\"",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint && oxfmt --check",
     "format": "oxfmt --check",
@@ -20,15 +22,14 @@
     "db:cloudflare:migrate:remote": "wrangler d1 migrations apply assistant_mk1_dev --remote --config cloudflare/control-plane/wrangler.jsonc",
     "deploy:cloudflare": "wrangler deploy --config cloudflare/control-plane/wrangler.jsonc",
     "dev:cloudflare": "wrangler dev --config cloudflare/control-plane/wrangler.jsonc --local --port 8787",
+    "deploy:fly:langgraph": "fly deploy --config fly.langgraph.toml --app assistant-mk1-langgraph-dev",
+    "smoke:langgraph-runtime": "tsx scripts/smoke-langgraph-runtime.ts",
     "smoke:cloudflare-owned-run": "tsx scripts/smoke-cloudflare-owned-run.ts",
     "smoke:cloudflare-owned-run:local": "SMOKE_BASE_URL=http://localhost:3000 tsx scripts/smoke-cloudflare-owned-run.ts",
     "smoke:tenant-isolation": "tsx scripts/smoke-tenant-isolation.ts",
     "smoke:tool-registry": "tsx scripts/smoke-tool-registry.ts",
     "smoke:workbench": "tsx scripts/smoke-cloudflare-owned-run.ts",
-    "smoke:workbench:local": "SMOKE_BASE_URL=http://localhost:3000 tsx scripts/smoke-cloudflare-owned-run.ts",
-    "graph:render": "tsx scripts/render-architecture-graph.ts render",
-    "graph:check": "tsx scripts/render-architecture-graph.ts check",
-    "graph:list": "tsx scripts/render-architecture-graph.ts list"
+    "smoke:workbench:local": "SMOKE_BASE_URL=http://localhost:3000 tsx scripts/smoke-cloudflare-owned-run.ts"
   },
   "dependencies": {
     "@assistant-ui/react": "^0.14.11",
