@@ -1,5 +1,12 @@
 # Docs Completion Checklist
 
+Status: archived historical docs-readiness checklist.
+
+This checklist captured the "90% docs complete" milestone before the first real
+runtime slices. Active implementation should now be guided by
+`docs/implementation-roadmap.md`, the current topology docs, and the operational
+deployment runbooks.
+
 This checklist defines what "90% docs complete" means before the main runtime
 implementation starts.
 

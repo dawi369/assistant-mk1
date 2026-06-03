@@ -1,5 +1,13 @@
 # First Vertical Slice
 
+Status: archived historical implementation plan.
+
+This first-slice plan is preserved as rationale. Its core path has been
+implemented as the Cloudflare-owned demo run with trusted dev tenant scope,
+remote D1 state, Vercel frontend routes, signed Fly runtime execution, and
+tenant-isolation smoke coverage. Active implementation guidance now lives in
+`docs/implementation-roadmap.md` and the deployment/dev-infrastructure runbooks.
+
 The first implementation slice should prove the architecture with minimal risk.
 It should not require real Cloudflare resources, D1/R2 migrations, secret
 storage, or mutation-capable tools.

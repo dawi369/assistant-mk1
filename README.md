@@ -76,8 +76,6 @@ langgraph.json      LangGraph CLI config (graph id, node version, env file)
 - `docs/workbench-ui.md` — assistant-ui leverage map and workbench surfaces
 - `docs/context-engineering.md` — decision records and provenance-backed recall
 - `docs/observability-and-audit.md` — lifecycle events, audit records, logs, artifacts, and health
-- `docs/first-vertical-slice.md` — first implementation proof and acceptance criteria
-- `docs/docs-completion-checklist.md` — build-ready/partial/deferred docs status
 - `docs/dev-infrastructure-readiness.md` — Vercel/Fly/Cloudflare dev baseline and resource checklist
 - `docs/runtime.md` — threads, runs, interrupts, crons, and external signals
 - `docs/tenancy.md` — user/workspace scoping and isolation rules

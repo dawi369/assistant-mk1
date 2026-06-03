@@ -10,11 +10,11 @@ or live mutation tools until the slice that needs them is explicitly scoped.
 
 ## Current Baseline
 
-- Next.js serves the assistant UI and API routes.
+- Vercel hosts the Next.js assistant UI and browser-facing API facade.
 - assistant-ui owns the first chat surface, message rendering, composer,
   attachments, tool-call rendering primitives, and stream ergonomics.
 - `@assistant-ui/react-langgraph` bridges the browser runtime to LangGraph
-  threads and streams.
+  threads and streams through the Fly LangGraph runtime gateway.
 - `backend/agent.ts` is a minimal OpenRouter-backed LangGraph graph.
 - `/api/[..._path]` proxies browser LangGraph SDK traffic.
 - `/api/external-signals` is a token-protected staging ingress for starts,
@@ -22,6 +22,11 @@ or live mutation tools until the slice that needs them is explicitly scoped.
 - Provisional framework contracts define tenant scope, workflow intents,
   run records, tool exposure, durable entities, and repository-style data
   access.
+- Cloudflare owns the current workbench demo run path, including trusted dev
+  tenant scope, D1-backed run snapshots, callbacks, and tenant-isolation smoke
+  coverage.
+- Fly runs the dedicated LangGraph runtime gateway and signed `demo.inspect`
+  executor endpoint.
 
 ## Assistant-UI Principle
 
@@ -56,11 +61,11 @@ Own separately:
 Low-level `components/assistant-ui/*` should stay reusable and mostly
 product-agnostic. Workbench-specific panels should compose around the thread.
 
-## Phase 1: Build-Ready Docs
+## Phase 1: Completed Build-Ready Docs
 
 Goal: implementation can start without inventing runtime semantics mid-change.
 
-Complete:
+Completed baseline:
 
 - Run lifecycle state machine.
 - Tool system and policy model.
@@ -68,103 +73,115 @@ Complete:
 - Control-plane operation contracts.
 - Workbench UI information architecture.
 - Observability and audit rules.
-- First vertical slice acceptance spec.
-
-Exit criteria:
-
-- `docs/docs-completion-checklist.md` marks core runtime/tool/control-plane/UI
-  areas as build-ready or explicitly deferred.
 - Provisional TypeScript contracts are synchronized with docs where needed.
 - Architecture topology Mermaid sources, diagram briefs, and README doc index
   are current.
 
-## Phase 2: Local Mock Vertical Slice
+## Phase 2: Completed Cloudflare-Owned Demo Slice
 
-Goal: prove the architecture without committing to production storage.
+Goal: prove the architecture with the smallest safe production-shaped run path.
 
-Implement a local in-memory or fixture-backed slice:
+Implemented baseline:
 
 ```txt
-manual/external signal
-  -> trusted tenant scope fixture
-  -> WorkflowIntent
-  -> RunRecord
-  -> mock typed tool call
-  -> lifecycle events
+browser workbench action
+  -> Vercel workbench facade
+  -> trusted dev tenant scope
+  -> Cloudflare Worker
+  -> D1-backed WorkflowIntent
+  -> D1-backed RunRecord
+  -> signed Fly executor
+  -> demo.inspect tool
+  -> Worker callbacks
   -> audit/artifact/decision output
   -> workbench status surface
 ```
 
-Use assistant-ui for the thread/composer/message path. Add workbench panels only
-where the current assistant-ui surface does not represent run status, durable
-outputs, or policy state.
+Local Cloudflare development still uses the Next executor route for convenience.
+Hosted dev uses the dedicated Fly runtime executor.
 
-Exit criteria:
+Exit criteria met:
 
-- User can trigger the slice locally.
+- User can trigger the slice from the hosted UI.
 - UI shows run status and durable outputs.
 - Tool output is structured, auditable, and redacted.
+- Two trusted dev tenants cannot read each other's latest run.
 - No provider or tool secrets reach the browser.
 
 ## Phase 3: Tool Adapter Foundation
 
 Goal: make tools boring to add.
 
-Current local target: a runtime tool registry and exposure resolver path. The
-first registered tool remains the deterministic `demo.inspect` dry-run tool;
-the implementation should prove registration and visibility before adding real
-CLI or mutation-capable tools.
+Current baseline: a runtime tool registry and exposure resolver path exist for
+the deterministic `demo.inspect` dry-run tool. The next useful increment is a
+second read-only tool adapter that proves timeout, cancellation, logs,
+structured output, and artifact metadata without adding mutation capability.
 
-Implement:
+Implemented:
 
 - Runtime tool registry.
 - Tool exposure resolver.
 - First native TypeScript demo tool.
+- Tool call records, audit events, decision summaries, and artifact metadata
+  for the Cloudflare-owned demo path.
+
+Next target:
+
 - First CLI/OSS-backed demo tool with timeout, cancellation, logs, structured
   output, and artifact metadata.
-- Policy checks for `ask`, `dry_run`, and `execute` modes.
+- Policy checks for `ask`, `dry_run`, and `execute` modes at the tool-runner
+  boundary.
 
 Exit criteria:
 
 - A new typed tool can be added without changing framework internals.
 - Model-visible tool set is narrower than the installed tool registry.
-- Tool calls produce `ToolCallRecord`, audit events, and artifacts.
+- Tool calls produce durable output records through Cloudflare-owned state.
 
-## Phase 4: Durable Runtime Skeleton
+## Phase 4: Durable Data-Client Expansion
 
-Goal: replace mock state with a scoped data-client implementation.
+Goal: expand from demo-run persistence into scoped repository groups.
 
-Current target: Cloudflare-owned demo run control. The local or remote Worker
-creates the run in D1, delegates deterministic execution to a signed
-Next/Fly-style executor, receives progress/result callbacks, and serves the
-completed snapshot from Cloudflare-owned state. The browser-visible workbench
-button now uses this path by default.
+Current baseline:
 
-Implement:
+```txt
+Vercel workbench facade
+  -> Cloudflare Worker
+  -> WorkflowIntent
+  -> RunRecord
+  -> ToolCallRecord
+  -> audit/artifact/decision output
+  -> scoped snapshot reads
+```
 
-- Durable run records, workflow intents, tool calls, audit events, artifacts,
-  managed state, ledgers, and decision records.
-- Artifact storage path for logs and generated outputs.
-- Restart and resume checks for interrupted work.
+Next target:
+
+- Add one real data-client repository group beyond the demo snapshot path.
+- Prefer workspace context, decisions, audit events, or artifact metadata before
+  R2/DO provisioning.
+- Keep Fly/LangGraph state access mediated through Cloudflare APIs.
 
 Exit criteria:
 
-- State survives local restart where expected.
 - Two dev tenants cannot read each other's state.
-- Run status, history, and artifacts are inspectable.
-- A local Cloudflare Worker can own a dev demo run while a signed executor
-  performs the work and reports callbacks.
+- Repository operations enforce trusted tenant scope.
+- Hosted smoke proves the repository group through the Vercel -> Cloudflare ->
+  Fly path when execution is involved.
 
-## Phase 5: Hosted Control Plane Split
+## Phase 5: Cloudflare-Owned Conversational Control Plane
 
-Goal: move from local/staging wiring toward the target Cloudflare/Fly split.
+Goal: move user-facing conversation and workflow progress behind Cloudflare.
 
-Implement:
+Current baseline: workbench run control is Cloudflare-owned, but assistant-ui
+chat still proxies through Vercel to the Fly LangGraph runtime. Treat that as a
+transitional assistant-ui integration.
+
+Next target:
 
 - Cloudflare-style control-plane ingress and scoped data APIs.
-- Signed tool-runner calls to Fly.
-- Progress callbacks or scoped status writes from Fly/LangGraph.
-- Cloudflare-owned user-facing stream.
+- Cloudflare-owned user-facing stream for conversation and workflow progress.
+- Progress callbacks or scoped status writes from Fly/LangGraph into canonical
+  state.
 - Trigger and schedule handling through trusted tenant metadata.
 
 Exit criteria:
@@ -172,7 +189,7 @@ Exit criteria:
 - External trigger wakes the correct tenant/agent.
 - Cloudflare mediates state access for Fly/LangGraph.
 - Hosted smoke validates `/api/health`, assistant thread creation, streaming,
-  external signal path, and the vertical slice.
+  external signal path, and the Cloudflare-owned workbench path.
 
 ## Phase 6: Production Gates
 

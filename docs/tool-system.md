@@ -156,11 +156,12 @@ Never expose secrets in:
 Adapters should redact before writing artifacts and again before returning data
 to the model or UI.
 
-## First Vertical Slice Tool
+## Current Demo Tool
 
-The first tool should be harmless and deterministic. Recommended shape:
+The current demo tool should stay harmless and deterministic until production
+policy, auth, and secret custody are ready. Required shape:
 
-- Native TypeScript mock inspection tool.
+- Native TypeScript inspection tool.
 - Supports `ask` and `dry_run`.
 - Produces a structured output summary.
 - Produces one small artifact metadata record.
