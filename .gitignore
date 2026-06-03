@@ -50,3 +50,5 @@ next-env.d.ts
 # Local Cloudflare Worker secrets and state
 cloudflare/control-plane/.dev.vars
 cloudflare/control-plane/.wrangler/
+
+.jj
