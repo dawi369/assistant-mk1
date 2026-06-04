@@ -1,4 +1,14 @@
-CREATE TABLE IF NOT EXISTS control_workflow_intents (
+DROP TABLE IF EXISTS chat_runs;
+DROP TABLE IF EXISTS chat_threads;
+DROP TABLE IF EXISTS chat_sessions;
+DROP TABLE IF EXISTS control_audit_events;
+DROP TABLE IF EXISTS control_decisions;
+DROP TABLE IF EXISTS control_artifacts;
+DROP TABLE IF EXISTS control_tool_calls;
+DROP TABLE IF EXISTS control_runs;
+DROP TABLE IF EXISTS control_workflow_intents;
+
+CREATE TABLE control_workflow_intents (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
   workspace_id TEXT NOT NULL,
@@ -12,7 +22,7 @@ CREATE TABLE IF NOT EXISTS control_workflow_intents (
   updated_at TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS control_runs (
+CREATE TABLE control_runs (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
   workspace_id TEXT NOT NULL,
@@ -31,10 +41,10 @@ CREATE TABLE IF NOT EXISTS control_runs (
   updated_at TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_control_runs_scope_latest
+CREATE INDEX idx_control_runs_scope_latest
   ON control_runs (user_id, workspace_id, updated_at DESC, created_at DESC);
 
-CREATE TABLE IF NOT EXISTS control_tool_calls (
+CREATE TABLE control_tool_calls (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
   workspace_id TEXT NOT NULL,
@@ -52,10 +62,10 @@ CREATE TABLE IF NOT EXISTS control_tool_calls (
   created_at TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_control_tool_calls_run
+CREATE INDEX idx_control_tool_calls_run
   ON control_tool_calls (user_id, workspace_id, run_id, created_at ASC);
 
-CREATE TABLE IF NOT EXISTS control_artifacts (
+CREATE TABLE control_artifacts (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
   workspace_id TEXT NOT NULL,
@@ -68,7 +78,7 @@ CREATE TABLE IF NOT EXISTS control_artifacts (
   created_at TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS control_decisions (
+CREATE TABLE control_decisions (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
   workspace_id TEXT NOT NULL,
@@ -83,7 +93,7 @@ CREATE TABLE IF NOT EXISTS control_decisions (
   updated_at TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS control_audit_events (
+CREATE TABLE control_audit_events (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
   workspace_id TEXT NOT NULL,
@@ -95,11 +105,28 @@ CREATE TABLE IF NOT EXISTS control_audit_events (
   created_at TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_control_audit_scope_time
+CREATE INDEX idx_control_audit_scope_time
   ON control_audit_events (user_id, workspace_id, created_at ASC);
 
-CREATE TABLE IF NOT EXISTS chat_threads (
+CREATE TABLE chat_sessions (
+  session_id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  workspace_id TEXT NOT NULL,
+  agent_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  active_thread_id TEXT,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  last_seen_at TEXT NOT NULL
+);
+
+CREATE INDEX idx_chat_sessions_scope_latest
+  ON chat_sessions (user_id, workspace_id, updated_at DESC, created_at DESC);
+
+CREATE TABLE chat_threads (
   thread_id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
   user_id TEXT NOT NULL,
   workspace_id TEXT NOT NULL,
   agent_id TEXT NOT NULL,
@@ -110,10 +137,13 @@ CREATE TABLE IF NOT EXISTS chat_threads (
   last_seen_at TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_chat_threads_scope_latest
+CREATE INDEX idx_chat_threads_scope_latest
   ON chat_threads (user_id, workspace_id, updated_at DESC, created_at DESC);
 
-CREATE TABLE IF NOT EXISTS chat_runs (
+CREATE INDEX idx_chat_threads_session_latest
+  ON chat_threads (user_id, workspace_id, session_id, updated_at DESC, created_at DESC);
+
+CREATE TABLE chat_runs (
   id TEXT PRIMARY KEY,
   thread_id TEXT NOT NULL,
   user_id TEXT NOT NULL,
@@ -129,5 +159,5 @@ CREATE TABLE IF NOT EXISTS chat_runs (
   updated_at TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_chat_runs_thread_latest
+CREATE INDEX idx_chat_runs_thread_latest
   ON chat_runs (user_id, workspace_id, thread_id, updated_at DESC, started_at DESC);

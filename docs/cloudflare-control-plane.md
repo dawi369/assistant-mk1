@@ -42,8 +42,9 @@ R2 is object storage, not a general application database.
 
 The current D1 schema is early-dev and rebuildable. Keep the active schema in
 `cloudflare/control-plane/schema.sql` instead of preserving incremental
-migration history. If the dev schema changes incompatibly, rebuild the dev
-database deliberately and re-apply the current schema.
+migration history. The schema starts by dropping current dev tables. If the dev
+schema changes incompatibly, rebuild the dev database deliberately with the
+current schema.
 
 ## Agent Shape
 
@@ -99,14 +100,15 @@ contract, but the server-side proxy authenticates to Cloudflare with trusted
 dev identity headers. Cloudflare then streams the request to the Fly LangGraph
 gateway with the upstream gateway token.
 
-Cloudflare now owns the first chat boundary invariant: LangGraph thread ids are
-registered in D1 with trusted tenant scope, and thread-scoped facade requests
-must match that stored ownership before they are proxied to Fly. Streamed chat
-runs also get a minimal Cloudflare run envelope so the control plane can prove a
-tenant-scoped request happened without storing the full transcript.
+Cloudflare now owns the first chat session boundary invariant: sessions,
+LangGraph thread ids, and minimal chat run envelopes are registered in D1 with
+trusted tenant scope. Thread-scoped facade requests must match stored ownership
+before they are proxied to Fly. Streamed chat runs get a minimal Cloudflare run
+envelope so the control plane can prove a tenant-scoped request happened
+without storing the full transcript.
 
 This is still not production auth. `WORKBENCH_DEV_*` is a temporary
 server-derived identity source. The durable rule is that Cloudflare enforces
-thread and run ownership from trusted scope, while Fly remains the execution
-plane. The facade must not expose the Fly token to Vercel or the browser, and it
-must not become the permanent product API by accident.
+session, thread, and run ownership from trusted scope, while Fly remains the
+execution plane. The facade must not expose the Fly token to Vercel or the
+browser, and it must not become the permanent product API by accident.

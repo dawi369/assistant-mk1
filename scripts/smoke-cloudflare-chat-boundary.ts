@@ -84,7 +84,8 @@ const createThread = async (identity: TenantIdentity) => {
 };
 
 const assertThreadVisible = async (identity: TenantIdentity, threadId: string) => {
-  await readJson(`/langgraph/threads/${encodeURIComponent(threadId)}/state`, identity);
+  const snapshot = await getBoundarySnapshot(identity, threadId);
+  assertBoundaryScope(snapshot, identity, threadId);
 };
 
 const assertThreadHidden = async (identity: TenantIdentity, threadId: string, label: string) => {

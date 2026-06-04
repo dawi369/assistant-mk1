@@ -132,8 +132,22 @@ export type ControlAuditRow = {
   created_at: string;
 };
 
+export type ChatSessionRow = {
+  session_id: string;
+  user_id: string;
+  workspace_id: string;
+  agent_id: string;
+  status: string;
+  active_thread_id: string | null;
+  metadata_json: string;
+  created_at: string;
+  updated_at: string;
+  last_seen_at: string;
+};
+
 export type ChatThreadRow = {
   thread_id: string;
+  session_id: string;
   user_id: string;
   workspace_id: string;
   agent_id: string;

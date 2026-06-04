@@ -4,6 +4,7 @@ import {
   toJson,
   type AgentIdentity,
   type ChatRunRow,
+  type ChatSessionRow,
   type ChatThreadRow,
   type Env,
   type TenantScope,
@@ -11,20 +12,99 @@ import {
 
 type ChatRunStatus = "running" | "completed" | "failed";
 
+export const createChatSession = async (
+  env: Env,
+  identity: AgentIdentity,
+  metadata: Record<string, unknown> = {},
+) => {
+  const timestamp = new Date().toISOString();
+  const sessionId = createId("cf-session");
+  await env.DB.prepare(
+    `INSERT INTO chat_sessions (
+       session_id, user_id, workspace_id, agent_id, status, metadata_json,
+       created_at, updated_at, last_seen_at
+     )
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      sessionId,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.agentId,
+      "active",
+      toJson(metadata),
+      timestamp,
+      timestamp,
+      timestamp,
+    )
+    .run();
+  return sessionId;
+};
+
+export const getOwnedChatSession = async (env: Env, scope: TenantScope, sessionId: string) =>
+  env.DB.prepare(
+    `SELECT session_id, user_id, workspace_id, agent_id, status, active_thread_id,
+            metadata_json, created_at, updated_at, last_seen_at
+     FROM chat_sessions
+     WHERE user_id = ? AND workspace_id = ? AND session_id = ?
+     LIMIT 1`,
+  )
+    .bind(scope.userId, scope.workspaceId, sessionId)
+    .first<ChatSessionRow>();
+
+export const getLatestChatSession = async (env: Env, scope: TenantScope) =>
+  env.DB.prepare(
+    `SELECT session_id, user_id, workspace_id, agent_id, status, active_thread_id,
+            metadata_json, created_at, updated_at, last_seen_at
+     FROM chat_sessions
+     WHERE user_id = ? AND workspace_id = ?
+     ORDER BY updated_at DESC, created_at DESC
+     LIMIT 1`,
+  )
+    .bind(scope.userId, scope.workspaceId)
+    .first<ChatSessionRow>();
+
+export const getOrCreateLatestChatSession = async (env: Env, identity: AgentIdentity) => {
+  const latest = await getLatestChatSession(env, identity.scope);
+  return (
+    latest?.session_id ?? (await createChatSession(env, identity, { source: "langgraph-facade" }))
+  );
+};
+
+export const touchChatSession = async (
+  env: Env,
+  scope: TenantScope,
+  sessionId: string,
+  activeThreadId?: string,
+) => {
+  const timestamp = new Date().toISOString();
+  await env.DB.prepare(
+    `UPDATE chat_sessions
+     SET active_thread_id = COALESCE(?, active_thread_id),
+         last_seen_at = ?,
+         updated_at = ?
+     WHERE user_id = ? AND workspace_id = ? AND session_id = ?`,
+  )
+    .bind(activeThreadId ?? null, timestamp, timestamp, scope.userId, scope.workspaceId, sessionId)
+    .run();
+};
+
 export const storeChatThread = async (
   env: Env,
   identity: AgentIdentity,
+  sessionId: string,
   threadId: string,
   upstream: Record<string, unknown>,
 ) => {
   const timestamp = new Date().toISOString();
   await env.DB.prepare(
     `INSERT INTO chat_threads (
-       thread_id, user_id, workspace_id, agent_id, status, upstream_json,
+       thread_id, session_id, user_id, workspace_id, agent_id, status, upstream_json,
        created_at, updated_at, last_seen_at
      )
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(thread_id) DO UPDATE SET
+       session_id = excluded.session_id,
        status = excluded.status,
        upstream_json = excluded.upstream_json,
        updated_at = excluded.updated_at,
@@ -32,6 +112,7 @@ export const storeChatThread = async (
   )
     .bind(
       threadId,
+      sessionId,
       identity.scope.userId,
       identity.scope.workspaceId,
       identity.agentId,
@@ -57,7 +138,7 @@ export const touchChatThread = async (env: Env, scope: TenantScope, threadId: st
 
 export const getOwnedChatThread = async (env: Env, scope: TenantScope, threadId: string) =>
   env.DB.prepare(
-    `SELECT thread_id, user_id, workspace_id, agent_id, status, upstream_json,
+    `SELECT thread_id, session_id, user_id, workspace_id, agent_id, status, upstream_json,
             created_at, updated_at, last_seen_at
      FROM chat_threads
      WHERE user_id = ? AND workspace_id = ? AND thread_id = ?
@@ -145,6 +226,7 @@ export const getLatestChatRun = async (env: Env, scope: TenantScope, threadId: s
 
 export const toChatThreadSnapshot = (row: ChatThreadRow) => ({
   threadId: row.thread_id,
+  sessionId: row.session_id,
   scope: {
     userId: row.user_id,
     workspaceId: row.workspace_id,
@@ -175,5 +257,23 @@ export const toChatRunSnapshot = (row: ChatRunRow | null) =>
         completedAt: row.completed_at ?? undefined,
         failedAt: row.failed_at ?? undefined,
         updatedAt: row.updated_at,
+      }
+    : null;
+
+export const toChatSessionSnapshot = (row: ChatSessionRow | null) =>
+  row
+    ? {
+        sessionId: row.session_id,
+        scope: {
+          userId: row.user_id,
+          workspaceId: row.workspace_id,
+        },
+        agentId: row.agent_id,
+        status: row.status,
+        activeThreadId: row.active_thread_id ?? undefined,
+        metadata: parseDataJson(row.metadata_json),
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        lastSeenAt: row.last_seen_at,
       }
     : null;

@@ -1,10 +1,16 @@
 import {
   createChatRun,
+  createChatSession,
   getLatestChatRun,
+  getLatestChatSession,
+  getOrCreateLatestChatSession,
+  getOwnedChatSession,
   getOwnedChatThread,
   storeChatThread,
   toChatRunSnapshot,
+  toChatSessionSnapshot,
   toChatThreadSnapshot,
+  touchChatSession,
   touchChatThread,
   updateChatRun,
 } from "./chat-boundary-store";
@@ -164,7 +170,9 @@ const handleCreateThread = async (
     );
   }
 
-  await storeChatThread(env, identity, parsed.thread_id, parsed);
+  const sessionId = await getOrCreateLatestChatSession(env, identity);
+  await storeChatThread(env, identity, sessionId, parsed.thread_id, parsed);
+  await touchChatSession(env, identity.scope, sessionId, parsed.thread_id);
 
   return new Response(body, {
     status: upstream.status,
@@ -215,6 +223,7 @@ export const handleLangGraphFacade = async (
     const thread = await getOwnedChatThread(env, identity.scope, threadId);
     if (!thread) return json({ ok: false, error: "Thread not found" }, { status: 404 });
     await touchChatThread(env, identity.scope, threadId);
+    await touchChatSession(env, identity.scope, thread.session_id, threadId);
   }
 
   const runId =
@@ -258,10 +267,40 @@ export const handleChatBoundarySnapshot = async (
   const thread = await getOwnedChatThread(env, identity.scope, threadId);
   if (!thread) return json({ ok: false, error: "Thread not found" }, { status: 404 });
 
+  const session = await getOwnedChatSession(env, identity.scope, thread.session_id);
   const latestRun = await getLatestChatRun(env, identity.scope, threadId);
   return json({
     ok: true,
+    session: toChatSessionSnapshot(session),
     thread: toChatThreadSnapshot(thread),
     latestRun: toChatRunSnapshot(latestRun),
   });
+};
+
+export const handleCreateChatSession = async (
+  request: Request,
+  env: Env,
+  identity: AgentIdentity,
+) => {
+  const raw = await request.text();
+  const parsed = raw ? parseJson(raw) : null;
+  const metadata = isRecord(parsed) && isRecord(parsed.metadata) ? parsed.metadata : {};
+  const sessionId = await createChatSession(env, identity, metadata);
+  const session = await getOwnedChatSession(env, identity.scope, sessionId);
+  return json({ ok: true, session: toChatSessionSnapshot(session) }, { status: 201 });
+};
+
+export const handleLatestChatSession = async (env: Env, identity: AgentIdentity) => {
+  const session = await getLatestChatSession(env, identity.scope);
+  return json({ ok: true, session: toChatSessionSnapshot(session) });
+};
+
+export const handleGetChatSession = async (
+  env: Env,
+  identity: AgentIdentity,
+  sessionId: string,
+) => {
+  const session = await getOwnedChatSession(env, identity.scope, sessionId);
+  if (!session) return json({ ok: false, error: "Session not found" }, { status: 404 });
+  return json({ ok: true, session: toChatSessionSnapshot(session) });
 };

@@ -82,6 +82,14 @@ CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
 pnpm smoke:cloudflare-chat-boundary
 ```
 
+Cloudflare session boundary:
+
+```bash
+CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
+CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
+pnpm smoke:cloudflare-session-boundary
+```
+
 Workbench vertical slice from Vercel:
 
 ```bash
@@ -112,8 +120,11 @@ Cloudflare remote deploy sequence:
 ```bash
 pnpm wrangler d1 list
 pnpm wrangler d1 create assistant_mk1_dev --config cloudflare/control-plane/wrangler.jsonc
-pnpm db:cloudflare:apply:remote
+pnpm db:cloudflare:rebuild:remote
 pnpm deploy:cloudflare
+CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
+CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
+pnpm smoke:cloudflare-session-boundary
 CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
 CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
 pnpm smoke:cloudflare-chat-boundary
@@ -121,8 +132,8 @@ SMOKE_TIMEOUT_MS=30000 SMOKE_BASE_URL=https://assistant-mk1.vercel.app pnpm smok
 ```
 
 Only run `d1 create` if the database is missing, and copy its returned
-`database_id` into `cloudflare/control-plane/wrangler.jsonc` before applying
-the current schema.
+`database_id` into `cloudflare/control-plane/wrangler.jsonc` before rebuilding
+the current schema. The rebuild command drops remote dev D1 tables by design.
 
 Frontend:
 

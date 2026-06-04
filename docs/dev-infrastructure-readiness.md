@@ -23,9 +23,10 @@ LangGraph proxy points at the Cloudflare `/langgraph` facade, which
 authenticates Vercel with the dev control-plane token and then authenticates to
 the Fly gateway with `LANGGRAPH_UPSTREAM_TOKEN`.
 
-The `/langgraph` facade also stores tenant-scoped chat thread ownership and
-minimal chat run envelopes in D1. This proves the dev multi-tenant boundary
-without adding frontend auth, sessions, Durable Objects, or transcript storage.
+The `/langgraph` facade also stores tenant-scoped chat sessions, chat thread
+ownership, and minimal chat run envelopes in D1. This proves the dev
+multi-tenant boundary without adding frontend auth, Durable Objects, or
+transcript storage.
 
 ## Fly Configuration
 
@@ -64,9 +65,11 @@ CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=local-dev-token
 WORKBENCH_EXECUTOR_URL=http://localhost:3000/api/workbench/executors/demo-inspect
 WORKBENCH_EXECUTOR_TOKEN=local-executor-token
 EOF
-pnpm db:cloudflare:apply:local
+pnpm db:cloudflare:rebuild:local
 pnpm dev:cloudflare
 ```
+
+The rebuild command is destructive for local dev D1 state.
 
 In another terminal, run the Next app with:
 
@@ -94,11 +97,12 @@ To prove D1 tenant isolation at the Worker boundary, run:
 
 ```bash
 pnpm smoke:tenant-isolation
+pnpm smoke:cloudflare-session-boundary
 pnpm smoke:cloudflare-chat-boundary
 ```
 
 Those smokes use two trusted dev tenant identities. They verify each tenant sees
-only its own workbench runs and only its own LangGraph chat threads.
+only its own workbench runs, chat sessions, and LangGraph chat threads.
 
 The local Worker code is split by responsibility: route dispatch, HTTP/auth
 helpers, Cloudflare-owned demo-run handlers, and D1-backed demo run storage.
@@ -118,9 +122,12 @@ Provisioning and deploy commands:
 ```bash
 pnpm wrangler d1 list
 pnpm wrangler d1 create assistant_mk1_dev --config cloudflare/control-plane/wrangler.jsonc
-pnpm db:cloudflare:apply:remote
+pnpm db:cloudflare:rebuild:remote
 pnpm deploy:cloudflare
 ```
+
+The rebuild command is destructive for remote dev D1 state. That is intentional
+while this schema is still early-dev and disposable.
 
 Only run `d1 create` when `assistant_mk1_dev` is missing. After creation, copy
 the returned `database_id` into `cloudflare/control-plane/wrangler.jsonc`.
@@ -156,6 +163,14 @@ Cloudflare chat boundary smoke:
 CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
 CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
 pnpm smoke:cloudflare-chat-boundary
+```
+
+Cloudflare session boundary smoke:
+
+```bash
+CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
+CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
+pnpm smoke:cloudflare-session-boundary
 ```
 
 Remote Worker smoke:

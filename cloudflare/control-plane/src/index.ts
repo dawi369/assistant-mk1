@@ -4,7 +4,13 @@ import {
   handleRunCallback,
   handleStartCloudflareDemoRun,
 } from "./demo-runs";
-import { handleChatBoundarySnapshot, handleLangGraphFacade } from "./langgraph-facade";
+import {
+  handleChatBoundarySnapshot,
+  handleCreateChatSession,
+  handleGetChatSession,
+  handleLangGraphFacade,
+  handleLatestChatSession,
+} from "./langgraph-facade";
 import { json, requireAgentIdentity, requireAuth } from "./http";
 import type { Env, WorkerExecutionContext } from "./types";
 
@@ -29,6 +35,19 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
   const identityResult = requireAgentIdentity(request);
   if (!identityResult.ok) return identityResult.response;
   const { identity } = identityResult;
+
+  if (request.method === "POST" && url.pathname === "/sessions") {
+    return handleCreateChatSession(request, env, identity);
+  }
+
+  if (request.method === "GET" && url.pathname === "/sessions/latest") {
+    return handleLatestChatSession(env, identity);
+  }
+
+  const sessionMatch = url.pathname.match(/^\/sessions\/([^/]+)$/);
+  if (request.method === "GET" && sessionMatch?.[1]) {
+    return handleGetChatSession(env, identity, sessionMatch[1]);
+  }
 
   const chatBoundaryMatch = url.pathname.match(
     /^\/internal\/chat-boundary\/threads\/([^/]+)\/snapshot$/,
