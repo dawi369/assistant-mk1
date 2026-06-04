@@ -113,6 +113,12 @@ The current dev policy is intentionally small. Chat defaults to `ask`,
 exists, and a second same-thread stream is blocked while another run is still
 `running`.
 
+Cloudflare also records tenant-scoped control-plane events for session,
+thread, intent, policy, and run progress. The current browser-facing workbench
+reads those events through Vercel's same-origin facade as a compact activity
+feed. This is observable control-plane state, not transcript persistence and
+not the final Cloudflare-owned conversation stream.
+
 This is still not production auth. `WORKBENCH_DEV_*` is a temporary
 server-derived identity source. The durable rule is that Cloudflare enforces
 session, thread, and run ownership from trusted scope, while Fly remains the

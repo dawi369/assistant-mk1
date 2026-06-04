@@ -29,6 +29,22 @@ export type CloudflareOwnedDemoRunResponse = {
   error?: string;
 };
 
+export type ControlPlaneEvent = {
+  id: Id;
+  type: string;
+  summary: string;
+  targetType?: string;
+  targetId?: string;
+  data?: Record<string, unknown>;
+  createdAt: string;
+};
+
+export type ControlPlaneEventsResponse = {
+  ok?: boolean;
+  events?: ControlPlaneEvent[];
+  error?: string;
+};
+
 const requestTimeoutMs = 2_000;
 
 const getControlPlaneConfig = () => {
@@ -116,4 +132,9 @@ export const getLatestCloudflareOwnedDemoRunSnapshot = () =>
 export const getCloudflareOwnedDemoRunSnapshot = (runId: Id) =>
   requestControlPlane<CloudflareOwnedDemoRunResponse>(
     `/workbench/demo-runs/${encodeURIComponent(runId)}`,
+  );
+
+export const getLatestControlPlaneEvents = (limit = 50) =>
+  requestControlPlane<ControlPlaneEventsResponse>(
+    `/events/latest?limit=${encodeURIComponent(String(limit))}`,
   );

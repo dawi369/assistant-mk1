@@ -8,7 +8,6 @@ import {
   getLatestChatRun,
   getLatestChatSession,
   getLatestRunningChatRun,
-  getOrCreateLatestChatSession,
   getOwnedChatSession,
   getOwnedChatThread,
   storeChatThread,
@@ -22,6 +21,7 @@ import {
   updateChatRun,
 } from "./chat-boundary-store";
 import { deriveChatExecutionMode, evaluateChatRunPolicy } from "./chat-policy";
+import { appendControlPlaneEvent } from "./control-plane-events";
 import { isRecord, json, parseJson } from "./http";
 import type { AgentIdentity, Env, WorkerExecutionContext } from "./types";
 
@@ -109,6 +109,7 @@ const parseSseMetadata = (chunk: string) => {
 const trackStreamRun = async (
   env: Env,
   identity: AgentIdentity,
+  threadId: string,
   runId: string,
   body: ReadableStream<Uint8Array> | null,
 ) => {
@@ -118,6 +119,13 @@ const trackStreamRun = async (
       scope: identity.scope,
       status: "completed",
       metadata: { stream: "empty" },
+    });
+    await appendControlPlaneEvent(env, identity, {
+      type: "chat.run.completed",
+      summary: "Chat run completed with an empty upstream stream.",
+      targetType: "chat_run",
+      targetId: runId,
+      data: { threadId, stream: "empty" },
     });
     return;
   }
@@ -150,14 +158,29 @@ const trackStreamRun = async (
       upstreamRunId,
       metadata,
     });
+    await appendControlPlaneEvent(env, identity, {
+      type: "chat.run.completed",
+      summary: "Chat run completed.",
+      targetType: "chat_run",
+      targetId: runId,
+      data: { threadId, upstreamRunId },
+    });
   } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown chat stream tracking failure";
     await updateChatRun(env, {
       runId,
       scope: identity.scope,
       status: "failed",
       upstreamRunId,
       metadata,
-      error: error instanceof Error ? error.message : "Unknown chat stream tracking failure",
+      error: message,
+    });
+    await appendControlPlaneEvent(env, identity, {
+      type: "chat.run.failed",
+      summary: "Chat run tracking failed.",
+      targetType: "chat_run",
+      targetId: runId,
+      data: { threadId, upstreamRunId, error: message },
     });
   }
 };
@@ -208,9 +231,29 @@ const handleCreateThread = async (
     );
   }
 
-  const sessionId = await getOrCreateLatestChatSession(env, identity);
-  await storeChatThread(env, identity, sessionId, parsed.thread_id, parsed);
-  await touchChatSession(env, identity.scope, sessionId, parsed.thread_id);
+  const existingSession = await getLatestChatSession(env, identity.scope);
+  const createdSession = !existingSession;
+  const resolvedSessionId =
+    existingSession?.session_id ??
+    (await createChatSession(env, identity, { source: "langgraph-facade" }));
+  if (createdSession) {
+    await appendControlPlaneEvent(env, identity, {
+      type: "chat.session.created",
+      summary: "Created chat session for LangGraph thread ownership.",
+      targetType: "chat_session",
+      targetId: resolvedSessionId,
+      data: { source: "langgraph-facade" },
+    });
+  }
+  await storeChatThread(env, identity, resolvedSessionId, parsed.thread_id, parsed);
+  await appendControlPlaneEvent(env, identity, {
+    type: "chat.thread.created",
+    summary: "Registered LangGraph thread ownership in Cloudflare.",
+    targetType: "chat_thread",
+    targetId: parsed.thread_id,
+    data: { sessionId: resolvedSessionId },
+  });
+  await touchChatSession(env, identity.scope, resolvedSessionId, parsed.thread_id);
 
   return new Response(body, {
     status: upstream.status,
@@ -286,6 +329,13 @@ export const handleLangGraphFacade = async (
       status: policy.decision === "allow" ? "allowed" : "blocked",
       payload,
     });
+    await appendControlPlaneEvent(env, identity, {
+      type: "chat.intent.created",
+      summary: "Created chat response intent.",
+      targetType: "chat_intent",
+      targetId: intentId,
+      data: { threadId, sessionId: thread.session_id, executionMode, status: policy.decision },
+    });
     const policyDecisionId = await createChatPolicyDecision(env, identity, {
       intentId,
       threadId,
@@ -293,6 +343,13 @@ export const handleLangGraphFacade = async (
       reason: policy.reason,
       executionMode,
       limits: { sameThreadConcurrency: 1 },
+    });
+    await appendControlPlaneEvent(env, identity, {
+      type: policy.decision === "allow" ? "chat.policy.allowed" : "chat.policy.blocked",
+      summary: policy.reason,
+      targetType: "chat_policy_decision",
+      targetId: policyDecisionId,
+      data: { threadId, intentId, executionMode },
     });
 
     if (policy.decision === "block") {
@@ -314,20 +371,40 @@ export const handleLangGraphFacade = async (
       policyDecisionId,
       metadata: { executionMode },
     });
+    await appendControlPlaneEvent(env, identity, {
+      type: "chat.run.started",
+      summary: "Started Cloudflare-gated chat run.",
+      targetType: "chat_run",
+      targetId: runId,
+      data: { threadId, intentId, policyDecisionId, executionMode },
+    });
     const upstream = await fetchUpstream(request, env, url, config, bodyText);
 
     if (!upstream.ok) {
+      const error = `${upstream.status} ${upstream.statusText}`;
       await updateChatRun(env, {
         runId,
         scope: identity.scope,
         status: "failed",
-        error: `${upstream.status} ${upstream.statusText}`,
+        error,
+      });
+      await appendControlPlaneEvent(env, identity, {
+        type: "chat.run.failed",
+        summary: "Chat run failed before upstream stream tracking started.",
+        targetType: "chat_run",
+        targetId: runId,
+        data: { threadId, error },
+      });
+      return new Response(upstream.body, {
+        status: upstream.status,
+        statusText: upstream.statusText,
+        headers: responseHeaders(upstream),
       });
     }
 
     if (upstream.body) {
       const [clientBody, trackingBody] = upstream.body.tee();
-      ctx.waitUntil(trackStreamRun(env, identity, runId, trackingBody));
+      ctx.waitUntil(trackStreamRun(env, identity, threadId, runId, trackingBody));
       return new Response(clientBody, {
         status: upstream.status,
         statusText: upstream.statusText,
@@ -340,6 +417,15 @@ export const handleLangGraphFacade = async (
       scope: identity.scope,
       status: upstream.ok ? "completed" : "failed",
       error: upstream.ok ? undefined : `${upstream.status} ${upstream.statusText}`,
+    });
+    await appendControlPlaneEvent(env, identity, {
+      type: upstream.ok ? "chat.run.completed" : "chat.run.failed",
+      summary: upstream.ok
+        ? "Chat run completed without an upstream response body."
+        : "Chat run failed without an upstream response body.",
+      targetType: "chat_run",
+      targetId: runId,
+      data: { threadId },
     });
 
     return new Response(upstream.body, {
@@ -389,6 +475,13 @@ export const handleCreateChatSession = async (
   const parsed = raw ? parseJson(raw) : null;
   const metadata = isRecord(parsed) && isRecord(parsed.metadata) ? parsed.metadata : {};
   const sessionId = await createChatSession(env, identity, metadata);
+  await appendControlPlaneEvent(env, identity, {
+    type: "chat.session.created",
+    summary: "Created chat session.",
+    targetType: "chat_session",
+    targetId: sessionId,
+    data: { source: "sessions-api" },
+  });
   const session = await getOwnedChatSession(env, identity.scope, sessionId);
   return json({ ok: true, session: toChatSessionSnapshot(session) }, { status: 201 });
 };

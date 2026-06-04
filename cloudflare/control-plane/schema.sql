@@ -3,6 +3,7 @@ DROP TABLE IF EXISTS chat_policy_decisions;
 DROP TABLE IF EXISTS chat_intents;
 DROP TABLE IF EXISTS chat_threads;
 DROP TABLE IF EXISTS chat_sessions;
+DROP TABLE IF EXISTS control_plane_events;
 DROP TABLE IF EXISTS control_audit_events;
 DROP TABLE IF EXISTS control_decisions;
 DROP TABLE IF EXISTS control_artifacts;
@@ -109,6 +110,22 @@ CREATE TABLE control_audit_events (
 
 CREATE INDEX idx_control_audit_scope_time
   ON control_audit_events (user_id, workspace_id, created_at ASC);
+
+CREATE TABLE control_plane_events (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  workspace_id TEXT NOT NULL,
+  agent_id TEXT NOT NULL,
+  type TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  target_type TEXT,
+  target_id TEXT,
+  data_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX idx_control_plane_events_scope_latest
+  ON control_plane_events (user_id, workspace_id, created_at DESC, id DESC);
 
 CREATE TABLE chat_sessions (
   session_id TEXT PRIMARY KEY,

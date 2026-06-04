@@ -24,7 +24,7 @@ The current hosted dev baseline is intentionally split but not fully at the nort
 - Cloudflare owns the production-shaped workbench run-control path and now
   fronts hosted LangGraph-compatible chat traffic through `/langgraph`, with
   D1-backed tenant ownership for chat sessions, thread ids, chat intents,
-  policy decisions, and minimal run envelopes.
+  policy decisions, minimal run envelopes, and control-plane activity events.
 - Fly runs the LangGraph runtime gateway and signed executor endpoints.
 
 assistant-ui still talks to a LangGraph-compatible API for chat threads and
@@ -32,7 +32,8 @@ streaming, but hosted traffic now flows through Cloudflare before Fly. Treat the
 facade as a transitional control-plane boundary, not the final product API. The
 current boundary enforces trusted dev tenant ownership for sessions and
 thread-scoped calls, and applies a small dev policy before streamed chat runs
-reach Fly. It is not a frontend auth system.
+reach Fly. The workbench can read recent Cloudflare activity through a
+same-origin Vercel facade. It is not a frontend auth system.
 
 The north-star runtime moves user-facing conversation and workflow progress streaming behind the Cloudflare control plane. Fly remains the execution plane for LangGraph workflows and heavy tools, and writes durable outputs back through mediated Cloudflare APIs or callbacks.
 

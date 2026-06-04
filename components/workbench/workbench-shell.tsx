@@ -61,8 +61,23 @@ type DemoRunResponse = {
   error?: string;
 };
 
+type ControlPlaneEvent = {
+  id: string;
+  type?: string;
+  summary?: string;
+  targetType?: string;
+  targetId?: string;
+  createdAt?: string;
+};
+
+type ControlPlaneEventsResponse = {
+  events?: ControlPlaneEvent[];
+  error?: string;
+};
+
 const cloudflareDemoRunsPath = "/api/workbench/cloudflare-demo-runs";
 const cloudflareLatestDemoRunPath = "/api/workbench/cloudflare-demo-runs/latest";
+const cloudflareControlEventsPath = "/api/workbench/control-events/latest";
 const terminalStatuses = new Set(["completed", "failed", "cancelled"]);
 
 const statusTone = (status?: string) => {
@@ -92,8 +107,10 @@ const formatTime = (value?: string) => {
 
 export function WorkbenchShell() {
   const [snapshot, setSnapshot] = useState<WorkbenchDisplaySnapshot | null>(null);
+  const [controlEvents, setControlEvents] = useState<ControlPlaneEvent[]>([]);
   const [isStarting, setIsStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [eventError, setEventError] = useState<string | null>(null);
 
   const run = snapshot?.run;
   const isActive = run?.status ? !terminalStatuses.has(run.status) : false;
@@ -109,12 +126,27 @@ export function WorkbenchShell() {
     return body;
   };
 
+  const readControlEventsResponse = async (response: Response) => {
+    const body = (await response.json().catch(() => ({}))) as ControlPlaneEventsResponse;
+    if (!response.ok) throw new Error(body.error ?? "Failed to load Cloudflare activity");
+    return body;
+  };
+
   const loadLatest = async () => {
     const response = await fetch(cloudflareLatestDemoRunPath, {
       cache: "no-store",
     });
     const body = await readDemoRunResponse(response, "Failed to load Cloudflare demo run");
     setSnapshot(body.snapshot);
+  };
+
+  const loadControlEvents = async () => {
+    const response = await fetch(cloudflareControlEventsPath, {
+      cache: "no-store",
+    });
+    const body = await readControlEventsResponse(response);
+    setControlEvents(body.events ?? []);
+    setEventError(null);
   };
 
   useEffect(() => {
@@ -134,6 +166,22 @@ export function WorkbenchShell() {
     }, 350);
     return () => window.clearInterval(interval);
   }, [isActive]);
+
+  useEffect(() => {
+    void loadControlEvents().catch((loadError: unknown) => {
+      setEventError(
+        loadError instanceof Error ? loadError.message : "Failed to load Cloudflare activity",
+      );
+    });
+    const interval = window.setInterval(() => {
+      void loadControlEvents().catch((loadError: unknown) => {
+        setEventError(
+          loadError instanceof Error ? loadError.message : "Failed to poll Cloudflare activity",
+        );
+      });
+    }, 2500);
+    return () => window.clearInterval(interval);
+  }, []);
 
   const startDemoRun = async () => {
     setIsStarting(true);
@@ -182,6 +230,35 @@ export function WorkbenchShell() {
               <Metric label="Intent" value={snapshot?.intent?.type ?? "not created"} />
               <Metric label="Stage" value={run?.stage ?? "observe"} />
             </div>
+          </WorkbenchPanel>
+
+          <WorkbenchPanel>
+            <PanelSection icon={ActivityIcon} title="Cloudflare Activity" />
+            {controlEvents.length > 0 ? (
+              <ol className="mt-3 space-y-3">
+                {controlEvents.slice(0, 8).map((event) => (
+                  <li key={event.id} className="grid grid-cols-[0.75rem_1fr] gap-3 text-sm">
+                    <span className="bg-sky-500 mt-1.5 size-2 rounded-full" />
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium">
+                        {event.type ?? "control.event"}
+                      </span>
+                      <span className="text-muted-foreground block">
+                        {event.summary ?? "Control-plane event recorded."}
+                      </span>
+                      <span className="text-muted-foreground/80 block truncate text-xs">
+                        {formatTime(event.createdAt)}
+                        {event.targetType ? ` · ${event.targetType}` : ""}
+                      </span>
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <EmptyPanelText>
+                {eventError ?? "Cloudflare activity will appear after chat or run progress."}
+              </EmptyPanelText>
+            )}
           </WorkbenchPanel>
 
           <WorkbenchPanel>

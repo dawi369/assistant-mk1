@@ -134,6 +134,19 @@ export type ControlAuditRow = {
   created_at: string;
 };
 
+export type ControlPlaneEventRow = {
+  id: string;
+  user_id: string;
+  workspace_id: string;
+  agent_id: string;
+  type: string;
+  summary: string;
+  target_type: string | null;
+  target_id: string | null;
+  data_json: string;
+  created_at: string;
+};
+
 export type ChatSessionRow = {
   session_id: string;
   user_id: string;

@@ -4,6 +4,7 @@ import {
   handleRunCallback,
   handleStartCloudflareDemoRun,
 } from "./demo-runs";
+import { handleControlPlaneEvents, handleLatestControlPlaneEvents } from "./control-plane-events";
 import {
   handleChatBoundarySnapshot,
   handleCreateChatSession,
@@ -35,6 +36,14 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
   const identityResult = requireAgentIdentity(request);
   if (!identityResult.ok) return identityResult.response;
   const { identity } = identityResult;
+
+  if (request.method === "GET" && url.pathname === "/events/latest") {
+    return json(await handleLatestControlPlaneEvents(env, identity, url));
+  }
+
+  if (request.method === "GET" && url.pathname === "/events") {
+    return json(await handleControlPlaneEvents(env, identity, url));
+  }
 
   if (request.method === "POST" && url.pathname === "/sessions") {
     return handleCreateChatSession(request, env, identity);
