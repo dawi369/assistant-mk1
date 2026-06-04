@@ -101,11 +101,17 @@ dev identity headers. Cloudflare then streams the request to the Fly LangGraph
 gateway with the upstream gateway token.
 
 Cloudflare now owns the first chat session boundary invariant: sessions,
-LangGraph thread ids, and minimal chat run envelopes are registered in D1 with
-trusted tenant scope. Thread-scoped facade requests must match stored ownership
-before they are proxied to Fly. Streamed chat runs get a minimal Cloudflare run
-envelope so the control plane can prove a tenant-scoped request happened
-without storing the full transcript.
+LangGraph thread ids, chat intents, policy decisions, and minimal chat run
+envelopes are registered in D1 with trusted tenant scope. Thread-scoped facade
+requests must match stored ownership before they are proxied to Fly. Streamed
+chat runs create an intent, pass through a deterministic dev policy gate, and
+then get a minimal Cloudflare run envelope so the control plane can prove a
+tenant-scoped request happened without storing the full transcript.
+
+The current dev policy is intentionally small. Chat defaults to `ask`,
+`ask`/`dry_run` can pass to Fly, `execute` is blocked until approval policy
+exists, and a second same-thread stream is blocked while another run is still
+`running`.
 
 This is still not production auth. `WORKBENCH_DEV_*` is a temporary
 server-derived identity source. The durable rule is that Cloudflare enforces

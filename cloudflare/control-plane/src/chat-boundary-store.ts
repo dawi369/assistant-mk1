@@ -3,10 +3,13 @@ import {
   createId,
   toJson,
   type AgentIdentity,
+  type ChatIntentRow,
+  type ChatPolicyDecisionRow,
   type ChatRunRow,
   type ChatSessionRow,
   type ChatThreadRow,
   type Env,
+  type ExecutionMode,
   type TenantScope,
 } from "./types";
 
@@ -147,24 +150,112 @@ export const getOwnedChatThread = async (env: Env, scope: TenantScope, threadId:
     .bind(scope.userId, scope.workspaceId, threadId)
     .first<ChatThreadRow>();
 
-export const createChatRun = async (env: Env, identity: AgentIdentity, threadId: string) => {
+export const createChatIntent = async (
+  env: Env,
+  identity: AgentIdentity,
+  input: {
+    sessionId: string;
+    threadId: string;
+    executionMode: ExecutionMode;
+    status: "allowed" | "blocked";
+    payload: Record<string, unknown>;
+  },
+) => {
+  const timestamp = new Date().toISOString();
+  const intentId = createId("cf-chat-intent");
+  await env.DB.prepare(
+    `INSERT INTO chat_intents (
+       id, session_id, thread_id, user_id, workspace_id, agent_id, type, execution_mode,
+       status, payload_json, created_at, updated_at
+     )
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      intentId,
+      input.sessionId,
+      input.threadId,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.agentId,
+      "chat.respond",
+      input.executionMode,
+      input.status,
+      toJson(input.payload),
+      timestamp,
+      timestamp,
+    )
+    .run();
+  return intentId;
+};
+
+export const createChatPolicyDecision = async (
+  env: Env,
+  identity: AgentIdentity,
+  input: {
+    intentId: string;
+    threadId: string;
+    decision: "allow" | "block";
+    reason: string;
+    executionMode: ExecutionMode;
+    limits?: Record<string, unknown>;
+  },
+) => {
+  const timestamp = new Date().toISOString();
+  const decisionId = createId("cf-chat-policy");
+  await env.DB.prepare(
+    `INSERT INTO chat_policy_decisions (
+       id, intent_id, thread_id, user_id, workspace_id, agent_id, decision, reason,
+       execution_mode, limits_json, created_at
+     )
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      decisionId,
+      input.intentId,
+      input.threadId,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.agentId,
+      input.decision,
+      input.reason,
+      input.executionMode,
+      toJson(input.limits ?? {}),
+      timestamp,
+    )
+    .run();
+  return decisionId;
+};
+
+export const createChatRun = async (
+  env: Env,
+  identity: AgentIdentity,
+  input: {
+    threadId: string;
+    intentId: string;
+    policyDecisionId: string;
+    metadata?: Record<string, unknown>;
+  },
+) => {
   const timestamp = new Date().toISOString();
   const runId = createId("cf-chat-run");
   await env.DB.prepare(
     `INSERT INTO chat_runs (
-       id, thread_id, user_id, workspace_id, agent_id, status, metadata_json,
+       id, intent_id, policy_decision_id, thread_id, user_id, workspace_id, agent_id,
+       status, metadata_json,
        started_at, updated_at
      )
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       runId,
-      threadId,
+      input.intentId,
+      input.policyDecisionId,
+      input.threadId,
       identity.scope.userId,
       identity.scope.workspaceId,
       identity.agentId,
       "running",
-      "{}",
+      toJson(input.metadata ?? {}),
       timestamp,
       timestamp,
     )
@@ -214,8 +305,9 @@ export const updateChatRun = async (
 
 export const getLatestChatRun = async (env: Env, scope: TenantScope, threadId: string) =>
   env.DB.prepare(
-    `SELECT id, thread_id, user_id, workspace_id, agent_id, upstream_run_id, status,
-            metadata_json, error, started_at, completed_at, failed_at, updated_at
+    `SELECT id, intent_id, policy_decision_id, thread_id, user_id, workspace_id, agent_id,
+            upstream_run_id, status, metadata_json, error, started_at, completed_at,
+            failed_at, updated_at
      FROM chat_runs
      WHERE user_id = ? AND workspace_id = ? AND thread_id = ?
      ORDER BY updated_at DESC, started_at DESC
@@ -223,6 +315,43 @@ export const getLatestChatRun = async (env: Env, scope: TenantScope, threadId: s
   )
     .bind(scope.userId, scope.workspaceId, threadId)
     .first<ChatRunRow>();
+
+export const getLatestRunningChatRun = async (env: Env, scope: TenantScope, threadId: string) =>
+  env.DB.prepare(
+    `SELECT id, intent_id, policy_decision_id, thread_id, user_id, workspace_id, agent_id,
+            upstream_run_id, status, metadata_json, error, started_at, completed_at,
+            failed_at, updated_at
+     FROM chat_runs
+     WHERE user_id = ? AND workspace_id = ? AND thread_id = ? AND status = 'running'
+     ORDER BY updated_at DESC, started_at DESC
+     LIMIT 1`,
+  )
+    .bind(scope.userId, scope.workspaceId, threadId)
+    .first<ChatRunRow>();
+
+export const getLatestChatIntent = async (env: Env, scope: TenantScope, threadId: string) =>
+  env.DB.prepare(
+    `SELECT id, session_id, thread_id, user_id, workspace_id, agent_id, type,
+            execution_mode, status, payload_json, created_at, updated_at
+     FROM chat_intents
+     WHERE user_id = ? AND workspace_id = ? AND thread_id = ?
+     ORDER BY updated_at DESC, created_at DESC
+     LIMIT 1`,
+  )
+    .bind(scope.userId, scope.workspaceId, threadId)
+    .first<ChatIntentRow>();
+
+export const getLatestChatPolicyDecision = async (env: Env, scope: TenantScope, threadId: string) =>
+  env.DB.prepare(
+    `SELECT id, intent_id, thread_id, user_id, workspace_id, agent_id, decision,
+            reason, execution_mode, limits_json, created_at
+     FROM chat_policy_decisions
+     WHERE user_id = ? AND workspace_id = ? AND thread_id = ?
+     ORDER BY created_at DESC
+     LIMIT 1`,
+  )
+    .bind(scope.userId, scope.workspaceId, threadId)
+    .first<ChatPolicyDecisionRow>();
 
 export const toChatThreadSnapshot = (row: ChatThreadRow) => ({
   threadId: row.thread_id,
@@ -243,6 +372,8 @@ export const toChatRunSnapshot = (row: ChatRunRow | null) =>
   row
     ? {
         id: row.id,
+        intentId: row.intent_id,
+        policyDecisionId: row.policy_decision_id,
         threadId: row.thread_id,
         scope: {
           userId: row.user_id,
@@ -257,6 +388,45 @@ export const toChatRunSnapshot = (row: ChatRunRow | null) =>
         completedAt: row.completed_at ?? undefined,
         failedAt: row.failed_at ?? undefined,
         updatedAt: row.updated_at,
+      }
+    : null;
+
+export const toChatIntentSnapshot = (row: ChatIntentRow | null) =>
+  row
+    ? {
+        id: row.id,
+        sessionId: row.session_id,
+        threadId: row.thread_id,
+        scope: {
+          userId: row.user_id,
+          workspaceId: row.workspace_id,
+        },
+        agentId: row.agent_id,
+        type: row.type,
+        executionMode: row.execution_mode,
+        status: row.status,
+        payload: parseDataJson(row.payload_json),
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }
+    : null;
+
+export const toChatPolicyDecisionSnapshot = (row: ChatPolicyDecisionRow | null) =>
+  row
+    ? {
+        id: row.id,
+        intentId: row.intent_id,
+        threadId: row.thread_id,
+        scope: {
+          userId: row.user_id,
+          workspaceId: row.workspace_id,
+        },
+        agentId: row.agent_id,
+        decision: row.decision,
+        reason: row.reason,
+        executionMode: row.execution_mode,
+        limits: parseDataJson(row.limits_json),
+        createdAt: row.created_at,
       }
     : null;
 

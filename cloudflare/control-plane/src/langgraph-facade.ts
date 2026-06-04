@@ -1,12 +1,19 @@
 import {
+  createChatIntent,
+  createChatPolicyDecision,
   createChatRun,
   createChatSession,
+  getLatestChatIntent,
+  getLatestChatPolicyDecision,
   getLatestChatRun,
   getLatestChatSession,
+  getLatestRunningChatRun,
   getOrCreateLatestChatSession,
   getOwnedChatSession,
   getOwnedChatThread,
   storeChatThread,
+  toChatIntentSnapshot,
+  toChatPolicyDecisionSnapshot,
   toChatRunSnapshot,
   toChatSessionSnapshot,
   toChatThreadSnapshot,
@@ -14,6 +21,7 @@ import {
   touchChatThread,
   updateChatRun,
 } from "./chat-boundary-store";
+import { deriveChatExecutionMode, evaluateChatRunPolicy } from "./chat-policy";
 import { isRecord, json, parseJson } from "./http";
 import type { AgentIdentity, Env, WorkerExecutionContext } from "./types";
 
@@ -61,6 +69,31 @@ const isCreateThreadRequest = (request: Request, pathname: string) =>
 
 const isThreadRunStreamRequest = (request: Request, pathname: string) =>
   request.method === "POST" && /^\/langgraph\/threads\/[^/]+\/runs\/stream$/.test(pathname);
+
+const summarizeChatRunRequest = (
+  body: unknown,
+  input: { bodyBytes: number; requestedExecutionMode?: string },
+) => {
+  if (!isRecord(body)) {
+    return {
+      bodyBytes: input.bodyBytes,
+      requestedExecutionMode: input.requestedExecutionMode,
+    };
+  }
+
+  const requestInput = isRecord(body.input) ? body.input : {};
+  const messages = Array.isArray(requestInput.messages) ? requestInput.messages : [];
+  return {
+    assistantId: typeof body.assistant_id === "string" ? body.assistant_id : undefined,
+    streamMode:
+      typeof body.stream_mode === "string" || Array.isArray(body.stream_mode)
+        ? body.stream_mode
+        : undefined,
+    messageCount: messages.length,
+    bodyBytes: input.bodyBytes,
+    requestedExecutionMode: input.requestedExecutionMode,
+  };
+};
 
 const parseSseMetadata = (chunk: string) => {
   const metadata = [...chunk.matchAll(/^event: metadata\r?\ndata: (.+)$/gm)]
@@ -134,12 +167,17 @@ const fetchUpstream = (
   env: Env,
   url: URL,
   config: { baseUrl: string; token: string },
+  bodyOverride?: BodyInit | null,
 ) => {
   const upstreamPath = stripLangGraphPrefix(url.pathname);
   return fetch(`${config.baseUrl}${upstreamPath}${url.search}`, {
     method: request.method,
     headers: headersForUpstream(request, config.token),
-    body: ["GET", "HEAD"].includes(request.method) ? undefined : request.body,
+    body: ["GET", "HEAD"].includes(request.method)
+      ? undefined
+      : bodyOverride === undefined
+        ? request.body
+        : bodyOverride,
   });
 };
 
@@ -219,38 +257,99 @@ export const handleLangGraphFacade = async (
   }
 
   const threadId = threadScopedPath(url.pathname);
+  const thread = threadId ? await getOwnedChatThread(env, identity.scope, threadId) : null;
   if (threadId) {
-    const thread = await getOwnedChatThread(env, identity.scope, threadId);
     if (!thread) return json({ ok: false, error: "Thread not found" }, { status: 404 });
     await touchChatThread(env, identity.scope, threadId);
     await touchChatSession(env, identity.scope, thread.session_id, threadId);
   }
 
-  const runId =
-    threadId && isThreadRunStreamRequest(request, url.pathname)
-      ? await createChatRun(env, identity, threadId)
-      : null;
+  if (threadId && thread && isThreadRunStreamRequest(request, url.pathname)) {
+    const bodyText = await request.text();
+    const parsedBody = parseJson(bodyText);
+    const { executionMode, invalidExecutionMode, requestedExecutionMode } =
+      deriveChatExecutionMode(parsedBody);
+    const runningRun = await getLatestRunningChatRun(env, identity.scope, threadId);
+    const policy = evaluateChatRunPolicy({
+      executionMode,
+      invalidExecutionMode,
+      runningRun,
+    });
+    const payload = summarizeChatRunRequest(parsedBody, {
+      bodyBytes: bodyText.length,
+      requestedExecutionMode,
+    });
+    const intentId = await createChatIntent(env, identity, {
+      sessionId: thread.session_id,
+      threadId,
+      executionMode,
+      status: policy.decision === "allow" ? "allowed" : "blocked",
+      payload,
+    });
+    const policyDecisionId = await createChatPolicyDecision(env, identity, {
+      intentId,
+      threadId,
+      decision: policy.decision,
+      reason: policy.reason,
+      executionMode,
+      limits: { sameThreadConcurrency: 1 },
+    });
 
-  const upstream = await fetchUpstream(request, env, url, config);
+    if (policy.decision === "block") {
+      return json(
+        {
+          ok: false,
+          error: policy.reason,
+          intentId,
+          policyDecisionId,
+          decision: policy.decision,
+        },
+        { status: policy.status },
+      );
+    }
 
-  if (runId && !upstream.ok) {
+    const runId = await createChatRun(env, identity, {
+      threadId,
+      intentId,
+      policyDecisionId,
+      metadata: { executionMode },
+    });
+    const upstream = await fetchUpstream(request, env, url, config, bodyText);
+
+    if (!upstream.ok) {
+      await updateChatRun(env, {
+        runId,
+        scope: identity.scope,
+        status: "failed",
+        error: `${upstream.status} ${upstream.statusText}`,
+      });
+    }
+
+    if (upstream.body) {
+      const [clientBody, trackingBody] = upstream.body.tee();
+      ctx.waitUntil(trackStreamRun(env, identity, runId, trackingBody));
+      return new Response(clientBody, {
+        status: upstream.status,
+        statusText: upstream.statusText,
+        headers: responseHeaders(upstream),
+      });
+    }
+
     await updateChatRun(env, {
       runId,
       scope: identity.scope,
-      status: "failed",
-      error: `${upstream.status} ${upstream.statusText}`,
+      status: upstream.ok ? "completed" : "failed",
+      error: upstream.ok ? undefined : `${upstream.status} ${upstream.statusText}`,
     });
-  }
 
-  if (runId && upstream.body) {
-    const [clientBody, trackingBody] = upstream.body.tee();
-    ctx.waitUntil(trackStreamRun(env, identity, runId, trackingBody));
-    return new Response(clientBody, {
+    return new Response(upstream.body, {
       status: upstream.status,
       statusText: upstream.statusText,
       headers: responseHeaders(upstream),
     });
   }
+
+  const upstream = await fetchUpstream(request, env, url, config);
 
   return new Response(upstream.body, {
     status: upstream.status,
@@ -269,10 +368,14 @@ export const handleChatBoundarySnapshot = async (
 
   const session = await getOwnedChatSession(env, identity.scope, thread.session_id);
   const latestRun = await getLatestChatRun(env, identity.scope, threadId);
+  const latestIntent = await getLatestChatIntent(env, identity.scope, threadId);
+  const latestPolicyDecision = await getLatestChatPolicyDecision(env, identity.scope, threadId);
   return json({
     ok: true,
     session: toChatSessionSnapshot(session),
     thread: toChatThreadSnapshot(thread),
+    latestIntent: toChatIntentSnapshot(latestIntent),
+    latestPolicyDecision: toChatPolicyDecisionSnapshot(latestPolicyDecision),
     latestRun: toChatRunSnapshot(latestRun),
   });
 };

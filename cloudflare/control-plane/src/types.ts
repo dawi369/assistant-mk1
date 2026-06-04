@@ -7,6 +7,8 @@ export type RunStatus =
   | "failed"
   | "cancelled";
 
+export type ExecutionMode = "ask" | "dry_run" | "execute";
+
 export type D1PreparedStatement = {
   bind(...values: unknown[]): D1PreparedStatement;
   first<T = unknown>(): Promise<T | null>;
@@ -158,8 +160,39 @@ export type ChatThreadRow = {
   last_seen_at: string;
 };
 
+export type ChatIntentRow = {
+  id: string;
+  session_id: string;
+  thread_id: string;
+  user_id: string;
+  workspace_id: string;
+  agent_id: string;
+  type: string;
+  execution_mode: ExecutionMode;
+  status: string;
+  payload_json: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ChatPolicyDecisionRow = {
+  id: string;
+  intent_id: string;
+  thread_id: string;
+  user_id: string;
+  workspace_id: string;
+  agent_id: string;
+  decision: string;
+  reason: string;
+  execution_mode: ExecutionMode;
+  limits_json: string;
+  created_at: string;
+};
+
 export type ChatRunRow = {
   id: string;
+  intent_id: string;
+  policy_decision_id: string;
   thread_id: string;
   user_id: string;
   workspace_id: string;

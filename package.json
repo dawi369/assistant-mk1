@@ -25,6 +25,7 @@
     "smoke:cloudflare-langgraph-facade": "tsx scripts/smoke-cloudflare-langgraph-facade.ts",
     "smoke:cloudflare-chat-boundary": "tsx scripts/smoke-cloudflare-chat-boundary.ts",
     "smoke:cloudflare-session-boundary": "tsx scripts/smoke-cloudflare-session-boundary.ts",
+    "smoke:cloudflare-policy-boundary": "tsx scripts/smoke-cloudflare-policy-boundary.ts",
     "smoke:tenant-isolation": "tsx scripts/smoke-tenant-isolation.ts",
     "smoke:tool-registry": "tsx scripts/smoke-tool-registry.ts",
     "smoke:workbench": "tsx scripts/smoke-cloudflare-owned-run.ts"

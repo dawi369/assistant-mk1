@@ -24,9 +24,9 @@ authenticates Vercel with the dev control-plane token and then authenticates to
 the Fly gateway with `LANGGRAPH_UPSTREAM_TOKEN`.
 
 The `/langgraph` facade also stores tenant-scoped chat sessions, chat thread
-ownership, and minimal chat run envelopes in D1. This proves the dev
-multi-tenant boundary without adding frontend auth, Durable Objects, or
-transcript storage.
+ownership, chat intents, policy decisions, and minimal chat run envelopes in
+D1. This proves the dev multi-tenant and execution-policy boundary without
+adding frontend auth, Durable Objects, queues, or transcript storage.
 
 ## Fly Configuration
 
@@ -99,10 +99,14 @@ To prove D1 tenant isolation at the Worker boundary, run:
 pnpm smoke:tenant-isolation
 pnpm smoke:cloudflare-session-boundary
 pnpm smoke:cloudflare-chat-boundary
+pnpm smoke:cloudflare-policy-boundary
 ```
 
 Those smokes use two trusted dev tenant identities. They verify each tenant sees
-only its own workbench runs, chat sessions, and LangGraph chat threads.
+only its own workbench runs, chat sessions, and LangGraph chat threads. The
+policy smoke also verifies that normal `ask` chat passes, `execute` chat is
+blocked, and duplicate same-thread execution is rejected while a run is already
+`running`.
 
 The local Worker code is split by responsibility: route dispatch, HTTP/auth
 helpers, Cloudflare-owned demo-run handlers, and D1-backed demo run storage.
@@ -171,6 +175,14 @@ Cloudflare session boundary smoke:
 CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
 CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
 pnpm smoke:cloudflare-session-boundary
+```
+
+Cloudflare policy boundary smoke:
+
+```bash
+CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
+CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
+pnpm smoke:cloudflare-policy-boundary
 ```
 
 Remote Worker smoke:

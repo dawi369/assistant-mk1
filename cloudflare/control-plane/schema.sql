@@ -1,4 +1,6 @@
 DROP TABLE IF EXISTS chat_runs;
+DROP TABLE IF EXISTS chat_policy_decisions;
+DROP TABLE IF EXISTS chat_intents;
 DROP TABLE IF EXISTS chat_threads;
 DROP TABLE IF EXISTS chat_sessions;
 DROP TABLE IF EXISTS control_audit_events;
@@ -143,8 +145,45 @@ CREATE INDEX idx_chat_threads_scope_latest
 CREATE INDEX idx_chat_threads_session_latest
   ON chat_threads (user_id, workspace_id, session_id, updated_at DESC, created_at DESC);
 
+CREATE TABLE chat_intents (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  thread_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  workspace_id TEXT NOT NULL,
+  agent_id TEXT NOT NULL,
+  type TEXT NOT NULL,
+  execution_mode TEXT NOT NULL,
+  status TEXT NOT NULL,
+  payload_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX idx_chat_intents_thread_latest
+  ON chat_intents (user_id, workspace_id, thread_id, updated_at DESC, created_at DESC);
+
+CREATE TABLE chat_policy_decisions (
+  id TEXT PRIMARY KEY,
+  intent_id TEXT NOT NULL,
+  thread_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  workspace_id TEXT NOT NULL,
+  agent_id TEXT NOT NULL,
+  decision TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  execution_mode TEXT NOT NULL,
+  limits_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX idx_chat_policy_decisions_thread_latest
+  ON chat_policy_decisions (user_id, workspace_id, thread_id, created_at DESC);
+
 CREATE TABLE chat_runs (
   id TEXT PRIMARY KEY,
+  intent_id TEXT NOT NULL,
+  policy_decision_id TEXT NOT NULL,
   thread_id TEXT NOT NULL,
   user_id TEXT NOT NULL,
   workspace_id TEXT NOT NULL,
