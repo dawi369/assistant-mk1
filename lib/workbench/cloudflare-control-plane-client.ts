@@ -1,5 +1,5 @@
 import type { Id, RunStatus } from "@/lib/agent-framework/contracts";
-import { getWorkbenchAgentIdentity } from "@/lib/workbench/agent-identity";
+import { getWorkbenchIdentityHeaders } from "@/lib/workbench/agent-identity";
 
 export type CloudflareOwnedDemoRunSnapshot = {
   scope: {
@@ -67,7 +67,7 @@ const controlPlaneRequest = async (path: string, init?: RequestInit) => {
       "CLOUDFLARE_CONTROL_PLANE_URL and CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN are required",
     );
   }
-  const identity = await getWorkbenchAgentIdentity();
+  const identityHeaders = await getWorkbenchIdentityHeaders();
 
   return {
     url: `${config.baseUrl}${path}`,
@@ -76,9 +76,7 @@ const controlPlaneRequest = async (path: string, init?: RequestInit) => {
       headers: {
         authorization: `Bearer ${config.token}`,
         "content-type": "application/json",
-        "x-assistant-mk1-user-id": identity.scope.userId,
-        "x-assistant-mk1-workspace-id": identity.scope.workspaceId,
-        "x-assistant-mk1-agent-id": identity.agentId,
+        ...identityHeaders,
         ...init?.headers,
       },
     } satisfies RequestInit,

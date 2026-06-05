@@ -43,6 +43,52 @@ export type AgentIdentity = {
   agentId: string;
 };
 
+export type UserRow = {
+  id: string;
+  email: string | null;
+  display_name: string | null;
+  status: string;
+  data_json: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type WorkspaceRow = {
+  id: string;
+  name: string;
+  status: string;
+  created_by_user_id: string;
+  data_json: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type MembershipRow = {
+  id: string;
+  user_id: string;
+  workspace_id: string;
+  role: string;
+  status: string;
+  roles_json: string;
+  permissions_json: string;
+  data_json: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AgentRow = {
+  id: string;
+  workspace_id: string;
+  name: string;
+  description: string | null;
+  status: string;
+  is_default: number;
+  created_by_user_id: string;
+  data_json: string;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ControlIntentRow = {
   id: string;
   user_id: string;

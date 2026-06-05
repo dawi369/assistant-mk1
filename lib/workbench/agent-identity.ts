@@ -4,7 +4,12 @@ import type { Id, TenantScope } from "@/lib/agent-framework/contracts";
 
 export type WorkbenchAgentIdentity = {
   scope: TenantScope;
-  agentId: Id;
+  agentId?: Id;
+  userEmail?: string;
+  userName?: string;
+  membershipRole?: string;
+  membershipRoles?: string[];
+  membershipPermissions?: string[];
 };
 
 export class WorkbenchAuthError extends Error {
@@ -50,11 +55,40 @@ export const getWorkbenchAgentIdentity = async (): Promise<WorkbenchAgentIdentit
     throw new WorkbenchAuthError("WorkOS organization is required before using the workbench", 403);
   }
 
+  const userName = [auth.user.firstName, auth.user.lastName].filter(Boolean).join(" ");
+
   return {
     scope: {
       userId: auth.user.id,
       workspaceId: auth.organizationId,
     },
-    agentId: getDevAgentId(),
+    userEmail: auth.user.email,
+    userName: userName || auth.user.email || auth.user.id,
+    membershipRole: auth.role,
+    membershipRoles: auth.roles,
+    membershipPermissions: auth.permissions,
   };
+};
+
+export const getWorkbenchIdentityHeaders = async () => {
+  const identity = await getWorkbenchAgentIdentity();
+  const headers: Record<string, string> = {
+    "x-assistant-mk1-user-id": identity.scope.userId,
+    "x-assistant-mk1-workspace-id": identity.scope.workspaceId,
+  };
+
+  if (identity.agentId) headers["x-assistant-mk1-agent-id"] = identity.agentId;
+  if (identity.userEmail) headers["x-assistant-mk1-user-email"] = identity.userEmail;
+  if (identity.userName) headers["x-assistant-mk1-user-name"] = identity.userName;
+  if (identity.membershipRole) headers["x-assistant-mk1-membership-role"] = identity.membershipRole;
+  if (identity.membershipRoles) {
+    headers["x-assistant-mk1-membership-roles"] = JSON.stringify(identity.membershipRoles);
+  }
+  if (identity.membershipPermissions) {
+    headers["x-assistant-mk1-membership-permissions"] = JSON.stringify(
+      identity.membershipPermissions,
+    );
+  }
+
+  return headers;
 };

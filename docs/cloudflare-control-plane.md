@@ -90,8 +90,9 @@ The hosted web boundary uses WorkOS AuthKit in Vercel/Next to derive trusted
 identity. Vercel maps WorkOS user, organization, roles, and permissions into a
 server-to-server call to Cloudflare. Cloudflare resolves the internal user,
 workspace, membership, and active agent, then enforces ownership before reading
-or writing control-plane state. `WORKBENCH_DEV_AGENT_ID` remains a temporary
-hosted dev agent selection until D1-backed agent selection replaces it.
+or writing control-plane state. In the current pre-user dev environment,
+Cloudflare auto-bootstraps D1-backed user, workspace, active membership, and
+default active agent rows on first valid WorkOS-shaped request.
 
 Local development can still fall back to server-derived `WORKBENCH_DEV_*`
 identity values when WorkOS is not configured. The durable rule is that Worker
@@ -133,8 +134,9 @@ passes through the LangGraph-compatible facade while Cloudflare accumulates the
 session, policy, run, and event ownership needed to replace that stream later.
 
 This is still not complete production authorization. WorkOS is the hosted web
-auth provider, but workspace membership policy, role enforcement, production
-agent selection, and secret/tool authorization are still future gates. The
+auth provider, and Cloudflare now owns the first D1-backed membership and
+default-agent resolution slice, but richer role policy, explicit invites/admin
+flows, tool authorization, and secret authorization are still future gates. The
 durable rule is that Vercel owns the hosted web session, Cloudflare enforces
 membership, agent access, session, thread, and run ownership from trusted scope,
 and Fly remains the execution plane. The facade must not expose the Fly token to

@@ -40,13 +40,17 @@ This scope applies to:
 - Vercel maps WorkOS `organizationId` to internal `workspaceId`.
 - Vercel forwards trusted tenant headers to the Cloudflare Worker; browser
   requests never provide tenant ids directly.
-- `WORKBENCH_DEV_AGENT_ID` is still the temporary hosted dev agent selection.
+- Cloudflare auto-bootstraps D1-backed user, workspace, active membership, and
+  default active agent rows for the current pre-user dev environment.
+- Hosted WorkOS traffic resolves the active default agent in Cloudflare instead
+  of forwarding `WORKBENCH_DEV_AGENT_ID`.
 - Local development may fall back to `WORKBENCH_DEV_USER_ID` and
-  `WORKBENCH_DEV_WORKSPACE_ID` when WorkOS is not configured.
+  `WORKBENCH_DEV_WORKSPACE_ID` plus `WORKBENCH_DEV_AGENT_ID` when WorkOS is not
+  configured.
 
 WorkOS sign-in is implemented, but production authorization is not complete.
-Workspace membership rules, roles, non-dev agent selection, tool permissions,
-and secret access policy remain production gates.
+Richer role policy, explicit workspace administration, tool permissions, and
+secret access policy remain production gates.
 
 ## Failure Modes To Avoid
 

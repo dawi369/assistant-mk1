@@ -7,7 +7,7 @@
  */
 import { type NextRequest, NextResponse } from "next/server";
 
-import { getWorkbenchAgentIdentity } from "@/lib/workbench/agent-identity";
+import { getWorkbenchIdentityHeaders } from "@/lib/workbench/agent-identity";
 
 export const runtime = "nodejs";
 
@@ -29,11 +29,8 @@ const proxyHeaders = async () => {
   const headers: Record<string, string> = {};
 
   if (process.env.CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN) {
-    const identity = await getWorkbenchAgentIdentity();
     headers.authorization = `Bearer ${requiredEnv("CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN")}`;
-    headers["x-assistant-mk1-user-id"] = identity.scope.userId;
-    headers["x-assistant-mk1-workspace-id"] = identity.scope.workspaceId;
-    headers["x-assistant-mk1-agent-id"] = identity.agentId;
+    Object.assign(headers, await getWorkbenchIdentityHeaders());
     return headers;
   }
 

@@ -10,6 +10,67 @@ DROP TABLE IF EXISTS control_artifacts;
 DROP TABLE IF EXISTS control_tool_calls;
 DROP TABLE IF EXISTS control_runs;
 DROP TABLE IF EXISTS control_workflow_intents;
+DROP TABLE IF EXISTS agents;
+DROP TABLE IF EXISTS memberships;
+DROP TABLE IF EXISTS workspaces;
+DROP TABLE IF EXISTS users;
+
+CREATE TABLE users (
+  id TEXT PRIMARY KEY,
+  email TEXT,
+  display_name TEXT,
+  status TEXT NOT NULL,
+  data_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE workspaces (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  status TEXT NOT NULL,
+  created_by_user_id TEXT NOT NULL,
+  data_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE memberships (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  workspace_id TEXT NOT NULL,
+  role TEXT NOT NULL,
+  status TEXT NOT NULL,
+  roles_json TEXT NOT NULL DEFAULT '[]',
+  permissions_json TEXT NOT NULL DEFAULT '[]',
+  data_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE (user_id, workspace_id)
+);
+
+CREATE INDEX idx_memberships_scope
+  ON memberships (user_id, workspace_id, status);
+
+CREATE TABLE agents (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  status TEXT NOT NULL,
+  is_default INTEGER NOT NULL DEFAULT 0,
+  created_by_user_id TEXT NOT NULL,
+  data_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX idx_agents_workspace_default
+  ON agents (workspace_id, is_default)
+  WHERE is_default = 1;
+
+CREATE INDEX idx_agents_workspace_active
+  ON agents (workspace_id, status, is_default DESC, created_at ASC);
 
 CREATE TABLE control_workflow_intents (
   id TEXT PRIMARY KEY,

@@ -41,7 +41,6 @@ WORKOS_CLIENT_ID=<secret>
 WORKOS_API_KEY=<secret>
 WORKOS_COOKIE_PASSWORD=<secret>
 NEXT_PUBLIC_WORKOS_REDIRECT_URI=https://assistant-mk1.vercel.app/auth/callback
-WORKBENCH_DEV_AGENT_ID=dev-agent
 ```
 
 `WORKOS_CLIENT_ID` and `WORKOS_API_KEY` must belong to the same WorkOS
@@ -57,10 +56,12 @@ Do not mirror local `.env.local` into Vercel Production blindly:
 The Vercel `/api` proxy authenticates to Cloudflare with
 `CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN` and trusted identity headers derived from
 the WorkOS AuthKit server session. WorkOS `user.id` becomes the internal
-`userId`, WorkOS `organizationId` becomes the internal `workspaceId`, and
-`WORKBENCH_DEV_AGENT_ID` remains the temporary hosted dev agent selection.
-Cloudflare stores the Fly gateway token as `LANGGRAPH_UPSTREAM_TOKEN`. Browser
-requests never provide tenant ids directly.
+`userId`, and WorkOS `organizationId` becomes the internal `workspaceId`.
+Cloudflare auto-bootstraps D1-backed user, workspace, membership, and default
+agent rows for the current pre-user dev environment, then resolves the active
+default agent before touching control-plane state. Cloudflare stores the Fly
+gateway token as `LANGGRAPH_UPSTREAM_TOKEN`. Browser requests never provide
+tenant ids or agent ids directly.
 
 ## Deploy
 

@@ -16,7 +16,8 @@ import {
   handleLangGraphFacade,
   handleLatestChatSession,
 } from "./langgraph-facade";
-import { json, requireAgentIdentity, requireAuth } from "./http";
+import { resolveAgentIdentity } from "./authz";
+import { json, requireAuth } from "./http";
 import type { Env, WorkerExecutionContext } from "./types";
 
 const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionContext) => {
@@ -37,7 +38,7 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
     return handleRunCallback(request, env);
   }
 
-  const identityResult = requireAgentIdentity(request);
+  const identityResult = await resolveAgentIdentity(request, env);
   if (!identityResult.ok) return identityResult.response;
   const { identity } = identityResult;
 

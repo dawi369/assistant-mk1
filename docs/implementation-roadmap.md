@@ -195,9 +195,10 @@ Next target:
 - Progress callbacks or scoped status writes from Fly/LangGraph into canonical
   state.
 - Trigger and schedule handling through trusted tenant metadata.
-- Expand WorkOS-backed identity into production authorization: workspace
-  membership, roles, agent selection, and non-dev agent ids, without moving
-  tenant enforcement back into the browser.
+- Expand WorkOS-backed identity beyond the first D1 membership/default-agent
+  slice: richer roles, explicit workspace administration, tool authorization,
+  and trigger-owned tenant metadata, without moving tenant enforcement back into
+  the browser.
 
 Exit criteria:
 
@@ -212,8 +213,9 @@ Goal: allow mutation-capable tools only after platform safety exists.
 
 Required before live external mutation:
 
-- Auth and workspace membership. WorkOS AuthKit sign-in exists, but production
-  role checks, membership enforcement, and agent selection are still required.
+- Auth and workspace membership. WorkOS AuthKit sign-in and the first
+  Cloudflare D1-backed membership/default-agent resolver exist, but production
+  role policy, explicit admin flows, and tool authorization are still required.
 - Encrypted secret custody.
 - Tenant isolation tests.
 - Policy limits, approvals, cooldowns, allowlists, denylists, and kill switches.
