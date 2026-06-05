@@ -33,7 +33,8 @@ facade as a transitional control-plane boundary, not the final product API. The
 current boundary enforces trusted dev tenant ownership for sessions and
 thread-scoped calls, and applies a small dev policy before streamed chat runs
 reach Fly. The workbench can read recent Cloudflare activity through a
-same-origin Vercel facade. It is not a frontend auth system.
+same-origin Vercel facade and can subscribe to a short-lived Cloudflare-backed
+event stream for live activity updates. It is not a frontend auth system.
 
 The north-star runtime moves user-facing conversation and workflow progress streaming behind the Cloudflare control plane. Fly remains the execution plane for LangGraph workflows and heavy tools, and writes durable outputs back through mediated Cloudflare APIs or callbacks.
 
@@ -75,6 +76,10 @@ The current Vercel/Fly LangGraph path remains valid for development and staged v
 Cloudflare owns the user-facing stream. The frontend should keep its WebSocket/SSE/HTTP streaming relationship with the conversational control plane. Fly tool runners and LangGraph workflow services should publish progress by calling Cloudflare callbacks or writing scoped status to canonical state that Cloudflare can stream.
 
 This keeps auth, tenant scope, UI state, and cross-user isolation in one place.
+
+The current implementation has the first piece of this: a tenant-scoped
+control-plane event stream for runtime progress. The assistant transcript stream
+still uses the LangGraph-compatible path through Cloudflare to Fly.
 
 ## Workflow Data Access
 

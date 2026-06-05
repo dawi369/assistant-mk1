@@ -81,6 +81,31 @@ const fetchWithTimeout = async (url: string, init: RequestInit) => {
   }
 };
 
+const controlPlaneRequest = (path: string, init?: RequestInit) => {
+  const config = getControlPlaneConfig();
+  if (!config) {
+    throw new Error(
+      "CLOUDFLARE_CONTROL_PLANE_URL and CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN are required",
+    );
+  }
+  const identity = getWorkbenchDevAgentIdentity();
+
+  return {
+    url: `${config.baseUrl}${path}`,
+    init: {
+      ...init,
+      headers: {
+        authorization: `Bearer ${config.token}`,
+        "content-type": "application/json",
+        "x-assistant-mk1-user-id": identity.scope.userId,
+        "x-assistant-mk1-workspace-id": identity.scope.workspaceId,
+        "x-assistant-mk1-agent-id": identity.agentId,
+        ...init?.headers,
+      },
+    } satisfies RequestInit,
+  };
+};
+
 const parseErrorBody = async (response: Response) => {
   const body = await response.text();
   if (!body) return response.statusText;
@@ -94,25 +119,8 @@ const parseErrorBody = async (response: Response) => {
 };
 
 const requestControlPlane = async <T>(path: string, init?: RequestInit): Promise<T> => {
-  const config = getControlPlaneConfig();
-  if (!config) {
-    throw new Error(
-      "CLOUDFLARE_CONTROL_PLANE_URL and CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN are required",
-    );
-  }
-  const identity = getWorkbenchDevAgentIdentity();
-
-  const response = await fetchWithTimeout(`${config.baseUrl}${path}`, {
-    ...init,
-    headers: {
-      authorization: `Bearer ${config.token}`,
-      "content-type": "application/json",
-      "x-assistant-mk1-user-id": identity.scope.userId,
-      "x-assistant-mk1-workspace-id": identity.scope.workspaceId,
-      "x-assistant-mk1-agent-id": identity.agentId,
-      ...init?.headers,
-    },
-  });
+  const request = controlPlaneRequest(path, init);
+  const response = await fetchWithTimeout(request.url, request.init);
 
   if (!response.ok) {
     throw new Error(await parseErrorBody(response));
@@ -138,3 +146,15 @@ export const getLatestControlPlaneEvents = (limit = 50) =>
   requestControlPlane<ControlPlaneEventsResponse>(
     `/events/latest?limit=${encodeURIComponent(String(limit))}`,
   );
+
+export const streamControlPlaneEvents = (after?: string | null) => {
+  const searchParams = new URLSearchParams();
+  if (after) searchParams.set("after", after);
+  const queryString = searchParams.toString() ? `?${searchParams.toString()}` : "";
+  const request = controlPlaneRequest(`/events/stream${queryString}`, {
+    headers: {
+      accept: "text/event-stream",
+    },
+  });
+  return fetch(request.url, request.init);
+};

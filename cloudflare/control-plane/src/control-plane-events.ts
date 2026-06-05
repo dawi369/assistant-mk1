@@ -3,6 +3,10 @@ import { createId, toJson, type AgentIdentity, type ControlPlaneEventRow, type E
 
 const defaultLimit = 50;
 const maxLimit = 100;
+const streamBatchLimit = 25;
+const streamWindowMs = 25_000;
+const streamPollIntervalMs = 500;
+const streamHeartbeatMs = 5_000;
 
 const readLimit = (url: URL) => {
   const requested = Number(url.searchParams.get("limit") ?? defaultLimit);
@@ -90,6 +94,60 @@ const listEventsAfter = async (
   return events.results;
 };
 
+const latestEventCursor = async (env: Env, identity: AgentIdentity) => {
+  const cursor = await env.DB.prepare(
+    `SELECT rowid AS cursor
+     FROM control_plane_events
+     WHERE user_id = ? AND workspace_id = ?
+     ORDER BY rowid DESC
+     LIMIT 1`,
+  )
+    .bind(identity.scope.userId, identity.scope.workspaceId)
+    .first<{ cursor: number }>();
+
+  return cursor?.cursor ?? 0;
+};
+
+const eventCursor = async (env: Env, identity: AgentIdentity, eventId: string) => {
+  const cursor = await env.DB.prepare(
+    `SELECT rowid AS cursor
+     FROM control_plane_events
+     WHERE user_id = ? AND workspace_id = ? AND id = ?
+     LIMIT 1`,
+  )
+    .bind(identity.scope.userId, identity.scope.workspaceId, eventId)
+    .first<{ cursor: number }>();
+
+  return cursor?.cursor ?? null;
+};
+
+const listEventsAfterCursor = async (
+  env: Env,
+  identity: AgentIdentity,
+  cursor: number,
+  limit: number,
+) => {
+  const events = await env.DB.prepare(
+    `SELECT rowid AS cursor, id, user_id, workspace_id, agent_id, type, summary,
+            target_type, target_id, data_json, created_at
+     FROM control_plane_events
+     WHERE user_id = ? AND workspace_id = ? AND rowid > ?
+     ORDER BY rowid ASC
+     LIMIT ?`,
+  )
+    .bind(identity.scope.userId, identity.scope.workspaceId, cursor, limit)
+    .all<ControlPlaneEventRow & { cursor: number }>();
+
+  return events.results;
+};
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const encodeSse = (event: string, data: unknown) =>
+  `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+
+const encodeHeartbeat = () => `: heartbeat ${new Date().toISOString()}\n\n`;
+
 export const toControlPlaneEventSnapshot = (row: ControlPlaneEventRow) => ({
   id: row.id,
   scope: {
@@ -128,4 +186,62 @@ export const handleControlPlaneEvents = async (env: Env, identity: AgentIdentity
     ok: true,
     events: events.map(toControlPlaneEventSnapshot),
   };
+};
+
+export const handleControlPlaneEventStream = async (
+  env: Env,
+  identity: AgentIdentity,
+  url: URL,
+) => {
+  const encoder = new TextEncoder();
+  const after = url.searchParams.get("after")?.trim();
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let cursor = after
+        ? ((await eventCursor(env, identity, after)) ?? (await latestEventCursor(env, identity)))
+        : await latestEventCursor(env, identity);
+      let lastHeartbeatAt = 0;
+      const startedAt = Date.now();
+
+      try {
+        while (Date.now() - startedAt < streamWindowMs) {
+          const events = await listEventsAfterCursor(env, identity, cursor, streamBatchLimit);
+
+          if (events.length > 0) {
+            for (const event of events) {
+              cursor = event.cursor;
+              controller.enqueue(
+                encoder.encode(
+                  encodeSse("control-plane-event", toControlPlaneEventSnapshot(event)),
+                ),
+              );
+            }
+            continue;
+          }
+
+          const now = Date.now();
+          if (now - lastHeartbeatAt >= streamHeartbeatMs) {
+            controller.enqueue(encoder.encode(encodeHeartbeat()));
+            lastHeartbeatAt = now;
+          }
+
+          await sleep(streamPollIntervalMs);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown event stream failure";
+        controller.enqueue(encoder.encode(encodeSse("control-plane-error", { error: message })));
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-store",
+      "x-accel-buffering": "no",
+    },
+  });
 };

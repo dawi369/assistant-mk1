@@ -4,7 +4,11 @@ import {
   handleRunCallback,
   handleStartCloudflareDemoRun,
 } from "./demo-runs";
-import { handleControlPlaneEvents, handleLatestControlPlaneEvents } from "./control-plane-events";
+import {
+  handleControlPlaneEvents,
+  handleControlPlaneEventStream,
+  handleLatestControlPlaneEvents,
+} from "./control-plane-events";
 import {
   handleChatBoundarySnapshot,
   handleCreateChatSession,
@@ -39,6 +43,10 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
 
   if (request.method === "GET" && url.pathname === "/events/latest") {
     return json(await handleLatestControlPlaneEvents(env, identity, url));
+  }
+
+  if (request.method === "GET" && url.pathname === "/events/stream") {
+    return handleControlPlaneEventStream(env, identity, url);
   }
 
   if (request.method === "GET" && url.pathname === "/events") {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ActivityIcon,
   FileTextIcon,
@@ -78,6 +78,7 @@ type ControlPlaneEventsResponse = {
 const cloudflareDemoRunsPath = "/api/workbench/cloudflare-demo-runs";
 const cloudflareLatestDemoRunPath = "/api/workbench/cloudflare-demo-runs/latest";
 const cloudflareControlEventsPath = "/api/workbench/control-events/latest";
+const cloudflareControlEventStreamPath = "/api/workbench/control-events/stream";
 const terminalStatuses = new Set(["completed", "failed", "cancelled"]);
 
 const statusTone = (status?: string) => {
@@ -111,6 +112,7 @@ export function WorkbenchShell() {
   const [isStarting, setIsStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [eventError, setEventError] = useState<string | null>(null);
+  const latestControlEventIdRef = useRef<string | null>(null);
 
   const run = snapshot?.run;
   const isActive = run?.status ? !terminalStatuses.has(run.status) : false;
@@ -132,6 +134,22 @@ export function WorkbenchShell() {
     return body;
   };
 
+  const mergeControlEvents = (events: ControlPlaneEvent[]) => {
+    setControlEvents((current) => {
+      const byId = new Map<string, ControlPlaneEvent>();
+      for (const event of [...events, ...current]) byId.set(event.id, event);
+      const merged = [...byId.values()]
+        .sort((left, right) => {
+          const rightTime = right.createdAt ? Date.parse(right.createdAt) : 0;
+          const leftTime = left.createdAt ? Date.parse(left.createdAt) : 0;
+          return rightTime - leftTime || right.id.localeCompare(left.id);
+        })
+        .slice(0, 25);
+      latestControlEventIdRef.current = merged[0]?.id ?? null;
+      return merged;
+    });
+  };
+
   const loadLatest = async () => {
     const response = await fetch(cloudflareLatestDemoRunPath, {
       cache: "no-store",
@@ -145,7 +163,7 @@ export function WorkbenchShell() {
       cache: "no-store",
     });
     const body = await readControlEventsResponse(response);
-    setControlEvents(body.events ?? []);
+    mergeControlEvents(body.events ?? []);
     setEventError(null);
   };
 
@@ -168,19 +186,67 @@ export function WorkbenchShell() {
   }, [isActive]);
 
   useEffect(() => {
-    void loadControlEvents().catch((loadError: unknown) => {
-      setEventError(
-        loadError instanceof Error ? loadError.message : "Failed to load Cloudflare activity",
-      );
-    });
-    const interval = window.setInterval(() => {
-      void loadControlEvents().catch((loadError: unknown) => {
+    let source: EventSource | null = null;
+    let fallbackInterval: number | undefined;
+    let cancelled = false;
+
+    const startFallbackPolling = () => {
+      if (fallbackInterval) return;
+      fallbackInterval = window.setInterval(() => {
+        void loadControlEvents().catch((loadError: unknown) => {
+          setEventError(
+            loadError instanceof Error ? loadError.message : "Failed to poll Cloudflare activity",
+          );
+        });
+      }, 2500);
+    };
+
+    const startStream = async () => {
+      try {
+        await loadControlEvents();
+      } catch (loadError) {
         setEventError(
-          loadError instanceof Error ? loadError.message : "Failed to poll Cloudflare activity",
+          loadError instanceof Error ? loadError.message : "Failed to load Cloudflare activity",
         );
+      }
+
+      if (cancelled) return;
+
+      if (!("EventSource" in window)) {
+        startFallbackPolling();
+        return;
+      }
+
+      const streamUrl = new URL(cloudflareControlEventStreamPath, window.location.origin);
+      if (latestControlEventIdRef.current) {
+        streamUrl.searchParams.set("after", latestControlEventIdRef.current);
+      }
+
+      source = new EventSource(streamUrl.toString());
+      source.addEventListener("control-plane-event", (event) => {
+        try {
+          const parsed = JSON.parse(event.data) as ControlPlaneEvent;
+          mergeControlEvents([parsed]);
+          setEventError(null);
+        } catch {
+          setEventError("Cloudflare activity stream returned an invalid event");
+        }
       });
-    }, 2500);
-    return () => window.clearInterval(interval);
+      source.addEventListener("control-plane-error", (event) => {
+        setEventError(event.data || "Cloudflare activity stream failed");
+      });
+      source.onerror = () => {
+        setEventError("Cloudflare activity stream reconnecting");
+      };
+    };
+
+    void startStream();
+
+    return () => {
+      cancelled = true;
+      source?.close();
+      if (fallbackInterval) window.clearInterval(fallbackInterval);
+    };
   }, []);
 
   const startDemoRun = async () => {

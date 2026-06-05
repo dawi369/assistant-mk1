@@ -27,6 +27,7 @@
     "smoke:cloudflare-session-boundary": "tsx scripts/smoke-cloudflare-session-boundary.ts",
     "smoke:cloudflare-policy-boundary": "tsx scripts/smoke-cloudflare-policy-boundary.ts",
     "smoke:cloudflare-event-feed": "tsx scripts/smoke-cloudflare-event-feed.ts",
+    "smoke:cloudflare-event-stream": "tsx scripts/smoke-cloudflare-event-stream.ts",
     "smoke:tenant-isolation": "tsx scripts/smoke-tenant-isolation.ts",
     "smoke:tool-registry": "tsx scripts/smoke-tool-registry.ts",
     "smoke:workbench": "tsx scripts/smoke-cloudflare-owned-run.ts"

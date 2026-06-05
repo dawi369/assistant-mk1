@@ -116,8 +116,15 @@ exists, and a second same-thread stream is blocked while another run is still
 Cloudflare also records tenant-scoped control-plane events for session,
 thread, intent, policy, and run progress. The current browser-facing workbench
 reads those events through Vercel's same-origin facade as a compact activity
-feed. This is observable control-plane state, not transcript persistence and
-not the final Cloudflare-owned conversation stream.
+feed. The Worker exposes both snapshot reads and a short-lived SSE event stream
+for this activity feed, so browser-visible runtime progress can come from
+Cloudflare-owned state without exposing Cloudflare credentials or tenant scope
+to the browser.
+
+This is observable control-plane state, not transcript persistence and not the
+final Cloudflare-owned conversation stream. The assistant message stream still
+passes through the LangGraph-compatible facade while Cloudflare accumulates the
+session, policy, run, and event ownership needed to replace that stream later.
 
 This is still not production auth. `WORKBENCH_DEV_*` is a temporary
 server-derived identity source. The durable rule is that Cloudflare enforces

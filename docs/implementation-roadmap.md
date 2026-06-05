@@ -28,6 +28,8 @@ or live mutation tools until the slice that needs them is explicitly scoped.
 - Cloudflare fronts hosted LangGraph-compatible chat traffic, stores
   tenant-scoped chat sessions, thread ownership, chat intents, policy
   decisions, minimal chat run envelopes, and control-plane activity events.
+  The workbench can subscribe to those activity events through a browser-safe
+  Vercel facade.
 - Fly runs the dedicated LangGraph runtime gateway and signed `demo.inspect`
   executor endpoint.
 
@@ -178,14 +180,15 @@ Goal: move user-facing conversation and workflow progress behind Cloudflare.
 Current baseline: workbench run control is Cloudflare-owned, and assistant-ui
 chat now flows through the Cloudflare `/langgraph` facade. Cloudflare owns
 tenant-scoped session/thread ownership, chat intents, policy decisions, minimal
-run envelopes, and a tenant-scoped control-plane event feed. Fly/LangGraph
-still own graph execution and the facade remains LangGraph-compatible.
+run envelopes, a tenant-scoped control-plane event feed, and a short-lived SSE
+stream for browser-visible runtime activity. Fly/LangGraph still own graph
+execution and the facade remains LangGraph-compatible.
 
 Next target:
 
 - Cloudflare-style control-plane ingress and scoped data APIs.
 - Cloudflare-owned user-facing stream for conversation and workflow progress,
-  using the event feed as the first observable state source.
+  building on the event feed as the first observable state source.
 - Progress callbacks or scoped status writes from Fly/LangGraph into canonical
   state.
 - Trigger and schedule handling through trusted tenant metadata.

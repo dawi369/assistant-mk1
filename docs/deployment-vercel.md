@@ -19,8 +19,8 @@ Browser -> Vercel Next.js /api proxy
 
 Vercel owns frontend rendering and browser-facing API proxying. Cloudflare owns
 run control, tenant state, chat sessions, chat thread ownership, chat intents,
-chat policy decisions, and the control-plane activity feed. Fly owns LangGraph
-and signed executor work.
+chat policy decisions, and the control-plane activity feed plus event stream.
+Fly owns LangGraph and signed executor work.
 
 ## Required Environment
 
@@ -74,7 +74,9 @@ Run `pnpm smoke:cloudflare-session-boundary` and
 current D1 schema to prove tenant-scoped session and thread ownership. Run
 `pnpm smoke:cloudflare-policy-boundary` to prove Cloudflare gates chat
 execution before proxying to Fly. Run `pnpm smoke:cloudflare-event-feed` to
-prove the browser-visible activity source is backed by Cloudflare events.
+prove the browser-visible activity source is backed by Cloudflare events, and
+`pnpm smoke:cloudflare-event-stream` to prove those events can stream live from
+Cloudflare.
 
 ## Runtime Dependency
 
