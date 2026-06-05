@@ -4,8 +4,9 @@ Last updated: 2026-06-03
 
 ## Purpose
 
-Show the finished production shape Assistant-MK1 is aiming at: a multi-user,
-tenant-scoped agent workbench where Cloudflare owns live coordination and
+Show the finished production shape Assistant-MK1 is aiming at: a web-first,
+multi-user, tenant-scoped agent workbench where Vercel owns the WorkOS-backed
+frontend session, Cloudflare owns authorization, live coordination, and
 canonical app-state mediation, Fly owns heavy execution, and all durable outputs
 return to auditable state.
 
@@ -50,11 +51,12 @@ adding dense prose to the drawing.
 
 Use four visibly separated pillars plus one sidecar cluster:
 
-- `Vercel / Frontend`: operator cockpit, thread surface, approvals, run/status
-  panels, and artifacts view.
-- `Cloudflare / Worker Control Plane`: auth/session/trigger ingress, tenant
-  scope derivation, policy plus tool exposure, run control, streaming gateway,
-  and mediated data API.
+- `Vercel / Frontend`: WorkOS AuthKit session, operator cockpit, thread
+  surface, approvals, run/status panels, artifacts view, and same-origin
+  server facade.
+- `Cloudflare / Worker Control Plane`: trusted Vercel and trigger ingress,
+  tenant scope resolution, membership and agent authorization, policy plus tool
+  exposure, run control, streaming gateway, and mediated data API.
 - `Fly.io / LangGraph Execution`: signed tool gateway, tool runners, browser
   automation, LangGraph workflow workers, and progress callbacks.
 - `Durable Data Plane`: D1 control records, D1 audit and ledgers, R2 artifacts,
@@ -65,9 +67,11 @@ Use four visibly separated pillars plus one sidecar cluster:
 Typed arrow categories:
 
 - `user interaction`: browser workbench sends chat, approval, status, and
-  artifact requests to Cloudflare-owned surfaces.
-- `trusted scope`: Cloudflare derives tenant scope from trusted auth, session,
-  schedule, webhook, or tool-event context.
+  artifact requests through the Vercel server facade.
+- `trusted identity`: Vercel derives WorkOS user, organization, roles, and
+  permissions from the server session before calling Cloudflare.
+- `trusted scope`: Cloudflare resolves tenant scope, membership, and active
+  agent from trusted Vercel context, schedule, webhook, or tool-event context.
 - `intent creation`: chat or external events become typed workflow intents only
   when complex work is needed.
 - `policy decision`: policy gates tool exposure, execution mode, approvals,
@@ -82,7 +86,7 @@ Typed arrow categories:
 - `canonical write`: Cloudflare-mediated data-client writes run records, audit
   events, decisions, ledgers, managed state, tool calls, and artifacts.
 - `stream update`: Cloudflare streams progress, approval state, status, and
-  final results to the user/client.
+  final results back to the browser-facing Vercel surface.
 
 ## Visual Rules
 
@@ -92,15 +96,17 @@ Typed arrow categories:
   LangGraph execution, and durable data.
 - Keep external providers, schedules, APIs, and mutation targets in one sidecar
   cluster.
-- Make Cloudflare the visual center of ownership.
+- Show Vercel as the WorkOS session owner and Cloudflare as the authorization,
+  control-plane, and canonical-state owner.
 - Make Fly clearly execution-only, not the user-facing stream owner.
 - Show tenant scope and policy before execution.
 - Show durable state as the place final truth lands.
 - Keep labels short and use brief text for detail.
 - Keep Mermaid node labels short enough to survive Excalidraw import.
 - Do not add generated Markdown, generated HTML, or a TypeScript graph pipeline.
-- Use callout badges for invariants: tenant scope is derived, model never
-  supplies scope, Cloudflare owns canonical writes, and Fly executes only.
+- Use callout badges for invariants: WorkOS session stays at Vercel, tenant
+  scope is derived, model never supplies scope, Cloudflare owns canonical
+  writes, and Fly executes only.
 
 ## Acceptance Checklist
 

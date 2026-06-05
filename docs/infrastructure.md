@@ -5,16 +5,23 @@ Assistant-MK1 is a reusable agent framework. Infrastructure should support many 
 ## Target Topology
 
 ```txt
-assistant-ui frontend
-  -> conversational control plane
+browser
+  -> Vercel Next.js app
+  -> WorkOS AuthKit session via the Next SDK
+  -> Vercel server facade derives trusted user, organization, roles, and permissions
+  -> Cloudflare control plane over a server-to-server boundary
+  -> membership, agent access, and policy checks
   -> typed intent router
-  -> execution policy gate
   -> run control record
-  -> workflow engine or tool runner
+  -> Fly LangGraph workflow or tool runner
   -> decision records, audit events, artifacts, managed state
 ```
 
-The frontend streams from the conversational control plane. Fly and LangGraph services do not own the user-facing session; they report progress and results back through Cloudflare-managed state or callbacks.
+Vercel owns the hosted web session and browser ergonomics. Cloudflare owns
+authorization, user/workspace/agent-scoped state, policy, run control, and
+canonical writes. Fly and LangGraph services do not own the user-facing
+session; they report progress and results back through Cloudflare-managed state
+or callbacks.
 
 ## Current Dev Baseline vs Target Runtime
 
@@ -39,7 +46,11 @@ reach Fly. The workbench can read recent Cloudflare activity through a
 same-origin Vercel facade and can subscribe to a short-lived Cloudflare-backed
 event stream for live activity updates. It is not a frontend auth system.
 
-The north-star runtime moves user-facing conversation and workflow progress streaming behind the Cloudflare control plane. Fly remains the execution plane for LangGraph workflows and heavy tools, and writes durable outputs back through mediated Cloudflare APIs or callbacks.
+The north-star runtime keeps WorkOS AuthKit at the Vercel web boundary, then
+moves user-facing conversation and workflow progress streaming behind the
+Cloudflare control plane. Fly remains the execution plane for LangGraph
+workflows and heavy tools, and writes durable outputs back through mediated
+Cloudflare APIs or callbacks.
 
 ## Responsibilities
 
@@ -55,16 +66,20 @@ The north-star runtime moves user-facing conversation and workflow progress stre
 ## Request Flow
 
 1. A user sends a message or an external event arrives.
-2. The runtime derives `userId` and `workspaceId` from authenticated context or trusted trigger metadata.
-3. The conversational agent reads scoped canonical state and answers directly when possible.
-4. If work needs escalation, the runtime creates a typed `WorkflowIntent`.
-5. Policy checks tenant scope, tool permissions, execution mode, approvals, and kill switches.
-6. The runtime creates or updates a `RunRecord` for the execution attempt.
-7. The workflow engine or tool runner executes the approved work.
-8. Complex workflows read and write app state through mediated, tenant-scoped Cloudflare APIs first.
-9. Outputs are written back as decision records, audit events, artifacts, ledgers, and managed-state updates.
-10. Cloudflare streams run status and results to the frontend from canonical state.
-11. The frontend shows the new state and lets the user inspect why it changed.
+2. Vercel derives WorkOS user, organization, roles, and permissions from the
+   server session, or a trusted trigger supplies equivalent metadata.
+3. Cloudflare resolves `userId`, `workspaceId`, membership, and active agent
+   from that trusted context.
+4. The conversational agent reads scoped canonical state and answers directly when possible.
+5. If work needs escalation, the runtime creates a typed `WorkflowIntent`.
+6. Policy checks tenant scope, membership, agent access, tool permissions,
+   execution mode, approvals, and kill switches.
+7. The runtime creates or updates a `RunRecord` for the execution attempt.
+8. The workflow engine or tool runner executes the approved work.
+9. Complex workflows read and write app state through mediated, tenant-scoped Cloudflare APIs first.
+10. Outputs are written back as decision records, audit events, artifacts, ledgers, and managed-state updates.
+11. Cloudflare streams run status and results to the frontend from canonical state.
+12. The frontend shows the new state and lets the user inspect why it changed.
 
 Canonical durable entity contracts are defined in `docs/db-contracts.md`. This infrastructure page should describe flow and ownership, not duplicate entity shapes.
 

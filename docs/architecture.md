@@ -7,9 +7,13 @@ The architecture is generic, but it is evaluated against demanding reference app
 ## System Shape
 
 - Next.js App Router serves the frontend and browser-facing API facade.
+- WorkOS AuthKit runs through the Next.js SDK at the Vercel web boundary.
 - assistant-ui renders the thread, composer, messages, reasoning, tools, and attachments.
 - `@assistant-ui/react-langgraph` adapts the UI runtime to LangGraph threads and streams.
-- Cloudflare owns durable workbench run control, tenant state, audit records, and mediated storage access.
+- Vercel derives trusted user, organization, roles, and permissions before
+  calling Cloudflare server-to-server.
+- Cloudflare owns membership and agent authorization, durable workbench run
+  control, tenant state, audit records, and mediated storage access.
 - Fly runs LangGraph and signed server-side executor work.
 - LangGraph currently runs the starter backend graph exported from `backend/agent.ts`.
 - OpenRouter is configured server-side through `ChatOpenRouter`.
@@ -81,12 +85,18 @@ The active hosted dev baseline is split:
 
 ```txt
 Browser -> Vercel Next.js frontend
-        -> Cloudflare Worker/D1 for workbench run control
+        -> WorkOS AuthKit session via Next SDK
+        -> Vercel same-origin API facade
+        -> Cloudflare Worker/D1 for authorization and run control
         -> Fly runtime executor for signed work
 
 Browser -> Vercel Next.js /api facade
+        -> Cloudflare /langgraph facade
         -> Fly LangGraph runtime gateway
         -> LangGraph server
 ```
 
-The Vercel -> Fly LangGraph proxy is a transitional assistant-ui chat path. It keeps the current starter usable while Cloudflare-owned conversational stream ownership is built out.
+Vercel owns hosted web sign-in and the browser-facing API facade. Cloudflare is
+the authorization, control-plane, and canonical-state boundary; Fly remains the
+execution plane. The LangGraph-compatible facade keeps assistant-ui usable while
+Cloudflare-owned conversational stream ownership is built out.

@@ -86,11 +86,12 @@ Every Cloudflare entry point must derive tenant scope from trusted auth/session/
 
 All D1 queries, R2 object keys, Durable Object IDs, and tool-runner calls must include tenant scope.
 
-The current hosted baseline uses WorkOS AuthKit in Vercel/Next to derive
-trusted identity. WorkOS `user.id` becomes internal `userId`, WorkOS
-`organizationId` becomes internal `workspaceId`, and Vercel forwards those
-values to the Worker as trusted headers. `WORKBENCH_DEV_AGENT_ID` remains a
-temporary hosted dev agent selection.
+The hosted web boundary uses WorkOS AuthKit in Vercel/Next to derive trusted
+identity. Vercel maps WorkOS user, organization, roles, and permissions into a
+server-to-server call to Cloudflare. Cloudflare resolves the internal user,
+workspace, membership, and active agent, then enforces ownership before reading
+or writing control-plane state. `WORKBENCH_DEV_AGENT_ID` remains a temporary
+hosted dev agent selection until D1-backed agent selection replaces it.
 
 Local development can still fall back to server-derived `WORKBENCH_DEV_*`
 identity values when WorkOS is not configured. The durable rule is that Worker
@@ -131,10 +132,11 @@ final Cloudflare-owned conversation stream. The assistant message stream still
 passes through the LangGraph-compatible facade while Cloudflare accumulates the
 session, policy, run, and event ownership needed to replace that stream later.
 
-This is still not complete production authorization. WorkOS is the hosted auth
-provider, but workspace membership policy, roles, production agent selection,
-and secret/tool authorization are still future gates. The durable rule is that
-Cloudflare enforces session, thread, and run ownership from trusted scope,
-while Fly remains the execution plane. The facade must not expose the Fly token
-to Vercel or the browser, and it must not become the permanent product API by
+This is still not complete production authorization. WorkOS is the hosted web
+auth provider, but workspace membership policy, role enforcement, production
+agent selection, and secret/tool authorization are still future gates. The
+durable rule is that Vercel owns the hosted web session, Cloudflare enforces
+membership, agent access, session, thread, and run ownership from trusted scope,
+and Fly remains the execution plane. The facade must not expose the Fly token to
+Vercel or the browser, and it must not become the permanent product API by
 accident.

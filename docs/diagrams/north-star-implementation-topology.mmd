@@ -11,7 +11,9 @@ flowchart LR
 
   subgraph sg_vercel["Vercel / Frontend"]
     direction TB
+    authKit["WorkOS AuthKit session"]
     cockpit["operator cockpit"]
+    serverFacade["same-origin server facade"]
     thread["thread surface"]
     approvals["approvals"]
     status["run/status panels"]
@@ -20,8 +22,9 @@ flowchart LR
 
   subgraph sg_cf["Cloudflare / Worker Control Plane"]
     direction TB
-    ingress["auth/session/trigger ingress"]
-    scope["tenant scope derivation"]
+    ingress["trusted ingress"]
+    scope["scope + membership"]
+    agentAuth["agent authorization"]
     policy["policy + tool exposure"]
     runControl["run control"]
     stream["streaming gateway"]
@@ -54,13 +57,16 @@ flowchart LR
     mutationTargets["mutation targets"]
   end
 
-  cockpit -- "user interaction" --> ingress
+  cockpit -- "user interaction" --> serverFacade
+  authKit -- "trusted identity" --> serverFacade
+  serverFacade -- "server-to-server" --> ingress
   thread -- "message" --> cockpit
-  approvals -- "approve/resume" --> ingress
+  approvals -- "approve/resume" --> serverFacade
   schedules -- "trusted trigger" --> ingress
 
   ingress -- "trusted scope" --> scope
-  scope -- "policy input" --> policy
+  scope -- "membership" --> agentAuth
+  agentAuth -- "policy input" --> policy
   policy -- "execution gate" --> runControl
   runControl -- "signed work" --> signedGateway
 
@@ -85,12 +91,13 @@ flowchart LR
   stream -- "status" --> status
   stream -- "artifacts" --> artifactsUi
 
+  authKit -. "WorkOS session stays at Vercel" .-> serverFacade
   scope -. "model never supplies scope" .-> policy
   runControl -. "Cloudflare owns writes" .-> dataApi
   signedGateway -. "Fly executes only" .-> progress
 
-  class cockpit,thread,approvals,status,artifactsUi vercel
-  class ingress,scope,policy,runControl,stream,dataApi cloudflare
+  class authKit,cockpit,serverFacade,thread,approvals,status,artifactsUi vercel
+  class ingress,scope,agentAuth,policy,runControl,stream,dataApi cloudflare
   class signedGateway,runners,browserAuto,langgraphWorkers,progress fly
   class d1Control,d1Audit,r2,durableObject,workflowState data
   class schedules,models,approvedApis,mutationTargets sidecar
