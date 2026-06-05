@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { Assistant } from "@/app/assistant";
+import { AuthButton } from "@/components/auth/auth-button";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -454,10 +455,13 @@ function WorkbenchStatusStrip({
           </p>
         </div>
       </div>
-      <Button size="sm" onClick={onStart} disabled={isStarting || isActive}>
-        {isStarting ? <Loader2Icon className="animate-spin" /> : <PlayIcon />}
-        Run demo inspect
-      </Button>
+      <div className="flex items-center gap-3">
+        <AuthButton />
+        <Button size="sm" onClick={onStart} disabled={isStarting || isActive}>
+          {isStarting ? <Loader2Icon className="animate-spin" /> : <PlayIcon />}
+          Run demo inspect
+        </Button>
+      </div>
     </div>
   );
 }

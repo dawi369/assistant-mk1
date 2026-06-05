@@ -1,0 +1,53 @@
+"use client";
+
+import { useAuth } from "@workos-inc/authkit-nextjs/components";
+import { Loader2Icon, LogInIcon, LogOutIcon, UserIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
+
+/**
+ * Client-side auth button that shows sign-in or user info + sign-out.
+ * Uses refreshAuth({ ensureSignedIn: true }) for sign-in to avoid
+ * server component cookie issues in Next.js 15+/16.
+ */
+export function AuthButton() {
+  const { user, loading, signOut, refreshAuth } = useAuth();
+
+  if (loading) {
+    return (
+      <Button variant="ghost" size="sm" disabled>
+        <Loader2Icon className="animate-spin" />
+      </Button>
+    );
+  }
+
+  if (user) {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="text-muted-foreground flex items-center gap-1.5 text-xs">
+          <UserIcon className="size-3.5" />
+          {user.email ?? user.firstName ?? "User"}
+        </span>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => void signOut()}
+          title="Sign out"
+        >
+          <LogOutIcon className="size-4" />
+          <span className="sr-only">Sign out</span>
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={() => void refreshAuth({ ensureSignedIn: true })}
+    >
+      <LogInIcon className="size-4" />
+      Sign in
+    </Button>
+  );
+}
