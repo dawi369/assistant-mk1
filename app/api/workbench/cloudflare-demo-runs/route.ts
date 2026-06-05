@@ -4,20 +4,15 @@ import {
   getLatestCloudflareOwnedDemoRunSnapshot,
   startCloudflareOwnedDemoRun,
 } from "@/lib/workbench/cloudflare-control-plane-client";
+import { toWorkbenchApiError } from "@/lib/workbench/api-errors";
 
 export const runtime = "nodejs";
-
-const toErrorResponse = (error: unknown) =>
-  NextResponse.json(
-    { error: error instanceof Error ? error.message : "Cloudflare demo request failed" },
-    { status: 502 },
-  );
 
 export async function GET() {
   try {
     return NextResponse.json(await getLatestCloudflareOwnedDemoRunSnapshot());
   } catch (error) {
-    return toErrorResponse(error);
+    return toWorkbenchApiError(error, "Cloudflare demo request failed");
   }
 }
 
@@ -25,6 +20,6 @@ export async function POST() {
   try {
     return NextResponse.json(await startCloudflareOwnedDemoRun(), { status: 201 });
   } catch (error) {
-    return toErrorResponse(error);
+    return toWorkbenchApiError(error, "Cloudflare demo request failed");
   }
 }

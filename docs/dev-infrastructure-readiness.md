@@ -11,6 +11,8 @@ database, the Vercel frontend, and the dedicated Fly LangGraph runtime gateway.
 - Runtime URL: `https://assistant-mk1-langgraph-dev.fly.dev`
 - Runtime shape: one Fly Machine runs the gateway and LangGraph dev server.
 - Vercel frontend: `https://assistant-mk1.vercel.app`
+- Hosted auth: WorkOS AuthKit on Vercel; WorkOS `user.id` maps to internal
+  `userId`, WorkOS `organizationId` maps to internal `workspaceId`.
 - Required smoke: `SMOKE_TIMEOUT_MS=30000 SMOKE_BASE_URL=https://assistant-mk1.vercel.app pnpm smoke:workbench`
 - Cloudflare Worker: `assistant-mk1-dev-control-plane`
 - Cloudflare D1 database: `assistant_mk1_dev`
@@ -22,6 +24,11 @@ The Vercel frontend uses the same Cloudflare-owned workbench routes. Its
 LangGraph proxy points at the Cloudflare `/langgraph` facade, which
 authenticates Vercel with the dev control-plane token and then authenticates to
 the Fly gateway with `LANGGRAPH_UPSTREAM_TOKEN`.
+
+Hosted Vercel requests derive tenant scope from the WorkOS server session.
+Users must complete WorkOS sign-in and have an active organization before the
+workbench can call Cloudflare. `WORKBENCH_DEV_AGENT_ID` remains the temporary
+hosted dev agent selection; it is not a tenant selector.
 
 The `/langgraph` facade also stores tenant-scoped chat sessions, chat thread
 ownership, chat intents, policy decisions, and minimal chat run envelopes in
@@ -220,14 +227,19 @@ The browser-visible `Run demo inspect` button uses the Cloudflare-owned route by
 default. Missing Cloudflare configuration should fail visibly; there is no
 secondary local demo route.
 
-Tenant scope for the current dev baseline is temporary and server-derived.
-Vercel/Next reads `WORKBENCH_DEV_USER_ID`, `WORKBENCH_DEV_WORKSPACE_ID`, and
-`WORKBENCH_DEV_AGENT_ID`, then forwards those values to the Worker as trusted
-headers. Browser requests never choose tenant scope.
+Tenant scope for the hosted Vercel baseline is server-derived from WorkOS
+AuthKit. Vercel/Next maps WorkOS `user.id` to internal `userId`, WorkOS
+`organizationId` to internal `workspaceId`, and `WORKBENCH_DEV_AGENT_ID` to the
+current hosted dev agent id, then forwards those values to the Worker as
+trusted headers. Browser requests never choose tenant scope. The WorkOS client
+id and API key must come from the same WorkOS app/environment, and the Vercel
+Production redirect URI must be
+`https://assistant-mk1.vercel.app/auth/callback`.
 
-This is not production auth. The next auth slice should replace the
-server-derived dev identity source with session-derived identity while keeping
-the same Worker-side tenant checks.
+Local development can still fall back to `WORKBENCH_DEV_USER_ID` and
+`WORKBENCH_DEV_WORKSPACE_ID` when WorkOS is not configured. That fallback is
+for local smoke convenience only; hosted Vercel should use WorkOS session
+identity.
 
 ## Local Tool Adapter Foundation
 
@@ -257,8 +269,8 @@ Planned bindings:
 Before creating additional Cloudflare resources, define:
 
 - Which `AgentFrameworkDataClient` repository group is implemented first.
-- The production auth/session source that replaces the temporary dev tenant
-  env vars.
+- The production authorization policy that expands WorkOS sign-in into
+  workspace membership, roles, and agent selection.
 - The minimum D1 tables or Durable Object storage required for that repository
   group.
 - The R2 object key convention for artifact metadata produced by the demo slice.
@@ -266,7 +278,7 @@ Before creating additional Cloudflare resources, define:
 
 ## Out Of Scope For This Step
 
-- Production auth provider.
+- Production authorization policy beyond WorkOS sign-in.
 - Secret custody implementation.
 - R2 schema/resource provisioning.
 - Durable Object provisioning.

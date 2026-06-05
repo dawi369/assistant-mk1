@@ -3,8 +3,8 @@ import { authkitProxy } from "@workos-inc/authkit-nextjs";
 
 export default authkitProxy();
 
-// Match against pages that require auth
-// Excludes Next.js static assets and API routes
+// Match app and API routes so server routes using WorkOS `withAuth()` receive
+// AuthKit session headers. Static assets stay excluded.
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };

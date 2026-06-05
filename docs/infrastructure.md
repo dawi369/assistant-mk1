@@ -21,6 +21,9 @@ The frontend streams from the conversational control plane. Fly and LangGraph se
 The current hosted dev baseline is intentionally split but not fully at the north-star runtime yet:
 
 - Vercel hosts the Next.js frontend and same-origin browser API facade.
+- WorkOS AuthKit runs at the Vercel boundary for hosted sign-in. Vercel maps
+  WorkOS user and organization identity into trusted tenant headers for
+  Cloudflare.
 - Cloudflare owns the production-shaped workbench run-control path and now
   fronts hosted LangGraph-compatible chat traffic through `/langgraph`, with
   D1-backed tenant ownership for chat sessions, thread ids, chat intents,

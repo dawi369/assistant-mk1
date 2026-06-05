@@ -7,7 +7,9 @@
  */
 import { type NextRequest, NextResponse } from "next/server";
 
-export const runtime = "edge";
+import { getWorkbenchAgentIdentity } from "@/lib/workbench/agent-identity";
+
+export const runtime = "nodejs";
 
 function getCorsHeaders() {
   return {
@@ -23,14 +25,15 @@ const requiredEnv = (name: string) => {
   return value;
 };
 
-const proxyHeaders = () => {
+const proxyHeaders = async () => {
   const headers: Record<string, string> = {};
 
   if (process.env.CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN) {
+    const identity = await getWorkbenchAgentIdentity();
     headers.authorization = `Bearer ${requiredEnv("CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN")}`;
-    headers["x-assistant-mk1-user-id"] = requiredEnv("WORKBENCH_DEV_USER_ID");
-    headers["x-assistant-mk1-workspace-id"] = requiredEnv("WORKBENCH_DEV_WORKSPACE_ID");
-    headers["x-assistant-mk1-agent-id"] = requiredEnv("WORKBENCH_DEV_AGENT_ID");
+    headers["x-assistant-mk1-user-id"] = identity.scope.userId;
+    headers["x-assistant-mk1-workspace-id"] = identity.scope.workspaceId;
+    headers["x-assistant-mk1-agent-id"] = identity.agentId;
     return headers;
   }
 
@@ -53,7 +56,7 @@ async function handleRequest(req: NextRequest, method: string) {
 
     const options: RequestInit = {
       method,
-      headers: proxyHeaders(),
+      headers: await proxyHeaders(),
       signal: req.signal,
     };
 

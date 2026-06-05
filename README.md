@@ -102,7 +102,10 @@ See `docs/runtime.md` for start, resume, and cron payloads.
 The active hosted dev baseline is split by responsibility:
 
 - Vercel hosts the Next.js frontend and same-origin browser API facade.
-- Cloudflare owns durable workbench run control, tenant/session state, audit records, and D1-backed snapshots.
+- Vercel uses WorkOS AuthKit for hosted sign-in and derives trusted tenant
+  scope server-side before calling Cloudflare.
+- Cloudflare owns durable workbench run control, tenant/session state, audit
+  records, and D1-backed snapshots.
 - Fly runs the LangGraph runtime gateway and signed server-side executors.
 
 See `docs/deployment-vercel.md`, `docs/deployment-fly.md`, and

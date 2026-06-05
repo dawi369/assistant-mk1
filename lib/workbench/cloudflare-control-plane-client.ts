@@ -1,9 +1,5 @@
-import type { Id, RunStatus, TenantScope } from "@/lib/agent-framework/contracts";
-
-type WorkbenchDevAgentIdentity = {
-  scope: TenantScope;
-  agentId: Id;
-};
+import type { Id, RunStatus } from "@/lib/agent-framework/contracts";
+import { getWorkbenchAgentIdentity } from "@/lib/workbench/agent-identity";
 
 export type CloudflareOwnedDemoRunSnapshot = {
   scope: {
@@ -53,23 +49,6 @@ const getControlPlaneConfig = () => {
   return baseUrl && token ? { baseUrl, token } : null;
 };
 
-const getWorkbenchDevAgentIdentity = (): WorkbenchDevAgentIdentity => {
-  const userId = process.env.WORKBENCH_DEV_USER_ID?.trim();
-  const workspaceId = process.env.WORKBENCH_DEV_WORKSPACE_ID?.trim();
-  const agentId = process.env.WORKBENCH_DEV_AGENT_ID?.trim();
-
-  if (!userId || !workspaceId || !agentId) {
-    throw new Error(
-      "WORKBENCH_DEV_USER_ID, WORKBENCH_DEV_WORKSPACE_ID, and WORKBENCH_DEV_AGENT_ID are required",
-    );
-  }
-
-  return {
-    scope: { userId, workspaceId },
-    agentId,
-  };
-};
-
 const fetchWithTimeout = async (url: string, init: RequestInit) => {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
@@ -81,14 +60,14 @@ const fetchWithTimeout = async (url: string, init: RequestInit) => {
   }
 };
 
-const controlPlaneRequest = (path: string, init?: RequestInit) => {
+const controlPlaneRequest = async (path: string, init?: RequestInit) => {
   const config = getControlPlaneConfig();
   if (!config) {
     throw new Error(
       "CLOUDFLARE_CONTROL_PLANE_URL and CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN are required",
     );
   }
-  const identity = getWorkbenchDevAgentIdentity();
+  const identity = await getWorkbenchAgentIdentity();
 
   return {
     url: `${config.baseUrl}${path}`,
@@ -119,7 +98,7 @@ const parseErrorBody = async (response: Response) => {
 };
 
 const requestControlPlane = async <T>(path: string, init?: RequestInit): Promise<T> => {
-  const request = controlPlaneRequest(path, init);
+  const request = await controlPlaneRequest(path, init);
   const response = await fetchWithTimeout(request.url, request.init);
 
   if (!response.ok) {
@@ -147,11 +126,11 @@ export const getLatestControlPlaneEvents = (limit = 50) =>
     `/events/latest?limit=${encodeURIComponent(String(limit))}`,
   );
 
-export const streamControlPlaneEvents = (after?: string | null) => {
+export const streamControlPlaneEvents = async (after?: string | null) => {
   const searchParams = new URLSearchParams();
   if (after) searchParams.set("after", after);
   const queryString = searchParams.toString() ? `?${searchParams.toString()}` : "";
-  const request = controlPlaneRequest(`/events/stream${queryString}`, {
+  const request = await controlPlaneRequest(`/events/stream${queryString}`, {
     headers: {
       accept: "text/event-stream",
     },

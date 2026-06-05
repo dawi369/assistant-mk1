@@ -2,6 +2,7 @@
 
 import { useAuth } from "@workos-inc/authkit-nextjs/components";
 import { Loader2Icon, LogInIcon, LogOutIcon, UserIcon } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 
 /**
@@ -27,12 +28,7 @@ export function AuthButton() {
           <UserIcon className="size-3.5" />
           {user.email ?? user.firstName ?? "User"}
         </span>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => void signOut()}
-          title="Sign out"
-        >
+        <Button variant="ghost" size="sm" onClick={() => void signOut()} title="Sign out">
           <LogOutIcon className="size-4" />
           <span className="sr-only">Sign out</span>
         </Button>
@@ -41,11 +37,7 @@ export function AuthButton() {
   }
 
   return (
-    <Button
-      variant="outline"
-      size="sm"
-      onClick={() => void refreshAuth({ ensureSignedIn: true })}
-    >
+    <Button variant="outline" size="sm" onClick={() => void refreshAuth({ ensureSignedIn: true })}>
       <LogInIcon className="size-4" />
       Sign in
     </Button>

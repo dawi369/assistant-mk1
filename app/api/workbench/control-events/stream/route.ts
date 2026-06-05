@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import { toWorkbenchApiError } from "@/lib/workbench/api-errors";
 import { streamControlPlaneEvents } from "@/lib/workbench/cloudflare-control-plane-client";
 
 export const runtime = "nodejs";
@@ -20,9 +21,6 @@ export async function GET(request: NextRequest) {
       headers,
     });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Cloudflare event stream failed" },
-      { status: 502 },
-    );
+    return toWorkbenchApiError(error, "Cloudflare event stream failed");
   }
 }

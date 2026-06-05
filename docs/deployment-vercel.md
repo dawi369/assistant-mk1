@@ -22,6 +22,11 @@ run control, tenant state, chat sessions, chat thread ownership, chat intents,
 chat policy decisions, and the control-plane activity feed plus event stream.
 Fly owns LangGraph and signed executor work.
 
+WorkOS AuthKit is the current hosted identity boundary. A signed-in WorkOS user
+with an active `organizationId` is required before hosted Vercel routes can
+call the Cloudflare control plane. Vercel maps WorkOS identity into trusted
+headers; the browser never sends tenant scope directly.
+
 ## Required Environment
 
 Set these in Vercel Production before deploying:
@@ -32,15 +37,30 @@ LANGGRAPH_API_URL=https://assistant-mk1-dev-control-plane.david-erwin-cz68.worke
 LANGCHAIN_API_KEY=
 CLOUDFLARE_CONTROL_PLANE_URL=https://assistant-mk1-dev-control-plane.david-erwin-cz68.workers.dev
 CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<secret>
-WORKBENCH_DEV_USER_ID=dev-user
-WORKBENCH_DEV_WORKSPACE_ID=dev-workspace
+WORKOS_CLIENT_ID=<secret>
+WORKOS_API_KEY=<secret>
+WORKOS_COOKIE_PASSWORD=<secret>
+NEXT_PUBLIC_WORKOS_REDIRECT_URI=https://assistant-mk1.vercel.app/auth/callback
 WORKBENCH_DEV_AGENT_ID=dev-agent
 ```
 
+`WORKOS_CLIENT_ID` and `WORKOS_API_KEY` must belong to the same WorkOS
+environment/application. A mismatched key pair causes `/auth/callback` to fail
+with WorkOS `invalid_client` / `Invalid client secret` after the upstream
+identity provider sign-in succeeds.
+
+Do not mirror local `.env.local` into Vercel Production blindly:
+
+- Local redirect URI: `http://localhost:3000/auth/callback`
+- Production redirect URI: `https://assistant-mk1.vercel.app/auth/callback`
+
 The Vercel `/api` proxy authenticates to Cloudflare with
-`CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN` and trusted dev identity headers.
-Cloudflare stores the Fly gateway token as `LANGGRAPH_UPSTREAM_TOKEN`.
-Browser requests never provide tenant ids directly.
+`CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN` and trusted identity headers derived from
+the WorkOS AuthKit server session. WorkOS `user.id` becomes the internal
+`userId`, WorkOS `organizationId` becomes the internal `workspaceId`, and
+`WORKBENCH_DEV_AGENT_ID` remains the temporary hosted dev agent selection.
+Cloudflare stores the Fly gateway token as `LANGGRAPH_UPSTREAM_TOKEN`. Browser
+requests never provide tenant ids directly.
 
 ## Deploy
 
@@ -62,6 +82,7 @@ https://assistant-mk1.vercel.app
 
 ```bash
 curl https://assistant-mk1.vercel.app/api/health
+node -e "fetch('https://assistant-mk1.vercel.app/sign-in',{redirect:'manual'}).then(r=>console.log(r.status,r.headers.get('location')))"
 curl -X POST https://assistant-mk1.vercel.app/api/threads \
   -H "Content-Type: application/json" \
   -d '{}'

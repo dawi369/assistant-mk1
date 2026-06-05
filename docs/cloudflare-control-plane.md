@@ -86,11 +86,16 @@ Every Cloudflare entry point must derive tenant scope from trusted auth/session/
 
 All D1 queries, R2 object keys, Durable Object IDs, and tool-runner calls must include tenant scope.
 
-The current dev baseline uses server-derived `WORKBENCH_DEV_*` identity values
-from Fly/Next and forwards them to the Worker as trusted headers. This is a
-temporary auth stand-in; the durable rule is that Worker storage operations take
-trusted scope explicitly and executor callbacks resolve scope from the stored
-run record.
+The current hosted baseline uses WorkOS AuthKit in Vercel/Next to derive
+trusted identity. WorkOS `user.id` becomes internal `userId`, WorkOS
+`organizationId` becomes internal `workspaceId`, and Vercel forwards those
+values to the Worker as trusted headers. `WORKBENCH_DEV_AGENT_ID` remains a
+temporary hosted dev agent selection.
+
+Local development can still fall back to server-derived `WORKBENCH_DEV_*`
+identity values when WorkOS is not configured. The durable rule is that Worker
+storage operations take trusted scope explicitly and executor callbacks resolve
+scope from the stored run record.
 
 ## LangGraph Facade
 
@@ -126,8 +131,10 @@ final Cloudflare-owned conversation stream. The assistant message stream still
 passes through the LangGraph-compatible facade while Cloudflare accumulates the
 session, policy, run, and event ownership needed to replace that stream later.
 
-This is still not production auth. `WORKBENCH_DEV_*` is a temporary
-server-derived identity source. The durable rule is that Cloudflare enforces
-session, thread, and run ownership from trusted scope, while Fly remains the
-execution plane. The facade must not expose the Fly token to Vercel or the
-browser, and it must not become the permanent product API by accident.
+This is still not complete production authorization. WorkOS is the hosted auth
+provider, but workspace membership policy, roles, production agent selection,
+and secret/tool authorization are still future gates. The durable rule is that
+Cloudflare enforces session, thread, and run ownership from trusted scope,
+while Fly remains the execution plane. The facade must not expose the Fly token
+to Vercel or the browser, and it must not become the permanent product API by
+accident.

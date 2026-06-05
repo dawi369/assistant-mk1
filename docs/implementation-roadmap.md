@@ -19,6 +19,9 @@ or live mutation tools until the slice that needs them is explicitly scoped.
 - `/api/[..._path]` proxies browser LangGraph SDK traffic.
 - `/api/external-signals` is a token-protected staging ingress for starts,
   resumes, and cron creation.
+- WorkOS AuthKit is configured on Vercel as the hosted sign-in boundary.
+  Vercel maps WorkOS `user.id` and `organizationId` into trusted tenant scope
+  before calling Cloudflare.
 - Provisional framework contracts define tenant scope, workflow intents,
   run records, tool exposure, durable entities, and repository-style data
   access.
@@ -192,7 +195,8 @@ Next target:
 - Progress callbacks or scoped status writes from Fly/LangGraph into canonical
   state.
 - Trigger and schedule handling through trusted tenant metadata.
-- Production auth/session identity to replace `WORKBENCH_DEV_*` without moving
+- Expand WorkOS-backed identity into production authorization: workspace
+  membership, roles, agent selection, and non-dev agent ids, without moving
   tenant enforcement back into the browser.
 
 Exit criteria:
@@ -208,7 +212,8 @@ Goal: allow mutation-capable tools only after platform safety exists.
 
 Required before live external mutation:
 
-- Auth and workspace membership.
+- Auth and workspace membership. WorkOS AuthKit sign-in exists, but production
+  role checks, membership enforcement, and agent selection are still required.
 - Encrypted secret custody.
 - Tenant isolation tests.
 - Policy limits, approvals, cooldowns, allowlists, denylists, and kill switches.
