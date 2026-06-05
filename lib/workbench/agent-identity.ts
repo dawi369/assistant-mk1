@@ -5,6 +5,8 @@ import type { Id, TenantScope } from "@/lib/agent-framework/contracts";
 export type WorkbenchAgentIdentity = {
   scope: TenantScope;
   agentId?: Id;
+  authMode: "local-dev" | "workos";
+  workspaceSource: "local-dev" | "workos-organization" | "workos-personal";
   userEmail?: string;
   userName?: string;
   membershipRole?: string;
@@ -44,6 +46,8 @@ const getDevAgentIdentity = (): WorkbenchAgentIdentity => ({
     workspaceId: requiredEnv("WORKBENCH_DEV_WORKSPACE_ID"),
   },
   agentId: getDevAgentId(),
+  authMode: "local-dev",
+  workspaceSource: "local-dev",
 });
 
 const getPersonalWorkspaceId = (userId: Id): Id => `workos-personal:${userId}`;
@@ -62,6 +66,8 @@ export const getWorkbenchAgentIdentity = async (): Promise<WorkbenchAgentIdentit
       userId: auth.user.id,
       workspaceId: auth.organizationId ?? getPersonalWorkspaceId(auth.user.id),
     },
+    authMode: "workos",
+    workspaceSource: hasOrganization ? "workos-organization" : "workos-personal",
     userEmail: auth.user.email,
     userName: userName || auth.user.email || auth.user.id,
     membershipRole: auth.role ?? (hasOrganization ? undefined : "owner"),
@@ -75,6 +81,8 @@ export const getWorkbenchIdentityHeaders = async () => {
   const headers: Record<string, string> = {
     "x-assistant-mk1-user-id": identity.scope.userId,
     "x-assistant-mk1-workspace-id": identity.scope.workspaceId,
+    "x-assistant-mk1-auth-mode": identity.authMode,
+    "x-assistant-mk1-workspace-source": identity.workspaceSource,
   };
 
   if (identity.agentId) headers["x-assistant-mk1-agent-id"] = identity.agentId;

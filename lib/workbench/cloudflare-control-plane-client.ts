@@ -41,6 +41,43 @@ export type ControlPlaneEventsResponse = {
   error?: string;
 };
 
+export type WorkspaceContextResponse = {
+  ok?: boolean;
+  context?: {
+    identity: {
+      userId: Id;
+      workspaceId: Id;
+      agentId: Id;
+      authMode: string;
+      workspaceSource: string;
+    };
+    user: {
+      id: Id;
+      email: string | null;
+      displayName: string | null;
+      status: string;
+    } | null;
+    workspace: {
+      id: Id;
+      name: string;
+      status: string;
+    } | null;
+    membership: {
+      role: string;
+      status: string;
+      roles: string[];
+      permissions: string[];
+    } | null;
+    agent: {
+      id: Id;
+      name: string;
+      status: string;
+      isDefault: boolean;
+    } | null;
+  };
+  error?: string;
+};
+
 export class ControlPlaneRequestError extends Error {
   constructor(
     message: string,
@@ -136,6 +173,9 @@ export const getCloudflareOwnedDemoRunSnapshot = (runId: Id) =>
   requestControlPlane<CloudflareOwnedDemoRunResponse>(
     `/workbench/demo-runs/${encodeURIComponent(runId)}`,
   );
+
+export const getWorkspaceContext = () =>
+  requestControlPlane<WorkspaceContextResponse>("/workspace-context");
 
 export const getLatestControlPlaneEvents = (limit = 50) =>
   requestControlPlane<ControlPlaneEventsResponse>(

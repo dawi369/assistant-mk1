@@ -16,6 +16,7 @@ import {
   handleLangGraphFacade,
   handleLatestChatSession,
 } from "./langgraph-facade";
+import { handleWorkspaceContext } from "./workspace-context";
 import { resolveAgentIdentity } from "./authz";
 import { json, requireAuth } from "./http";
 import type { Env, WorkerExecutionContext } from "./types";
@@ -41,6 +42,10 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
   const identityResult = await resolveAgentIdentity(request, env);
   if (!identityResult.ok) return identityResult.response;
   const { identity } = identityResult;
+
+  if (request.method === "GET" && url.pathname === "/workspace-context") {
+    return handleWorkspaceContext(request, env, identity);
+  }
 
   if (request.method === "GET" && url.pathname === "/events/latest") {
     return json(await handleLatestControlPlaneEvents(env, identity, url));

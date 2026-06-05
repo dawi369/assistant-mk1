@@ -13,8 +13,5 @@ export const toWorkbenchApiError = (error: unknown, fallback: string) => {
     name: error instanceof Error ? error.name : "UnknownError",
   });
 
-  return NextResponse.json(
-    { error: message },
-    { status },
-  );
+  return NextResponse.json({ error: message }, { status });
 };
