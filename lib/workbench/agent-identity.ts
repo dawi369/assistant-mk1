@@ -46,26 +46,26 @@ const getDevAgentIdentity = (): WorkbenchAgentIdentity => ({
   agentId: getDevAgentId(),
 });
 
+const getPersonalWorkspaceId = (userId: Id): Id => `workos-personal:${userId}`;
+
 export const getWorkbenchAgentIdentity = async (): Promise<WorkbenchAgentIdentity> => {
   if (!isWorkOsConfigured()) return getDevAgentIdentity();
 
   const auth = await withAuth();
   if (!auth.user) throw new WorkbenchAuthError("Authentication required", 401);
-  if (!auth.organizationId) {
-    throw new WorkbenchAuthError("WorkOS organization is required before using the workbench", 403);
-  }
 
   const userName = [auth.user.firstName, auth.user.lastName].filter(Boolean).join(" ");
+  const hasOrganization = Boolean(auth.organizationId);
 
   return {
     scope: {
       userId: auth.user.id,
-      workspaceId: auth.organizationId,
+      workspaceId: auth.organizationId ?? getPersonalWorkspaceId(auth.user.id),
     },
     userEmail: auth.user.email,
     userName: userName || auth.user.email || auth.user.id,
-    membershipRole: auth.role,
-    membershipRoles: auth.roles,
+    membershipRole: auth.role ?? (hasOrganization ? undefined : "owner"),
+    membershipRoles: auth.roles ?? (hasOrganization ? undefined : ["owner"]),
     membershipPermissions: auth.permissions,
   };
 };

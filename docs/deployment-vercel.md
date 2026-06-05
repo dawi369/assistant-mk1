@@ -22,10 +22,13 @@ run control, tenant state, chat sessions, chat thread ownership, chat intents,
 chat policy decisions, and the control-plane activity feed plus event stream.
 Fly owns LangGraph and signed executor work.
 
-WorkOS AuthKit is the current hosted identity boundary. A signed-in WorkOS user
-with an active `organizationId` is required before hosted Vercel routes can
-call the Cloudflare control plane. Vercel maps WorkOS identity into trusted
-headers; the browser never sends tenant scope directly.
+WorkOS AuthKit is the current hosted identity boundary. Vercel maps WorkOS
+identity into trusted headers; the browser never sends tenant scope directly.
+When AuthKit provides an `organizationId`, Vercel uses it as the internal
+`workspaceId`. During the current pre-user development phase, a signed-in
+WorkOS session without an organization gets a stable personal workspace id
+derived from the WorkOS `user.id` so the Cloudflare D1 authz path can still
+bootstrap membership and the default agent.
 
 ## Required Environment
 
@@ -56,12 +59,14 @@ Do not mirror local `.env.local` into Vercel Production blindly:
 The Vercel `/api` proxy authenticates to Cloudflare with
 `CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN` and trusted identity headers derived from
 the WorkOS AuthKit server session. WorkOS `user.id` becomes the internal
-`userId`, and WorkOS `organizationId` becomes the internal `workspaceId`.
-Cloudflare auto-bootstraps D1-backed user, workspace, membership, and default
-agent rows for the current pre-user dev environment, then resolves the active
-default agent before touching control-plane state. Cloudflare stores the Fly
-gateway token as `LANGGRAPH_UPSTREAM_TOKEN`. Browser requests never provide
-tenant ids or agent ids directly.
+`userId`. WorkOS `organizationId` becomes the internal `workspaceId` when
+available; otherwise the pre-user dev fallback is
+`workos-personal:<user-id>`. Cloudflare auto-bootstraps D1-backed user,
+workspace, membership, and default agent rows for the current pre-user dev
+environment, then resolves the active default agent before touching
+control-plane state. Cloudflare stores the Fly gateway token as
+`LANGGRAPH_UPSTREAM_TOKEN`. Browser requests never provide tenant ids or agent
+ids directly.
 
 ## Deploy
 

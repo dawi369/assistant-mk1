@@ -41,7 +41,17 @@ export type ControlPlaneEventsResponse = {
   error?: string;
 };
 
-const requestTimeoutMs = 2_000;
+export class ControlPlaneRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "ControlPlaneRequestError";
+  }
+}
+
+const requestTimeoutMs = 10_000;
 
 const getControlPlaneConfig = () => {
   const baseUrl = process.env.CLOUDFLARE_CONTROL_PLANE_URL?.replace(/\/$/, "");
@@ -55,6 +65,14 @@ const fetchWithTimeout = async (url: string, init: RequestInit) => {
 
   try {
     return await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new ControlPlaneRequestError(
+        `Cloudflare control-plane request timed out after ${requestTimeoutMs}ms`,
+        504,
+      );
+    }
+    throw error;
   } finally {
     clearTimeout(timeout);
   }
@@ -100,7 +118,7 @@ const requestControlPlane = async <T>(path: string, init?: RequestInit): Promise
   const response = await fetchWithTimeout(request.url, request.init);
 
   if (!response.ok) {
-    throw new Error(await parseErrorBody(response));
+    throw new ControlPlaneRequestError(await parseErrorBody(response), response.status);
   }
 
   return (await response.json()) as T;

@@ -235,11 +235,13 @@ secondary local demo route.
 
 Tenant scope for the hosted Vercel baseline is server-derived from WorkOS
 AuthKit. Vercel/Next maps WorkOS `user.id` to internal `userId` and WorkOS
-`organizationId` to internal `workspaceId`, then forwards those values and safe
-user/membership metadata to the Worker as trusted headers. Cloudflare resolves
-membership and the default active agent from D1 before reading or writing
-control-plane state. Browser requests never choose tenant scope or agent
-identity. The WorkOS client id and API key must come from the same WorkOS
+`organizationId` to internal `workspaceId` when present. During pre-user
+development, signed-in WorkOS sessions without an organization fall back to a
+stable `workos-personal:<user-id>` workspace, then Vercel forwards those values
+and safe user/membership metadata to the Worker as trusted headers. Cloudflare
+resolves membership and the default active agent from D1 before reading or
+writing control-plane state. Browser requests never choose tenant scope or
+agent identity. The WorkOS client id and API key must come from the same WorkOS
 app/environment, and the Vercel Production redirect URI must be
 `https://assistant-mk1.vercel.app/auth/callback`.
 

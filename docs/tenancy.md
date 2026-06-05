@@ -37,7 +37,9 @@ This scope applies to:
 
 - Hosted Vercel uses WorkOS AuthKit as the sign-in boundary.
 - Vercel maps WorkOS `user.id` to internal `userId`.
-- Vercel maps WorkOS `organizationId` to internal `workspaceId`.
+- Vercel maps WorkOS `organizationId` to internal `workspaceId` when present.
+- During pre-user development, signed-in WorkOS sessions without an
+  organization fall back to a stable `workos-personal:<user-id>` workspace.
 - Vercel forwards trusted tenant headers to the Cloudflare Worker; browser
   requests never provide tenant ids directly.
 - Cloudflare auto-bootstraps D1-backed user, workspace, active membership, and
