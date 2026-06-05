@@ -12,13 +12,18 @@ database, the Vercel frontend, and the dedicated Fly LangGraph runtime gateway.
 - Runtime shape: one Fly Machine runs the gateway and LangGraph dev server.
 - Vercel frontend: `https://assistant-mk1.vercel.app`
 - Hosted auth: WorkOS AuthKit on Vercel; WorkOS `user.id` maps to internal
-  `userId`, WorkOS `organizationId` maps to internal `workspaceId`.
-- Required smoke: `SMOKE_TIMEOUT_MS=30000 SMOKE_BASE_URL=https://assistant-mk1.vercel.app pnpm smoke:workbench`
+  `userId`. WorkOS `organizationId` maps to the internal `workspaceId` when
+  present; pre-user sessions without an organization use the stable
+  `workos-personal:<user-id>` workspace fallback.
+- Required smoke: `CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> pnpm smoke:cloudflare-workbench-run`
 - Cloudflare Worker: `assistant-mk1-dev-control-plane`
 - Cloudflare D1 database: `assistant_mk1_dev`
 - D1 binding: `DB`
-- Workbench smoke alias: `pnpm smoke:workbench` runs the Cloudflare-owned run
-  smoke.
+- Workbench smoke aliases:
+  - `pnpm smoke:workbench` uses the Vercel/Next same-origin workbench route and
+    is for local dev fallback or a future authenticated browser/session harness.
+  - `pnpm smoke:cloudflare-workbench-run` calls the Worker directly with
+    trusted WorkOS-shaped headers and is the hosted deploy runtime smoke.
 
 The Vercel frontend uses the same Cloudflare-owned workbench routes. Its
 LangGraph proxy points at the Cloudflare `/langgraph` facade, which
@@ -26,11 +31,14 @@ authenticates Vercel with the dev control-plane token and then authenticates to
 the Fly gateway with `LANGGRAPH_UPSTREAM_TOKEN`.
 
 Hosted Vercel requests derive tenant scope from the WorkOS server session.
-Users must complete WorkOS sign-in and have an active organization before the
-workbench can call Cloudflare. Cloudflare auto-bootstraps D1-backed user,
-workspace, active membership, and default active agent rows for the current
-pre-user dev environment. Hosted WorkOS traffic does not use
-`WORKBENCH_DEV_AGENT_ID`; Cloudflare resolves the workspace default agent.
+Users must complete WorkOS sign-in before the workbench can call Cloudflare.
+When WorkOS provides an organization, that organization is treated as the
+customer/company workspace. During the current pre-user phase, sessions without
+an organization use a stable personal workspace fallback. Cloudflare
+auto-bootstraps D1-backed user, workspace, active membership, and default
+active agent rows for the current dev environment. Hosted WorkOS traffic does
+not use `WORKBENCH_DEV_AGENT_ID`; Cloudflare resolves the workspace default
+agent.
 
 The `/langgraph` facade also stores tenant-scoped chat sessions, chat thread
 ownership, chat intents, policy decisions, and minimal chat run envelopes in
@@ -110,6 +118,7 @@ To prove D1 tenant isolation at the Worker boundary, run:
 ```bash
 pnpm smoke:tenant-isolation
 pnpm smoke:cloudflare-authz
+pnpm smoke:cloudflare-workspace-context
 pnpm smoke:cloudflare-session-boundary
 pnpm smoke:cloudflare-chat-boundary
 pnpm smoke:cloudflare-policy-boundary
@@ -122,7 +131,9 @@ only its own workbench runs, chat sessions, and LangGraph chat threads. The
 authz smoke verifies the WorkOS-shaped no-agent-header path auto-bootstraps
 D1-backed user/workspace/membership/default-agent rows, reuses the default
 agent, rejects disabled membership, and hides cross-workspace sessions. The
-policy smoke also verifies that normal `ask` chat passes, `execute` chat is
+workspace-context smoke verifies the same resolved identity is exposed safely
+for the dev monitor before any demo run exists. The policy smoke also verifies
+that normal `ask` chat passes, `execute` chat is
 blocked, and duplicate same-thread execution is rejected while a run is already
 `running`. The event-feed smoke verifies tenant-scoped progress events and the
 `after` cursor route. The event-stream smoke verifies the same progress can be
@@ -181,6 +192,14 @@ CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
 pnpm smoke:cloudflare-langgraph-facade
 ```
 
+Cloudflare workspace context smoke:
+
+```bash
+CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
+CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
+pnpm smoke:cloudflare-workspace-context
+```
+
 Cloudflare chat boundary smoke:
 
 ```bash
@@ -224,10 +243,16 @@ pnpm smoke:cloudflare-event-stream
 Remote Worker smoke:
 
 ```bash
-SMOKE_TIMEOUT_MS=30000 SMOKE_BASE_URL=https://assistant-mk1.vercel.app pnpm smoke:workbench
+CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
+CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
+pnpm smoke:cloudflare-workbench-run
 ```
 
-`pnpm smoke:workbench` is the Cloudflare-owned run smoke.
+`pnpm smoke:cloudflare-workbench-run` is the hosted deploy runtime smoke. It
+calls the Worker directly because hosted Vercel workbench routes require a
+signed-in WorkOS browser session. `pnpm smoke:workbench` remains useful for
+local same-origin testing when the Next app is using local dev identity
+fallbacks.
 
 The browser-visible `Run demo inspect` button uses the Cloudflare-owned route by
 default. Missing Cloudflare configuration should fail visibly; there is no
@@ -241,8 +266,11 @@ stable `workos-personal:<user-id>` workspace, then Vercel forwards those values
 and safe user/membership metadata to the Worker as trusted headers. Cloudflare
 resolves membership and the default active agent from D1 before reading or
 writing control-plane state. Browser requests never choose tenant scope or
-agent identity. The WorkOS client id and API key must come from the same WorkOS
-app/environment, and the Vercel Production redirect URI must be
+agent identity. In the B2B north star, WorkOS organizations represent customer
+or company tenants; projects are internal Assistant-MK1 configuration inside a
+workspace, not separate WorkOS organizations by default. The WorkOS client id
+and API key must come from the same WorkOS app/environment, and the Vercel
+Production redirect URI must be
 `https://assistant-mk1.vercel.app/auth/callback`.
 
 Local development can still fall back to `WORKBENCH_DEV_USER_ID` and

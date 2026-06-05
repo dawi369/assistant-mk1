@@ -90,19 +90,25 @@ CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
 pnpm smoke:cloudflare-session-boundary
 ```
 
-Workbench vertical slice from Vercel:
+Workbench vertical slice through the remote Worker:
 
 ```bash
-SMOKE_TIMEOUT_MS=30000 SMOKE_BASE_URL=https://assistant-mk1.vercel.app pnpm smoke:workbench
+CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
+CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
+pnpm smoke:cloudflare-workbench-run
 ```
 
 This verifies the production-shaped dev path:
 
 ```text
-Vercel Next proxy -> remote Cloudflare Worker -> remote D1
-                  -> signed Fly runtime executor
-                  -> Worker callbacks -> remote D1 snapshot
+remote Cloudflare Worker -> remote D1
+                         -> signed Fly runtime executor
+                         -> Worker callbacks -> remote D1 snapshot
 ```
+
+Hosted Vercel workbench routes require a signed-in WorkOS browser session.
+`pnpm smoke:workbench` remains a local same-origin smoke, not the hosted deploy
+runtime smoke.
 
 To prove scoped remote D1 reads and writes, run:
 
@@ -128,7 +134,9 @@ pnpm smoke:cloudflare-session-boundary
 CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
 CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
 pnpm smoke:cloudflare-chat-boundary
-SMOKE_TIMEOUT_MS=30000 SMOKE_BASE_URL=https://assistant-mk1.vercel.app pnpm smoke:workbench
+CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
+CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
+pnpm smoke:cloudflare-workbench-run
 ```
 
 Only run `d1 create` if the database is missing, and copy its returned

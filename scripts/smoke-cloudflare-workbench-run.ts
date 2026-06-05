@@ -1,3 +1,15 @@
+type TenantIdentity = {
+  userId: string;
+  workspaceId: string;
+  email?: string;
+  name?: string;
+  role?: string;
+  roles?: string[];
+  permissions?: string[];
+  authMode?: string;
+  workspaceSource?: string;
+};
+
 type SmokeSnapshot = {
   scope?: {
     userId?: string;
@@ -20,27 +32,60 @@ type SmokeResponse = {
   error?: string;
 };
 
-const baseUrl = (process.env.SMOKE_BASE_URL ?? "http://localhost:3000").replace(/\/$/, "");
-const pollTimeoutMs = Number(process.env.SMOKE_TIMEOUT_MS ?? 10_000);
-const pollIntervalMs = Number(process.env.SMOKE_POLL_INTERVAL_MS ?? 400);
-const expectedScope =
-  process.env.WORKBENCH_DEV_USER_ID && process.env.WORKBENCH_DEV_WORKSPACE_ID
-    ? {
-        userId: process.env.WORKBENCH_DEV_USER_ID,
-        workspaceId: process.env.WORKBENCH_DEV_WORKSPACE_ID,
-      }
-    : null;
+const baseUrl = (process.env.CLOUDFLARE_CONTROL_PLANE_URL ?? "http://localhost:8787").replace(
+  /\/$/,
+  "",
+);
+const token = process.env.CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN ?? "local-dev-token";
+const pollTimeoutMs = Number(process.env.SMOKE_TIMEOUT_MS ?? 30_000);
+const pollIntervalMs = Number(process.env.SMOKE_POLL_INTERVAL_MS ?? 500);
+const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+const identity: TenantIdentity = {
+  userId: process.env.SMOKE_WORKOS_USER_ID ?? `workbench-user-${suffix}`,
+  workspaceId: process.env.SMOKE_WORKOS_WORKSPACE_ID ?? `workbench-workspace-${suffix}`,
+  email: process.env.SMOKE_WORKOS_USER_EMAIL ?? `workbench-${suffix}@example.com`,
+  name: process.env.SMOKE_WORKOS_USER_NAME ?? "Workbench Smoke User",
+  role: process.env.SMOKE_WORKOS_ROLE ?? "owner",
+  roles: (process.env.SMOKE_WORKOS_ROLES ?? "owner").split(",").filter(Boolean),
+  permissions: (process.env.SMOKE_WORKOS_PERMISSIONS ?? "workbench:read,workbench:demo")
+    .split(",")
+    .filter(Boolean),
+  authMode: "workos",
+  workspaceSource: process.env.SMOKE_WORKSPACE_SOURCE ?? "workos-organization",
+};
+
+const headersFor = (tenant: TenantIdentity) => {
+  const headers: Record<string, string> = {
+    authorization: `Bearer ${token}`,
+    "content-type": "application/json",
+    "x-assistant-mk1-user-id": tenant.userId,
+    "x-assistant-mk1-workspace-id": tenant.workspaceId,
+  };
+
+  if (tenant.email) headers["x-assistant-mk1-user-email"] = tenant.email;
+  if (tenant.name) headers["x-assistant-mk1-user-name"] = tenant.name;
+  if (tenant.role) headers["x-assistant-mk1-membership-role"] = tenant.role;
+  if (tenant.roles) headers["x-assistant-mk1-membership-roles"] = JSON.stringify(tenant.roles);
+  if (tenant.permissions) {
+    headers["x-assistant-mk1-membership-permissions"] = JSON.stringify(tenant.permissions);
+  }
+  if (tenant.authMode) headers["x-assistant-mk1-auth-mode"] = tenant.authMode;
+  if (tenant.workspaceSource) headers["x-assistant-mk1-workspace-source"] = tenant.workspaceSource;
+
+  return headers;
+};
 
 const readJson = async <T>(path: string, init?: RequestInit): Promise<T> => {
-  const response = await fetch(`${baseUrl}${path}`, init);
+  const response = await fetch(`${baseUrl}${path}`, {
+    ...init,
+    headers: {
+      ...headersFor(identity),
+      ...init?.headers,
+    },
+  });
   if (!response.ok) {
     const body = await response.text();
-    if (response.status === 401) {
-      throw new Error(
-        `${init?.method ?? "GET"} ${path} failed with 401: ${body}\n` +
-          "This smoke uses the Vercel/Next same-origin workbench route and is only valid with a local dev fallback or an authenticated browser/session harness. For hosted deploy verification, use pnpm smoke:cloudflare-workbench-run against the Worker.",
-      );
-    }
     throw new Error(`${init?.method ?? "GET"} ${path} failed with ${response.status}: ${body}`);
   }
   return (await response.json()) as T;
@@ -61,10 +106,9 @@ const requireArray = (snapshot: SmokeSnapshot, key: keyof SmokeSnapshot) => {
 };
 
 const requireExpectedScope = (snapshot: SmokeSnapshot, label: string) => {
-  if (!expectedScope) return;
   if (
-    snapshot.scope?.userId !== expectedScope.userId ||
-    snapshot.scope.workspaceId !== expectedScope.workspaceId
+    snapshot.scope?.userId !== identity.userId ||
+    snapshot.scope.workspaceId !== identity.workspaceId
   ) {
     throw new Error(`${label} returned the wrong tenant scope`);
   }
@@ -77,7 +121,7 @@ const waitForCompletedRun = async (runId: string) => {
 
   while (Date.now() - startedAt < pollTimeoutMs) {
     const latest = requireSnapshot(
-      await readJson<SmokeResponse>("/api/workbench/cloudflare-demo-runs/latest"),
+      await readJson<SmokeResponse>("/workbench/demo-runs/latest"),
       "latest Cloudflare-owned demo run",
     );
 
@@ -97,10 +141,10 @@ const waitForCompletedRun = async (runId: string) => {
 };
 
 const main = async () => {
-  console.log(`Smoking Cloudflare-owned workbench run at ${baseUrl}`);
+  console.log(`Smoking Cloudflare workbench run at ${baseUrl}`);
 
   const started = requireSnapshot(
-    await readJson<SmokeResponse>("/api/workbench/cloudflare-demo-runs", { method: "POST" }),
+    await readJson<SmokeResponse>("/workbench/demo-runs", { method: "POST" }),
     "started Cloudflare-owned demo run",
   );
   if (started.run?.status !== "queued") {
@@ -119,7 +163,7 @@ const main = async () => {
   requireArray(completed, "decisions");
   requireArray(completed, "auditEvents");
 
-  console.log("Cloudflare-owned workbench smoke passed");
+  console.log("Cloudflare workbench run smoke passed");
   console.log(
     JSON.stringify(
       {

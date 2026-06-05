@@ -20,8 +20,10 @@ or live mutation tools until the slice that needs them is explicitly scoped.
 - `/api/external-signals` is a token-protected staging ingress for starts,
   resumes, and cron creation.
 - WorkOS AuthKit is configured on Vercel as the hosted sign-in boundary.
-  Vercel maps WorkOS `user.id` and `organizationId` into trusted tenant scope
-  before calling Cloudflare.
+  Vercel maps WorkOS `user.id` and, when present, WorkOS `organizationId` into
+  trusted tenant scope before calling Cloudflare. Organization-backed
+  workspaces are the north-star B2B shape; the current personal workspace
+  fallback keeps solo/pre-user development production-shaped.
 - Provisional framework contracts define tenant scope, workflow intents,
   run records, tool exposure, durable entities, and repository-style data
   access.
@@ -168,6 +170,8 @@ Next target:
 - Prefer workspace context, decisions, audit events, or artifact metadata before
   R2/DO provisioning.
 - Keep Fly/LangGraph state access mediated through Cloudflare APIs.
+- Add read-only admin visibility for the resolved user, workspace, membership,
+  active agent, recent control-plane events, and last runtime error.
 
 Exit criteria:
 

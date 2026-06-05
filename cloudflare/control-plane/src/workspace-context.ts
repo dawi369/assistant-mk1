@@ -1,5 +1,6 @@
 import { json, parseJson } from "./http";
-import type { AgentIdentity, AgentRow, Env, MembershipRow, UserRow, WorkspaceRow } from "./types";
+import { selectAgent, selectMembership, selectUser, selectWorkspace } from "./authz-store";
+import type { AgentIdentity, Env } from "./types";
 
 const authModeHeader = "x-assistant-mk1-auth-mode";
 const workspaceSourceHeader = "x-assistant-mk1-workspace-source";
@@ -12,48 +13,6 @@ const parseStringArray = (raw: string) => {
   if (!Array.isArray(parsed)) return [];
   return parsed.filter((item): item is string => typeof item === "string");
 };
-
-const selectUser = (env: Env, userId: string) =>
-  env.DB.prepare(
-    `SELECT id, email, display_name, status, data_json, created_at, updated_at
-     FROM users
-     WHERE id = ?
-     LIMIT 1`,
-  )
-    .bind(userId)
-    .first<UserRow>();
-
-const selectWorkspace = (env: Env, workspaceId: string) =>
-  env.DB.prepare(
-    `SELECT id, name, status, created_by_user_id, data_json, created_at, updated_at
-     FROM workspaces
-     WHERE id = ?
-     LIMIT 1`,
-  )
-    .bind(workspaceId)
-    .first<WorkspaceRow>();
-
-const selectMembership = (env: Env, userId: string, workspaceId: string) =>
-  env.DB.prepare(
-    `SELECT id, user_id, workspace_id, role, status, roles_json, permissions_json,
-            data_json, created_at, updated_at
-     FROM memberships
-     WHERE user_id = ? AND workspace_id = ?
-     LIMIT 1`,
-  )
-    .bind(userId, workspaceId)
-    .first<MembershipRow>();
-
-const selectAgent = (env: Env, agentId: string, workspaceId: string) =>
-  env.DB.prepare(
-    `SELECT id, workspace_id, name, description, status, is_default, created_by_user_id,
-            data_json, created_at, updated_at
-     FROM agents
-     WHERE id = ? AND workspace_id = ?
-     LIMIT 1`,
-  )
-    .bind(agentId, workspaceId)
-    .first<AgentRow>();
 
 export const handleWorkspaceContext = async (
   request: Request,

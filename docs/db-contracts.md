@@ -68,8 +68,9 @@ Minimum fields:
 
 ### WorkspaceRecord
 
-Project, team, account, or app boundary. Workspaces isolate tools, secrets,
-memory, ledgers, triggers, and artifacts.
+Customer, team, account, or app tenant boundary. In B2B deployments, this is
+usually backed by a WorkOS organization. Workspaces isolate tools, secrets,
+memory, ledgers, triggers, agents, and artifacts.
 
 Minimum fields:
 

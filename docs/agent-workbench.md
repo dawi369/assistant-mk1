@@ -6,7 +6,8 @@ Polymancer is one benchmark reference app because it stresses autonomy, secrets,
 
 ## Core Flows
 
-- Project context: show the active project, environment, docs, repo assumptions, and relevant constraints.
+- Work context: show the active app/domain context, environment, docs, repo
+  assumptions, and relevant constraints.
 - Thread state: show whether the current thread is idle, running, interrupted, or errored.
 - Run control: start, stop, retry, enqueue, and inspect runs without hiding the underlying state.
 - Interrupts: surface approval prompts, missing-input requests, blocked tool calls, and external resume points.
@@ -19,6 +20,30 @@ Polymancer is one benchmark reference app because it stresses autonomy, secrets,
 - Memory/personality: let users configure durable instructions, domain knowledge, preferences, risk tolerance, tone, decision style, and operating principles.
 - Decision records: show the durable "why" behind beliefs, strategies, plans, and past actions, including evidence, counter-evidence, confidence, provenance, and freshness.
 - Workflow lifecycle: show where work sits in `observe`, `analyze`, `propose`, `execute`, or `review`.
+
+## Product Scope Model
+
+The committed tenant model is workspace plus agent. A separate user-visible
+project concept is not part of the current architecture. Product-specific
+workbench composition can still show app/domain context, environment, docs,
+repo assumptions, or app state.
+
+## Admin Visibility
+
+Admin visibility should become a near-term feature before broader customer
+rollout. Start read-only and server-derived.
+
+The first admin surface should show:
+
+- Current user, workspace, membership, and active agent.
+- WorkOS source: organization-backed workspace or personal fallback.
+- Workspace members and membership status.
+- Agent list, default agent, and status.
+- Recent Cloudflare events, chat sessions, demo runs, and last errors.
+
+This belongs in a dev/admin monitor surface first, then can graduate into a
+workspace administration UI. It should never trust browser-supplied tenant or
+agent ids.
 
 ## Component Rules
 
@@ -45,11 +70,12 @@ Polymancer is one benchmark reference app because it stresses autonomy, secrets,
 3. Add interrupt display and resume actions.
 4. Add artifact list and execution history.
 5. Add project context configuration that can be swapped per downstream app.
-6. Add tool registry UI and a first typed tool demo.
-7. Add a first CLI/OSS-backed tool demo with timeout, logs, and typed output.
-8. Add generic managed-state and audit surfaces.
-9. Add user/workspace scoping before any hosted multi-user runtime.
-10. Add decision-record surfaces for provenance-backed recall.
+6. Add read-only admin visibility for workspace, membership, and agent context.
+7. Add tool registry UI and a first typed tool demo.
+8. Add a first CLI/OSS-backed tool demo with timeout, logs, and typed output.
+9. Add generic managed-state and audit surfaces.
+10. Add user/workspace scoping before any hosted multi-user runtime.
+11. Add decision-record surfaces for provenance-backed recall.
 
 ## Design Principle
 

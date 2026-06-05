@@ -6,16 +6,8 @@ import {
   userIdHeader,
   workspaceIdHeader,
 } from "./http";
-import {
-  createId,
-  toJson,
-  type AgentIdentity,
-  type AgentRow,
-  type Env,
-  type MembershipRow,
-  type UserRow,
-  type WorkspaceRow,
-} from "./types";
+import { selectDefaultAgent, selectMembership, selectUser, selectWorkspace } from "./authz-store";
+import { createId, toJson, type AgentIdentity, type Env } from "./types";
 
 const userEmailHeader = "x-assistant-mk1-user-email";
 const userNameHeader = "x-assistant-mk1-user-name";
@@ -42,48 +34,6 @@ const firstPresent = (...values: Array<string | undefined>) =>
   values.find((value) => value && value.trim())?.trim();
 
 const defaultAgentId = (workspaceId: string) => `agent-${workspaceId}`;
-
-const selectUser = (env: Env, userId: string) =>
-  env.DB.prepare(
-    `SELECT id, email, display_name, status, data_json, created_at, updated_at
-     FROM users
-     WHERE id = ?
-     LIMIT 1`,
-  )
-    .bind(userId)
-    .first<UserRow>();
-
-const selectWorkspace = (env: Env, workspaceId: string) =>
-  env.DB.prepare(
-    `SELECT id, name, status, created_by_user_id, data_json, created_at, updated_at
-     FROM workspaces
-     WHERE id = ?
-     LIMIT 1`,
-  )
-    .bind(workspaceId)
-    .first<WorkspaceRow>();
-
-const selectMembership = (env: Env, userId: string, workspaceId: string) =>
-  env.DB.prepare(
-    `SELECT id, user_id, workspace_id, role, status, roles_json, permissions_json,
-            data_json, created_at, updated_at
-     FROM memberships
-     WHERE user_id = ? AND workspace_id = ?
-     LIMIT 1`,
-  )
-    .bind(userId, workspaceId)
-    .first<MembershipRow>();
-
-const selectDefaultAgent = (env: Env, workspaceId: string) =>
-  env.DB.prepare(
-    `SELECT id, workspace_id, name, description, status, is_default, created_by_user_id,
-            data_json, created_at, updated_at
-     FROM agents
-     WHERE workspace_id = ? AND is_default = 1
-     LIMIT 1`,
-  )
-    .bind(workspaceId)
-    .first<AgentRow>();
 
 const upsertUser = async (
   env: Env,

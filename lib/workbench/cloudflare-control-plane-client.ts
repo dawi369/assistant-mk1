@@ -1,82 +1,18 @@
-import type { Id, RunStatus } from "@/lib/agent-framework/contracts";
+import type { Id } from "@/lib/agent-framework/contracts";
 import { getWorkbenchIdentityHeaders } from "@/lib/workbench/agent-identity";
+import type {
+  CloudflareOwnedDemoRunResponse,
+  ControlPlaneEventsResponse,
+  WorkspaceContextResponse,
+} from "@/lib/workbench/workbench-types";
 
-export type CloudflareOwnedDemoRunSnapshot = {
-  scope: {
-    userId: Id;
-    workspaceId: Id;
-  };
-  intent: Record<string, unknown> | null;
-  run: {
-    id: Id;
-    status: RunStatus;
-    workflowIntentId?: Id;
-    data?: Record<string, unknown>;
-  } | null;
-  toolCalls: Array<Record<string, unknown>>;
-  artifacts: Array<Record<string, unknown>>;
-  decisions: Array<Record<string, unknown>>;
-  auditEvents: Array<Record<string, unknown>>;
-};
-
-export type CloudflareOwnedDemoRunResponse = {
-  ok?: boolean;
-  snapshot?: CloudflareOwnedDemoRunSnapshot | null;
-  error?: string;
-};
-
-export type ControlPlaneEvent = {
-  id: Id;
-  type: string;
-  summary: string;
-  targetType?: string;
-  targetId?: string;
-  data?: Record<string, unknown>;
-  createdAt: string;
-};
-
-export type ControlPlaneEventsResponse = {
-  ok?: boolean;
-  events?: ControlPlaneEvent[];
-  error?: string;
-};
-
-export type WorkspaceContextResponse = {
-  ok?: boolean;
-  context?: {
-    identity: {
-      userId: Id;
-      workspaceId: Id;
-      agentId: Id;
-      authMode: string;
-      workspaceSource: string;
-    };
-    user: {
-      id: Id;
-      email: string | null;
-      displayName: string | null;
-      status: string;
-    } | null;
-    workspace: {
-      id: Id;
-      name: string;
-      status: string;
-    } | null;
-    membership: {
-      role: string;
-      status: string;
-      roles: string[];
-      permissions: string[];
-    } | null;
-    agent: {
-      id: Id;
-      name: string;
-      status: string;
-      isDefault: boolean;
-    } | null;
-  };
-  error?: string;
-};
+export type {
+  CloudflareOwnedDemoRunResponse,
+  CloudflareOwnedDemoRunSnapshot,
+  ControlPlaneEvent,
+  ControlPlaneEventsResponse,
+  WorkspaceContextResponse,
+} from "@/lib/workbench/workbench-types";
 
 export class ControlPlaneRequestError extends Error {
   constructor(

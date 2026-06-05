@@ -24,6 +24,43 @@ This scope applies to:
 - Artifacts, logs, reports, and traces.
 - Workflow intents and workflow state.
 
+## Identity, Workspace, And Agent Model
+
+Assistant-MK1 is meant to serve many customer environments and many internal
+use cases without confusing product organization with tenant identity.
+
+- WorkOS User: the authenticated person. WorkOS owns sign-in, sessions, and
+  enterprise identity features such as SSO or directory sync when they are
+  added.
+- WorkOS Organization: the customer or company tenant in a B2B deployment.
+  This should normally map 1:1 to an Assistant-MK1 workspace. It is not the
+  right abstraction for every project or every agent.
+- Assistant-MK1 Workspace: the internal tenant boundary used by Cloudflare and
+  D1. Membership, policy, secrets, tool permissions, agents, audit records, and
+  durable state are scoped here.
+- Agent: a runtime assistant/configuration inside a workspace. A workspace can
+  have multiple agents with different tools, policies, knowledge, and operating
+  modes.
+
+For a business customer, the north-star mapping is:
+
+```txt
+WorkOS organization -> Assistant-MK1 workspace -> agents
+```
+
+For current solo/pre-user development, a signed-in WorkOS user without an
+organization gets a stable personal workspace id:
+
+```txt
+workos-personal:<workos-user-id>
+```
+
+That fallback keeps the production-shaped Cloudflare authz path working during
+development and can support a future solo tier. It is not the B2B tenant model.
+
+There is no committed Project entity in the current architecture. Workspace and
+agent are the committed authorization boundaries.
+
 ## Hard Rules
 
 - The model never chooses tenant scope.
@@ -32,6 +69,11 @@ This scope applies to:
 - Tool execution receives scope from the runtime and cannot override it.
 - Secret lookup requires tenant scope plus tool permission.
 - Cross-workspace sharing is denied by default and must be designed as an explicit future capability.
+- Browser code never chooses `userId`, `workspaceId`, or `agentId`; it can only
+  ask the server for the current resolved context.
+- WorkOS owns authentication and organization membership signals. Cloudflare
+  owns application authorization, internal workspace materialization, agent
+  records, tool access, secret policy, run control, and audit.
 
 ## Current Implementation Status
 

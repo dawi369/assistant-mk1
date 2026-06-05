@@ -10,10 +10,13 @@ The architecture is generic, but it is evaluated against demanding reference app
 - WorkOS AuthKit runs through the Next.js SDK at the Vercel web boundary.
 - assistant-ui renders the thread, composer, messages, reasoning, tools, and attachments.
 - `@assistant-ui/react-langgraph` adapts the UI runtime to LangGraph threads and streams.
-- Vercel derives trusted user, organization, roles, and permissions before
-  calling Cloudflare server-to-server.
+- Vercel derives trusted WorkOS user, organization-backed workspace when
+  present, safe roles, and permissions before calling Cloudflare
+  server-to-server.
 - Cloudflare owns membership and agent authorization, durable workbench run
   control, tenant state, audit records, and mediated storage access.
+- Workspaces are customer/team tenant boundaries. Agents are runtime assistant
+  configurations scoped to a workspace.
 - Fly runs LangGraph and signed server-side executor work.
 - LangGraph currently runs the starter backend graph exported from `backend/agent.ts`.
 - OpenRouter is configured server-side through `ChatOpenRouter`.
@@ -41,7 +44,9 @@ For implementation-level infrastructure responsibilities, see `docs/infrastructu
 
 ## Generic Subsystems
 
-- Identity and tenancy: every thread, run, secret, memory item, ledger entry, strategy, trigger, tool permission, and artifact belongs to a user or workspace.
+- Identity and tenancy: every thread, run, secret, memory item, ledger entry,
+  strategy, trigger, tool permission, agent, and artifact belongs to a user or
+  workspace.
 - Tool registry: tools are first-class runtime modules with typed inputs/outputs, permissions, execution policy, timeout policy, logging policy, and per-user/workspace availability.
 - Tool exposure resolver: a policy/runtime boundary that narrows registered tools to the model-visible set for a specific tenant, agent, workflow stage, execution mode, and child-run context.
 - CLI and OSS adapters: local CLIs, OSS packages, scripts, and git submodules should run server-side behind the same tool interface as native tools.
@@ -87,7 +92,7 @@ The active hosted dev baseline is split:
 Browser -> Vercel Next.js frontend
         -> WorkOS AuthKit session via Next SDK
         -> Vercel same-origin API facade
-        -> Cloudflare Worker/D1 for authorization and run control
+        -> Cloudflare Worker/D1 for workspace authz and run control
         -> Fly runtime executor for signed work
 
 Browser -> Vercel Next.js /api facade

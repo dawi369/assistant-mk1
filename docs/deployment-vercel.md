@@ -25,10 +25,13 @@ Fly owns LangGraph and signed executor work.
 WorkOS AuthKit is the current hosted identity boundary. Vercel maps WorkOS
 identity into trusted headers; the browser never sends tenant scope directly.
 When AuthKit provides an `organizationId`, Vercel uses it as the internal
-`workspaceId`. During the current pre-user development phase, a signed-in
-WorkOS session without an organization gets a stable personal workspace id
-derived from the WorkOS `user.id` so the Cloudflare D1 authz path can still
-bootstrap membership and the default agent.
+`workspaceId`. That is the north-star B2B shape: a customer/company WorkOS
+organization maps to an Assistant-MK1 workspace. Projects such as Polymancer,
+deployment automation, or research live inside that workspace and do not become
+WorkOS organizations by default. During the current pre-user development phase,
+a signed-in WorkOS session without an organization gets a stable personal
+workspace id derived from the WorkOS `user.id` so the Cloudflare D1 authz path
+can still bootstrap membership and the default agent.
 
 ## Required Environment
 
@@ -89,13 +92,19 @@ https://assistant-mk1.vercel.app
 ```bash
 curl https://assistant-mk1.vercel.app/api/health
 node -e "fetch('https://assistant-mk1.vercel.app/sign-in',{redirect:'manual'}).then(r=>console.log(r.status,r.headers.get('location')))"
-curl -X POST https://assistant-mk1.vercel.app/api/threads \
-  -H "Content-Type: application/json" \
-  -d '{}'
-SMOKE_TIMEOUT_MS=30000 SMOKE_BASE_URL=https://assistant-mk1.vercel.app pnpm smoke:workbench
+node -e "fetch('https://assistant-mk1.vercel.app/api/workbench/context').then(async r=>console.log(r.status, await r.text()))"
+CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
+CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
+pnpm smoke:cloudflare-workspace-context
+CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
+CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
+pnpm smoke:cloudflare-workbench-run
 ```
 
-The workbench smoke may need the longer timeout when Fly is cold-starting.
+The unauthenticated workbench context check should return `401`. Hosted Vercel
+workbench routes require a signed-in WorkOS browser session, so deploy-time
+runtime smokes call the Worker directly with trusted WorkOS-shaped headers. The
+workbench run smoke may need `SMOKE_TIMEOUT_MS=30000` when Fly is cold-starting.
 Run `pnpm smoke:cloudflare-session-boundary` and
 `pnpm smoke:cloudflare-chat-boundary` against the Worker after rebuilding the
 current D1 schema to prove tenant-scoped session and thread ownership. Run

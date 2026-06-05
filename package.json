@@ -23,6 +23,8 @@
     "deploy:fly:langgraph": "fly deploy --config fly.langgraph.toml --app assistant-mk1-langgraph-dev",
     "smoke:langgraph-runtime": "tsx scripts/smoke-langgraph-runtime.ts",
     "smoke:cloudflare-authz": "tsx scripts/smoke-cloudflare-authz.ts",
+    "smoke:cloudflare-workspace-context": "tsx scripts/smoke-cloudflare-workspace-context.ts",
+    "smoke:cloudflare-workbench-run": "tsx scripts/smoke-cloudflare-workbench-run.ts",
     "smoke:cloudflare-langgraph-facade": "tsx scripts/smoke-cloudflare-langgraph-facade.ts",
     "smoke:cloudflare-chat-boundary": "tsx scripts/smoke-cloudflare-chat-boundary.ts",
     "smoke:cloudflare-session-boundary": "tsx scripts/smoke-cloudflare-session-boundary.ts",
