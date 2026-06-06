@@ -1,4 +1,9 @@
-import { insertAgent, normalizeAgentProfile, toAgentSummary } from "./agent-records";
+import {
+  insertAgent,
+  normalizeAgentProfile,
+  normalizeOpenRouterModel,
+  toAgentSummary,
+} from "./agent-records";
 import { upsertActiveAgentPreference } from "./authz";
 import { selectAgent, selectMembership, selectWorkspaceAgents } from "./authz-store";
 import { isRecord, json, parseJson } from "./http";
@@ -14,7 +19,7 @@ export const handleListAgents = async (env: Env, identity: AgentIdentity) => {
   return json({
     ok: true,
     activeAgentId: identity.agentId,
-    agents: agents.results.map((agent) => toAgentSummary(agent, identity.agentId)),
+    agents: agents.results.map((agent) => toAgentSummary(env, agent, identity.agentId)),
   });
 };
 
@@ -44,6 +49,18 @@ export const handleCreateAgent = async (request: Request, env: Env, identity: Ag
       { status: 400 },
     );
   }
+  const rawModel = isRecord(body) ? body.model : undefined;
+  const normalizedModel = rawModel === undefined ? undefined : normalizeOpenRouterModel(rawModel);
+  if (rawModel !== undefined && !normalizedModel) {
+    return json(
+      {
+        ok: false,
+        error: "Agent model must be one of deepseek/deepseek-v4-flash or openai/gpt-4.1-mini",
+      },
+      { status: 400 },
+    );
+  }
+  const model = normalizedModel ?? undefined;
 
   const agentId = await insertAgent(env, {
     workspaceId: identity.scope.workspaceId,
@@ -51,6 +68,7 @@ export const handleCreateAgent = async (request: Request, env: Env, identity: Ag
     name,
     description,
     profile,
+    model,
   });
   const agent = await selectAgent(env, agentId, identity.scope.workspaceId);
   if (!agent) {
@@ -71,7 +89,7 @@ export const handleCreateAgent = async (request: Request, env: Env, identity: Ag
     {
       ok: true,
       activeAgentId: activate ? agent.id : identity.agentId,
-      agent: toAgentSummary(agent, activate ? agent.id : identity.agentId),
+      agent: toAgentSummary(env, agent, activate ? agent.id : identity.agentId),
     },
     { status: 201 },
   );
@@ -104,6 +122,6 @@ export const handleActivateAgent = async (env: Env, identity: AgentIdentity, age
   return json({
     ok: true,
     activeAgentId: agent.id,
-    agent: toAgentSummary(agent, agent.id),
+    agent: toAgentSummary(env, agent, agent.id),
   });
 };

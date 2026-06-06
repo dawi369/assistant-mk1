@@ -1,6 +1,6 @@
 # Polymancer Reference App
 
-Polymancer is the reference target for Assistant-MK1. It is not the whole product scope. It is the demanding benchmark that proves the framework can support real multi-user, long-running, tool-using agents.
+Polymancer is the reference target for assistant-mk1. It is not the whole product scope. It is the demanding benchmark that proves the framework can support real multi-user, long-running, tool-using agents.
 
 ## Vision
 
@@ -35,7 +35,7 @@ These requirements are generic. The same framework should support deployments, r
 
 ## Framework Mapping
 
-Polymancer-specific behavior must map to generic Assistant-MK1 primitives:
+Polymancer-specific behavior must map to generic assistant-mk1 primitives:
 
 - Polymarket account -> user/workspace identity and secret custody.
 - Trading tools -> typed server-side tools with permissions and deterministic execution modes.
@@ -180,4 +180,4 @@ Shared infrastructure can host many users, but no agent run should be able to cr
 
 ## Boundary
 
-Assistant-MK1 remains the reusable framework. Polymancer is a reference benchmark and future proving app, not the repo identity.
+Assistant-mk1 remains the reusable framework. Polymancer is a reference benchmark and future proving app, not the repo identity.

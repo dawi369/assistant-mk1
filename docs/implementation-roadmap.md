@@ -1,7 +1,7 @@
 # Implementation Roadmap
 
 This roadmap turns the current assistant-ui LangGraph starter into the target
-Assistant-MK1 workbench without hiding major architecture decisions inside the
+assistant-mk1 workbench without hiding major architecture decisions inside the
 first implementation pass.
 
 The default rule is docs and contracts first, then the smallest working vertical

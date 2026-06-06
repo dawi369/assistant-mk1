@@ -1,13 +1,13 @@
 # Personal Job Agent Reference App
 
-The Personal Job Agent is a demanding reference target for Assistant-MK1. It
+The Personal Job Agent is a demanding reference target for assistant-mk1. It
 proves the framework can support web-browsing, long-running, stateful agents
 that discover opportunities, build a durable application database, and act
 through policy-controlled tools.
 
 It is not a separate runtime. It is a reference mapping for a personal job
 search operator built on the same generic primitives as Polymancer, deployment
-agents, and future Assistant-MK1 apps.
+agents, and future assistant-mk1 apps.
 
 ## Vision
 
@@ -71,7 +71,7 @@ personal operators that browse, decide, submit forms, track outcomes, and answer
 
 ## Framework Mapping
 
-Personal Job Agent behavior must map to generic Assistant-MK1 primitives:
+Personal Job Agent behavior must map to generic assistant-mk1 primitives:
 
 - User career profile -> user/workspace-scoped memory and managed state.
 - Job database -> managed state records with domain-specific fields in `data`.
@@ -242,5 +242,5 @@ analyze, draft, dry-run, and queue for approval or later execution.
 
 The Personal Job Agent is a reference mapping, not a special-case runtime. Its
 browser tools, applications, ledgers, triggers, managed state, decision records,
-and audit events must use the same Assistant-MK1 contracts as Polymancer,
+and audit events must use the same assistant-mk1 contracts as Polymancer,
 deployment agents, and future reference apps.

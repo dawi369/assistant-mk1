@@ -48,6 +48,7 @@ const adminSummaryPath = "/api/workbench/admin-summary";
 const cloudflareDemoRunsPath = "/api/workbench/cloudflare-demo-runs";
 const workspacesPath = "/api/workbench/workspaces";
 const agentsPath = "/api/workbench/agents";
+const agentModelOptions = ["deepseek/deepseek-v4-flash", "openai/gpt-4.1-mini"] as const;
 
 const readJsonResponse = async <T,>(response: Response, fallback: string): Promise<T> => {
   const body = (await response.json().catch(() => ({}))) as T & { error?: string };
@@ -95,6 +96,9 @@ export function DevMonitorDrawer({
   const [agentName, setAgentName] = useState("");
   const [agentDescription, setAgentDescription] = useState("");
   const [agentProfile, setAgentProfile] = useState<"default" | "analyst" | "operator">("analyst");
+  const [agentModel, setAgentModel] = useState<(typeof agentModelOptions)[number]>(
+    "deepseek/deepseek-v4-flash",
+  );
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   const demoSnapshot = summary?.demo.latestRun ?? null;
@@ -244,6 +248,7 @@ export function DevMonitorDrawer({
           name,
           description: agentDescription.trim() || undefined,
           profile: agentProfile,
+          model: agentModel,
           activate: true,
         }),
       });
@@ -251,6 +256,7 @@ export function DevMonitorDrawer({
       setAgentName("");
       setAgentDescription("");
       setAgentProfile("analyst");
+      setAgentModel("deepseek/deepseek-v4-flash");
       await loadSummary();
     } catch (createError) {
       setFetchError(createError instanceof Error ? createError.message : "Failed to create agent");
@@ -328,6 +334,12 @@ export function DevMonitorDrawer({
                 tone="ok"
               />
               <StatusRow
+                label="Model"
+                value={summary?.activeAgent?.runtime.model}
+                compact
+                tone="ok"
+              />
+              <StatusRow
                 label="Latest chat event"
                 value={latestMeaningfulEvent?.summary ?? latestMeaningfulEvent?.type}
                 compact
@@ -369,6 +381,15 @@ export function DevMonitorDrawer({
               <StatusRow
                 label="Thread"
                 value={chatRuntime?.latestThread?.status ?? "No thread yet"}
+                compact
+              />
+              <StatusRow
+                label="Runtime"
+                value={
+                  summary?.activeAgent?.runtime
+                    ? `${summary.activeAgent.runtime.provider} / ${summary.activeAgent.runtime.model}`
+                    : undefined
+                }
                 compact
               />
               <StatusRow
@@ -418,6 +439,14 @@ export function DevMonitorDrawer({
               <StatusRow
                 label="Admin controls"
                 value={summary?.membership ? (canManageWorkspaces ? "Enabled" : "Read only") : ""}
+              />
+              <StatusRow
+                label="Active model"
+                value={
+                  summary?.activeAgent?.runtime
+                    ? `${summary.activeAgent.runtime.model} / ${summary.activeAgent.runtime.source}`
+                    : undefined
+                }
               />
             </div>
           </MonitorSection>
@@ -484,6 +513,8 @@ export function DevMonitorDrawer({
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <StatusRow label="Active agent" value={summary?.activeAgent?.name} />
                 <StatusRow label="Profile" value={summary?.activeAgent?.profile} />
+                <StatusRow label="Model" value={summary?.activeAgent?.runtime.model} />
+                <StatusRow label="Model source" value={summary?.activeAgent?.runtime.source} />
               </div>
               <form className="space-y-2" onSubmit={createAgent}>
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
@@ -506,6 +537,19 @@ export function DevMonitorDrawer({
                     <option value="default">Default</option>
                   </select>
                 </div>
+                <select
+                  className="border-input bg-background ring-offset-background focus-visible:ring-ring w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                  value={agentModel}
+                  onChange={(event) =>
+                    setAgentModel(event.target.value as (typeof agentModelOptions)[number])
+                  }
+                >
+                  {agentModelOptions.map((model) => (
+                    <option key={model} value={model}>
+                      {model}
+                    </option>
+                  ))}
+                </select>
                 <textarea
                   className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring min-h-16 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
                   value={agentDescription}
@@ -533,6 +577,9 @@ export function DevMonitorDrawer({
                             {agent.isActive ? "active" : "available"}
                             {agent.isDefault ? " / default" : ""}
                             {` / ${agent.profile}`}
+                          </span>
+                          <span className="text-muted-foreground block truncate text-xs">
+                            {agent.runtime.provider} / {agent.runtime.model}
                           </span>
                         </span>
                         {agent.isActive ? (
@@ -621,6 +668,20 @@ export function DevMonitorDrawer({
               <CopyId label="Chat run id" value={chatRuntime?.latestRun?.id} />
               <CopyId label="External run id" value={chatRuntime?.latestRun?.upstreamRunId} />
               <CopyId label="Demo run id" value={run?.id} />
+            </DetailsBlock>
+
+            <DetailsBlock title="Agent runtime config">
+              <StatusRow label="Provider" value={summary?.activeAgent?.runtime.provider} />
+              <CopyId label="Model" value={summary?.activeAgent?.runtime.model} />
+              <StatusRow
+                label="Temperature"
+                value={String(summary?.activeAgent?.runtime.temperature ?? "")}
+              />
+              <StatusRow
+                label="Max tokens"
+                value={String(summary?.activeAgent?.runtime.maxTokens ?? "")}
+              />
+              <StatusRow label="Source" value={summary?.activeAgent?.runtime.source} />
             </DetailsBlock>
 
             <DetailsBlock title="Membership and external identity">

@@ -1,4 +1,6 @@
-Assistant-MK1 is a reusable agent workbench built from the
+# Assistant-mk1
+
+Assistant-mk1 is a reusable agent workbench built from the
 [assistant-ui](https://github.com/assistant-ui/assistant-ui) LangGraph starter.
 It keeps assistant-ui as the default chat surface while Vercel, WorkOS,
 Cloudflare, Fly, and LangGraph are being shaped into a production-oriented
@@ -69,7 +71,6 @@ langgraph.json      LangGraph CLI config (graph id, node version, env file)
 ## Operating docs
 
 - `AGENTS.md` — repo instructions for coding agents
-- `goal.md` — product goal, phases, and done bar
 - `docs/README.md` — docs map that separates current implementation from target architecture
 - `docs/architecture.md` — system shape and seams
 - `docs/diagrams/README.md` — git-tracked Mermaid topology diagram workflow
@@ -97,6 +98,10 @@ langgraph.json      LangGraph CLI config (graph id, node version, env file)
 - `docs/reference-apps/polymancer.md` — reference target for a demanding 24/7 tool-using agent
 - `docs/reference-apps/deployment-agent.md` — operational reference target for deployment agents
 - `docs/reference-apps/personal-job-agent.md` — personal job-search reference target with browser automation and policy-controlled applications
+
+Product direction lives in `docs/agent-workbench.md`, implementation sequencing
+lives in `docs/implementation-roadmap.md`, and downstream app pressure is
+captured in `docs/reference-apps/*`.
 
 ## External signals
 

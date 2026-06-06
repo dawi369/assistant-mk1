@@ -1,13 +1,13 @@
 # Tool System
 
-Assistant-MK1 tools are server-side capabilities with typed inputs, typed
+Assistant-mk1 tools are server-side capabilities with typed inputs, typed
 outputs, policy checks, audit behavior, and UI inspection. The model should see
 only the tools allowed for a specific scoped run.
 
 ## Assistant-UI Boundary
 
 assistant-ui should render streaming tool-call states where the stream shape
-fits. Assistant-MK1 owns the durable tool system around that rendering:
+fits. Assistant-mk1 owns the durable tool system around that rendering:
 
 - tool registry and metadata
 - tenant-scoped enablement

@@ -12,11 +12,11 @@ run lifecycle, tool system, context assembly, and observability docs:
 - `docs/observability-and-audit.md`
 
 This was a temporary implementation plan for applying useful Hermes architecture
-lessons to Assistant-MK1 without turning this project into a local harness
+lessons to assistant-mk1 without turning this project into a local harness
 clone.
 
-Hermes and Assistant-MK1 are different products. Hermes is a strong open agent
-harness with local session infrastructure. Assistant-MK1 is aiming at a hosted,
+Hermes and assistant-mk1 are different products. Hermes is a strong open agent
+harness with local session infrastructure. Assistant-mk1 is aiming at a hosted,
 multi-user agent workbench with a conversational control plane, typed workflow
 escalation, Cloudflare-owned coordination, and Fly/LangGraph execution planes.
 
@@ -51,7 +51,7 @@ It should connect:
 - tool calls, artifacts, ledgers, audit events, and decision records
 
 This record should not imply a table schema, migration, Cloudflare binding, or
-LangGraph storage implementation. It is a contract for the state Assistant-MK1
+LangGraph storage implementation. It is a contract for the state assistant-mk1
 must be able to represent.
 
 ## Phase 2: Child Workflow Semantics

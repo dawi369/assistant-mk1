@@ -1,6 +1,6 @@
 # Cloudflare Control Plane
 
-Cloudflare is the preferred future live multi-user control plane for Assistant-MK1.
+Cloudflare is the preferred future live multi-user control plane for assistant-mk1.
 
 Document status: Cloudflare already owns the current authz/control-plane slice
 for users, accounts, workspaces, memberships, active workspace preferences,

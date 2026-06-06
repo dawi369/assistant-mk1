@@ -1,6 +1,6 @@
 # Tenancy And Isolation
 
-Multi-user support is a foundation, not an add-on. Every durable object in Assistant-MK1 must be scoped by both `userId` and `workspaceId`.
+Multi-user support is a foundation, not an add-on. Every durable object in assistant-mk1 must be scoped by both `userId` and `workspaceId`.
 
 ## Tenant Scope
 
@@ -26,16 +26,16 @@ This scope applies to:
 
 ## Identity, Workspace, And Agent Model
 
-Assistant-MK1 is meant to serve many customer environments and many internal
+Assistant-mk1 is meant to serve many customer environments and many internal
 use cases without confusing product organization with tenant identity.
 
 - WorkOS User: the authenticated person. WorkOS owns sign-in, sessions, and
   enterprise identity features such as SSO or directory sync when they are
   added.
 - WorkOS Organization: the customer or company account source in a B2B
-  deployment. It maps to an Assistant-MK1 account id, not directly to a
+  deployment. It maps to an assistant-mk1 account id, not directly to a
   workspace id.
-- Assistant-MK1 Workspace: the internal tenant boundary used by Cloudflare and
+- Assistant-mk1 Workspace: the internal tenant boundary used by Cloudflare and
   D1. The current baseline creates one default workspace per WorkOS
   organization or personal account source, and workspace management v0 allows
   additional workspaces to be created and activated from Dev Monitor.
@@ -48,7 +48,7 @@ use cases without confusing product organization with tenant identity.
 For a business customer, the current hosted mapping is:
 
 ```txt
-WorkOS organization -> Assistant-MK1 account -> active workspace -> agents
+WorkOS organization -> assistant-mk1 account -> active workspace -> agents
 ```
 
 The default workspace id is stable:
@@ -60,7 +60,7 @@ WorkOS organization -> workos-org:<organizationId> -> workspace:workos-org:<orga
 Cloudflare stores the current user's active workspace preference for the
 account. If no preference exists, Cloudflare falls back to the default
 workspace. The WorkOS organization remains the account source and each
-Assistant-MK1 workspace is an operational boundary under that account.
+assistant-mk1 workspace is an operational boundary under that account.
 
 For current solo/pre-user development, a signed-in WorkOS user without an
 organization gets a stable personal account id:
@@ -127,18 +127,18 @@ secret access policy remain production gates.
 
 ## Ownership Roadmap
 
-The next steps should keep WorkOS and Assistant-MK1 responsibilities separate:
+The next steps should keep WorkOS and assistant-mk1 responsibilities separate:
 
 1. Admin visibility: expose the Cloudflare-resolved account, workspace,
    membership, default agent, recent events, and last error in a read-only Dev
    Monitor.
 2. Workspace management model: allow one WorkOS organization or personal
-   account to own multiple Assistant-MK1 workspaces. The current v0 is
+   account to own multiple assistant-mk1 workspaces. The current v0 is
    Dev Monitor-only list/create/switch, with Cloudflare storing the active
    workspace preference.
 3. Membership source of truth: WorkOS answers who signed in and which external
    organization they came through; Cloudflare D1 answers what they can do inside
-   an Assistant-MK1 workspace. The current v0 keeps reads open to active
+   an assistant-mk1 workspace. The current v0 keeps reads open to active
    members and gates workspace writes to `owner`/`admin`.
 4. Agent routing: agents remain scoped to workspaces. The current v0 keeps
    customer-facing agent provisioning out of scope while Cloudflare stores

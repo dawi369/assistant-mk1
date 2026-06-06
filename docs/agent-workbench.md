@@ -2,7 +2,11 @@
 
 The workbench is the reusable frontend layer this repo is meant to become. Chat remains the first interface, but the product should support project-scale agent work: long-running processes, tools, external triggers, user knowledge, managed state, audit trails, and multi-user isolation.
 
-Polymancer is one benchmark reference app because it stresses autonomy, secrets, ledgers, execution policy, and fast external signals. The framework must stay generic: the same surfaces should support deployment agents, research assistants, document workflows, issue triage, operations copilots, and other agent projects.
+Polymancer, deployment agents, and the Personal Job Agent are benchmark
+reference apps because they stress autonomy, secrets, ledgers, execution
+policy, browser automation, and fast external signals. The framework must stay
+generic: the same surfaces should support research assistants, document
+workflows, issue triage, operations copilots, and other agent projects.
 
 Document status: the current product surface is default assistant-ui chat plus
 Dev Monitor. The workbench surfaces below are the direction, not all shipped UI.

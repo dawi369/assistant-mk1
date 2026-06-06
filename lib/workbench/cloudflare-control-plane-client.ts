@@ -154,6 +154,7 @@ export const createCloudflareAgent = (input: {
   name: string;
   description?: string;
   profile: AgentSummary["profile"];
+  model?: string;
   activate?: boolean;
 }) =>
   requestControlPlane<CloudflareAgentMutationResponse>("/agents", {

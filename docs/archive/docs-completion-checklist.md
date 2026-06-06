@@ -22,7 +22,7 @@ Status values:
 
 | Area                          | Status                      | Source                                                       |
 | ----------------------------- | --------------------------- | ------------------------------------------------------------ |
-| Product goal                  | build-ready                 | `goal.md`                                                    |
+| Product direction             | build-ready                 | `docs/agent-workbench.md`, `docs/implementation-roadmap.md`  |
 | System architecture           | build-ready                 | `docs/architecture.md`                                       |
 | Implementation roadmap        | build-ready                 | `docs/implementation-roadmap.md`                             |
 | Runtime model                 | build-ready                 | `docs/runtime.md`, `docs/run-lifecycle.md`                   |

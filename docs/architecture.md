@@ -1,8 +1,12 @@
 # Architecture
 
-Assistant-MK1 is a reusable agent workbench with a conversational control plane, workflow execution plane, and hosted dev/staging split across Vercel, Cloudflare, and Fly.
+Assistant-mk1 is a reusable agent workbench with a conversational control plane, workflow execution plane, and hosted dev/staging split across Vercel, Cloudflare, and Fly.
 
-The architecture is generic, but it is evaluated against demanding reference apps such as Polymancer and deployment agents. Reference apps are stress tests for long-running autonomy, secrets, ledgers, execution policy, tools, external triggers, and multi-user isolation. The primitives must remain reusable across agent projects.
+The architecture is generic, but it is evaluated against demanding reference
+apps such as Polymancer, deployment agents, and the Personal Job Agent.
+Reference apps are stress tests for long-running autonomy, secrets, ledgers,
+execution policy, tools, external triggers, browser automation, and multi-user
+isolation. The primitives must remain reusable across agent projects.
 
 Document status: this page describes the current system shape plus target
 subsystems. For the current-vs-target docs map, start with `docs/README.md`.

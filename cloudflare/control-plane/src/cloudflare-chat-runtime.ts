@@ -10,7 +10,11 @@ import {
   updateChatRun,
   updateChatThreadUpstream,
 } from "./chat-boundary-store";
-import { toAgentRuntimeMetadata } from "./agent-records";
+import {
+  resolveAgentRuntimeConfig,
+  toAgentRuntimeMetadata,
+  type AgentRuntimeConfig,
+} from "./agent-records";
 import { selectAgent } from "./authz-store";
 import { deriveChatExecutionMode, evaluateChatRunPolicy } from "./chat-policy";
 import { appendControlPlaneEvent } from "./control-plane-events";
@@ -26,7 +30,6 @@ type StoredMessage = {
 };
 
 const modelProvider = "openrouter";
-const defaultModel = "openai/gpt-4.1-mini";
 
 const sseHeaders = {
   "content-type": "text/event-stream; charset=utf-8",
@@ -95,12 +98,14 @@ const threadUpstream = (input: {
   runtime: string;
   messages: StoredMessage[];
   model?: string;
+  runtimeConfig?: AgentRuntimeConfig;
   updatedAt?: string;
 }) => ({
   source: input.source,
   runtime: input.runtime,
   modelProvider,
   model: input.model,
+  runtimeConfig: input.runtimeConfig,
   messages: input.messages,
   updatedAt: input.updatedAt ?? new Date().toISOString(),
 });
@@ -155,7 +160,8 @@ const parseOpenRouterChunk = (block: string) => {
 
 export const handleCloudflareCreateThread = async (env: Env, identity: AgentIdentity) => {
   const activeAgent = await selectAgent(env, identity.agentId, identity.scope.workspaceId);
-  const agentMetadata = toAgentRuntimeMetadata(activeAgent, identity.agentId);
+  const runtimeConfig = resolveAgentRuntimeConfig(env, activeAgent);
+  const agentMetadata = toAgentRuntimeMetadata(env, activeAgent, identity.agentId);
   const existingSession = await getLatestChatSession(env, identity.scope);
   const createdSession = !existingSession || existingSession.agent_id !== identity.agentId;
   const sessionId =
@@ -186,7 +192,8 @@ export const handleCloudflareCreateThread = async (env: Env, identity: AgentIden
       source: "cloudflare-chat-runtime",
       runtime: "cloudflare-simple-chat",
       messages: [],
-      model: env.OPENROUTER_MODEL ?? defaultModel,
+      model: runtimeConfig.model,
+      runtimeConfig,
     }),
   );
   await touchChatSession(env, identity.scope, sessionId, threadId);
@@ -238,7 +245,8 @@ export const handleCloudflareRunStream = async (
   });
   const requestedAssistantId = isRecord(parsedBody) ? parsedBody.assistant_id : undefined;
   const activeAgent = await selectAgent(env, identity.agentId, identity.scope.workspaceId);
-  const agentMetadata = toAgentRuntimeMetadata(activeAgent, identity.agentId);
+  const runtimeConfig = resolveAgentRuntimeConfig(env, activeAgent);
+  const agentMetadata = toAgentRuntimeMetadata(env, activeAgent, identity.agentId);
   const inputMessages = extractInputMessages(parsedBody);
   const existingMessages = messagesFromThread(thread);
   const nextMessages = dedupeMessages([...existingMessages, ...inputMessages]);
@@ -254,6 +262,7 @@ export const handleCloudflareRunStream = async (
       requestedExecutionMode,
       runtime: "cloudflare-simple-chat",
       agent: agentMetadata,
+      runtimeConfig,
     },
   });
   await appendControlPlaneEvent(env, identity, {
@@ -268,6 +277,7 @@ export const handleCloudflareRunStream = async (
       status: policy.decision,
       runtime: "cloudflare-simple-chat",
       agent: agentMetadata,
+      runtimeConfig,
     },
   });
   const policyDecisionId = await createChatPolicyDecision(env, identity, {
@@ -283,7 +293,13 @@ export const handleCloudflareRunStream = async (
     summary: policy.reason,
     targetType: "chat_policy_decision",
     targetId: policyDecisionId,
-    data: { threadId: thread.thread_id, intentId, executionMode, agent: agentMetadata },
+    data: {
+      threadId: thread.thread_id,
+      intentId,
+      executionMode,
+      agent: agentMetadata,
+      runtimeConfig,
+    },
   });
 
   if (policy.decision === "block") {
@@ -306,8 +322,9 @@ export const handleCloudflareRunStream = async (
     metadata: {
       executionMode,
       runtime: "cloudflare-simple-chat",
-      modelProvider,
-      model: env.OPENROUTER_MODEL ?? defaultModel,
+      modelProvider: runtimeConfig.provider,
+      model: runtimeConfig.model,
+      runtimeConfig,
       agent: agentMetadata,
     },
   });
@@ -319,7 +336,8 @@ export const handleCloudflareRunStream = async (
       source: "cloudflare-chat-runtime",
       runtime: "cloudflare-simple-chat",
       messages: nextMessages,
-      model: env.OPENROUTER_MODEL ?? defaultModel,
+      model: runtimeConfig.model,
+      runtimeConfig,
     }),
   );
   await appendControlPlaneEvent(env, identity, {
@@ -334,6 +352,7 @@ export const handleCloudflareRunStream = async (
       executionMode,
       runtime: "cloudflare-simple-chat",
       agent: agentMetadata,
+      runtimeConfig,
     },
   });
 
@@ -375,7 +394,7 @@ export const handleCloudflareRunStream = async (
     return json({ ok: false, error }, { status: 500 });
   }
 
-  const model = env.OPENROUTER_MODEL ?? defaultModel;
+  const model = runtimeConfig.model;
   const stream = new ReadableStream({
     start(controller) {
       void (async () => {
@@ -385,8 +404,9 @@ export const handleCloudflareRunStream = async (
           thread_id: thread.thread_id,
           run_id: runId,
           runtime: "cloudflare-simple-chat",
-          model_provider: modelProvider,
+          model_provider: runtimeConfig.provider,
           ls_model_name: model,
+          runtime_config: runtimeConfig,
           langgraph_node: "cloudflare-simple-chat",
           agent: agentMetadata,
         };
@@ -398,6 +418,8 @@ export const handleCloudflareRunStream = async (
             headers: openRouterHeaders(env),
             body: JSON.stringify({
               model,
+              temperature: runtimeConfig.temperature,
+              max_tokens: runtimeConfig.maxTokens,
               stream: true,
               messages: openRouterMessages(nextMessages),
             }),
@@ -461,6 +483,7 @@ export const handleCloudflareRunStream = async (
               runtime: "cloudflare-simple-chat",
               messages: finalMessages,
               model,
+              runtimeConfig,
             }),
           );
           await updateChatRun(env, {

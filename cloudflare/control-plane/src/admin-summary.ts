@@ -236,10 +236,10 @@ export const handleAdminWorkspaceSummary = async (
           }
         : null,
       externalMembership: externalMembershipSummary(request),
-      activeAgent: agent ? toAgentSummary(agent, identity.agentId) : null,
-      defaultAgent: defaultAgent ? toAgentSummary(defaultAgent, identity.agentId) : null,
+      activeAgent: agent ? toAgentSummary(env, agent, identity.agentId) : null,
+      defaultAgent: defaultAgent ? toAgentSummary(env, defaultAgent, identity.agentId) : null,
       agents: agents.results.map((workspaceAgent) =>
-        toAgentSummary(workspaceAgent, identity.agentId),
+        toAgentSummary(env, workspaceAgent, identity.agentId),
       ),
       chat: {
         latestSession: chatRuntime.latestSession,

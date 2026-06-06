@@ -1,6 +1,6 @@
 # Dev Infrastructure Readiness
 
-This checklist tracks the tiny dev infrastructure baseline for Assistant-MK1.
+This checklist tracks the tiny dev infrastructure baseline for assistant-mk1.
 The current remote Cloudflare scope is intentionally narrow: one Worker, one D1
 database, the Vercel frontend, and the dedicated Fly LangGraph runtime gateway.
 

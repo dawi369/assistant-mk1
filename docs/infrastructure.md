@@ -1,6 +1,6 @@
 # Infrastructure
 
-Assistant-MK1 is a reusable agent framework. Infrastructure should support many apps and many users without making Polymancer the only product shape.
+Assistant-mk1 is a reusable agent framework. Infrastructure should support many apps and many users without making Polymancer the only product shape.
 
 Document status: this page intentionally compares the current hosted dev
 baseline with the target runtime. Use `docs/deployment-vercel.md` and

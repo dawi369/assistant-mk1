@@ -73,6 +73,14 @@ export type ControlPlaneEventsResponse = {
   error?: string;
 };
 
+export type AgentRuntimeConfig = {
+  provider: "openrouter";
+  model: string;
+  temperature: number;
+  maxTokens: number;
+  source: "agent" | "system-default";
+};
+
 export type ChatRuntimeSummary = {
   state:
     | "no_session"
@@ -235,6 +243,7 @@ export type CloudflareAdminSummaryResponse = {
       description: string | null;
       status: string;
       profile: "default" | "analyst" | "operator";
+      runtime: AgentRuntimeConfig;
       isDefault: boolean;
       isActive: boolean;
       createdAt?: string;
@@ -246,6 +255,7 @@ export type CloudflareAdminSummaryResponse = {
       description: string | null;
       status: string;
       profile: "default" | "analyst" | "operator";
+      runtime: AgentRuntimeConfig;
       isDefault: boolean;
       isActive: boolean;
       createdAt?: string;
@@ -257,6 +267,7 @@ export type CloudflareAdminSummaryResponse = {
       description: string | null;
       status: string;
       profile: "default" | "analyst" | "operator";
+      runtime: AgentRuntimeConfig;
       isDefault: boolean;
       isActive: boolean;
       createdAt?: string;
@@ -325,6 +336,7 @@ export type AgentSummary = {
   description: string | null;
   status: string;
   profile: "default" | "analyst" | "operator";
+  runtime: AgentRuntimeConfig;
   isDefault: boolean;
   isActive: boolean;
   createdAt?: string;

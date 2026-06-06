@@ -3,6 +3,10 @@
 This folder contains both current implementation docs and target architecture
 docs. Read status before treating a document as a runbook.
 
+There is no separate goal doc. Product direction lives in `agent-workbench.md`,
+implementation sequencing lives in `implementation-roadmap.md`, and downstream
+app pressure lives in `reference-apps/*`.
+
 ## Current Implementation
 
 These docs describe what the repo does now and should stay tightly aligned with

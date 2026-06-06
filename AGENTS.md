@@ -1,4 +1,4 @@
-# Assistant-MK1 Agent Instructions
+# Assistant-mk1 Agent Instructions
 
 This repo is a reusable agent workbench built from the assistant-ui LangGraph starter. Treat it as production-oriented application code, not a demo.
 
@@ -6,6 +6,10 @@ This repo is a reusable agent workbench built from the assistant-ui LangGraph st
 
 - Read the repo first: package manager, scripts, env files, LangGraph config, and surrounding UI components.
 - Prefer the smallest correct change that fits the current architecture.
+- Use `docs/README.md` as the docs map. Product direction belongs in
+  `docs/agent-workbench.md`, the roadmap belongs in
+  `docs/implementation-roadmap.md`, and reference app pressure belongs in
+  `docs/reference-apps/*`.
 - Keep provider secrets server-side. Never add model provider keys to `NEXT_PUBLIC_*`.
 - Use pnpm for dependency commands; this repo tracks `pnpm-lock.yaml`.
 - Avoid unrelated refactors, formatting churn, and new dependencies unless the existing stack cannot solve the problem.

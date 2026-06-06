@@ -1,6 +1,6 @@
 # Secrets And Risk
 
-Assistant-MK1 must assume tools can be powerful. Secret custody and execution policy are framework primitives, not app-specific extras.
+Assistant-mk1 must assume tools can be powerful. Secret custody and execution policy are framework primitives, not app-specific extras.
 
 ## Secret Custody
 

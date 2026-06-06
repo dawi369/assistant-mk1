@@ -185,7 +185,7 @@ export const handleCreateChatSession = async (
   const parsed = raw ? parseJson(raw) : null;
   const metadata = isRecord(parsed) && isRecord(parsed.metadata) ? parsed.metadata : {};
   const activeAgent = await selectAgent(env, identity.agentId, identity.scope.workspaceId);
-  const agentMetadata = toAgentRuntimeMetadata(activeAgent, identity.agentId);
+  const agentMetadata = toAgentRuntimeMetadata(env, activeAgent, identity.agentId);
   const sessionId = await createChatSession(env, identity, {
     ...metadata,
     agent: agentMetadata,

@@ -1,10 +1,10 @@
-# Assistant-MK1 Architecture Overview Diagram
+# Assistant-mk1 Architecture Overview Diagram
 
 Last updated: 2026-06-03
 
 ## Purpose
 
-Show the current hosted implementation topology of Assistant-MK1 after replacing
+Show the current hosted implementation topology of assistant-mk1 after replacing
 the old graph-as-code diagram pipeline. This diagram is an overview only: it
 should help a maintainer see the active Vercel frontend, Cloudflare Worker
 control-plane slice, Fly LangGraph/runtime executor, and durable data boundary
