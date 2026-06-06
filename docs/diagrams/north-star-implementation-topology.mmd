@@ -25,6 +25,7 @@ flowchart LR
     ingress["trusted ingress"]
     scope["scope + membership"]
     agentAuth["agent authorization"]
+    intentRouter["intent router"]
     policy["policy + tool exposure"]
     runControl["run control"]
     stream["streaming gateway"]
@@ -47,6 +48,7 @@ flowchart LR
     r2["R2 artifacts"]
     durableObject["Durable Object hot state"]
     workflowState["workflow checkpoints"]
+    secrets["encrypted secrets"]
   end
 
   subgraph sg_sidecar["External sidecars"]
@@ -66,7 +68,8 @@ flowchart LR
 
   ingress -- "trusted scope" --> scope
   scope -- "membership" --> agentAuth
-  agentAuth -- "policy input" --> policy
+  agentAuth -- "route intent" --> intentRouter
+  intentRouter -- "workflow intent" --> policy
   policy -- "execution gate" --> runControl
   runControl -- "signed work" --> signedGateway
 
@@ -85,6 +88,7 @@ flowchart LR
   dataApi -- "artifact write" --> r2
   dataApi -- "hot state" --> durableObject
   dataApi -- "checkpoint status" --> workflowState
+  dataApi -- "scoped secret access" --> secrets
   dataApi -- "source-of-truth state" --> stream
 
   stream -- "messages" --> thread
@@ -97,7 +101,7 @@ flowchart LR
   signedGateway -. "Fly executes only" .-> progress
 
   class authKit,cockpit,serverFacade,thread,approvals,status,artifactsUi vercel
-  class ingress,scope,agentAuth,policy,runControl,stream,dataApi cloudflare
+  class ingress,scope,agentAuth,intentRouter,policy,runControl,stream,dataApi cloudflare
   class signedGateway,runners,browserAuto,langgraphWorkers,progress fly
-  class d1Control,d1Audit,r2,durableObject,workflowState data
+  class d1Control,d1Audit,r2,durableObject,workflowState,secrets data
   class schedules,models,approvedApis,mutationTargets sidecar

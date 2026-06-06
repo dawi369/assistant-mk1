@@ -1,6 +1,6 @@
 # North-Star Production Architecture Diagram
 
-Last updated: 2026-06-03
+Last updated: 2026-06-06
 
 ## Purpose
 
@@ -43,6 +43,8 @@ adding dense prose to the drawing.
   responsibilities, mediated data-client access pattern
 - `docs/policy-model.md`: deterministic policy boundary, execution modes,
   approval gates, production mutation gate, and failure behavior
+- `docs/secrets-and-risk.md`: encrypted, scoped, revocable secret custody and
+  production mutation gates
 - `docs/db-contracts.md`: durable entity contracts and data-client boundary
 - `docs/observability-and-audit.md`: lifecycle events, audit trail, artifacts,
   and health responsibilities
@@ -55,12 +57,13 @@ Use four visibly separated pillars plus one sidecar cluster:
   surface, approvals, run/status panels, artifacts view, and same-origin
   server facade.
 - `Cloudflare / Worker Control Plane`: trusted Vercel and trigger ingress,
-  tenant scope resolution, membership and agent authorization, policy plus tool
-  exposure, run control, streaming gateway, and mediated data API.
+  tenant scope resolution, membership and agent authorization, intent router,
+  policy plus tool exposure, run control, streaming gateway, and mediated data
+  API.
 - `Fly.io / LangGraph Execution`: signed tool gateway, tool runners, browser
   automation, LangGraph workflow workers, and progress callbacks.
 - `Durable Data Plane`: D1 control records, D1 audit and ledgers, R2 artifacts,
-  Durable Object hot state, and workflow checkpoints.
+  Durable Object hot state, workflow checkpoints, and encrypted secret custody.
 - `External sidecars`: schedules/webhooks, model providers, approved APIs/tools,
   and mutation targets. Keep this as one sidecar cluster, not a fifth pillar.
 
@@ -72,10 +75,12 @@ Typed arrow categories:
   permissions from the server session before calling Cloudflare.
 - `trusted scope`: Cloudflare resolves tenant scope, membership, and active
   agent from trusted Vercel context, schedule, webhook, or tool-event context.
-- `intent creation`: chat or external events become typed workflow intents only
+- `intent routing`: chat or external events become typed workflow intents only
   when complex work is needed.
 - `policy decision`: policy gates tool exposure, execution mode, approvals,
   secret access, mutation limits, and kill switches.
+- `secret access`: secret reads are scoped, policy-gated, and mediated by
+  Cloudflare-owned data APIs.
 - `approval interrupt`: policy can pause a run until user approval resumes,
   cancels, or fails it.
 - `signed work`: Cloudflare sends tenant-scoped signed work to Fly execution.
@@ -99,7 +104,7 @@ Typed arrow categories:
 - Show Vercel as the WorkOS session owner and Cloudflare as the authorization,
   control-plane, and canonical-state owner.
 - Make Fly clearly execution-only, not the user-facing stream owner.
-- Show tenant scope and policy before execution.
+- Show tenant scope, intent routing, and policy before execution.
 - Show durable state as the place final truth lands.
 - Keep labels short and use brief text for detail.
 - Keep Mermaid node labels short enough to survive Excalidraw import.
@@ -118,6 +123,7 @@ Typed arrow categories:
 - Vercel/frontend, Cloudflare/Worker, Fly.io LangGraph execution, and durable
   data are visually distinct.
 - Tenant scope and policy appear before any execution path.
+- Typed workflow intent routing appears before policy and run creation.
 - Heavy execution goes through signed Fly services.
 - Final durable outputs return to auditable canonical state.
 - No Fly-to-browser source-of-truth path exists.
