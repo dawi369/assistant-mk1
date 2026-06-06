@@ -56,6 +56,17 @@ Reference app docs are stress tests for the framework, not product identity:
 They should not introduce committed core entities unless the base architecture
 adopts those entities explicitly. There is still no committed `Project` entity.
 
+## Decision Records
+
+Decision records capture durable architecture choices and direction:
+
+- `decisions/ADR-0001-local-first-fly-staging.md`
+- `decisions/ADR-0002-polymancer-reference-target.md`
+- `decisions/ADR-0003-conversation-workflow-control-plane.md`
+- `decisions/ADR-0004-cloudflare-control-plane-fly-tool-runners.md`
+- `decisions/ADR-0005-cloudflare-langgraph-facade.md`
+- `decisions/ADR-0006-cloudflare-owned-model-routing.md`
+
 ## Architecture Diagrams
 
 Mermaid files under `diagrams/` are the source of truth for topology diagrams.

@@ -84,7 +84,10 @@ const latestErrorEvent = (env: Env, scope: TenantScope) =>
     `SELECT id, user_id, workspace_id, agent_id, type, summary, target_type, target_id,
             data_json, created_at
      FROM control_plane_events
-     WHERE user_id = ? AND workspace_id = ? AND (type LIKE '%failed%' OR type LIKE '%error%')
+     WHERE user_id = ?
+       AND workspace_id = ?
+       AND type NOT LIKE 'chat.%'
+       AND (type LIKE '%failed%' OR type LIKE '%error%')
      ORDER BY rowid DESC
      LIMIT 1`,
   )

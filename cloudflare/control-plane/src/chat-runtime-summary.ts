@@ -60,19 +60,6 @@ export const latestThreadForSession = async (
     .first<ChatThreadRow>();
 };
 
-const latestFailedChatRun = (env: Env, scope: TenantScope) =>
-  env.DB.prepare(
-    `SELECT id, intent_id, policy_decision_id, thread_id, user_id, workspace_id, agent_id,
-            upstream_run_id, status, metadata_json, error, started_at, completed_at,
-            failed_at, updated_at
-     FROM chat_runs
-     WHERE user_id = ? AND workspace_id = ? AND (status = 'failed' OR error IS NOT NULL)
-     ORDER BY updated_at DESC, started_at DESC
-     LIMIT 1`,
-  )
-    .bind(scope.userId, scope.workspaceId)
-    .first<ChatRunRow>();
-
 const chatRuntimeEvents = async (env: Env, identity: AgentIdentity, limit = 8) => {
   const events = await env.DB.prepare(
     `SELECT id, user_id, workspace_id, agent_id, type, summary, target_type, target_id,
@@ -106,7 +93,6 @@ const failureSummary = (
   state: ChatRuntimeState,
   latestRun: ChatRunRow | null,
   latestPolicyDecision: Awaited<ReturnType<typeof getLatestChatPolicyDecision>>,
-  failedChatRun: ChatRunRow | null,
 ) => {
   if (state === "failed" && latestRun) {
     return {
@@ -128,16 +114,6 @@ const failureSummary = (
     };
   }
 
-  if (failedChatRun) {
-    return {
-      source: "chat-run",
-      message: failedChatRun.error ?? "Previous chat run failed.",
-      status: failedChatRun.status,
-      targetId: failedChatRun.id,
-      createdAt: failedChatRun.updated_at,
-    };
-  }
-
   return null;
 };
 
@@ -152,11 +128,10 @@ export const getChatRuntimeSummary = async (env: Env, identity: AgentIdentity) =
       )
     : null;
 
-  const [latestRun, latestIntent, latestPolicyDecision, failedChatRun, events] = await Promise.all([
+  const [latestRun, latestIntent, latestPolicyDecision, events] = await Promise.all([
     latestThread ? getLatestChatRun(env, identity.scope, latestThread.thread_id) : null,
     latestThread ? getLatestChatIntent(env, identity.scope, latestThread.thread_id) : null,
     latestThread ? getLatestChatPolicyDecision(env, identity.scope, latestThread.thread_id) : null,
-    latestFailedChatRun(env, identity.scope),
     chatRuntimeEvents(env, identity),
   ]);
 
@@ -175,7 +150,7 @@ export const getChatRuntimeSummary = async (env: Env, identity: AgentIdentity) =
     latestIntent: toChatIntentSnapshot(latestIntent),
     latestPolicyDecision: toChatPolicyDecisionSnapshot(latestPolicyDecision),
     events,
-    failure: failureSummary(state, latestRun, latestPolicyDecision, failedChatRun),
+    failure: failureSummary(state, latestRun, latestPolicyDecision),
   };
 };
 
