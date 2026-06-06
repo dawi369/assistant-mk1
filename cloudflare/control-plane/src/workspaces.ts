@@ -11,6 +11,7 @@ import {
   selectWorkspace,
 } from "./authz-store";
 import { isRecord, json, parseJson } from "./http";
+import { requireActiveMembership, requireAdminMembership } from "./membership-policy";
 import { type AgentIdentity, type Env, type WorkspaceRow } from "./types";
 
 const workspaceNameMaxLength = 80;
@@ -105,7 +106,9 @@ export const handleCreateWorkspace = async (
     identity.scope.userId,
     identity.scope.workspaceId,
   );
-  if (!currentMembership || currentMembership.status !== "active") {
+  const adminError = requireAdminMembership(currentMembership);
+  if (adminError) return adminError;
+  if (!currentMembership) {
     return json({ ok: false, error: "Workspace membership is not active" }, { status: 403 });
   }
 
@@ -167,10 +170,17 @@ export const handleActivateWorkspace = async (
     return json({ ok: false, error: "Workspace is not active" }, { status: 403 });
   }
 
+  const currentMembership = await selectMembership(
+    env,
+    identity.scope.userId,
+    identity.scope.workspaceId,
+  );
+  const adminError = requireAdminMembership(currentMembership);
+  if (adminError) return adminError;
+
   const membership = await selectMembership(env, identity.scope.userId, workspaceIdToActivate);
-  if (!membership || membership.status !== "active") {
-    return json({ ok: false, error: "Workspace membership is not active" }, { status: 403 });
-  }
+  const activeTargetError = requireActiveMembership(membership);
+  if (activeTargetError) return activeTargetError;
 
   const defaultAgent = await selectDefaultAgent(env, workspaceIdToActivate);
   if (!defaultAgent || defaultAgent.status !== "active") {

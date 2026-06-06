@@ -9,6 +9,7 @@ import {
   workspaceIdHeader,
 } from "./http";
 import {
+  countWorkspaceMemberships,
   selectActiveWorkspacePreference,
   selectDefaultAgent,
   selectDefaultWorkspaceForAccount,
@@ -16,6 +17,7 @@ import {
   selectUser,
   selectWorkspace,
 } from "./authz-store";
+import { adminMembershipRoles } from "./membership-policy";
 import { createId, toJson, type AgentIdentity, type Env } from "./types";
 
 const userEmailHeader = "x-assistant-mk1-user-email";
@@ -44,6 +46,37 @@ const firstPresent = (...values: Array<string | undefined>) =>
 
 export const defaultAgentId = (workspaceId: string) => `agent-${workspaceId}`;
 export const defaultWorkspaceId = (accountId: string) => `workspace:${accountId}:default`;
+
+const normalizedAdminRole = (role: string | undefined) => {
+  const normalized = role?.trim().toLowerCase();
+  return normalized && adminMembershipRoles.has(normalized) ? normalized : undefined;
+};
+
+const initialMembershipSeed = (input: {
+  isFirstMembership: boolean;
+  externalRole?: string;
+  externalRoles: string[];
+  externalPermissions: string[];
+  status?: string;
+}) => {
+  const externalAdminRole =
+    normalizedAdminRole(input.externalRole) ??
+    input.externalRoles.map(normalizedAdminRole).find((role) => role);
+  const role = input.isFirstMembership ? "owner" : (externalAdminRole ?? "member");
+  const roles = Array.from(
+    new Set([
+      role,
+      ...input.externalRoles.map((externalRole) => externalRole.trim()).filter(Boolean),
+    ]),
+  );
+
+  return {
+    role,
+    roles,
+    permissions: input.externalPermissions,
+    status: input.status ?? "active",
+  };
+};
 
 const upsertUser = async (
   env: Env,
@@ -170,9 +203,6 @@ export const upsertMembership = async (
      )
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(user_id, workspace_id) DO UPDATE SET
-       role = excluded.role,
-       roles_json = excluded.roles_json,
-       permissions_json = excluded.permissions_json,
        updated_at = excluded.updated_at`,
   )
     .bind(
@@ -251,8 +281,7 @@ const bootstrapAuthz = async (
 ) => {
   const email = readOptionalHeader(request, userEmailHeader);
   const displayName = readOptionalHeader(request, userNameHeader) ?? email;
-  const role =
-    firstPresent(readOptionalHeader(request, membershipRoleHeader), "member") ?? "member";
+  const externalRole = firstPresent(readOptionalHeader(request, membershipRoleHeader));
   const roles = parseStringArrayHeader(readOptionalHeader(request, membershipRolesHeader));
   const permissions = parseStringArrayHeader(
     readOptionalHeader(request, membershipPermissionsHeader),
@@ -269,13 +298,18 @@ const bootstrapAuthz = async (
     name: readOptionalHeader(request, workspaceNameHeader),
     status: workspaceStatus,
   });
+  const membershipCount = await countWorkspaceMemberships(env, input.workspaceId);
+  const membershipSeed = initialMembershipSeed({
+    isFirstMembership: (membershipCount?.count ?? 0) === 0,
+    externalRole,
+    externalRoles: roles,
+    externalPermissions: permissions,
+    status: membershipStatus,
+  });
   await upsertMembership(env, {
     userId: input.userId,
     workspaceId: input.workspaceId,
-    role,
-    roles,
-    permissions,
-    status: membershipStatus,
+    ...membershipSeed,
   });
   await createDefaultAgentIfMissing(env, {
     userId: input.userId,

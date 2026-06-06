@@ -80,6 +80,9 @@ export function DevMonitorDrawer({
     () => summary?.events.find((event) => event.type?.startsWith("chat.")),
     [summary?.events],
   );
+  const canManageWorkspaces =
+    summary?.membership?.status === "active" &&
+    ["owner", "admin"].includes(summary.membership.role.toLowerCase());
 
   const loadSummary = async () => {
     setIsLoading(true);
@@ -241,7 +244,7 @@ export function DevMonitorDrawer({
               <Button
                 type="submit"
                 size="sm"
-                disabled={isCreatingWorkspace || !workspaceName.trim()}
+                disabled={isCreatingWorkspace || !workspaceName.trim() || !canManageWorkspaces}
               >
                 {isCreatingWorkspace ? <Loader2Icon className="animate-spin" /> : <PlusIcon />}
                 Create
@@ -266,7 +269,7 @@ export function DevMonitorDrawer({
                           size="sm"
                           variant="outline"
                           onClick={() => void activateWorkspace(workspace.id)}
-                          disabled={activatingWorkspaceId === workspace.id}
+                          disabled={activatingWorkspaceId === workspace.id || !canManageWorkspaces}
                         >
                           {activatingWorkspaceId === workspace.id ? (
                             <Loader2Icon className="animate-spin" />
@@ -285,6 +288,7 @@ export function DevMonitorDrawer({
           </MonitorSection>
 
           <MonitorSection icon={UsersIcon} title="Membership">
+            <StatusRow label="Source" value={summary?.membership?.source} />
             <StatusRow
               label="Role / status"
               value={
@@ -295,6 +299,33 @@ export function DevMonitorDrawer({
             />
             <StatusRow label="Roles" value={listValue(summary?.membership?.roles)} />
             <StatusRow label="Permissions" value={listValue(summary?.membership?.permissions)} />
+            <StatusRow
+              label="Workspace admin"
+              value={summary?.membership ? String(canManageWorkspaces) : undefined}
+            />
+            {summary?.externalMembership ? (
+              <div className="border-border rounded-md border p-3">
+                <p className="text-muted-foreground text-xs">External WorkOS signal</p>
+                <StatusRow
+                  label="Role / status"
+                  value={[
+                    summary.externalMembership.role ?? "not available",
+                    summary.externalMembership.status ?? "not available",
+                  ].join(" / ")}
+                  compact
+                />
+                <StatusRow
+                  label="Roles"
+                  value={listValue(summary.externalMembership.roles)}
+                  compact
+                />
+                <StatusRow
+                  label="Permissions"
+                  value={listValue(summary.externalMembership.permissions)}
+                  compact
+                />
+              </div>
+            ) : null}
           </MonitorSection>
 
           <MonitorSection icon={BotIcon} title="Agents">

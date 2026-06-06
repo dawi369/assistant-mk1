@@ -80,6 +80,15 @@ export const selectMembership = (env: Env, userId: string, workspaceId: string) 
     .bind(userId, workspaceId)
     .first<MembershipRow>();
 
+export const countWorkspaceMemberships = (env: Env, workspaceId: string) =>
+  env.DB.prepare(
+    `SELECT COUNT(*) AS count
+     FROM memberships
+     WHERE workspace_id = ?`,
+  )
+    .bind(workspaceId)
+    .first<{ count: number }>();
+
 export const selectDefaultAgent = (env: Env, workspaceId: string) =>
   env.DB.prepare(
     `SELECT id, workspace_id, name, description, status, is_default, created_by_user_id,

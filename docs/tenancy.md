@@ -86,8 +86,9 @@ agent are the committed authorization boundaries.
 - Browser code never chooses `userId`, `workspaceId`, or `agentId`; it can only
   ask the server for the current resolved context.
 - WorkOS owns authentication and organization membership signals. Cloudflare
-  owns application authorization, internal workspace materialization, agent
-  records, tool access, secret policy, run control, and audit.
+  owns application authorization, internal workspace materialization, D1
+  membership role/status, agent records, tool access, secret policy, run
+  control, and audit.
 
 ## Current Implementation Status
 
@@ -105,6 +106,10 @@ agent are the committed authorization boundaries.
 - Cloudflare stores the active workspace preference per `user_id + account_id`.
   Hosted WorkOS traffic resolves the active workspace inside Cloudflare and
   falls back to the default workspace when no preference exists.
+- Cloudflare D1 is authoritative for app membership once a membership row
+  exists. WorkOS role and permission metadata can seed a missing membership and
+  appear as external identity signals, but request headers do not overwrite
+  existing D1 membership role, status, roles, or permissions.
 - Hosted WorkOS traffic resolves the active default agent in Cloudflare instead
   of forwarding `WORKBENCH_DEV_AGENT_ID`.
 - Local development may fall back to `WORKBENCH_DEV_USER_ID` and
@@ -127,8 +132,9 @@ The next steps should keep WorkOS and Assistant-MK1 responsibilities separate:
    Dev Monitor-only list/create/switch, with Cloudflare storing the active
    workspace preference.
 3. Membership source of truth: WorkOS answers who signed in and which external
-   organization they came through; Cloudflare answers what they can do inside an
-   Assistant-MK1 workspace.
+   organization they came through; Cloudflare D1 answers what they can do inside
+   an Assistant-MK1 workspace. The current v0 keeps reads open to active
+   members and gates workspace writes to `owner`/`admin`.
 4. Agent selection: agents remain scoped to workspaces, with default-agent
    resolution first and explicit selection later.
 5. More Cloudflare ownership: Cloudflare should own app authorization, scoped

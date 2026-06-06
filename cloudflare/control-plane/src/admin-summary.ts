@@ -34,6 +34,10 @@ import type {
 
 const authModeHeader = "x-assistant-mk1-auth-mode";
 const workspaceSourceHeader = "x-assistant-mk1-workspace-source";
+const membershipRoleHeader = "x-assistant-mk1-membership-role";
+const membershipRolesHeader = "x-assistant-mk1-membership-roles";
+const membershipPermissionsHeader = "x-assistant-mk1-membership-permissions";
+const membershipStatusHeader = "x-assistant-mk1-membership-status";
 
 const readOptionalHeader = (request: Request, name: string) =>
   request.headers.get(name)?.trim() || undefined;
@@ -42,6 +46,25 @@ const parseStringArray = (raw: string) => {
   const parsed = parseJson(raw || "[]");
   if (!Array.isArray(parsed)) return [];
   return parsed.filter((item): item is string => typeof item === "string");
+};
+
+const externalMembershipSummary = (request: Request) => {
+  const role = readOptionalHeader(request, membershipRoleHeader);
+  const roles = parseStringArray(readOptionalHeader(request, membershipRolesHeader) ?? "[]");
+  const permissions = parseStringArray(
+    readOptionalHeader(request, membershipPermissionsHeader) ?? "[]",
+  );
+  const status = readOptionalHeader(request, membershipStatusHeader);
+
+  if (!role && roles.length === 0 && permissions.length === 0 && !status) return null;
+
+  return {
+    source: "workos-headers",
+    role: role ?? null,
+    status: status ?? null,
+    roles,
+    permissions,
+  };
 };
 
 const toAgentSummary = (row: AgentRow) => ({
@@ -284,12 +307,14 @@ export const handleAdminWorkspaceSummary = async (
       ),
       membership: membership
         ? {
+            source: "cloudflare-d1",
             role: membership.role,
             status: membership.status,
             roles: parseStringArray(membership.roles_json),
             permissions: parseStringArray(membership.permissions_json),
           }
         : null,
+      externalMembership: externalMembershipSummary(request),
       defaultAgent: agent ? toAgentSummary(agent) : null,
       agents: agents.results.map(toAgentSummary),
       chat: {

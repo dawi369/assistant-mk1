@@ -64,6 +64,9 @@ Near-term WorkOS, workspace, and Cloudflare ownership sequence:
    Dev Monitor, and Cloudflare stores the active workspace preference.
 3. Membership source of truth: keep WorkOS as enterprise identity and make
    Cloudflare D1 the app authorization layer for workspace roles and status.
+   In v0, D1 membership rows stop being overwritten by WorkOS headers after
+   bootstrap, active members can read admin context, and `owner`/`admin` gates
+   workspace create/switch.
 4. Agent selection: move from default-agent-only behavior to visible
    workspace-scoped agent list and active/default agent choice.
 5. More Cloudflare ownership: move context, policy, audit, events, run state,

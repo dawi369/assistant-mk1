@@ -145,8 +145,16 @@ export type CloudflareAdminSummaryResponse = {
     } | null;
     workspaces: WorkspaceSummary[];
     membership: {
+      source: "cloudflare-d1";
       role: string;
       status: string;
+      roles: string[];
+      permissions: string[];
+    } | null;
+    externalMembership: {
+      source: "workos-headers";
+      role: string | null;
+      status: string | null;
       roles: string[];
       permissions: string[];
     } | null;

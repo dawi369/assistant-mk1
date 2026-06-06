@@ -180,6 +180,10 @@ Next target:
   slice: D1 active workspace preference, Cloudflare `GET /workspaces`,
   `POST /workspaces`, `POST /workspaces/:workspaceId/activate`, Vercel
   facades, and Dev Monitor-only list/create/switch controls.
+- Add membership source-of-truth v0: WorkOS role/permission headers can seed
+  missing memberships, but Cloudflare D1 membership role/status/permissions are
+  authoritative after bootstrap. Active members can read context; `owner` and
+  `admin` gate workspace writes.
 
 Exit criteria:
 
