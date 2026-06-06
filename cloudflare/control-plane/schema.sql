@@ -10,6 +10,7 @@ DROP TABLE IF EXISTS control_artifacts;
 DROP TABLE IF EXISTS control_tool_calls;
 DROP TABLE IF EXISTS control_runs;
 DROP TABLE IF EXISTS control_workflow_intents;
+DROP TABLE IF EXISTS active_agent_preferences;
 DROP TABLE IF EXISTS agents;
 DROP TABLE IF EXISTS memberships;
 DROP TABLE IF EXISTS active_workspace_preferences;
@@ -95,6 +96,19 @@ CREATE UNIQUE INDEX idx_agents_workspace_default
 
 CREATE INDEX idx_agents_workspace_active
   ON agents (workspace_id, status, is_default DESC, created_at ASC);
+
+CREATE TABLE active_agent_preferences (
+  user_id TEXT NOT NULL,
+  workspace_id TEXT NOT NULL,
+  agent_id TEXT NOT NULL,
+  data_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, workspace_id)
+);
+
+CREATE INDEX idx_active_agent_preferences_agent
+  ON active_agent_preferences (agent_id);
 
 CREATE TABLE control_workflow_intents (
   id TEXT PRIMARY KEY,

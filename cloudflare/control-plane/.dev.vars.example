@@ -3,3 +3,7 @@ LANGGRAPH_UPSTREAM_URL=http://127.0.0.1:2024
 LANGGRAPH_UPSTREAM_TOKEN=replace-with-local-langgraph-proxy-token
 WORKBENCH_EXECUTOR_URL=http://localhost:3000/api/workbench/executors/demo-inspect
 WORKBENCH_EXECUTOR_TOKEN=replace-with-local-executor-token
+
+# Local parity requirement:
+# - CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN must match .env.local
+# - WORKBENCH_EXECUTOR_TOKEN must match .env.local

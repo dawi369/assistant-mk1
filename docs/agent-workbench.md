@@ -49,11 +49,18 @@ Dev Monitor v1 is the first admin visibility slice. It replaces scattered
 runtime widgets with one Cloudflare-backed admin summary while keeping the
 existing top-right drawer and demo.inspect diagnostic action.
 
-Workspace management v0 is the next Dev Monitor-only slice: list workspaces for
-the current WorkOS account, create a name-only workspace, and switch the active
-workspace through Cloudflare. This is not a customer-facing workspace product
-yet; it is the operator view needed before workspace invites, role policy,
-agent CRUD, or deeper chat debugging.
+Workspace management v0 is the current Dev Monitor-only slice: list workspaces
+for the current WorkOS account, create a name-only workspace, and switch the
+active workspace through Cloudflare. This is not a customer-facing workspace
+product yet; it is the operator view needed before workspace invites, role
+policy, agent routing, or deeper chat debugging.
+
+Agent routing v0 keeps agents operator-provisioned. Customers and normal app
+users do not create agents in the workbench. Instead, Cloudflare resolves which
+existing workspace agent should handle traffic for the current user. This lets a
+client workspace have the agents configured during integration work, and lets
+apps like Polymancer provision one isolated agent per user or workspace without
+adding a generic agent builder.
 
 Near-term WorkOS, workspace, and Cloudflare ownership sequence:
 
@@ -67,8 +74,9 @@ Near-term WorkOS, workspace, and Cloudflare ownership sequence:
    In v0, D1 membership rows stop being overwritten by WorkOS headers after
    bootstrap, active members can read admin context, and `owner`/`admin` gates
    workspace create/switch.
-4. Agent selection: move from default-agent-only behavior to visible
-   workspace-scoped agent list and active/default agent choice.
+4. Agent routing: move from default-agent-only behavior to visible
+   workspace-scoped agent list and Cloudflare-owned active-agent preference.
+   Agent creation/configuration remains operator-managed for now.
 5. More Cloudflare ownership: move context, policy, audit, events, run state,
    tool authorization, and eventually secret access behind Cloudflare APIs.
 6. Stronger Vercel-to-Cloudflare trust boundary: replace loose trusted headers

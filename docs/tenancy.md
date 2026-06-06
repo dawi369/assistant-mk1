@@ -101,8 +101,7 @@ agent are the committed authorization boundaries.
 - Vercel forwards trusted user/account headers to the Cloudflare Worker;
   browser requests never provide tenant ids directly.
 - Cloudflare auto-bootstraps D1-backed user, default workspace, active
-  membership, and default active agent rows for the current pre-user dev
-  environment.
+  membership, and default agent rows for the current pre-user dev environment.
 - Cloudflare stores the active workspace preference per `user_id + account_id`.
   Hosted WorkOS traffic resolves the active workspace inside Cloudflare and
   falls back to the default workspace when no preference exists.
@@ -110,8 +109,13 @@ agent are the committed authorization boundaries.
   exists. WorkOS role and permission metadata can seed a missing membership and
   appear as external identity signals, but request headers do not overwrite
   existing D1 membership role, status, roles, or permissions.
-- Hosted WorkOS traffic resolves the active default agent in Cloudflare instead
-  of forwarding `WORKBENCH_DEV_AGENT_ID`.
+- Cloudflare stores active agent preferences per `user_id + workspace_id`.
+  Hosted WorkOS traffic resolves the active agent inside Cloudflare, falling
+  back to the workspace default agent when no preference exists, instead of
+  forwarding `WORKBENCH_DEV_AGENT_ID`.
+- Agent records are operator-provisioned in this phase. Dev Monitor may show and
+  activate existing agents, but it does not create or configure agents for
+  customers.
 - Local development may fall back to `WORKBENCH_DEV_USER_ID` and
   `WORKBENCH_DEV_WORKSPACE_ID` plus `WORKBENCH_DEV_AGENT_ID` when WorkOS is not
   configured.
@@ -135,8 +139,9 @@ The next steps should keep WorkOS and Assistant-MK1 responsibilities separate:
    organization they came through; Cloudflare D1 answers what they can do inside
    an Assistant-MK1 workspace. The current v0 keeps reads open to active
    members and gates workspace writes to `owner`/`admin`.
-4. Agent selection: agents remain scoped to workspaces, with default-agent
-   resolution first and explicit selection later.
+4. Agent routing: agents remain scoped to workspaces. The current v0 keeps
+   agent provisioning operator-managed while Cloudflare stores active-agent
+   routing preferences for existing agents.
 5. More Cloudflare ownership: Cloudflare should own app authorization, scoped
    state access, events, audit, run control, tool policy, and secret policy.
 6. Stronger Vercel-to-Cloudflare trust boundary: Vercel should forward

@@ -1,11 +1,14 @@
 import {
   createDefaultAgentIfMissing,
   insertWorkspace,
+  upsertActiveAgentPreference,
   upsertActiveWorkspacePreference,
   upsertMembership,
 } from "./authz";
 import {
   selectAccountWorkspacesForUser,
+  selectActiveAgentPreference,
+  selectAgent,
   selectDefaultAgent,
   selectMembership,
   selectWorkspace,
@@ -62,6 +65,28 @@ const toAgentSummary = (row: Awaited<ReturnType<typeof selectDefaultAgent>>) =>
         isDefault: row.is_default === 1,
       }
     : null;
+
+const selectActiveAgentForWorkspace = async (
+  env: Env,
+  input: { userId: string; workspaceId: string },
+) => {
+  const preference = await selectActiveAgentPreference(env, input);
+  if (preference) {
+    const preferredAgent = await selectAgent(env, preference.agent_id, input.workspaceId);
+    return preferredAgent?.status === "active" ? preferredAgent : null;
+  }
+
+  const defaultAgent = await selectDefaultAgent(env, input.workspaceId);
+  if (!defaultAgent || defaultAgent.status !== "active") return null;
+
+  await upsertActiveAgentPreference(env, {
+    userId: input.userId,
+    workspaceId: input.workspaceId,
+    agentId: defaultAgent.id,
+    reason: "default-bootstrap",
+  });
+  return defaultAgent;
+};
 
 export const handleListWorkspaces = async (env: Env, identity: AgentIdentity) => {
   const account = requireAccountIdentity(identity);
@@ -142,6 +167,14 @@ export const handleCreateWorkspace = async (
     selectWorkspace(env, id),
     selectDefaultAgent(env, id),
   ]);
+  if (defaultAgent) {
+    await upsertActiveAgentPreference(env, {
+      userId: identity.scope.userId,
+      workspaceId: id,
+      agentId: defaultAgent.id,
+      reason: "workspace-created",
+    });
+  }
 
   return json(
     {
@@ -182,9 +215,12 @@ export const handleActivateWorkspace = async (
   const activeTargetError = requireActiveMembership(membership);
   if (activeTargetError) return activeTargetError;
 
-  const defaultAgent = await selectDefaultAgent(env, workspaceIdToActivate);
-  if (!defaultAgent || defaultAgent.status !== "active") {
-    return json({ ok: false, error: "Active default agent not found" }, { status: 403 });
+  const activeAgent = await selectActiveAgentForWorkspace(env, {
+    userId: identity.scope.userId,
+    workspaceId: workspaceIdToActivate,
+  });
+  if (!activeAgent) {
+    return json({ ok: false, error: "Active agent not found" }, { status: 403 });
   }
 
   await upsertActiveWorkspacePreference(env, {
@@ -199,10 +235,10 @@ export const handleActivateWorkspace = async (
     activeWorkspaceId: workspaceIdToActivate,
     workspace: toWorkspaceSummary(workspace, workspaceIdToActivate),
     agent: {
-      id: defaultAgent.id,
-      name: defaultAgent.name,
-      status: defaultAgent.status,
-      isDefault: defaultAgent.is_default === 1,
+      id: activeAgent.id,
+      name: activeAgent.name,
+      status: activeAgent.status,
+      isDefault: activeAgent.is_default === 1,
     },
   });
 };

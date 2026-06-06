@@ -15,6 +15,7 @@ import { json, parseDataJson, parseJson } from "./http";
 import {
   selectAgent,
   selectAccountWorkspacesForUser,
+  selectDefaultAgent,
   selectMembership,
   selectUser,
   selectWorkspace,
@@ -67,12 +68,13 @@ const externalMembershipSummary = (request: Request) => {
   };
 };
 
-const toAgentSummary = (row: AgentRow) => ({
+const toAgentSummary = (row: AgentRow, activeAgentId: string) => ({
   id: row.id,
   name: row.name,
   description: row.description,
   status: row.status,
   isDefault: row.is_default === 1,
+  isActive: row.id === activeAgentId,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -186,6 +188,7 @@ export const handleAdminWorkspaceSummary = async (
     workspace,
     membership,
     agent,
+    defaultAgent,
     agents,
     accountWorkspaces,
     latestSession,
@@ -196,6 +199,7 @@ export const handleAdminWorkspaceSummary = async (
     selectWorkspace(env, identity.scope.workspaceId),
     selectMembership(env, identity.scope.userId, identity.scope.workspaceId),
     selectAgent(env, identity.agentId, identity.scope.workspaceId),
+    selectDefaultAgent(env, identity.scope.workspaceId),
     selectWorkspaceAgents(env, identity.scope.workspaceId),
     identity.accountId
       ? selectAccountWorkspacesForUser(env, {
@@ -315,8 +319,11 @@ export const handleAdminWorkspaceSummary = async (
           }
         : null,
       externalMembership: externalMembershipSummary(request),
-      defaultAgent: agent ? toAgentSummary(agent) : null,
-      agents: agents.results.map(toAgentSummary),
+      activeAgent: agent ? toAgentSummary(agent, identity.agentId) : null,
+      defaultAgent: defaultAgent ? toAgentSummary(defaultAgent, identity.agentId) : null,
+      agents: agents.results.map((workspaceAgent) =>
+        toAgentSummary(workspaceAgent, identity.agentId),
+      ),
       chat: {
         latestSession: toChatSessionSnapshot(latestSession),
         latestThread: latestThread ? toChatThreadSnapshot(latestThread) : null,

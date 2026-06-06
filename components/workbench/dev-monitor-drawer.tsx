@@ -46,6 +46,7 @@ import type {
 const adminSummaryPath = "/api/workbench/admin-summary";
 const cloudflareDemoRunsPath = "/api/workbench/cloudflare-demo-runs";
 const workspacesPath = "/api/workbench/workspaces";
+const agentsPath = "/api/workbench/agents";
 
 const readJsonResponse = async <T,>(response: Response, fallback: string): Promise<T> => {
   const body = (await response.json().catch(() => ({}))) as T & { error?: string };
@@ -67,6 +68,7 @@ export function DevMonitorDrawer({
   const [isStarting, setIsStarting] = useState(false);
   const [isCreatingWorkspace, setIsCreatingWorkspace] = useState(false);
   const [activatingWorkspaceId, setActivatingWorkspaceId] = useState<string | null>(null);
+  const [activatingAgentId, setActivatingAgentId] = useState<string | null>(null);
   const [workspaceName, setWorkspaceName] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -83,6 +85,7 @@ export function DevMonitorDrawer({
   const canManageWorkspaces =
     summary?.membership?.status === "active" &&
     ["owner", "admin"].includes(summary.membership.role.toLowerCase());
+  const canManageAgents = canManageWorkspaces;
 
   const loadSummary = async () => {
     setIsLoading(true);
@@ -170,6 +173,22 @@ export function DevMonitorDrawer({
       );
     } finally {
       setActivatingWorkspaceId(null);
+    }
+  };
+
+  const activateAgent = async (agentId: string) => {
+    setActivatingAgentId(agentId);
+    setError(null);
+    try {
+      const response = await fetch(`${agentsPath}/${encodeURIComponent(agentId)}/activate`, {
+        method: "POST",
+      });
+      await readJsonResponse(response, "Failed to activate agent");
+      await loadSummary();
+    } catch (activateError) {
+      setError(activateError instanceof Error ? activateError.message : "Failed to activate agent");
+    } finally {
+      setActivatingAgentId(null);
     }
   };
 
@@ -330,13 +349,41 @@ export function DevMonitorDrawer({
 
           <MonitorSection icon={BotIcon} title="Agents">
             <StatusRow label="Default agent" value={summary?.defaultAgent?.name} />
+            <StatusRow label="Active agent" value={summary?.activeAgent?.name} />
             <CopyId label="Active agent id" value={summary?.identity.agentId} />
             {summary?.agents.length ? (
               <ol className="space-y-2">
                 {summary.agents.map((agent) => (
                   <li key={agent.id} className="border-border rounded-md border p-3 text-sm">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="truncate font-medium">{agent.name}</span>
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="min-w-0">
+                        <span className="block truncate font-medium">{agent.name}</span>
+                        <span className="text-muted-foreground block text-xs">
+                          {agent.isActive ? "active" : "available"}
+                          {agent.isDefault ? " / default" : ""}
+                        </span>
+                      </span>
+                      {agent.isActive ? (
+                        <StatusPill status="active" tone="completed" />
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void activateAgent(agent.id)}
+                          disabled={
+                            activatingAgentId === agent.id ||
+                            !canManageAgents ||
+                            agent.status !== "active"
+                          }
+                        >
+                          {activatingAgentId === agent.id ? (
+                            <Loader2Icon className="animate-spin" />
+                          ) : null}
+                          Make active
+                        </Button>
+                      )}
+                    </div>
+                    <div className="mt-2">
                       <StatusPill
                         status={agent.isDefault ? `default / ${agent.status}` : agent.status}
                         tone={agent.status}

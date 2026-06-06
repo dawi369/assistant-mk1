@@ -164,6 +164,17 @@ export type CloudflareAdminSummaryResponse = {
       description: string | null;
       status: string;
       isDefault: boolean;
+      isActive: boolean;
+      createdAt?: string;
+      updatedAt?: string;
+    } | null;
+    activeAgent: {
+      id: Id;
+      name: string;
+      description: string | null;
+      status: string;
+      isDefault: boolean;
+      isActive: boolean;
       createdAt?: string;
       updatedAt?: string;
     } | null;
@@ -173,6 +184,7 @@ export type CloudflareAdminSummaryResponse = {
       description: string | null;
       status: string;
       isDefault: boolean;
+      isActive: boolean;
       createdAt?: string;
       updatedAt?: string;
     }>;
@@ -272,5 +284,30 @@ export type CloudflareWorkspaceMutationResponse = {
     status: string;
     isDefault: boolean;
   } | null;
+  error?: string;
+};
+
+export type AgentSummary = {
+  id: Id;
+  name: string;
+  description: string | null;
+  status: string;
+  isDefault: boolean;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type CloudflareAgentsResponse = {
+  ok?: boolean;
+  activeAgentId?: Id;
+  agents?: AgentSummary[];
+  error?: string;
+};
+
+export type CloudflareAgentMutationResponse = {
+  ok?: boolean;
+  activeAgentId?: Id;
+  agent?: AgentSummary | null;
   error?: string;
 };

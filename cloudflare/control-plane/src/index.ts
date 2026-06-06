@@ -5,6 +5,7 @@ import {
   handleStartCloudflareDemoRun,
 } from "./demo-runs";
 import { handleAdminWorkspaceSummary } from "./admin-summary";
+import { handleActivateAgent, handleListAgents } from "./agents";
 import {
   handleControlPlaneEvents,
   handleControlPlaneEventStream,
@@ -64,6 +65,15 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
   const activateWorkspaceMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/activate$/);
   if (request.method === "POST" && activateWorkspaceMatch?.[1]) {
     return handleActivateWorkspace(env, identity, decodeURIComponent(activateWorkspaceMatch[1]));
+  }
+
+  if (request.method === "GET" && url.pathname === "/agents") {
+    return handleListAgents(env, identity);
+  }
+
+  const activateAgentMatch = url.pathname.match(/^\/agents\/([^/]+)\/activate$/);
+  if (request.method === "POST" && activateAgentMatch?.[1]) {
+    return handleActivateAgent(env, identity, decodeURIComponent(activateAgentMatch[1]));
   }
 
   if (request.method === "GET" && url.pathname === "/events/latest") {

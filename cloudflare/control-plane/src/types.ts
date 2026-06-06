@@ -77,6 +77,15 @@ export type ActiveWorkspacePreferenceRow = {
   updated_at: string;
 };
 
+export type ActiveAgentPreferenceRow = {
+  user_id: string;
+  workspace_id: string;
+  agent_id: string;
+  data_json: string;
+  created_at: string;
+  updated_at: string;
+};
+
 export type MembershipRow = {
   id: string;
   user_id: string;

@@ -38,9 +38,9 @@ customer/company account source and receives one default workspace in this
 slice. During the current pre-user phase, sessions without an organization use
 a stable personal account and default workspace fallback. Cloudflare
 auto-bootstraps D1-backed user, default workspace, active membership, and
-default active agent rows for the current dev environment. Hosted WorkOS
-traffic does not use `WORKBENCH_DEV_AGENT_ID`; Cloudflare resolves the
-workspace default agent.
+default agent rows for the current dev environment. Hosted WorkOS traffic does
+not use `WORKBENCH_DEV_AGENT_ID`; Cloudflare resolves the active agent from D1,
+falling back to the workspace default agent when no user preference exists.
 
 The `/langgraph` facade also stores tenant-scoped chat sessions, chat thread
 ownership, chat intents, policy decisions, and minimal chat run envelopes in
@@ -270,9 +270,9 @@ the current default workspace id as `workspace:<account-id>:default`. During
 pre-user development, signed-in WorkOS sessions without an organization fall
 back to a stable `workos-personal:<user-id>` account and default workspace,
 then Vercel forwards those values and safe user/membership metadata to the
-Worker as trusted headers. Cloudflare resolves membership and the default
-active agent from D1 before reading or writing control-plane state. Browser
-requests never choose tenant scope or agent identity. In the B2B north star,
+Worker as trusted headers. Cloudflare resolves membership and the active agent
+from D1 before reading or writing control-plane state. Browser requests never
+choose tenant scope or agent identity. In the B2B north star,
 WorkOS organizations represent customer or company account sources; one account
 has one default workspace now and can have multiple workspaces later. The WorkOS
 client id and API key must come from the same WorkOS app/environment, and the

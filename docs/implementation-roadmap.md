@@ -216,7 +216,7 @@ Next target:
   authorization, and trigger-owned tenant metadata, without moving tenant
   enforcement back into the browser.
 - Sequence the workspace/authz product work as admin visibility, workspace
-  management, membership source of truth, agent selection, broader Cloudflare
+  management, membership source of truth, agent routing, broader Cloudflare
   ownership, stronger Vercel-to-Cloudflare trust, and WorkOS organization UX.
 
 Exit criteria:

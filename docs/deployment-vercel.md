@@ -67,8 +67,8 @@ available; otherwise the pre-user dev fallback account id is
 `workos-personal:<user-id>`. The default workspace id is
 `workspace:<account-id>:default`. Cloudflare auto-bootstraps D1-backed user,
 default workspace, membership, and default agent rows for the current pre-user
-dev environment, then resolves the active default agent before touching
-control-plane state. Cloudflare stores the Fly gateway token as
+dev environment, then resolves the active agent before touching control-plane
+state. Cloudflare stores the Fly gateway token as
 `LANGGRAPH_UPSTREAM_TOKEN`. Browser requests never provide tenant ids or agent
 ids directly.
 

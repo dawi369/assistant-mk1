@@ -10,7 +10,9 @@ import {
 } from "./http";
 import {
   countWorkspaceMemberships,
+  selectActiveAgentPreference,
   selectActiveWorkspacePreference,
+  selectAgent,
   selectDefaultAgent,
   selectDefaultWorkspaceForAccount,
   selectMembership,
@@ -274,6 +276,32 @@ export const upsertActiveWorkspacePreference = async (
     .run();
 };
 
+export const upsertActiveAgentPreference = async (
+  env: Env,
+  input: { userId: string; workspaceId: string; agentId: string; reason: string },
+) => {
+  const timestamp = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT INTO active_agent_preferences (
+       user_id, workspace_id, agent_id, data_json, created_at, updated_at
+     )
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(user_id, workspace_id) DO UPDATE SET
+       agent_id = excluded.agent_id,
+       data_json = excluded.data_json,
+       updated_at = excluded.updated_at`,
+  )
+    .bind(
+      input.userId,
+      input.workspaceId,
+      input.agentId,
+      toJson({ reason: input.reason }),
+      timestamp,
+      timestamp,
+    )
+    .run();
+};
+
 const bootstrapAuthz = async (
   env: Env,
   request: Request,
@@ -335,6 +363,40 @@ const selectActiveWorkspaceId = async (
     reason: "default-bootstrap",
   });
   return input.defaultWorkspaceId;
+};
+
+const selectActiveAgent = async (env: Env, input: { userId: string; workspaceId: string }) => {
+  const preference = await selectActiveAgentPreference(env, input);
+
+  if (preference) {
+    const preferredAgent = await selectAgent(env, preference.agent_id, input.workspaceId);
+    if (!preferredAgent || preferredAgent.status !== "active") {
+      return {
+        ok: false as const,
+        response: json(
+          { ok: false, error: "Active agent preference is not valid" },
+          { status: 403 },
+        ),
+      };
+    }
+    return { ok: true as const, agent: preferredAgent };
+  }
+
+  const defaultAgent = await selectDefaultAgent(env, input.workspaceId);
+  if (!defaultAgent || defaultAgent.status !== "active") {
+    return {
+      ok: false as const,
+      response: json({ ok: false, error: "Active default agent not found" }, { status: 403 }),
+    };
+  }
+
+  await upsertActiveAgentPreference(env, {
+    userId: input.userId,
+    workspaceId: input.workspaceId,
+    agentId: defaultAgent.id,
+    reason: "default-bootstrap",
+  });
+  return { ok: true as const, agent: defaultAgent };
 };
 
 export const resolveAgentIdentity = async (request: Request, env: Env): Promise<ResolveResult> => {
@@ -449,11 +511,11 @@ export const resolveAgentIdentity = async (request: Request, env: Env): Promise<
     };
   }
 
-  const agent = await selectDefaultAgent(env, activeWorkspaceId);
-  if (!agent || agent.status !== "active") {
+  const agentResult = await selectActiveAgent(env, { userId, workspaceId: activeWorkspaceId });
+  if (!agentResult.ok) {
     return {
       ok: false,
-      response: json({ ok: false, error: "Active default agent not found" }, { status: 403 }),
+      response: agentResult.response,
     };
   }
 
@@ -461,7 +523,7 @@ export const resolveAgentIdentity = async (request: Request, env: Env): Promise<
     ok: true,
     identity: {
       scope: { userId, workspaceId: activeWorkspaceId },
-      agentId: agent.id,
+      agentId: agentResult.agent.id,
       accountId,
       accountSource,
     },

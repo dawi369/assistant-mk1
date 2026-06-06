@@ -1,5 +1,6 @@
 import type {
   ActiveWorkspacePreferenceRow,
+  ActiveAgentPreferenceRow,
   AgentRow,
   Env,
   MembershipRow,
@@ -51,6 +52,19 @@ export const selectActiveWorkspacePreference = (
   )
     .bind(input.userId, input.accountId)
     .first<ActiveWorkspacePreferenceRow>();
+
+export const selectActiveAgentPreference = (
+  env: Env,
+  input: { userId: string; workspaceId: string },
+) =>
+  env.DB.prepare(
+    `SELECT user_id, workspace_id, agent_id, data_json, created_at, updated_at
+     FROM active_agent_preferences
+     WHERE user_id = ? AND workspace_id = ?
+     LIMIT 1`,
+  )
+    .bind(input.userId, input.workspaceId)
+    .first<ActiveAgentPreferenceRow>();
 
 export const selectAccountWorkspacesForUser = (
   env: Env,
