@@ -41,6 +41,8 @@ export type TenantScope = {
 export type AgentIdentity = {
   scope: TenantScope;
   agentId: string;
+  accountId?: string;
+  accountSource?: string;
 };
 
 export type UserRow = {
@@ -55,9 +57,21 @@ export type UserRow = {
 
 export type WorkspaceRow = {
   id: string;
+  account_id: string;
+  account_source: string;
   name: string;
   status: string;
+  is_default: number;
   created_by_user_id: string;
+  data_json: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ActiveWorkspacePreferenceRow = {
+  user_id: string;
+  account_id: string;
+  workspace_id: string;
   data_json: string;
   created_at: string;
   updated_at: string;

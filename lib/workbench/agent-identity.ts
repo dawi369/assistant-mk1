@@ -6,6 +6,8 @@ export type WorkbenchAgentIdentity = {
   scope: TenantScope;
   agentId?: Id;
   authMode: "local-dev" | "workos";
+  accountId: Id;
+  accountSource: "local-dev" | "workos-organization" | "workos-personal";
   workspaceSource: "local-dev" | "workos-organization" | "workos-personal";
   userEmail?: string;
   userName?: string;
@@ -47,10 +49,14 @@ const getDevAgentIdentity = (): WorkbenchAgentIdentity => ({
   },
   agentId: getDevAgentId(),
   authMode: "local-dev",
+  accountId: `local-dev:${requiredEnv("WORKBENCH_DEV_WORKSPACE_ID")}`,
+  accountSource: "local-dev",
   workspaceSource: "local-dev",
 });
 
-const getPersonalWorkspaceId = (userId: Id): Id => `workos-personal:${userId}`;
+const getWorkOsOrgAccountId = (organizationId: Id): Id => `workos-org:${organizationId}`;
+const getPersonalAccountId = (userId: Id): Id => `workos-personal:${userId}`;
+const getDefaultWorkspaceId = (accountId: Id): Id => `workspace:${accountId}:default`;
 
 export const getWorkbenchAgentIdentity = async (): Promise<WorkbenchAgentIdentity> => {
   if (!isWorkOsConfigured()) return getDevAgentIdentity();
@@ -60,14 +66,20 @@ export const getWorkbenchAgentIdentity = async (): Promise<WorkbenchAgentIdentit
 
   const userName = [auth.user.firstName, auth.user.lastName].filter(Boolean).join(" ");
   const hasOrganization = Boolean(auth.organizationId);
+  const accountId = auth.organizationId
+    ? getWorkOsOrgAccountId(auth.organizationId)
+    : getPersonalAccountId(auth.user.id);
+  const accountSource = hasOrganization ? "workos-organization" : "workos-personal";
 
   return {
     scope: {
       userId: auth.user.id,
-      workspaceId: auth.organizationId ?? getPersonalWorkspaceId(auth.user.id),
+      workspaceId: getDefaultWorkspaceId(accountId),
     },
     authMode: "workos",
-    workspaceSource: hasOrganization ? "workos-organization" : "workos-personal",
+    accountId,
+    accountSource,
+    workspaceSource: accountSource,
     userEmail: auth.user.email,
     userName: userName || auth.user.email || auth.user.id,
     membershipRole: auth.role ?? (hasOrganization ? undefined : "owner"),
@@ -80,11 +92,15 @@ export const getWorkbenchIdentityHeaders = async () => {
   const identity = await getWorkbenchAgentIdentity();
   const headers: Record<string, string> = {
     "x-assistant-mk1-user-id": identity.scope.userId,
-    "x-assistant-mk1-workspace-id": identity.scope.workspaceId,
+    "x-assistant-mk1-account-id": identity.accountId,
+    "x-assistant-mk1-account-source": identity.accountSource,
     "x-assistant-mk1-auth-mode": identity.authMode,
     "x-assistant-mk1-workspace-source": identity.workspaceSource,
   };
 
+  if (identity.authMode === "local-dev" || identity.agentId) {
+    headers["x-assistant-mk1-workspace-id"] = identity.scope.workspaceId;
+  }
   if (identity.agentId) headers["x-assistant-mk1-agent-id"] = identity.agentId;
   if (identity.userEmail) headers["x-assistant-mk1-user-email"] = identity.userEmail;
   if (identity.userName) headers["x-assistant-mk1-user-name"] = identity.userName;

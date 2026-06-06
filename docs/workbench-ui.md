@@ -184,7 +184,7 @@ Source:
 - artifact metadata
 - provenance refs
 
-### Project Context
+### Workspace Runtime Context
 
 Shows:
 
@@ -205,7 +205,7 @@ Source:
 
 Shows:
 
-- durable user/project preferences
+- durable user and workspace preferences
 - domain knowledge
 - risk tolerance
 - tone/decision style

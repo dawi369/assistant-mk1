@@ -83,6 +83,10 @@ export type WorkspaceContextResponse = {
       authMode: string;
       workspaceSource: string;
     };
+    account: {
+      id: Id;
+      source: string;
+    } | null;
     user: {
       id: Id;
       email: string | null;
@@ -93,6 +97,7 @@ export type WorkspaceContextResponse = {
       id: Id;
       name: string;
       status: string;
+      isDefault: boolean;
     } | null;
     membership: {
       role: string;
@@ -107,5 +112,157 @@ export type WorkspaceContextResponse = {
       isDefault: boolean;
     } | null;
   };
+  error?: string;
+};
+
+export type CloudflareAdminSummaryResponse = {
+  ok?: boolean;
+  summary?: {
+    generatedAt: string;
+    identity: {
+      userId: Id;
+      workspaceId: Id;
+      agentId: Id;
+      authMode: string;
+      workspaceSource: string;
+    };
+    account: {
+      id: Id;
+      source: string;
+    } | null;
+    user: {
+      id: Id;
+      email: string | null;
+      displayName: string | null;
+      status: string;
+    } | null;
+    workspace: {
+      id: Id;
+      name: string;
+      status: string;
+      isDefault: boolean;
+      isActive: boolean;
+    } | null;
+    workspaces: WorkspaceSummary[];
+    membership: {
+      role: string;
+      status: string;
+      roles: string[];
+      permissions: string[];
+    } | null;
+    defaultAgent: {
+      id: Id;
+      name: string;
+      description: string | null;
+      status: string;
+      isDefault: boolean;
+      createdAt?: string;
+      updatedAt?: string;
+    } | null;
+    agents: Array<{
+      id: Id;
+      name: string;
+      description: string | null;
+      status: string;
+      isDefault: boolean;
+      createdAt?: string;
+      updatedAt?: string;
+    }>;
+    chat: {
+      latestSession: {
+        sessionId?: Id;
+        agentId?: Id;
+        status?: string;
+        activeThreadId?: Id;
+        createdAt?: string;
+        updatedAt?: string;
+        lastSeenAt?: string;
+      } | null;
+      latestThread: {
+        threadId?: Id;
+        sessionId?: Id;
+        agentId?: Id;
+        status?: string;
+        createdAt?: string;
+        updatedAt?: string;
+        lastSeenAt?: string;
+      } | null;
+      latestRun: {
+        id?: Id;
+        threadId?: Id;
+        upstreamRunId?: Id;
+        status?: string;
+        error?: string;
+        startedAt?: string;
+        completedAt?: string;
+        failedAt?: string;
+        updatedAt?: string;
+      } | null;
+      latestIntent: {
+        id?: Id;
+        executionMode?: string;
+        status?: string;
+        updatedAt?: string;
+      } | null;
+      latestPolicyDecision: {
+        id?: Id;
+        decision?: string;
+        reason?: string;
+        executionMode?: string;
+        createdAt?: string;
+      } | null;
+    };
+    demo: {
+      latestRun: CloudflareOwnedDemoRunSnapshot | null;
+    };
+    events: ControlPlaneEvent[];
+    lastError: {
+      source: "chat" | "demo" | "event";
+      message: string;
+      status?: string;
+      targetId?: Id;
+      createdAt?: string;
+    } | null;
+  };
+  error?: string;
+};
+
+export type WorkspaceSummary = {
+  id: Id;
+  name: string;
+  status: string;
+  isDefault: boolean;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type CloudflareWorkspacesResponse = {
+  ok?: boolean;
+  account?: {
+    id: Id;
+    source: string;
+  };
+  activeWorkspaceId?: Id;
+  workspaces?: WorkspaceSummary[];
+  error?: string;
+};
+
+export type CloudflareWorkspaceMutationResponse = {
+  ok?: boolean;
+  activeWorkspaceId?: Id;
+  workspace?: WorkspaceSummary | null;
+  defaultAgent?: {
+    id: Id;
+    name: string;
+    status: string;
+    isDefault: boolean;
+  } | null;
+  agent?: {
+    id: Id;
+    name: string;
+    status: string;
+    isDefault: boolean;
+  } | null;
   error?: string;
 };

@@ -87,12 +87,13 @@ Every Cloudflare entry point must derive tenant scope from trusted auth/session/
 All D1 queries, R2 object keys, Durable Object IDs, and tool-runner calls must include tenant scope.
 
 The hosted web boundary uses WorkOS AuthKit in Vercel/Next to derive trusted
-identity. Vercel maps WorkOS user, organization, roles, and permissions into a
-server-to-server call to Cloudflare. Cloudflare resolves the internal user,
-workspace, membership, and active agent, then enforces ownership before reading
-or writing control-plane state. In the current pre-user dev environment,
-Cloudflare auto-bootstraps D1-backed user, workspace, active membership, and
-default active agent rows on first valid WorkOS-shaped request.
+identity. Vercel maps WorkOS user, account source, default workspace, roles,
+and permissions into a server-to-server call to Cloudflare. Cloudflare resolves
+the internal user, account, workspace, membership, and active agent, then
+enforces ownership before reading or writing control-plane state. In the
+current pre-user dev environment, Cloudflare auto-bootstraps D1-backed user,
+default workspace, active membership, and default active agent rows on first
+valid WorkOS-shaped request.
 
 Local development can still fall back to server-derived `WORKBENCH_DEV_*`
 identity values when WorkOS is not configured. The durable rule is that Worker

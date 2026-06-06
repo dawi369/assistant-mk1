@@ -32,24 +32,38 @@ use cases without confusing product organization with tenant identity.
 - WorkOS User: the authenticated person. WorkOS owns sign-in, sessions, and
   enterprise identity features such as SSO or directory sync when they are
   added.
-- WorkOS Organization: the customer or company tenant in a B2B deployment.
-  This should normally map 1:1 to an Assistant-MK1 workspace. It is not the
-  right abstraction for every project or every agent.
+- WorkOS Organization: the customer or company account source in a B2B
+  deployment. It maps to an Assistant-MK1 account id, not directly to a
+  workspace id.
 - Assistant-MK1 Workspace: the internal tenant boundary used by Cloudflare and
-  D1. Membership, policy, secrets, tool permissions, agents, audit records, and
+  D1. The current baseline creates one default workspace per WorkOS
+  organization or personal account source, and workspace management v0 allows
+  additional workspaces to be created and activated from Dev Monitor.
+  Membership, policy, secrets, tool permissions, agents, audit records, and
   durable state are scoped here.
 - Agent: a runtime assistant/configuration inside a workspace. A workspace can
   have multiple agents with different tools, policies, knowledge, and operating
   modes.
 
-For a business customer, the north-star mapping is:
+For a business customer, the current hosted mapping is:
 
 ```txt
-WorkOS organization -> Assistant-MK1 workspace -> agents
+WorkOS organization -> Assistant-MK1 account -> active workspace -> agents
 ```
 
+The default workspace id is stable:
+
+```txt
+WorkOS organization -> workos-org:<organizationId> -> workspace:workos-org:<organizationId>:default
+```
+
+Cloudflare stores the current user's active workspace preference for the
+account. If no preference exists, Cloudflare falls back to the default
+workspace. The WorkOS organization remains the account source and each
+Assistant-MK1 workspace is an operational boundary under that account.
+
 For current solo/pre-user development, a signed-in WorkOS user without an
-organization gets a stable personal workspace id:
+organization gets a stable personal account id:
 
 ```txt
 workos-personal:<workos-user-id>
@@ -79,13 +93,18 @@ agent are the committed authorization boundaries.
 
 - Hosted Vercel uses WorkOS AuthKit as the sign-in boundary.
 - Vercel maps WorkOS `user.id` to internal `userId`.
-- Vercel maps WorkOS `organizationId` to internal `workspaceId` when present.
+- Vercel maps WorkOS `organizationId` to an internal account id when present.
 - During pre-user development, signed-in WorkOS sessions without an
-  organization fall back to a stable `workos-personal:<user-id>` workspace.
-- Vercel forwards trusted tenant headers to the Cloudflare Worker; browser
-  requests never provide tenant ids directly.
-- Cloudflare auto-bootstraps D1-backed user, workspace, active membership, and
-  default active agent rows for the current pre-user dev environment.
+  organization fall back to a stable `workos-personal:<user-id>` account and
+  default workspace.
+- Vercel forwards trusted user/account headers to the Cloudflare Worker;
+  browser requests never provide tenant ids directly.
+- Cloudflare auto-bootstraps D1-backed user, default workspace, active
+  membership, and default active agent rows for the current pre-user dev
+  environment.
+- Cloudflare stores the active workspace preference per `user_id + account_id`.
+  Hosted WorkOS traffic resolves the active workspace inside Cloudflare and
+  falls back to the default workspace when no preference exists.
 - Hosted WorkOS traffic resolves the active default agent in Cloudflare instead
   of forwarding `WORKBENCH_DEV_AGENT_ID`.
 - Local development may fall back to `WORKBENCH_DEV_USER_ID` and
@@ -95,6 +114,31 @@ agent are the committed authorization boundaries.
 WorkOS sign-in is implemented, but production authorization is not complete.
 Richer role policy, explicit workspace administration, tool permissions, and
 secret access policy remain production gates.
+
+## Ownership Roadmap
+
+The next steps should keep WorkOS and Assistant-MK1 responsibilities separate:
+
+1. Admin visibility: expose the Cloudflare-resolved account, workspace,
+   membership, default agent, recent events, and last error in a read-only Dev
+   Monitor.
+2. Workspace management model: allow one WorkOS organization or personal
+   account to own multiple Assistant-MK1 workspaces. The current v0 is
+   Dev Monitor-only list/create/switch, with Cloudflare storing the active
+   workspace preference.
+3. Membership source of truth: WorkOS answers who signed in and which external
+   organization they came through; Cloudflare answers what they can do inside an
+   Assistant-MK1 workspace.
+4. Agent selection: agents remain scoped to workspaces, with default-agent
+   resolution first and explicit selection later.
+5. More Cloudflare ownership: Cloudflare should own app authorization, scoped
+   state access, events, audit, run control, tool policy, and secret policy.
+6. Stronger Vercel-to-Cloudflare trust boundary: Vercel should forward
+   server-derived identity through a stricter internal contract, not
+   browser-controlled scope.
+7. WorkOS organization UX: surface current account/workspace clearly and add
+   organization switching or onboarding only after the internal workspace model
+   is stable.
 
 ## Failure Modes To Avoid
 

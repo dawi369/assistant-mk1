@@ -12,9 +12,10 @@ database, the Vercel frontend, and the dedicated Fly LangGraph runtime gateway.
 - Runtime shape: one Fly Machine runs the gateway and LangGraph dev server.
 - Vercel frontend: `https://assistant-mk1.vercel.app`
 - Hosted auth: WorkOS AuthKit on Vercel; WorkOS `user.id` maps to internal
-  `userId`. WorkOS `organizationId` maps to the internal `workspaceId` when
-  present; pre-user sessions without an organization use the stable
-  `workos-personal:<user-id>` workspace fallback.
+  `userId`. WorkOS `organizationId` maps to `workos-org:<organizationId>` when
+  present, then to `workspace:workos-org:<organizationId>:default`; pre-user
+  sessions without an organization use `workos-personal:<user-id>` and its
+  default workspace.
 - Required smoke: `CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> pnpm smoke:cloudflare-workbench-run`
 - Cloudflare Worker: `assistant-mk1-dev-control-plane`
 - Cloudflare D1 database: `assistant_mk1_dev`
@@ -33,12 +34,13 @@ the Fly gateway with `LANGGRAPH_UPSTREAM_TOKEN`.
 Hosted Vercel requests derive tenant scope from the WorkOS server session.
 Users must complete WorkOS sign-in before the workbench can call Cloudflare.
 When WorkOS provides an organization, that organization is treated as the
-customer/company workspace. During the current pre-user phase, sessions without
-an organization use a stable personal workspace fallback. Cloudflare
-auto-bootstraps D1-backed user, workspace, active membership, and default
-active agent rows for the current dev environment. Hosted WorkOS traffic does
-not use `WORKBENCH_DEV_AGENT_ID`; Cloudflare resolves the workspace default
-agent.
+customer/company account source and receives one default workspace in this
+slice. During the current pre-user phase, sessions without an organization use
+a stable personal account and default workspace fallback. Cloudflare
+auto-bootstraps D1-backed user, default workspace, active membership, and
+default active agent rows for the current dev environment. Hosted WorkOS
+traffic does not use `WORKBENCH_DEV_AGENT_ID`; Cloudflare resolves the
+workspace default agent.
 
 The `/langgraph` facade also stores tenant-scoped chat sessions, chat thread
 ownership, chat intents, policy decisions, and minimal chat run envelopes in
@@ -82,6 +84,8 @@ Local commands:
 ```bash
 cat > cloudflare/control-plane/.dev.vars <<'EOF'
 CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=local-dev-token
+LANGGRAPH_UPSTREAM_URL=http://127.0.0.1:2024
+LANGGRAPH_UPSTREAM_TOKEN=local-langgraph-proxy-token
 WORKBENCH_EXECUTOR_URL=http://localhost:3000/api/workbench/executors/demo-inspect
 WORKBENCH_EXECUTOR_TOKEN=local-executor-token
 EOF
@@ -91,11 +95,12 @@ pnpm dev:cloudflare
 
 The rebuild command is destructive for local dev D1 state.
 
-In another terminal, run the Next app with:
+In another terminal, run the Next app and local LangGraph dev server with:
 
 ```bash
 CLOUDFLARE_CONTROL_PLANE_URL=http://localhost:8787 \
 CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=local-dev-token \
+LANGGRAPH_UPSTREAM_TOKEN=local-langgraph-proxy-token \
 WORKBENCH_EXECUTOR_TOKEN=local-executor-token \
 WORKBENCH_DEV_USER_ID=dev-user \
 WORKBENCH_DEV_WORKSPACE_ID=dev-workspace \
@@ -260,17 +265,18 @@ secondary local demo route.
 
 Tenant scope for the hosted Vercel baseline is server-derived from WorkOS
 AuthKit. Vercel/Next maps WorkOS `user.id` to internal `userId` and WorkOS
-`organizationId` to internal `workspaceId` when present. During pre-user
-development, signed-in WorkOS sessions without an organization fall back to a
-stable `workos-personal:<user-id>` workspace, then Vercel forwards those values
-and safe user/membership metadata to the Worker as trusted headers. Cloudflare
-resolves membership and the default active agent from D1 before reading or
-writing control-plane state. Browser requests never choose tenant scope or
-agent identity. In the B2B north star, WorkOS organizations represent customer
-or company tenants; projects are internal Assistant-MK1 configuration inside a
-workspace, not separate WorkOS organizations by default. The WorkOS client id
-and API key must come from the same WorkOS app/environment, and the Vercel
-Production redirect URI must be
+`organizationId` to `workos-org:<organizationId>` when present. Vercel derives
+the current default workspace id as `workspace:<account-id>:default`. During
+pre-user development, signed-in WorkOS sessions without an organization fall
+back to a stable `workos-personal:<user-id>` account and default workspace,
+then Vercel forwards those values and safe user/membership metadata to the
+Worker as trusted headers. Cloudflare resolves membership and the default
+active agent from D1 before reading or writing control-plane state. Browser
+requests never choose tenant scope or agent identity. In the B2B north star,
+WorkOS organizations represent customer or company account sources; one account
+has one default workspace now and can have multiple workspaces later. The WorkOS
+client id and API key must come from the same WorkOS app/environment, and the
+Vercel Production redirect URI must be
 `https://assistant-mk1.vercel.app/auth/callback`.
 
 Local development can still fall back to `WORKBENCH_DEV_USER_ID` and

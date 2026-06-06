@@ -1,5 +1,7 @@
 type TenantIdentity = {
   userId: string;
+  accountId: string;
+  accountSource: string;
   workspaceId: string;
   email?: string;
   name?: string;
@@ -40,10 +42,14 @@ const token = process.env.CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN ?? "local-dev-token
 const pollTimeoutMs = Number(process.env.SMOKE_TIMEOUT_MS ?? 30_000);
 const pollIntervalMs = Number(process.env.SMOKE_POLL_INTERVAL_MS ?? 500);
 const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+const defaultWorkspaceId = (accountId: string) => `workspace:${accountId}:default`;
+const accountId = process.env.SMOKE_WORKOS_ACCOUNT_ID ?? `workos-org:workbench-org-${suffix}`;
 
 const identity: TenantIdentity = {
   userId: process.env.SMOKE_WORKOS_USER_ID ?? `workbench-user-${suffix}`,
-  workspaceId: process.env.SMOKE_WORKOS_WORKSPACE_ID ?? `workbench-workspace-${suffix}`,
+  accountId,
+  accountSource: process.env.SMOKE_ACCOUNT_SOURCE ?? "workos-organization",
+  workspaceId: process.env.SMOKE_WORKOS_WORKSPACE_ID ?? defaultWorkspaceId(accountId),
   email: process.env.SMOKE_WORKOS_USER_EMAIL ?? `workbench-${suffix}@example.com`,
   name: process.env.SMOKE_WORKOS_USER_NAME ?? "Workbench Smoke User",
   role: process.env.SMOKE_WORKOS_ROLE ?? "owner",
@@ -60,6 +66,8 @@ const headersFor = (tenant: TenantIdentity) => {
     authorization: `Bearer ${token}`,
     "content-type": "application/json",
     "x-assistant-mk1-user-id": tenant.userId,
+    "x-assistant-mk1-account-id": tenant.accountId,
+    "x-assistant-mk1-account-source": tenant.accountSource,
     "x-assistant-mk1-workspace-id": tenant.workspaceId,
   };
 

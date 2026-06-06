@@ -56,7 +56,10 @@ export type UserRecord = BaseRecord & {
 };
 
 export type WorkspaceRecord = BaseRecord & {
+  accountId: Id;
+  accountSource: string;
   name: string;
+  isDefault: boolean;
   createdByUserId: Id;
   updatedAt: string;
 };

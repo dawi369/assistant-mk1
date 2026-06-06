@@ -24,14 +24,14 @@ Fly owns LangGraph and signed executor work.
 
 WorkOS AuthKit is the current hosted identity boundary. Vercel maps WorkOS
 identity into trusted headers; the browser never sends tenant scope directly.
-When AuthKit provides an `organizationId`, Vercel uses it as the internal
-`workspaceId`. That is the north-star B2B shape: a customer/company WorkOS
-organization maps to an Assistant-MK1 workspace. Projects such as Polymancer,
-deployment automation, or research live inside that workspace and do not become
-WorkOS organizations by default. During the current pre-user development phase,
-a signed-in WorkOS session without an organization gets a stable personal
-workspace id derived from the WorkOS `user.id` so the Cloudflare D1 authz path
-can still bootstrap membership and the default agent.
+When AuthKit provides an `organizationId`, Vercel maps it to an internal
+`workos-org:<organizationId>` account id and derives the default workspace id
+as `workspace:workos-org:<organizationId>:default`. That is the current B2B
+shape: a customer/company WorkOS organization owns one default Assistant-MK1
+workspace now, and can own multiple workspaces later. During the current
+pre-user development phase, a signed-in WorkOS session without an organization
+gets a stable personal account id derived from the WorkOS `user.id`, with a
+default workspace under that account.
 
 ## Required Environment
 
@@ -62,11 +62,12 @@ Do not mirror local `.env.local` into Vercel Production blindly:
 The Vercel `/api` proxy authenticates to Cloudflare with
 `CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN` and trusted identity headers derived from
 the WorkOS AuthKit server session. WorkOS `user.id` becomes the internal
-`userId`. WorkOS `organizationId` becomes the internal `workspaceId` when
-available; otherwise the pre-user dev fallback is
-`workos-personal:<user-id>`. Cloudflare auto-bootstraps D1-backed user,
-workspace, membership, and default agent rows for the current pre-user dev
-environment, then resolves the active default agent before touching
+`userId`. WorkOS `organizationId` becomes `workos-org:<organizationId>` when
+available; otherwise the pre-user dev fallback account id is
+`workos-personal:<user-id>`. The default workspace id is
+`workspace:<account-id>:default`. Cloudflare auto-bootstraps D1-backed user,
+default workspace, membership, and default agent rows for the current pre-user
+dev environment, then resolves the active default agent before touching
 control-plane state. Cloudflare stores the Fly gateway token as
 `LANGGRAPH_UPSTREAM_TOKEN`. Browser requests never provide tenant ids or agent
 ids directly.

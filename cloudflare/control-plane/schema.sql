@@ -12,6 +12,7 @@ DROP TABLE IF EXISTS control_runs;
 DROP TABLE IF EXISTS control_workflow_intents;
 DROP TABLE IF EXISTS agents;
 DROP TABLE IF EXISTS memberships;
+DROP TABLE IF EXISTS active_workspace_preferences;
 DROP TABLE IF EXISTS workspaces;
 DROP TABLE IF EXISTS users;
 
@@ -27,13 +28,36 @@ CREATE TABLE users (
 
 CREATE TABLE workspaces (
   id TEXT PRIMARY KEY,
+  account_id TEXT NOT NULL,
+  account_source TEXT NOT NULL,
   name TEXT NOT NULL,
   status TEXT NOT NULL,
+  is_default INTEGER NOT NULL DEFAULT 0,
   created_by_user_id TEXT NOT NULL,
   data_json TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+
+CREATE UNIQUE INDEX idx_workspaces_account_default
+  ON workspaces (account_id, is_default)
+  WHERE is_default = 1;
+
+CREATE INDEX idx_workspaces_account
+  ON workspaces (account_id, status, is_default DESC, created_at ASC);
+
+CREATE TABLE active_workspace_preferences (
+  user_id TEXT NOT NULL,
+  account_id TEXT NOT NULL,
+  workspace_id TEXT NOT NULL,
+  data_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, account_id)
+);
+
+CREATE INDEX idx_active_workspace_preferences_workspace
+  ON active_workspace_preferences (workspace_id);
 
 CREATE TABLE memberships (
   id TEXT PRIMARY KEY,

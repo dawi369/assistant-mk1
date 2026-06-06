@@ -36,6 +36,12 @@ export const handleWorkspaceContext = async (
         authMode: readOptionalHeader(request, authModeHeader) ?? "unknown",
         workspaceSource: readOptionalHeader(request, workspaceSourceHeader) ?? "unknown",
       },
+      account: workspace
+        ? {
+            id: workspace.account_id,
+            source: workspace.account_source,
+          }
+        : null,
       user: user
         ? {
             id: user.id,
@@ -49,6 +55,7 @@ export const handleWorkspaceContext = async (
             id: workspace.id,
             name: workspace.name,
             status: workspace.status,
+            isDefault: workspace.is_default === 1,
           }
         : null,
       membership: membership

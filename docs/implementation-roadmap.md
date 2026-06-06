@@ -21,9 +21,10 @@ or live mutation tools until the slice that needs them is explicitly scoped.
   resumes, and cron creation.
 - WorkOS AuthKit is configured on Vercel as the hosted sign-in boundary.
   Vercel maps WorkOS `user.id` and, when present, WorkOS `organizationId` into
-  trusted tenant scope before calling Cloudflare. Organization-backed
-  workspaces are the north-star B2B shape; the current personal workspace
-  fallback keeps solo/pre-user development production-shaped.
+  trusted user/account identity before calling Cloudflare. Organization-backed
+  accounts get one default workspace first and can now create additional
+  Dev Monitor-managed workspaces; the current personal account/default
+  workspace fallback keeps solo/pre-user development production-shaped.
 - Provisional framework contracts define tenant scope, workflow intents,
   run records, tool exposure, durable entities, and repository-style data
   access.
@@ -170,8 +171,15 @@ Next target:
 - Prefer workspace context, decisions, audit events, or artifact metadata before
   R2/DO provisioning.
 - Keep Fly/LangGraph state access mediated through Cloudflare APIs.
-- Add read-only admin visibility for the resolved user, workspace, membership,
-  active agent, recent control-plane events, and last runtime error.
+- Add Dev Monitor v1 as the first read-only admin visibility slice:
+  Cloudflare `GET /admin/workspace-summary`, Vercel
+  `GET /api/workbench/admin-summary`, and a drawer that shows resolved
+  account, workspace, membership, agents, chat path, demo path, recent events,
+  and last Cloudflare-owned error.
+- Add workspace management v0 as the first Cloudflare-owned workspace model
+  slice: D1 active workspace preference, Cloudflare `GET /workspaces`,
+  `POST /workspaces`, `POST /workspaces/:workspaceId/activate`, Vercel
+  facades, and Dev Monitor-only list/create/switch controls.
 
 Exit criteria:
 
@@ -200,9 +208,12 @@ Next target:
   state.
 - Trigger and schedule handling through trusted tenant metadata.
 - Expand WorkOS-backed identity beyond the first D1 membership/default-agent
-  slice: richer roles, explicit workspace administration, tool authorization,
-  and trigger-owned tenant metadata, without moving tenant enforcement back into
-  the browser.
+  slice: richer roles, customer-facing workspace administration, tool
+  authorization, and trigger-owned tenant metadata, without moving tenant
+  enforcement back into the browser.
+- Sequence the workspace/authz product work as admin visibility, workspace
+  management, membership source of truth, agent selection, broader Cloudflare
+  ownership, stronger Vercel-to-Cloudflare trust, and WorkOS organization UX.
 
 Exit criteria:
 

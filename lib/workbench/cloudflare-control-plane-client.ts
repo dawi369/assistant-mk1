@@ -1,14 +1,20 @@
 import type { Id } from "@/lib/agent-framework/contracts";
 import { getWorkbenchIdentityHeaders } from "@/lib/workbench/agent-identity";
 import type {
+  CloudflareAdminSummaryResponse,
   CloudflareOwnedDemoRunResponse,
+  CloudflareWorkspaceMutationResponse,
+  CloudflareWorkspacesResponse,
   ControlPlaneEventsResponse,
   WorkspaceContextResponse,
 } from "@/lib/workbench/workbench-types";
 
 export type {
+  CloudflareAdminSummaryResponse,
   CloudflareOwnedDemoRunResponse,
   CloudflareOwnedDemoRunSnapshot,
+  CloudflareWorkspaceMutationResponse,
+  CloudflareWorkspacesResponse,
   ControlPlaneEvent,
   ControlPlaneEventsResponse,
   WorkspaceContextResponse,
@@ -112,6 +118,24 @@ export const getCloudflareOwnedDemoRunSnapshot = (runId: Id) =>
 
 export const getWorkspaceContext = () =>
   requestControlPlane<WorkspaceContextResponse>("/workspace-context");
+
+export const getCloudflareAdminSummary = () =>
+  requestControlPlane<CloudflareAdminSummaryResponse>("/admin/workspace-summary");
+
+export const getCloudflareWorkspaces = () =>
+  requestControlPlane<CloudflareWorkspacesResponse>("/workspaces");
+
+export const createCloudflareWorkspace = (input: { name: string }) =>
+  requestControlPlane<CloudflareWorkspaceMutationResponse>("/workspaces", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+
+export const activateCloudflareWorkspace = (workspaceId: Id) =>
+  requestControlPlane<CloudflareWorkspaceMutationResponse>(
+    `/workspaces/${encodeURIComponent(workspaceId)}/activate`,
+    { method: "POST" },
+  );
 
 export const getLatestControlPlaneEvents = (limit = 50) =>
   requestControlPlane<ControlPlaneEventsResponse>(

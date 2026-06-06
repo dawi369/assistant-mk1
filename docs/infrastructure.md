@@ -8,7 +8,7 @@ Assistant-MK1 is a reusable agent framework. Infrastructure should support many 
 browser
   -> Vercel Next.js app
   -> WorkOS AuthKit session via the Next SDK
-  -> Vercel server facade derives trusted user, workspace, roles, and permissions
+  -> Vercel server facade derives trusted user, account, workspace, roles, and permissions
   -> Cloudflare control plane over a server-to-server boundary
   -> membership, agent access, and policy checks
   -> typed intent router
@@ -30,9 +30,11 @@ The current hosted dev baseline is intentionally split but not fully at the nort
 - Vercel hosts the Next.js frontend and same-origin browser API facade.
 - WorkOS AuthKit runs at the Vercel boundary for hosted sign-in. Vercel maps
   WorkOS user identity and, when present, WorkOS organization identity into
-  trusted tenant headers for Cloudflare. Organization-backed workspaces are the
-  B2B tenant model; the current personal workspace fallback exists for
-  pre-user development and possible future solo use.
+  trusted account/workspace headers for Cloudflare. Organization-backed
+  accounts get one default workspace in the current slice; the north star
+  allows multiple workspaces per organization later. The current personal
+  workspace fallback exists for pre-user development and possible future solo
+  use.
 - Cloudflare owns the production-shaped workbench run-control path and now
   fronts hosted LangGraph-compatible chat traffic through `/langgraph`, with
   D1-backed tenant ownership for chat sessions, thread ids, chat intents,
@@ -68,11 +70,11 @@ Cloudflare APIs or callbacks.
 ## Request Flow
 
 1. A user sends a message or an external event arrives.
-2. Vercel derives WorkOS user, organization-backed workspace when available,
-   safe roles, and permissions from the server session, or a trusted trigger
-   supplies equivalent metadata.
-3. Cloudflare resolves `userId`, `workspaceId`, membership, and active agent
-   from that trusted context.
+2. Vercel derives WorkOS user, account id, default workspace id, safe roles,
+   and permissions from the server session, or a trusted trigger supplies
+   equivalent metadata.
+3. Cloudflare resolves `userId`, `accountId`, `workspaceId`, membership, and
+   active agent from that trusted context.
 4. The conversational agent reads scoped canonical state and answers directly when possible.
 5. If work needs escalation, the runtime creates a typed `WorkflowIntent`.
 6. Policy checks tenant scope, membership, agent access, tool permissions,

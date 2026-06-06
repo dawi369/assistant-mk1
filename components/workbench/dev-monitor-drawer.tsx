@@ -1,17 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   ActivityIcon,
   AlertCircleIcon,
+  BotIcon,
+  Building2Icon,
   FileTextIcon,
-  HistoryIcon,
   Loader2Icon,
   MessageSquareIcon,
   PanelRightOpenIcon,
   PlayIcon,
+  PlusIcon,
+  RefreshCwIcon,
   ShieldCheckIcon,
   UserIcon,
+  UsersIcon,
   WrenchIcon,
 } from "lucide-react";
 
@@ -35,18 +39,21 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import type {
+  CloudflareAdminSummaryResponse,
   CloudflareOwnedDemoRunResponse,
-  CloudflareOwnedDemoRunSnapshot,
-  ControlPlaneEvent,
-  ControlPlaneEventsResponse,
-  WorkspaceContextResponse,
 } from "@/lib/workbench/workbench-types";
 
-const workspaceContextPath = "/api/workbench/context";
+const adminSummaryPath = "/api/workbench/admin-summary";
 const cloudflareDemoRunsPath = "/api/workbench/cloudflare-demo-runs";
-const cloudflareLatestDemoRunPath = "/api/workbench/cloudflare-demo-runs/latest";
-const cloudflareControlEventsPath = "/api/workbench/control-events/latest";
-const cloudflareControlEventStreamPath = "/api/workbench/control-events/stream";
+const workspacesPath = "/api/workbench/workspaces";
+
+const readJsonResponse = async <T,>(response: Response, fallback: string): Promise<T> => {
+  const body = (await response.json().catch(() => ({}))) as T & { error?: string };
+  if (!response.ok) throw new Error(body.error ?? fallback);
+  return body;
+};
+
+const listValue = (items?: string[]) => (items && items.length > 0 ? items.join(", ") : undefined);
 
 export function DevMonitorDrawer({
   open,
@@ -55,193 +62,111 @@ export function DevMonitorDrawer({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const [context, setContext] = useState<WorkspaceContextResponse["context"] | null>(null);
-  const [snapshot, setSnapshot] = useState<CloudflareOwnedDemoRunSnapshot | null>(null);
-  const [controlEvents, setControlEvents] = useState<ControlPlaneEvent[]>([]);
+  const [summary, setSummary] = useState<CloudflareAdminSummaryResponse["summary"] | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
-  const [isLoadingContext, setIsLoadingContext] = useState(false);
+  const [isCreatingWorkspace, setIsCreatingWorkspace] = useState(false);
+  const [activatingWorkspaceId, setActivatingWorkspaceId] = useState<string | null>(null);
+  const [workspaceName, setWorkspaceName] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [eventError, setEventError] = useState<string | null>(null);
-  const latestControlEventIdRef = useRef<string | null>(null);
 
-  const run = snapshot?.run;
+  const demoSnapshot = summary?.demo.latestRun ?? null;
+  const run = demoSnapshot?.run;
   const isDemoActive = run?.status ? !terminalStatuses.has(run.status) : false;
-  const latestToolCall = snapshot?.toolCalls.at(-1);
-  const latestArtifact = snapshot?.artifacts.at(-1);
-  const latestDecision = snapshot?.decisions.at(-1);
-  const auditEvents = useMemo(() => snapshot?.auditEvents ?? [], [snapshot]);
+  const latestToolCall = demoSnapshot?.toolCalls.at(-1);
+  const latestArtifact = demoSnapshot?.artifacts.at(-1);
+  const latestDecision = demoSnapshot?.decisions.at(-1);
   const latestChatEvent = useMemo(
-    () => controlEvents.find((event) => event.type?.startsWith("chat.")),
-    [controlEvents],
+    () => summary?.events.find((event) => event.type?.startsWith("chat.")),
+    [summary?.events],
   );
 
-  const readDemoRunResponse = async (response: Response, fallback: string) => {
-    const body = (await response.json().catch(() => ({}))) as CloudflareOwnedDemoRunResponse;
-    if (!response.ok) throw new Error(body.error ?? fallback);
-    return body;
-  };
-
-  const readControlEventsResponse = async (response: Response) => {
-    const body = (await response.json().catch(() => ({}))) as ControlPlaneEventsResponse;
-    if (!response.ok) throw new Error(body.error ?? "Failed to load Cloudflare activity");
-    return body;
-  };
-
-  const readWorkspaceContextResponse = async (response: Response) => {
-    const body = (await response.json().catch(() => ({}))) as WorkspaceContextResponse;
-    if (!response.ok) throw new Error(body.error ?? "Failed to load workspace context");
-    return body;
-  };
-
-  const mergeControlEvents = (events: ControlPlaneEvent[]) => {
-    setControlEvents((current) => {
-      const byId = new Map<string, ControlPlaneEvent>();
-      for (const event of [...events, ...current]) byId.set(event.id, event);
-      const merged = [...byId.values()]
-        .sort((left, right) => {
-          const rightTime = right.createdAt ? Date.parse(right.createdAt) : 0;
-          const leftTime = left.createdAt ? Date.parse(left.createdAt) : 0;
-          return rightTime - leftTime || right.id.localeCompare(left.id);
-        })
-        .slice(0, 30);
-      latestControlEventIdRef.current = merged[0]?.id ?? null;
-      return merged;
-    });
-  };
-
-  const loadContext = async () => {
-    setIsLoadingContext(true);
+  const loadSummary = async () => {
+    setIsLoading(true);
     try {
-      const response = await fetch(workspaceContextPath, { cache: "no-store" });
-      const body = await readWorkspaceContextResponse(response);
-      setContext(body.context ?? null);
+      const response = await fetch(adminSummaryPath, { cache: "no-store" });
+      const body = await readJsonResponse<CloudflareAdminSummaryResponse>(
+        response,
+        "Failed to load Cloudflare admin summary",
+      );
+      setSummary(body.summary ?? null);
       setError(null);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Failed to load admin summary");
     } finally {
-      setIsLoadingContext(false);
+      setIsLoading(false);
     }
   };
 
-  const loadLatest = async () => {
-    const response = await fetch(cloudflareLatestDemoRunPath, {
-      cache: "no-store",
-    });
-    const body = await readDemoRunResponse(response, "Failed to load Cloudflare demo run");
-    setSnapshot(body.snapshot ?? null);
-  };
-
-  const loadControlEvents = async () => {
-    const response = await fetch(cloudflareControlEventsPath, {
-      cache: "no-store",
-    });
-    const body = await readControlEventsResponse(response);
-    mergeControlEvents(body.events ?? []);
-    setEventError(null);
-  };
-
   useEffect(() => {
     if (!open) return;
-    void loadContext().catch((loadError: unknown) => {
-      setError(loadError instanceof Error ? loadError.message : "Failed to load workspace context");
-    });
-    void loadLatest().catch((loadError: unknown) => {
-      setError(loadError instanceof Error ? loadError.message : "Failed to load demo run");
-    });
+    void loadSummary();
   }, [open]);
 
   useEffect(() => {
-    if (!isDemoActive) return;
-    const interval = window.setInterval(() => {
-      void loadLatest().catch((loadError: unknown) => {
-        setError(
-          loadError instanceof Error ? loadError.message : "Failed to poll Cloudflare demo run",
-        );
-      });
-    }, 500);
+    if (!open || !isDemoActive) return;
+    const interval = window.setInterval(() => void loadSummary(), 750);
     return () => window.clearInterval(interval);
-  }, [isDemoActive]);
-
-  useEffect(() => {
-    if (!open) return;
-
-    let source: EventSource | null = null;
-    let fallbackInterval: number | undefined;
-    let cancelled = false;
-
-    const startFallbackPolling = () => {
-      if (fallbackInterval) return;
-      fallbackInterval = window.setInterval(() => {
-        void loadControlEvents().catch((loadError: unknown) => {
-          setEventError(
-            loadError instanceof Error ? loadError.message : "Failed to poll Cloudflare activity",
-          );
-        });
-      }, 2500);
-    };
-
-    const startStream = async () => {
-      try {
-        await loadControlEvents();
-      } catch (loadError) {
-        setEventError(
-          loadError instanceof Error ? loadError.message : "Failed to load Cloudflare activity",
-        );
-      }
-
-      if (cancelled) return;
-
-      if (!("EventSource" in window)) {
-        startFallbackPolling();
-        return;
-      }
-
-      const streamUrl = new URL(cloudflareControlEventStreamPath, window.location.origin);
-      if (latestControlEventIdRef.current) {
-        streamUrl.searchParams.set("after", latestControlEventIdRef.current);
-      }
-
-      source = new EventSource(streamUrl.toString());
-      source.addEventListener("control-plane-event", (event) => {
-        try {
-          const parsed = JSON.parse(event.data) as ControlPlaneEvent;
-          mergeControlEvents([parsed]);
-          setEventError(null);
-        } catch {
-          setEventError("Cloudflare activity stream returned an invalid event");
-        }
-      });
-      source.addEventListener("control-plane-error", (event) => {
-        setEventError(event.data || "Cloudflare activity stream failed");
-      });
-      source.onerror = () => {
-        setEventError("Cloudflare activity stream reconnecting");
-      };
-    };
-
-    void startStream();
-
-    return () => {
-      cancelled = true;
-      source?.close();
-      if (fallbackInterval) window.clearInterval(fallbackInterval);
-    };
-  }, [open]);
+  }, [open, isDemoActive]);
 
   const startDemoRun = async () => {
     setIsStarting(true);
     setError(null);
     try {
-      const response = await fetch(cloudflareDemoRunsPath, {
-        method: "POST",
-      });
-      const body = await readDemoRunResponse(response, "Failed to start Cloudflare demo run");
-      setSnapshot(body.snapshot ?? null);
-      void loadControlEvents().catch(() => undefined);
+      const response = await fetch(cloudflareDemoRunsPath, { method: "POST" });
+      await readJsonResponse<CloudflareOwnedDemoRunResponse>(
+        response,
+        "Failed to start Cloudflare demo run",
+      );
+      await loadSummary();
     } catch (startError) {
       setError(
         startError instanceof Error ? startError.message : "Failed to start Cloudflare demo run",
       );
     } finally {
       setIsStarting(false);
+    }
+  };
+
+  const createWorkspace = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const name = workspaceName.trim();
+    if (!name) return;
+
+    setIsCreatingWorkspace(true);
+    setError(null);
+    try {
+      const response = await fetch(workspacesPath, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      await readJsonResponse(response, "Failed to create workspace");
+      setWorkspaceName("");
+      await loadSummary();
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : "Failed to create workspace");
+    } finally {
+      setIsCreatingWorkspace(false);
+    }
+  };
+
+  const activateWorkspace = async (workspaceId: string) => {
+    setActivatingWorkspaceId(workspaceId);
+    setError(null);
+    try {
+      const response = await fetch(
+        `${workspacesPath}/${encodeURIComponent(workspaceId)}/activate`,
+        { method: "POST" },
+      );
+      await readJsonResponse(response, "Failed to activate workspace");
+      await loadSummary();
+    } catch (activateError) {
+      setError(
+        activateError instanceof Error ? activateError.message : "Failed to activate workspace",
+      );
+    } finally {
+      setActivatingWorkspaceId(null);
     }
   };
 
@@ -263,47 +188,161 @@ export function DevMonitorDrawer({
             Dev Monitor
           </DialogTitle>
           <DialogDescription id="dev-monitor-description">
-            Cloudflare, Fly, WorkOS, and demo.inspect runtime state.
+            Cloudflare-owned account, workspace, agent, chat, and demo.inspect state.
           </DialogDescription>
         </DialogHeader>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-muted-foreground text-xs">
+              Summary generated {formatTime(summary?.generatedAt)}
+            </p>
+            <Button size="sm" variant="outline" onClick={loadSummary} disabled={isLoading}>
+              {isLoading ? <Loader2Icon className="animate-spin" /> : <RefreshCwIcon />}
+              Refresh
+            </Button>
+          </div>
+
           <MonitorSection icon={UserIcon} title="Identity">
             <StatusRow
               label="Auth"
-              value={context?.identity.authMode ?? (isLoadingContext ? "loading" : "unknown")}
+              value={summary?.identity.authMode ?? (isLoading ? "loading" : "unknown")}
             />
             <StatusRow
-              label="Workspace source"
-              value={context?.identity.workspaceSource ?? "unknown"}
+              label="Account source"
+              value={summary?.account?.source ?? summary?.identity.workspaceSource ?? "unknown"}
             />
-            <StatusRow label="User" value={context?.user?.email ?? context?.user?.displayName} />
+            <StatusRow label="User" value={summary?.user?.email ?? summary?.user?.displayName} />
+            <StatusRow label="User status" value={summary?.user?.status} />
+            <CopyId label="User id" value={summary?.identity.userId} />
+            <CopyId label="Account id" value={summary?.account?.id} />
+          </MonitorSection>
+
+          <MonitorSection icon={Building2Icon} title="Workspace">
+            <StatusRow label="Name" value={summary?.workspace?.name} />
+            <StatusRow label="Status" value={summary?.workspace?.status} />
             <StatusRow
-              label="Membership"
+              label="Default"
+              value={summary?.workspace ? String(summary.workspace.isDefault) : undefined}
+            />
+            <StatusRow
+              label="Active"
+              value={summary?.workspace ? String(summary.workspace.isActive) : undefined}
+            />
+            <CopyId label="Workspace id" value={summary?.identity.workspaceId} />
+            <form className="flex gap-2" onSubmit={createWorkspace}>
+              <input
+                className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring min-w-0 flex-1 rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                value={workspaceName}
+                onChange={(event) => setWorkspaceName(event.target.value)}
+                placeholder="New workspace name"
+                maxLength={80}
+              />
+              <Button
+                type="submit"
+                size="sm"
+                disabled={isCreatingWorkspace || !workspaceName.trim()}
+              >
+                {isCreatingWorkspace ? <Loader2Icon className="animate-spin" /> : <PlusIcon />}
+                Create
+              </Button>
+            </form>
+            {summary?.workspaces?.length ? (
+              <ol className="space-y-2">
+                {summary.workspaces.map((workspace) => (
+                  <li key={workspace.id} className="border-border rounded-md border p-3 text-sm">
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="min-w-0">
+                        <span className="block truncate font-medium">{workspace.name}</span>
+                        <span className="text-muted-foreground block text-xs">
+                          {workspace.isActive ? "active" : "available"}
+                          {workspace.isDefault ? " / default" : ""}
+                        </span>
+                      </span>
+                      {workspace.isActive ? (
+                        <StatusPill status="active" tone="completed" />
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void activateWorkspace(workspace.id)}
+                          disabled={activatingWorkspaceId === workspace.id}
+                        >
+                          {activatingWorkspaceId === workspace.id ? (
+                            <Loader2Icon className="animate-spin" />
+                          ) : null}
+                          Make active
+                        </Button>
+                      )}
+                    </div>
+                    <CopyId label="Workspace id" value={workspace.id} />
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <EmptyPanelText>No account workspaces loaded.</EmptyPanelText>
+            )}
+          </MonitorSection>
+
+          <MonitorSection icon={UsersIcon} title="Membership">
+            <StatusRow
+              label="Role / status"
               value={
-                context?.membership
-                  ? `${context.membership.role} / ${context.membership.status}`
+                summary?.membership
+                  ? `${summary.membership.role} / ${summary.membership.status}`
                   : undefined
               }
             />
-            <CopyId label="User id" value={context?.identity.userId} />
-            <CopyId label="Workspace id" value={context?.identity.workspaceId} />
-            <CopyId label="Agent id" value={context?.identity.agentId} />
+            <StatusRow label="Roles" value={listValue(summary?.membership?.roles)} />
+            <StatusRow label="Permissions" value={listValue(summary?.membership?.permissions)} />
+          </MonitorSection>
+
+          <MonitorSection icon={BotIcon} title="Agents">
+            <StatusRow label="Default agent" value={summary?.defaultAgent?.name} />
+            <CopyId label="Active agent id" value={summary?.identity.agentId} />
+            {summary?.agents.length ? (
+              <ol className="space-y-2">
+                {summary.agents.map((agent) => (
+                  <li key={agent.id} className="border-border rounded-md border p-3 text-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate font-medium">{agent.name}</span>
+                      <StatusPill
+                        status={agent.isDefault ? `default / ${agent.status}` : agent.status}
+                        tone={agent.status}
+                      />
+                    </div>
+                    {agent.description ? (
+                      <p className="text-muted-foreground mt-1 text-xs">{agent.description}</p>
+                    ) : null}
+                    <CopyId label="Agent id" value={agent.id} />
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <EmptyPanelText>No workspace agents loaded.</EmptyPanelText>
+            )}
           </MonitorSection>
 
           <MonitorSection icon={MessageSquareIcon} title="Chat Path">
-            <StatusRow label="Browser route" value="/api/*" />
-            <StatusRow label="Control plane" value="Cloudflare /langgraph" />
-            <StatusRow label="Executor" value="Fly LangGraph runtime" />
+            <StatusRow label="Latest session" value={summary?.chat.latestSession?.status} />
+            <StatusRow label="Latest thread" value={summary?.chat.latestThread?.status} />
+            <StatusRow label="Latest run" value={summary?.chat.latestRun?.status} />
+            <StatusRow
+              label="Latest policy"
+              value={
+                summary?.chat.latestPolicyDecision
+                  ? `${summary.chat.latestPolicyDecision.decision}: ${summary.chat.latestPolicyDecision.reason}`
+                  : undefined
+              }
+            />
             <StatusRow
               label="Latest chat event"
               value={latestChatEvent?.type ?? "no chat event loaded"}
               tone={latestChatEvent ? "ok" : "muted"}
             />
-            <p className="text-muted-foreground text-xs">
-              Chat status is separate from demo.inspect. It is inferred from recent Cloudflare chat
-              events.
-            </p>
+            <CopyId label="Session id" value={summary?.chat.latestSession?.sessionId} />
+            <CopyId label="Thread id" value={summary?.chat.latestThread?.threadId} />
+            <CopyId label="Chat run id" value={summary?.chat.latestRun?.id} />
           </MonitorSection>
 
           <MonitorSection icon={WrenchIcon} title="Demo Inspect Path">
@@ -317,7 +356,11 @@ export function DevMonitorDrawer({
             <div className="grid grid-cols-2 gap-2">
               <StatusRow label="Mode" value={run?.execution?.mode ?? "dry_run"} compact />
               <StatusRow label="Stage" value={run?.stage ?? "observe"} compact />
-              <StatusRow label="Intent" value={snapshot?.intent?.type ?? "not created"} compact />
+              <StatusRow
+                label="Intent"
+                value={demoSnapshot?.intent?.type ?? "not created"}
+                compact
+              />
               <StatusRow label="Updated" value={formatTime(run?.updatedAt)} compact />
             </div>
             <CopyId label="Run id" value={run?.id} />
@@ -343,10 +386,9 @@ export function DevMonitorDrawer({
           </MonitorSection>
 
           <MonitorSection icon={ActivityIcon} title="Cloudflare Events">
-            {eventError ? <p className="text-destructive text-sm">{eventError}</p> : null}
-            {controlEvents.length > 0 ? (
+            {summary?.events.length ? (
               <ol className="space-y-3">
-                {controlEvents.slice(0, 10).map((event) => (
+                {summary.events.slice(0, 12).map((event) => (
                   <li key={event.id} className="grid grid-cols-[0.75rem_1fr] gap-3 text-sm">
                     <span className="bg-primary mt-1.5 size-2 rounded-full" />
                     <span className="min-w-0">
@@ -369,35 +411,23 @@ export function DevMonitorDrawer({
             )}
           </MonitorSection>
 
-          <MonitorSection icon={HistoryIcon} title="Audit Trail">
-            {auditEvents.length > 0 ? (
-              <ol className="space-y-3">
-                {auditEvents.map((event) => (
-                  <li key={event.id} className="grid grid-cols-[0.75rem_1fr] gap-3 text-sm">
-                    <span className="bg-muted-foreground mt-1.5 size-2 rounded-full" />
-                    <span>
-                      <span className="block font-medium">{event.action ?? "audit.event"}</span>
-                      <span className="text-muted-foreground block">
-                        {event.summary ?? "Audit summary is pending."}
-                      </span>
-                      <span className="text-muted-foreground/80 block text-xs">
-                        {formatTime(event.createdAt)}
-                      </span>
-                    </span>
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <EmptyPanelText>Demo audit events appear after the diagnostic starts.</EmptyPanelText>
-            )}
-          </MonitorSection>
-
           <MonitorSection icon={AlertCircleIcon} title="Last Error">
-            {error ? (
-              <p className="text-destructive text-sm">{error}</p>
-            ) : (
-              <EmptyPanelText>No workbench error recorded in this browser session.</EmptyPanelText>
-            )}
+            {error ? <p className="text-destructive text-sm">{error}</p> : null}
+            {summary?.lastError ? (
+              <div className="border-destructive/30 bg-destructive/10 rounded-md border p-3 text-sm">
+                <p className="text-destructive font-medium">{summary.lastError.message}</p>
+                <p className="text-muted-foreground mt-1 text-xs">
+                  {summary.lastError.source}
+                  {summary.lastError.status ? ` / ${summary.lastError.status}` : ""}
+                  {summary.lastError.createdAt
+                    ? ` / ${formatTime(summary.lastError.createdAt)}`
+                    : ""}
+                </p>
+                <CopyId label="Error target id" value={summary.lastError.targetId} />
+              </div>
+            ) : !error ? (
+              <EmptyPanelText>No Cloudflare-owned error found for this scope.</EmptyPanelText>
+            ) : null}
           </MonitorSection>
         </div>
       </DialogContent>

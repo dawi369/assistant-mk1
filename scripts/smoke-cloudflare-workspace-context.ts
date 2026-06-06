@@ -1,5 +1,7 @@
 type TenantIdentity = {
   userId: string;
+  accountId: string;
+  accountSource: string;
   workspaceId: string;
   email?: string;
   name?: string;
@@ -21,6 +23,10 @@ type WorkspaceContextResponse = {
       authMode?: string;
       workspaceSource?: string;
     };
+    account?: {
+      id?: string;
+      source?: string;
+    } | null;
     user?: {
       email?: string | null;
       displayName?: string | null;
@@ -28,6 +34,7 @@ type WorkspaceContextResponse = {
     } | null;
     workspace?: {
       status?: string;
+      isDefault?: boolean;
     } | null;
     membership?: {
       role?: string;
@@ -61,10 +68,13 @@ const baseUrl = (process.env.CLOUDFLARE_CONTROL_PLANE_URL ?? "http://localhost:8
 );
 const token = process.env.CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN ?? "local-dev-token";
 const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+const defaultWorkspaceId = (accountId: string) => `workspace:${accountId}:default`;
 
 const tenantA: TenantIdentity = {
   userId: `context-user-a-${suffix}`,
-  workspaceId: `context-workspace-a-${suffix}`,
+  accountId: `workos-org:context-org-a-${suffix}`,
+  accountSource: "workos-organization",
+  workspaceId: defaultWorkspaceId(`workos-org:context-org-a-${suffix}`),
   email: `context-a-${suffix}@example.com`,
   name: "Workspace Context Smoke User A",
   role: "owner",
@@ -77,14 +87,18 @@ const tenantA: TenantIdentity = {
 const tenantB: TenantIdentity = {
   ...tenantA,
   userId: `context-user-b-${suffix}`,
-  workspaceId: `context-workspace-b-${suffix}`,
+  accountId: `workos-org:context-org-b-${suffix}`,
+  accountSource: "workos-organization",
+  workspaceId: defaultWorkspaceId(`workos-org:context-org-b-${suffix}`),
   email: `context-b-${suffix}@example.com`,
   name: "Workspace Context Smoke User B",
 };
 
 const disabledTenant: TenantIdentity = {
   userId: `context-disabled-user-${suffix}`,
-  workspaceId: `context-disabled-workspace-${suffix}`,
+  accountId: `workos-org:context-disabled-org-${suffix}`,
+  accountSource: "workos-organization",
+  workspaceId: defaultWorkspaceId(`workos-org:context-disabled-org-${suffix}`),
   email: `context-disabled-${suffix}@example.com`,
   name: "Workspace Context Smoke Disabled User",
   role: "member",
@@ -98,6 +112,8 @@ const headersFor = (identity: TenantIdentity) => {
     authorization: `Bearer ${token}`,
     "content-type": "application/json",
     "x-assistant-mk1-user-id": identity.userId,
+    "x-assistant-mk1-account-id": identity.accountId,
+    "x-assistant-mk1-account-source": identity.accountSource,
     "x-assistant-mk1-workspace-id": identity.workspaceId,
   };
 
@@ -159,11 +175,17 @@ const requireContext = (
   if (context.identity.workspaceSource !== identity.workspaceSource) {
     throw new Error(`${label} returned workspaceSource ${context.identity.workspaceSource}`);
   }
+  if (
+    context.account?.id !== identity.accountId ||
+    context.account.source !== identity.accountSource
+  ) {
+    throw new Error(`${label} returned the wrong account identity`);
+  }
   if (context.user?.email !== identity.email) {
     throw new Error(`${label} did not materialize the expected user metadata`);
   }
-  if (context.workspace?.status !== "active") {
-    throw new Error(`${label} did not return an active workspace`);
+  if (context.workspace?.status !== "active" || !context.workspace.isDefault) {
+    throw new Error(`${label} did not return an active default workspace`);
   }
   if (context.membership?.status !== "active" || context.membership.role !== identity.role) {
     throw new Error(`${label} did not return the expected active membership`);
@@ -214,6 +236,9 @@ const main = async () => {
   if (first.identity.agentId !== second.identity.agentId) {
     throw new Error("default agent resolution changed between workspace-context requests");
   }
+  if (first.identity.workspaceId === tenantA.accountId) {
+    throw new Error("workspace context returned the raw WorkOS account id as workspace id");
+  }
 
   const sessionA = await readJson<SessionResponse>("/sessions", tenantA, {
     method: "POST",
@@ -229,6 +254,28 @@ const main = async () => {
     tenantB,
     "tenant B context request",
   );
+
+  const personalUserId = `context-personal-user-${suffix}`;
+  const personalAccountId = `workos-personal:${personalUserId}`;
+  const personalTenant: TenantIdentity = {
+    userId: personalUserId,
+    accountId: personalAccountId,
+    accountSource: "workos-personal",
+    workspaceId: defaultWorkspaceId(personalAccountId),
+    email: `context-personal-${suffix}@example.com`,
+    name: "Workspace Context Smoke Personal User",
+    role: "owner",
+    roles: ["owner"],
+    permissions: ["workbench:read"],
+    authMode: "workos",
+    workspaceSource: "workos-personal",
+  };
+  requireContext(
+    await readJson<WorkspaceContextResponse>("/workspace-context", personalTenant),
+    personalTenant,
+    "personal context request",
+  );
+
   await assertSessionHidden(tenantB, sessionId, "tenant B");
   await assertDisabledMembership();
 

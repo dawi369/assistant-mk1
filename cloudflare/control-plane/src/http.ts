@@ -1,6 +1,8 @@
 import type { Env } from "./types";
 
 export const userIdHeader = "x-assistant-mk1-user-id";
+export const accountIdHeader = "x-assistant-mk1-account-id";
+export const accountSourceHeader = "x-assistant-mk1-account-source";
 export const workspaceIdHeader = "x-assistant-mk1-workspace-id";
 export const agentIdHeader = "x-assistant-mk1-agent-id";
 

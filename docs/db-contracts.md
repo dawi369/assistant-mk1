@@ -68,14 +68,19 @@ Minimum fields:
 
 ### WorkspaceRecord
 
-Customer, team, account, or app tenant boundary. In B2B deployments, this is
-usually backed by a WorkOS organization. Workspaces isolate tools, secrets,
+Operational boundary under an Assistant-MK1 account source. In B2B
+deployments, the account source is usually a WorkOS organization. The current
+slice creates one default workspace per account source; the north star allows
+multiple workspaces per account later. Workspaces isolate tools, secrets,
 memory, ledgers, triggers, agents, and artifacts.
 
 Minimum fields:
 
 - `id`
+- `accountId`
+- `accountSource`
 - `name`
+- `isDefault`
 - `createdByUserId`
 - `createdAt`
 - `updatedAt`

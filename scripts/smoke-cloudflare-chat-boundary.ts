@@ -33,17 +33,18 @@ const baseUrl = (process.env.CLOUDFLARE_CONTROL_PLANE_URL ?? "http://localhost:8
 const token = process.env.CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN ?? "local-dev-token";
 const pollTimeoutMs = Number(process.env.SMOKE_TIMEOUT_MS ?? 30_000);
 const pollIntervalMs = Number(process.env.SMOKE_POLL_INTERVAL_MS ?? 400);
+const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
 const tenants = {
   a: {
-    userId: "chat-tenant-a-user",
-    workspaceId: "chat-tenant-a-workspace",
-    agentId: "chat-tenant-a-agent",
+    userId: `chat-tenant-a-user-${suffix}`,
+    workspaceId: `chat-tenant-a-workspace-${suffix}`,
+    agentId: `chat-tenant-a-agent-${suffix}`,
   },
   b: {
-    userId: "chat-tenant-b-user",
-    workspaceId: "chat-tenant-b-workspace",
-    agentId: "chat-tenant-b-agent",
+    userId: `chat-tenant-b-user-${suffix}`,
+    workspaceId: `chat-tenant-b-workspace-${suffix}`,
+    agentId: `chat-tenant-b-agent-${suffix}`,
   },
 } satisfies Record<string, TenantIdentity>;
 
@@ -123,35 +124,49 @@ const assertBoundaryScope = (
   }
 };
 
-const runStream = async (identity: TenantIdentity, threadId: string) => {
-  const response = await fetch(
-    `${baseUrl}/langgraph/threads/${encodeURIComponent(threadId)}/runs/stream`,
-    {
-      method: "POST",
-      headers: headersFor(identity),
-      body: JSON.stringify({
-        assistant_id: "agent",
-        input: {
-          messages: [
-            {
-              role: "user",
-              content: "Say one short sentence confirming the chat boundary is live.",
-            },
-          ],
-        },
-        stream_mode: ["messages"],
-      }),
-    },
-  );
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  if (!response.ok) {
-    throw new Error(`stream run failed with ${response.status}: ${await response.text()}`);
+const runStreamOnNewThread = async (identity: TenantIdentity, label: string) => {
+  let lastError = "";
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const threadId = await createThread(identity);
+    const response = await fetch(
+      `${baseUrl}/langgraph/threads/${encodeURIComponent(threadId)}/runs/stream`,
+      {
+        method: "POST",
+        headers: headersFor(identity),
+        body: JSON.stringify({
+          assistant_id: "agent",
+          input: {
+            messages: [
+              {
+                role: "user",
+                content: "Say one short sentence confirming the chat boundary is live.",
+              },
+            ],
+          },
+          stream_mode: ["messages"],
+        }),
+      },
+    );
+
+    if (response.ok) {
+      await response.text();
+      return threadId;
+    }
+
+    const responseBody = await response.text();
+    lastError = `${response.status}: ${responseBody}`;
+    if (response.status !== 422 || !responseBody.includes("Thread is already running")) {
+      throw new Error(`${label} failed with ${lastError}`);
+    }
+
+    await sleep(1_000);
   }
 
-  await response.text();
+  throw new Error(`${label} failed after retries with ${lastError}`);
 };
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const waitForTrackedRun = async (identity: TenantIdentity, threadId: string) => {
   const startedAt = Date.now();
@@ -185,8 +200,8 @@ const main = async () => {
   const initialSnapshot = await getBoundarySnapshot(tenants.a, threadA);
   assertBoundaryScope(initialSnapshot, tenants.a, threadA);
 
-  await runStream(tenants.a, threadA);
-  const completedSnapshot = await waitForTrackedRun(tenants.a, threadA);
+  const runThreadA = await runStreamOnNewThread(tenants.a, "chat boundary stream");
+  const completedSnapshot = await waitForTrackedRun(tenants.a, runThreadA);
 
   if (!completedSnapshot.latestRun?.upstreamRunId) {
     throw new Error("tracked chat run is missing upstream LangGraph run id");
@@ -198,6 +213,7 @@ const main = async () => {
       {
         tenantAThreadId: threadA,
         tenantBThreadId: threadB,
+        runThreadId: runThreadA,
         trackedRunId: completedSnapshot.latestRun.id,
         upstreamRunId: completedSnapshot.latestRun.upstreamRunId,
       },

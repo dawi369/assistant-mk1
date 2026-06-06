@@ -10,8 +10,8 @@ The architecture is generic, but it is evaluated against demanding reference app
 - WorkOS AuthKit runs through the Next.js SDK at the Vercel web boundary.
 - assistant-ui renders the thread, composer, messages, reasoning, tools, and attachments.
 - `@assistant-ui/react-langgraph` adapts the UI runtime to LangGraph threads and streams.
-- Vercel derives trusted WorkOS user, organization-backed workspace when
-  present, safe roles, and permissions before calling Cloudflare
+- Vercel derives trusted WorkOS user, account source, default workspace, safe
+  roles, and permissions before calling Cloudflare
   server-to-server.
 - Cloudflare owns membership and agent authorization, durable workbench run
   control, tenant state, audit records, and mediated storage access.

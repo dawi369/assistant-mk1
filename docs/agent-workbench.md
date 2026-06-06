@@ -36,7 +36,7 @@ rollout. Start read-only and server-derived.
 The first admin surface should show:
 
 - Current user, workspace, membership, and active agent.
-- WorkOS source: organization-backed workspace or personal fallback.
+- WorkOS/account source: organization-backed account or personal fallback.
 - Workspace members and membership status.
 - Agent list, default agent, and status.
 - Recent Cloudflare events, chat sessions, demo runs, and last errors.
@@ -44,6 +44,34 @@ The first admin surface should show:
 This belongs in a dev/admin monitor surface first, then can graduate into a
 workspace administration UI. It should never trust browser-supplied tenant or
 agent ids.
+
+Dev Monitor v1 is the first admin visibility slice. It replaces scattered
+runtime widgets with one Cloudflare-backed admin summary while keeping the
+existing top-right drawer and demo.inspect diagnostic action.
+
+Workspace management v0 is the next Dev Monitor-only slice: list workspaces for
+the current WorkOS account, create a name-only workspace, and switch the active
+workspace through Cloudflare. This is not a customer-facing workspace product
+yet; it is the operator view needed before workspace invites, role policy,
+agent CRUD, or deeper chat debugging.
+
+Near-term WorkOS, workspace, and Cloudflare ownership sequence:
+
+1. Admin visibility: show the resolved account, workspace, membership, agents,
+   chat path, demo path, events, and last Cloudflare-owned error.
+2. Workspace management model: list, create, default, and switch workspaces
+   under a WorkOS organization or personal account. In v0 this lives only in
+   Dev Monitor, and Cloudflare stores the active workspace preference.
+3. Membership source of truth: keep WorkOS as enterprise identity and make
+   Cloudflare D1 the app authorization layer for workspace roles and status.
+4. Agent selection: move from default-agent-only behavior to visible
+   workspace-scoped agent list and active/default agent choice.
+5. More Cloudflare ownership: move context, policy, audit, events, run state,
+   tool authorization, and eventually secret access behind Cloudflare APIs.
+6. Stronger Vercel-to-Cloudflare trust boundary: replace loose trusted headers
+   with a stricter signed or service-authenticated server contract.
+7. WorkOS organization UX: handle org switching, personal fallback, onboarding,
+   and clear current account/current workspace display.
 
 ## Component Rules
 

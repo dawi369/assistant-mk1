@@ -50,17 +50,18 @@ const baseUrl = (process.env.CLOUDFLARE_CONTROL_PLANE_URL ?? "http://localhost:8
 const token = process.env.CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN ?? "local-dev-token";
 const pollTimeoutMs = Number(process.env.SMOKE_TIMEOUT_MS ?? 30_000);
 const pollIntervalMs = Number(process.env.SMOKE_POLL_INTERVAL_MS ?? 400);
+const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
 const tenants = {
   a: {
-    userId: "session-tenant-a-user",
-    workspaceId: "session-tenant-a-workspace",
-    agentId: "session-tenant-a-agent",
+    userId: `session-tenant-a-user-${suffix}`,
+    workspaceId: `session-tenant-a-workspace-${suffix}`,
+    agentId: `session-tenant-a-agent-${suffix}`,
   },
   b: {
-    userId: "session-tenant-b-user",
-    workspaceId: "session-tenant-b-workspace",
-    agentId: "session-tenant-b-agent",
+    userId: `session-tenant-b-user-${suffix}`,
+    workspaceId: `session-tenant-b-workspace-${suffix}`,
+    agentId: `session-tenant-b-agent-${suffix}`,
   },
 } satisfies Record<string, TenantIdentity>;
 
@@ -143,35 +144,49 @@ const getBoundarySnapshot = (identity: TenantIdentity, threadId: string) =>
     identity,
   );
 
-const runStream = async (identity: TenantIdentity, threadId: string) => {
-  const response = await fetch(
-    `${baseUrl}/langgraph/threads/${encodeURIComponent(threadId)}/runs/stream`,
-    {
-      method: "POST",
-      headers: headersFor(identity),
-      body: JSON.stringify({
-        assistant_id: "agent",
-        input: {
-          messages: [
-            {
-              role: "user",
-              content: "Say one short sentence confirming the session boundary is live.",
-            },
-          ],
-        },
-        stream_mode: ["messages"],
-      }),
-    },
-  );
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  if (!response.ok) {
-    throw new Error(`stream run failed with ${response.status}: ${await response.text()}`);
+const runStreamOnNewThread = async (identity: TenantIdentity, label: string) => {
+  let lastError = "";
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const threadId = await createThread(identity);
+    const response = await fetch(
+      `${baseUrl}/langgraph/threads/${encodeURIComponent(threadId)}/runs/stream`,
+      {
+        method: "POST",
+        headers: headersFor(identity),
+        body: JSON.stringify({
+          assistant_id: "agent",
+          input: {
+            messages: [
+              {
+                role: "user",
+                content: "Say one short sentence confirming the session boundary is live.",
+              },
+            ],
+          },
+          stream_mode: ["messages"],
+        }),
+      },
+    );
+
+    if (response.ok) {
+      await response.text();
+      return threadId;
+    }
+
+    const responseBody = await response.text();
+    lastError = `${response.status}: ${responseBody}`;
+    if (response.status !== 422 || !responseBody.includes("Thread is already running")) {
+      throw new Error(`${label} failed with ${lastError}`);
+    }
+
+    await sleep(1_000);
   }
 
-  await response.text();
+  throw new Error(`${label} failed after retries with ${lastError}`);
 };
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const waitForCompletedRun = async (
   identity: TenantIdentity,
@@ -233,8 +248,8 @@ const main = async () => {
     "tenant B thread read",
   );
 
-  await runStream(tenants.a, threadA);
-  const completed = await waitForCompletedRun(tenants.a, threadA, sessionA.sessionId!);
+  const runThreadA = await runStreamOnNewThread(tenants.a, "session boundary stream");
+  const completed = await waitForCompletedRun(tenants.a, runThreadA, sessionA.sessionId!);
   if (!completed.latestRun?.upstreamRunId) {
     throw new Error("completed run is missing upstream LangGraph run id");
   }
@@ -246,6 +261,7 @@ const main = async () => {
         tenantASessionId: sessionA.sessionId,
         tenantBSessionId: sessionB.sessionId,
         tenantAThreadId: threadA,
+        runThreadId: runThreadA,
         trackedRunId: completed.latestRun.id,
         upstreamRunId: completed.latestRun.upstreamRunId,
       },

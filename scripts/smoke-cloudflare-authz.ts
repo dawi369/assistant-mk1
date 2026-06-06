@@ -1,5 +1,7 @@
 type TenantIdentity = {
   userId: string;
+  accountId: string;
+  accountSource: string;
   workspaceId: string;
   email?: string;
   name?: string;
@@ -33,10 +35,13 @@ const baseUrl = (process.env.CLOUDFLARE_CONTROL_PLANE_URL ?? "http://localhost:8
 );
 const token = process.env.CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN ?? "local-dev-token";
 const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+const defaultWorkspaceId = (accountId: string) => `workspace:${accountId}:default`;
 
 const tenantA: TenantIdentity = {
   userId: `authz-user-a-${suffix}`,
-  workspaceId: `authz-workspace-a-${suffix}`,
+  accountId: `workos-org:authz-org-a-${suffix}`,
+  accountSource: "workos-organization",
+  workspaceId: defaultWorkspaceId(`workos-org:authz-org-a-${suffix}`),
   email: `authz-a-${suffix}@example.com`,
   name: "Authz Smoke User A",
   role: "admin",
@@ -46,7 +51,9 @@ const tenantA: TenantIdentity = {
 
 const tenantB: TenantIdentity = {
   userId: `authz-user-b-${suffix}`,
-  workspaceId: `authz-workspace-b-${suffix}`,
+  accountId: `workos-org:authz-org-b-${suffix}`,
+  accountSource: "workos-organization",
+  workspaceId: defaultWorkspaceId(`workos-org:authz-org-b-${suffix}`),
   email: `authz-b-${suffix}@example.com`,
   name: "Authz Smoke User B",
   role: "member",
@@ -56,7 +63,9 @@ const tenantB: TenantIdentity = {
 
 const disabledTenant: TenantIdentity = {
   userId: `authz-disabled-user-${suffix}`,
-  workspaceId: `authz-disabled-workspace-${suffix}`,
+  accountId: `workos-org:authz-disabled-org-${suffix}`,
+  accountSource: "workos-organization",
+  workspaceId: defaultWorkspaceId(`workos-org:authz-disabled-org-${suffix}`),
   email: `authz-disabled-${suffix}@example.com`,
   name: "Authz Smoke Disabled User",
   role: "member",
@@ -68,6 +77,8 @@ const headersFor = (identity: TenantIdentity) => {
     authorization: `Bearer ${token}`,
     "content-type": "application/json",
     "x-assistant-mk1-user-id": identity.userId,
+    "x-assistant-mk1-account-id": identity.accountId,
+    "x-assistant-mk1-account-source": identity.accountSource,
     "x-assistant-mk1-workspace-id": identity.workspaceId,
   };
 

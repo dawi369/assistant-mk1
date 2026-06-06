@@ -4,6 +4,7 @@ import {
   handleRunCallback,
   handleStartCloudflareDemoRun,
 } from "./demo-runs";
+import { handleAdminWorkspaceSummary } from "./admin-summary";
 import {
   handleControlPlaneEvents,
   handleControlPlaneEventStream,
@@ -17,6 +18,7 @@ import {
   handleLatestChatSession,
 } from "./langgraph-facade";
 import { handleWorkspaceContext } from "./workspace-context";
+import { handleActivateWorkspace, handleCreateWorkspace, handleListWorkspaces } from "./workspaces";
 import { resolveAgentIdentity } from "./authz";
 import { json, requireAuth } from "./http";
 import type { Env, WorkerExecutionContext } from "./types";
@@ -45,6 +47,23 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
 
   if (request.method === "GET" && url.pathname === "/workspace-context") {
     return handleWorkspaceContext(request, env, identity);
+  }
+
+  if (request.method === "GET" && url.pathname === "/admin/workspace-summary") {
+    return handleAdminWorkspaceSummary(request, env, identity);
+  }
+
+  if (request.method === "GET" && url.pathname === "/workspaces") {
+    return handleListWorkspaces(env, identity);
+  }
+
+  if (request.method === "POST" && url.pathname === "/workspaces") {
+    return handleCreateWorkspace(request, env, identity);
+  }
+
+  const activateWorkspaceMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/activate$/);
+  if (request.method === "POST" && activateWorkspaceMatch?.[1]) {
+    return handleActivateWorkspace(env, identity, decodeURIComponent(activateWorkspaceMatch[1]));
   }
 
   if (request.method === "GET" && url.pathname === "/events/latest") {
