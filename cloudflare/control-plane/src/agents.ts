@@ -1,19 +1,12 @@
+import { insertAgent, normalizeAgentProfile, toAgentSummary } from "./agent-records";
 import { upsertActiveAgentPreference } from "./authz";
 import { selectAgent, selectMembership, selectWorkspaceAgents } from "./authz-store";
-import { json } from "./http";
+import { isRecord, json, parseJson } from "./http";
 import { requireAdminMembership } from "./membership-policy";
-import type { AgentIdentity, AgentRow, Env } from "./types";
+import type { AgentIdentity, Env } from "./types";
 
-const toAgentSummary = (row: AgentRow, activeAgentId: string) => ({
-  id: row.id,
-  name: row.name,
-  description: row.description,
-  status: row.status,
-  isDefault: row.is_default === 1,
-  isActive: row.id === activeAgentId,
-  createdAt: row.created_at,
-  updatedAt: row.updated_at,
-});
+const agentNameMaxLength = 80;
+const agentDescriptionMaxLength = 240;
 
 export const handleListAgents = async (env: Env, identity: AgentIdentity) => {
   const agents = await selectWorkspaceAgents(env, identity.scope.workspaceId);
@@ -23,6 +16,65 @@ export const handleListAgents = async (env: Env, identity: AgentIdentity) => {
     activeAgentId: identity.agentId,
     agents: agents.results.map((agent) => toAgentSummary(agent, identity.agentId)),
   });
+};
+
+export const handleCreateAgent = async (request: Request, env: Env, identity: AgentIdentity) => {
+  const currentMembership = await selectMembership(
+    env,
+    identity.scope.userId,
+    identity.scope.workspaceId,
+  );
+  const adminError = requireAdminMembership(currentMembership);
+  if (adminError) return adminError;
+
+  const body = parseJson(await request.text());
+  const rawName = isRecord(body) && typeof body.name === "string" ? body.name.trim() : "";
+  const name = rawName.slice(0, agentNameMaxLength);
+  if (!name) {
+    return json({ ok: false, error: "Agent name is required" }, { status: 400 });
+  }
+
+  const rawDescription =
+    isRecord(body) && typeof body.description === "string" ? body.description.trim() : "";
+  const description = rawDescription ? rawDescription.slice(0, agentDescriptionMaxLength) : null;
+  const profile = normalizeAgentProfile(isRecord(body) ? body.profile : undefined);
+  if (!profile) {
+    return json(
+      { ok: false, error: "Agent profile must be one of default, analyst, or operator" },
+      { status: 400 },
+    );
+  }
+
+  const agentId = await insertAgent(env, {
+    workspaceId: identity.scope.workspaceId,
+    userId: identity.scope.userId,
+    name,
+    description,
+    profile,
+  });
+  const agent = await selectAgent(env, agentId, identity.scope.workspaceId);
+  if (!agent) {
+    return json({ ok: false, error: "Created agent not found" }, { status: 500 });
+  }
+
+  const activate = isRecord(body) && body.activate === true;
+  if (activate) {
+    await upsertActiveAgentPreference(env, {
+      userId: identity.scope.userId,
+      workspaceId: identity.scope.workspaceId,
+      agentId: agent.id,
+      reason: "agent-created",
+    });
+  }
+
+  return json(
+    {
+      ok: true,
+      activeAgentId: activate ? agent.id : identity.agentId,
+      agent: toAgentSummary(agent, activate ? agent.id : identity.agentId),
+    },
+    { status: 201 },
+  );
 };
 
 export const handleActivateAgent = async (env: Env, identity: AgentIdentity, agentId: string) => {

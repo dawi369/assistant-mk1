@@ -1,6 +1,7 @@
 import type { Id } from "@/lib/agent-framework/contracts";
 import { getWorkbenchIdentityHeaders } from "@/lib/workbench/agent-identity";
 import type {
+  AgentSummary,
   CloudflareAdminSummaryResponse,
   CloudflareAgentMutationResponse,
   CloudflareAgentsResponse,
@@ -148,6 +149,17 @@ export const activateCloudflareWorkspace = (workspaceId: Id) =>
   );
 
 export const getCloudflareAgents = () => requestControlPlane<CloudflareAgentsResponse>("/agents");
+
+export const createCloudflareAgent = (input: {
+  name: string;
+  description?: string;
+  profile: AgentSummary["profile"];
+  activate?: boolean;
+}) =>
+  requestControlPlane<CloudflareAgentMutationResponse>("/agents", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 
 export const activateCloudflareAgent = (agentId: Id) =>
   requestControlPlane<CloudflareAgentMutationResponse>(

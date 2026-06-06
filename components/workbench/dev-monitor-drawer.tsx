@@ -67,9 +67,13 @@ export function DevMonitorDrawer({
   const [isLoading, setIsLoading] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [isCreatingWorkspace, setIsCreatingWorkspace] = useState(false);
+  const [isCreatingAgent, setIsCreatingAgent] = useState(false);
   const [activatingWorkspaceId, setActivatingWorkspaceId] = useState<string | null>(null);
   const [activatingAgentId, setActivatingAgentId] = useState<string | null>(null);
   const [workspaceName, setWorkspaceName] = useState("");
+  const [agentName, setAgentName] = useState("");
+  const [agentDescription, setAgentDescription] = useState("");
+  const [agentProfile, setAgentProfile] = useState<"default" | "analyst" | "operator">("analyst");
   const [error, setError] = useState<string | null>(null);
 
   const demoSnapshot = summary?.demo.latestRun ?? null;
@@ -176,6 +180,36 @@ export function DevMonitorDrawer({
       );
     } finally {
       setActivatingWorkspaceId(null);
+    }
+  };
+
+  const createAgent = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const name = agentName.trim();
+    if (!name) return;
+
+    setIsCreatingAgent(true);
+    setError(null);
+    try {
+      const response = await fetch(agentsPath, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name,
+          description: agentDescription.trim() || undefined,
+          profile: agentProfile,
+          activate: true,
+        }),
+      });
+      await readJsonResponse(response, "Failed to create agent");
+      setAgentName("");
+      setAgentDescription("");
+      setAgentProfile("analyst");
+      await loadSummary();
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : "Failed to create agent");
+    } finally {
+      setIsCreatingAgent(false);
     }
   };
 
@@ -353,7 +387,45 @@ export function DevMonitorDrawer({
           <MonitorSection icon={BotIcon} title="Agents">
             <StatusRow label="Default agent" value={summary?.defaultAgent?.name} />
             <StatusRow label="Active agent" value={summary?.activeAgent?.name} />
+            <StatusRow label="Active profile" value={summary?.activeAgent?.profile} />
             <CopyId label="Active agent id" value={summary?.identity.agentId} />
+            <form className="space-y-2" onSubmit={createAgent}>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
+                <input
+                  className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring min-w-0 rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                  value={agentName}
+                  onChange={(event) => setAgentName(event.target.value)}
+                  placeholder="New test agent name"
+                  maxLength={80}
+                />
+                <select
+                  className="border-input bg-background ring-offset-background focus-visible:ring-ring rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                  value={agentProfile}
+                  onChange={(event) =>
+                    setAgentProfile(event.target.value as "default" | "analyst" | "operator")
+                  }
+                >
+                  <option value="analyst">Analyst</option>
+                  <option value="operator">Operator</option>
+                  <option value="default">Default</option>
+                </select>
+              </div>
+              <textarea
+                className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring min-h-16 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                value={agentDescription}
+                onChange={(event) => setAgentDescription(event.target.value)}
+                placeholder="Optional description"
+                maxLength={240}
+              />
+              <Button
+                type="submit"
+                size="sm"
+                disabled={isCreatingAgent || !agentName.trim() || !canManageAgents}
+              >
+                {isCreatingAgent ? <Loader2Icon className="animate-spin" /> : <PlusIcon />}
+                Create test agent
+              </Button>
+            </form>
             {summary?.agents.length ? (
               <ol className="space-y-2">
                 {summary.agents.map((agent) => (
@@ -364,6 +436,7 @@ export function DevMonitorDrawer({
                         <span className="text-muted-foreground block text-xs">
                           {agent.isActive ? "active" : "available"}
                           {agent.isDefault ? " / default" : ""}
+                          {` / ${agent.profile}`}
                         </span>
                       </span>
                       {agent.isActive ? (

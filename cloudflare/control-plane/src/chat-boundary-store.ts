@@ -275,6 +275,17 @@ export const updateChatRun = async (
   },
 ) => {
   const timestamp = new Date().toISOString();
+  const existing = await env.DB.prepare(
+    `SELECT metadata_json
+     FROM chat_runs
+     WHERE user_id = ? AND workspace_id = ? AND id = ?
+     LIMIT 1`,
+  )
+    .bind(input.scope.userId, input.scope.workspaceId, input.runId)
+    .first<{ metadata_json: string }>();
+  const existingMetadata = parseDataJson(existing?.metadata_json ?? "{}");
+  const metadata = input.metadata ? { ...existingMetadata, ...input.metadata } : existingMetadata;
+
   await env.DB.prepare(
     `UPDATE chat_runs
      SET status = ?,
@@ -289,7 +300,7 @@ export const updateChatRun = async (
     .bind(
       input.status,
       input.upstreamRunId ?? null,
-      toJson(input.metadata ?? {}),
+      toJson(metadata),
       input.error ?? null,
       input.status,
       timestamp,

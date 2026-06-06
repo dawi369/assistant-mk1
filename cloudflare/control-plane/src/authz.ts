@@ -243,7 +243,7 @@ export const createDefaultAgentIfMissing = async (
       "Default Agent",
       "Auto-bootstrapped default workspace agent.",
       input.userId,
-      toJson({ bootstrap: "workos" }),
+      toJson({ bootstrap: "workos", profile: "default" }),
       timestamp,
       timestamp,
     )

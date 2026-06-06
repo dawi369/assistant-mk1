@@ -250,8 +250,8 @@ Implemented:
 - assistant-ui thread remains primary.
 - Dev Monitor shows Cloudflare-derived account, workspace, membership, agents,
   chat path, demo path, recent events, and last error.
-- Dev Monitor supports name-only workspace create/switch and activation of
-  existing operator-provisioned agents.
+- Dev Monitor supports name-only workspace create/switch, test agent creation,
+  and active-agent switching for the current workspace.
 - `demo.inspect` remains a dev diagnostic action, not a product-level workflow.
 
 Next UI targets:

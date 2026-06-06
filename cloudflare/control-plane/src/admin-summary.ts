@@ -1,3 +1,4 @@
+import { toAgentSummary } from "./agent-records";
 import { getChatRuntimeSummary } from "./chat-runtime-summary";
 import { handleLatestControlPlaneEvents } from "./control-plane-events";
 import { getControlRunSnapshot, readLatestControlRun } from "./demo-run-store";
@@ -13,7 +14,6 @@ import {
 } from "./authz-store";
 import type {
   AgentIdentity,
-  AgentRow,
   ControlPlaneEventRow,
   ControlRunRow,
   Env,
@@ -55,17 +55,6 @@ const externalMembershipSummary = (request: Request) => {
     permissions,
   };
 };
-
-const toAgentSummary = (row: AgentRow, activeAgentId: string) => ({
-  id: row.id,
-  name: row.name,
-  description: row.description,
-  status: row.status,
-  isDefault: row.is_default === 1,
-  isActive: row.id === activeAgentId,
-  createdAt: row.created_at,
-  updatedAt: row.updated_at,
-});
 
 const toWorkspaceSummary = (row: WorkspaceRow, activeWorkspaceId: string) => ({
   id: row.id,

@@ -27,6 +27,7 @@
     "smoke:cloudflare-workspaces": "tsx scripts/smoke-cloudflare-workspaces.ts",
     "smoke:cloudflare-membership-policy": "tsx scripts/smoke-cloudflare-membership-policy.ts",
     "smoke:cloudflare-agent-selection": "tsx scripts/smoke-cloudflare-agent-selection.ts",
+    "smoke:cloudflare-agent-provisioning": "tsx scripts/smoke-cloudflare-agent-provisioning.ts",
     "smoke:cloudflare-admin-summary": "tsx scripts/smoke-cloudflare-admin-summary.ts",
     "smoke:cloudflare-chat-runtime-summary": "tsx scripts/smoke-cloudflare-chat-runtime-summary.ts",
     "smoke:cloudflare-workbench-run": "tsx scripts/smoke-cloudflare-workbench-run.ts",

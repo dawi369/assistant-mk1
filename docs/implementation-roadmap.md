@@ -182,16 +182,15 @@ Implemented:
   missing memberships, but Cloudflare D1 membership role/status/permissions are
   authoritative after bootstrap. Active members can read context; `owner` and
   `admin` gate workspace writes.
-- Agent routing v0: operator-provisioned agents stay workspace-scoped,
-  Cloudflare stores active-agent preferences per user/workspace, and Dev
-  Monitor can activate existing agents.
+- Agent routing v0: agents stay workspace-scoped, Cloudflare stores
+  active-agent preferences per user/workspace, and Dev Monitor can create and
+  activate test agents for the current workspace.
 
 Next target:
 
-- Add a focused chat-runtime summary repository over the existing D1 chat
-  session, thread, intent, policy, run, and event tables.
-- Surface the resolved chat state in Dev Monitor before broader R2/DO
-  provisioning or customer-facing admin screens.
+- Make agent profiles affect runtime behavior through server-owned prompt/tool
+  configuration after the workspace-scoped loading and preference model is
+  verified.
 - Keep Fly/LangGraph state access mediated through Cloudflare APIs.
 - Strengthen the Vercel-to-Cloudflare trust boundary with a stricter signed or
   service-authenticated server contract after this observability slice.

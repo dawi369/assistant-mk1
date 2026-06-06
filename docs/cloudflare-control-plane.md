@@ -4,9 +4,10 @@ Cloudflare is the preferred future live multi-user control plane for Assistant-M
 
 Document status: Cloudflare already owns the current authz/control-plane slice
 for users, accounts, workspaces, memberships, active workspace preferences,
-operator-provisioned agents, active agent preferences, demo runs, and the
+workspace-scoped test agents, active agent preferences, demo runs, and the
 transitional LangGraph facade. Durable Objects, R2 artifacts, richer policy,
-secret custody, and production admin flows are still target work.
+secret custody, customer-facing agent configuration, and production admin flows
+are still target work.
 
 ## Role
 

@@ -113,9 +113,10 @@ agent are the committed authorization boundaries.
   Hosted WorkOS traffic resolves the active agent inside Cloudflare, falling
   back to the workspace default agent when no preference exists, instead of
   forwarding `WORKBENCH_DEV_AGENT_ID`.
-- Agent records are operator-provisioned in this phase. Dev Monitor may show and
-  activate existing agents, but it does not create or configure agents for
-  customers.
+- Agent records are workspace-scoped Cloudflare D1 rows. Dev Monitor may create
+  test agents, show profiles, and activate existing agents for the current
+  operator. Customer-facing agent creation and configuration remain out of
+  scope.
 - Local development may fall back to `WORKBENCH_DEV_USER_ID` and
   `WORKBENCH_DEV_WORKSPACE_ID` plus `WORKBENCH_DEV_AGENT_ID` when WorkOS is not
   configured.
@@ -140,8 +141,8 @@ The next steps should keep WorkOS and Assistant-MK1 responsibilities separate:
    an Assistant-MK1 workspace. The current v0 keeps reads open to active
    members and gates workspace writes to `owner`/`admin`.
 4. Agent routing: agents remain scoped to workspaces. The current v0 keeps
-   agent provisioning operator-managed while Cloudflare stores active-agent
-   routing preferences for existing agents.
+   customer-facing agent provisioning out of scope while Cloudflare stores
+   active-agent routing preferences and Dev Monitor can create test agents.
 5. More Cloudflare ownership: Cloudflare should own app authorization, scoped
    state access, events, audit, run control, tool policy, and secret policy.
    The active v0 slice exposes chat runtime state from Cloudflare-owned D1 rows

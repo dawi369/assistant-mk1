@@ -20,8 +20,10 @@ import {
   touchChatThread,
   updateChatRun,
 } from "./chat-boundary-store";
+import { toAgentRuntimeMetadata } from "./agent-records";
 import { deriveChatExecutionMode, evaluateChatRunPolicy } from "./chat-policy";
 import { appendControlPlaneEvent } from "./control-plane-events";
+import { selectAgent } from "./authz-store";
 import { isRecord, json, parseJson } from "./http";
 import type { AgentIdentity, Env, WorkerExecutionContext } from "./types";
 
@@ -231,18 +233,24 @@ const handleCreateThread = async (
     );
   }
 
+  const activeAgent = await selectAgent(env, identity.agentId, identity.scope.workspaceId);
+  const agentMetadata = toAgentRuntimeMetadata(activeAgent, identity.agentId);
   const existingSession = await getLatestChatSession(env, identity.scope);
-  const createdSession = !existingSession;
+  const createdSession = !existingSession || existingSession.agent_id !== identity.agentId;
   const resolvedSessionId =
-    existingSession?.session_id ??
-    (await createChatSession(env, identity, { source: "langgraph-facade" }));
+    !createdSession && existingSession
+      ? existingSession.session_id
+      : await createChatSession(env, identity, {
+          source: "langgraph-facade",
+          agent: agentMetadata,
+        });
   if (createdSession) {
     await appendControlPlaneEvent(env, identity, {
       type: "chat.session.created",
       summary: "Created chat session for LangGraph thread ownership.",
       targetType: "chat_session",
       targetId: resolvedSessionId,
-      data: { source: "langgraph-facade" },
+      data: { source: "langgraph-facade", agent: agentMetadata },
     });
   }
   await storeChatThread(env, identity, resolvedSessionId, parsed.thread_id, parsed);
@@ -251,7 +259,7 @@ const handleCreateThread = async (
     summary: "Registered LangGraph thread ownership in Cloudflare.",
     targetType: "chat_thread",
     targetId: parsed.thread_id,
-    data: { sessionId: resolvedSessionId },
+    data: { sessionId: resolvedSessionId, agent: agentMetadata },
   });
   await touchChatSession(env, identity.scope, resolvedSessionId, parsed.thread_id);
 
@@ -322,19 +330,27 @@ export const handleLangGraphFacade = async (
       bodyBytes: bodyText.length,
       requestedExecutionMode,
     });
+    const activeAgent = await selectAgent(env, identity.agentId, identity.scope.workspaceId);
+    const agentMetadata = toAgentRuntimeMetadata(activeAgent, identity.agentId);
     const intentId = await createChatIntent(env, identity, {
       sessionId: thread.session_id,
       threadId,
       executionMode,
       status: policy.decision === "allow" ? "allowed" : "blocked",
-      payload,
+      payload: { ...payload, agent: agentMetadata },
     });
     await appendControlPlaneEvent(env, identity, {
       type: "chat.intent.created",
       summary: "Created chat response intent.",
       targetType: "chat_intent",
       targetId: intentId,
-      data: { threadId, sessionId: thread.session_id, executionMode, status: policy.decision },
+      data: {
+        threadId,
+        sessionId: thread.session_id,
+        executionMode,
+        status: policy.decision,
+        agent: agentMetadata,
+      },
     });
     const policyDecisionId = await createChatPolicyDecision(env, identity, {
       intentId,
@@ -349,7 +365,7 @@ export const handleLangGraphFacade = async (
       summary: policy.reason,
       targetType: "chat_policy_decision",
       targetId: policyDecisionId,
-      data: { threadId, intentId, executionMode },
+      data: { threadId, intentId, executionMode, agent: agentMetadata },
     });
 
     if (policy.decision === "block") {
@@ -369,14 +385,14 @@ export const handleLangGraphFacade = async (
       threadId,
       intentId,
       policyDecisionId,
-      metadata: { executionMode },
+      metadata: { executionMode, agent: agentMetadata },
     });
     await appendControlPlaneEvent(env, identity, {
       type: "chat.run.started",
       summary: "Started Cloudflare-gated chat run.",
       targetType: "chat_run",
       targetId: runId,
-      data: { threadId, intentId, policyDecisionId, executionMode },
+      data: { threadId, intentId, policyDecisionId, executionMode, agent: agentMetadata },
     });
     const upstream = await fetchUpstream(request, env, url, config, bodyText);
 
@@ -474,13 +490,18 @@ export const handleCreateChatSession = async (
   const raw = await request.text();
   const parsed = raw ? parseJson(raw) : null;
   const metadata = isRecord(parsed) && isRecord(parsed.metadata) ? parsed.metadata : {};
-  const sessionId = await createChatSession(env, identity, metadata);
+  const activeAgent = await selectAgent(env, identity.agentId, identity.scope.workspaceId);
+  const agentMetadata = toAgentRuntimeMetadata(activeAgent, identity.agentId);
+  const sessionId = await createChatSession(env, identity, {
+    ...metadata,
+    agent: agentMetadata,
+  });
   await appendControlPlaneEvent(env, identity, {
     type: "chat.session.created",
     summary: "Created chat session.",
     targetType: "chat_session",
     targetId: sessionId,
-    data: { source: "sessions-api" },
+    data: { source: "sessions-api", agent: agentMetadata },
   });
   const session = await getOwnedChatSession(env, identity.scope, sessionId);
   return json({ ok: true, session: toChatSessionSnapshot(session) }, { status: 201 });

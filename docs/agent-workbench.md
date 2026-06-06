@@ -58,12 +58,13 @@ active workspace through Cloudflare. This is not a customer-facing workspace
 product yet; it is the operator view needed before workspace invites, role
 policy, agent routing, or deeper chat debugging.
 
-Agent routing v0 keeps agents operator-provisioned. Customers and normal app
-users do not create agents in the workbench. Instead, Cloudflare resolves which
-existing workspace agent should handle traffic for the current user. This lets a
-client workspace have the agents configured during integration work, and lets
-apps like Polymancer provision one isolated agent per user or workspace without
-adding a generic agent builder.
+Agent routing v0 keeps agents workspace-scoped and Cloudflare-owned. Dev
+Monitor can create test agents for the active workspace, switch the current
+user's active agent preference, and show the active agent/profile used by chat
+runtime records. This is still not a customer-facing generic agent builder:
+client workspaces get production agents configured during integration work, and
+apps like Polymancer can later provision isolated agents per user or workspace
+without moving scope selection into the browser.
 
 Near-term WorkOS, workspace, and Cloudflare ownership sequence:
 
@@ -78,8 +79,8 @@ Near-term WorkOS, workspace, and Cloudflare ownership sequence:
    bootstrap, active members can read admin context, and `owner`/`admin` gates
    workspace create/switch.
 4. Agent routing: move from default-agent-only behavior to visible
-   workspace-scoped agent list and Cloudflare-owned active-agent preference.
-   Agent creation/configuration remains operator-managed for now.
+   workspace-scoped agent list, Dev Monitor-only test agent creation, and
+   Cloudflare-owned active-agent preference.
 5. More Cloudflare ownership: move context, policy, audit, events, run state,
    tool authorization, and eventually secret access behind Cloudflare APIs. The
    active v0 slice is a Cloudflare-owned chat runtime summary shown in Dev

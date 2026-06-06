@@ -87,6 +87,7 @@ export type ChatRuntimeSummary = {
     agentId?: Id;
     status?: string;
     activeThreadId?: Id;
+    metadata?: Record<string, unknown>;
     createdAt?: string;
     updatedAt?: string;
     lastSeenAt?: string;
@@ -103,8 +104,10 @@ export type ChatRuntimeSummary = {
   latestRun: {
     id?: Id;
     threadId?: Id;
+    agentId?: Id;
     upstreamRunId?: Id;
     status?: string;
+    metadata?: Record<string, unknown>;
     error?: string;
     startedAt?: string;
     completedAt?: string;
@@ -231,6 +234,7 @@ export type CloudflareAdminSummaryResponse = {
       name: string;
       description: string | null;
       status: string;
+      profile: "default" | "analyst" | "operator";
       isDefault: boolean;
       isActive: boolean;
       createdAt?: string;
@@ -241,6 +245,7 @@ export type CloudflareAdminSummaryResponse = {
       name: string;
       description: string | null;
       status: string;
+      profile: "default" | "analyst" | "operator";
       isDefault: boolean;
       isActive: boolean;
       createdAt?: string;
@@ -251,6 +256,7 @@ export type CloudflareAdminSummaryResponse = {
       name: string;
       description: string | null;
       status: string;
+      profile: "default" | "analyst" | "operator";
       isDefault: boolean;
       isActive: boolean;
       createdAt?: string;
@@ -318,6 +324,7 @@ export type AgentSummary = {
   name: string;
   description: string | null;
   status: string;
+  profile: "default" | "analyst" | "operator";
   isDefault: boolean;
   isActive: boolean;
   createdAt?: string;
