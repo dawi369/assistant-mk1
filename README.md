@@ -96,6 +96,7 @@ langgraph.json      LangGraph CLI config (graph id, node version, env file)
 - `docs/deployment-fly.md` — Fly dev/staging workflow
 - `docs/reference-apps/polymancer.md` — reference target for a demanding 24/7 tool-using agent
 - `docs/reference-apps/deployment-agent.md` — operational reference target for deployment agents
+- `docs/reference-apps/personal-job-agent.md` — personal job-search reference target with browser automation and policy-controlled applications
 
 ## External signals
 
