@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import {
   ActivityIcon,
   AlertCircleIcon,
-  BotIcon,
   Building2Icon,
+  ChevronDownIcon,
   FileTextIcon,
   Loader2Icon,
   MessageSquareIcon,
@@ -15,7 +15,6 @@ import {
   RefreshCwIcon,
   ShieldCheckIcon,
   UserIcon,
-  UsersIcon,
   WrenchIcon,
 } from "lucide-react";
 
@@ -30,6 +29,7 @@ import {
   terminalStatuses,
 } from "@/components/workbench/dev-monitor-primitives";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Dialog,
   DialogContent,
@@ -39,6 +39,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import type {
+  ChatRuntimeSummary,
   CloudflareAdminSummaryResponse,
   CloudflareOwnedDemoRunResponse,
 } from "@/lib/workbench/workbench-types";
@@ -55,6 +56,61 @@ const readJsonResponse = async <T,>(response: Response, fallback: string): Promi
 };
 
 const listValue = (items?: string[]) => (items && items.length > 0 ? items.join(", ") : undefined);
+
+const chatStateLabel = (state?: ChatRuntimeSummary["state"] | null) => {
+  switch (state) {
+    case "no_session":
+    case "no_thread":
+      return "No chat yet";
+    case "thread_ready":
+      return "Ready";
+    case "blocked":
+      return "Blocked by policy";
+    case "running":
+      return "Running";
+    case "failed":
+      return "Failed";
+    case "completed":
+      return "Completed";
+    default:
+      return "Loading";
+  }
+};
+
+const chatStateTone = (state?: ChatRuntimeSummary["state"] | null) => {
+  switch (state) {
+    case "thread_ready":
+    case "completed":
+      return "completed";
+    case "running":
+      return "running";
+    case "blocked":
+    case "failed":
+      return "failed";
+    default:
+      return undefined;
+  }
+};
+
+function DetailsBlock({
+  title,
+  children,
+  defaultOpen = false,
+}: {
+  title: string;
+  children: ReactNode;
+  defaultOpen?: boolean;
+}) {
+  return (
+    <Collapsible defaultOpen={defaultOpen} className="border-border rounded-md border">
+      <CollapsibleTrigger className="hover:bg-muted/60 flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm font-medium">
+        {title}
+        <ChevronDownIcon className="text-muted-foreground size-4" />
+      </CollapsibleTrigger>
+      <CollapsibleContent className="space-y-3 border-t px-3 py-3">{children}</CollapsibleContent>
+    </Collapsible>
+  );
+}
 
 export function DevMonitorDrawer({
   open,
@@ -74,7 +130,7 @@ export function DevMonitorDrawer({
   const [agentName, setAgentName] = useState("");
   const [agentDescription, setAgentDescription] = useState("");
   const [agentProfile, setAgentProfile] = useState<"default" | "analyst" | "operator">("analyst");
-  const [error, setError] = useState<string | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   const demoSnapshot = summary?.demo.latestRun ?? null;
   const chatRuntime = summary?.chatRuntime ?? null;
@@ -89,10 +145,30 @@ export function DevMonitorDrawer({
       chatRuntime?.events.at(0) ?? summary?.events.find((event) => event.type?.startsWith("chat.")),
     [chatRuntime?.events, summary?.events],
   );
+  const latestMeaningfulEvent = latestChatEvent ?? summary?.events.at(0) ?? null;
   const canManageWorkspaces =
     summary?.membership?.status === "active" &&
     ["owner", "admin"].includes(summary.membership.role.toLowerCase());
   const canManageAgents = canManageWorkspaces;
+  const importantError = fetchError
+    ? { message: fetchError, source: "drawer", status: undefined, targetId: undefined }
+    : chatRuntime?.failure
+      ? {
+          message: chatRuntime.failure.message,
+          source: chatRuntime.failure.source,
+          status: chatRuntime.failure.status,
+          targetId: chatRuntime.failure.targetId,
+        }
+      : summary?.lastError
+        ? {
+            message: summary.lastError.message,
+            source: summary.lastError.source,
+            status: summary.lastError.status,
+            targetId: summary.lastError.targetId,
+          }
+        : null;
+  const chatLabel = fetchError && !chatRuntime ? "Unavailable" : chatStateLabel(chatRuntime?.state);
+  const chatTone = fetchError && !chatRuntime ? "failed" : chatStateTone(chatRuntime?.state);
 
   const loadSummary = async () => {
     setIsLoading(true);
@@ -103,9 +179,11 @@ export function DevMonitorDrawer({
         "Failed to load Cloudflare admin summary",
       );
       setSummary(body.summary ?? null);
-      setError(null);
+      setFetchError(null);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Failed to load admin summary");
+      setFetchError(
+        loadError instanceof Error ? loadError.message : "Failed to load admin summary",
+      );
     } finally {
       setIsLoading(false);
     }
@@ -124,7 +202,7 @@ export function DevMonitorDrawer({
 
   const startDemoRun = async () => {
     setIsStarting(true);
-    setError(null);
+    setFetchError(null);
     try {
       const response = await fetch(cloudflareDemoRunsPath, { method: "POST" });
       await readJsonResponse<CloudflareOwnedDemoRunResponse>(
@@ -133,7 +211,7 @@ export function DevMonitorDrawer({
       );
       await loadSummary();
     } catch (startError) {
-      setError(
+      setFetchError(
         startError instanceof Error ? startError.message : "Failed to start Cloudflare demo run",
       );
     } finally {
@@ -147,7 +225,7 @@ export function DevMonitorDrawer({
     if (!name) return;
 
     setIsCreatingWorkspace(true);
-    setError(null);
+    setFetchError(null);
     try {
       const response = await fetch(workspacesPath, {
         method: "POST",
@@ -158,7 +236,9 @@ export function DevMonitorDrawer({
       setWorkspaceName("");
       await loadSummary();
     } catch (createError) {
-      setError(createError instanceof Error ? createError.message : "Failed to create workspace");
+      setFetchError(
+        createError instanceof Error ? createError.message : "Failed to create workspace",
+      );
     } finally {
       setIsCreatingWorkspace(false);
     }
@@ -166,7 +246,7 @@ export function DevMonitorDrawer({
 
   const activateWorkspace = async (workspaceId: string) => {
     setActivatingWorkspaceId(workspaceId);
-    setError(null);
+    setFetchError(null);
     try {
       const response = await fetch(
         `${workspacesPath}/${encodeURIComponent(workspaceId)}/activate`,
@@ -175,7 +255,7 @@ export function DevMonitorDrawer({
       await readJsonResponse(response, "Failed to activate workspace");
       await loadSummary();
     } catch (activateError) {
-      setError(
+      setFetchError(
         activateError instanceof Error ? activateError.message : "Failed to activate workspace",
       );
     } finally {
@@ -189,7 +269,7 @@ export function DevMonitorDrawer({
     if (!name) return;
 
     setIsCreatingAgent(true);
-    setError(null);
+    setFetchError(null);
     try {
       const response = await fetch(agentsPath, {
         method: "POST",
@@ -207,7 +287,7 @@ export function DevMonitorDrawer({
       setAgentProfile("analyst");
       await loadSummary();
     } catch (createError) {
-      setError(createError instanceof Error ? createError.message : "Failed to create agent");
+      setFetchError(createError instanceof Error ? createError.message : "Failed to create agent");
     } finally {
       setIsCreatingAgent(false);
     }
@@ -215,7 +295,7 @@ export function DevMonitorDrawer({
 
   const activateAgent = async (agentId: string) => {
     setActivatingAgentId(agentId);
-    setError(null);
+    setFetchError(null);
     try {
       const response = await fetch(`${agentsPath}/${encodeURIComponent(agentId)}/activate`, {
         method: "POST",
@@ -223,7 +303,9 @@ export function DevMonitorDrawer({
       await readJsonResponse(response, "Failed to activate agent");
       await loadSummary();
     } catch (activateError) {
-      setError(activateError instanceof Error ? activateError.message : "Failed to activate agent");
+      setFetchError(
+        activateError instanceof Error ? activateError.message : "Failed to activate agent",
+      );
     } finally {
       setActivatingAgentId(null);
     }
@@ -247,7 +329,7 @@ export function DevMonitorDrawer({
             Dev Monitor
           </DialogTitle>
           <DialogDescription id="dev-monitor-description">
-            Cloudflare-owned account, workspace, agent, chat, and demo.inspect state.
+            Flow-first view of Cloudflare-owned chat, workspace, agent, and diagnostic state.
           </DialogDescription>
         </DialogHeader>
 
@@ -262,270 +344,264 @@ export function DevMonitorDrawer({
             </Button>
           </div>
 
-          <MonitorSection icon={UserIcon} title="Identity">
-            <StatusRow
-              label="Auth"
-              value={summary?.identity.authMode ?? (isLoading ? "loading" : "unknown")}
-            />
-            <StatusRow
-              label="Account source"
-              value={summary?.account?.source ?? summary?.identity.workspaceSource ?? "unknown"}
-            />
-            <StatusRow label="User" value={summary?.user?.email ?? summary?.user?.displayName} />
-            <StatusRow label="User status" value={summary?.user?.status} />
-            <CopyId label="User id" value={summary?.identity.userId} />
-            <CopyId label="Account id" value={summary?.account?.id} />
-          </MonitorSection>
-
-          <MonitorSection icon={Building2Icon} title="Workspace">
-            <StatusRow label="Name" value={summary?.workspace?.name} />
-            <StatusRow label="Status" value={summary?.workspace?.status} />
-            <StatusRow
-              label="Default"
-              value={summary?.workspace ? String(summary.workspace.isDefault) : undefined}
-            />
-            <StatusRow
-              label="Active"
-              value={summary?.workspace ? String(summary.workspace.isActive) : undefined}
-            />
-            <CopyId label="Workspace id" value={summary?.identity.workspaceId} />
-            <form className="flex gap-2" onSubmit={createWorkspace}>
-              <input
-                className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring min-w-0 flex-1 rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-                value={workspaceName}
-                onChange={(event) => setWorkspaceName(event.target.value)}
-                placeholder="New workspace name"
-                maxLength={80}
+          <MonitorSection icon={ActivityIcon} title="Flow Overview">
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusPill status={chatLabel} tone={chatTone} />
+              {importantError ? <StatusPill status="Needs attention" tone="failed" /> : null}
+            </div>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <StatusRow label="Workspace" value={summary?.workspace?.name} compact tone="ok" />
+              <StatusRow
+                label="Agent"
+                value={
+                  summary?.activeAgent
+                    ? `${summary.activeAgent.name} / ${summary.activeAgent.profile}`
+                    : undefined
+                }
+                compact
+                tone="ok"
               />
-              <Button
-                type="submit"
-                size="sm"
-                disabled={isCreatingWorkspace || !workspaceName.trim() || !canManageWorkspaces}
-              >
-                {isCreatingWorkspace ? <Loader2Icon className="animate-spin" /> : <PlusIcon />}
-                Create
-              </Button>
-            </form>
-            {summary?.workspaces?.length ? (
-              <ol className="space-y-2">
-                {summary.workspaces.map((workspace) => (
-                  <li key={workspace.id} className="border-border rounded-md border p-3 text-sm">
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="min-w-0">
-                        <span className="block truncate font-medium">{workspace.name}</span>
-                        <span className="text-muted-foreground block text-xs">
-                          {workspace.isActive ? "active" : "available"}
-                          {workspace.isDefault ? " / default" : ""}
-                        </span>
-                      </span>
-                      {workspace.isActive ? (
-                        <StatusPill status="active" tone="completed" />
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => void activateWorkspace(workspace.id)}
-                          disabled={activatingWorkspaceId === workspace.id || !canManageWorkspaces}
-                        >
-                          {activatingWorkspaceId === workspace.id ? (
-                            <Loader2Icon className="animate-spin" />
-                          ) : null}
-                          Make active
-                        </Button>
-                      )}
-                    </div>
-                    <CopyId label="Workspace id" value={workspace.id} />
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <EmptyPanelText>No account workspaces loaded.</EmptyPanelText>
-            )}
-          </MonitorSection>
-
-          <MonitorSection icon={UsersIcon} title="Membership">
-            <StatusRow label="Source" value={summary?.membership?.source} />
-            <StatusRow
-              label="Role / status"
-              value={
-                summary?.membership
-                  ? `${summary.membership.role} / ${summary.membership.status}`
-                  : undefined
-              }
-            />
-            <StatusRow label="Roles" value={listValue(summary?.membership?.roles)} />
-            <StatusRow label="Permissions" value={listValue(summary?.membership?.permissions)} />
-            <StatusRow
-              label="Workspace admin"
-              value={summary?.membership ? String(canManageWorkspaces) : undefined}
-            />
-            {summary?.externalMembership ? (
-              <div className="border-border rounded-md border p-3">
-                <p className="text-muted-foreground text-xs">External WorkOS signal</p>
-                <StatusRow
-                  label="Role / status"
-                  value={[
-                    summary.externalMembership.role ?? "not available",
-                    summary.externalMembership.status ?? "not available",
-                  ].join(" / ")}
-                  compact
-                />
-                <StatusRow
-                  label="Roles"
-                  value={listValue(summary.externalMembership.roles)}
-                  compact
-                />
-                <StatusRow
-                  label="Permissions"
-                  value={listValue(summary.externalMembership.permissions)}
-                  compact
-                />
+              <StatusRow
+                label="Latest chat event"
+                value={latestMeaningfulEvent?.summary ?? latestMeaningfulEvent?.type}
+                compact
+              />
+              <StatusRow
+                label="Last error"
+                value={importantError?.message ?? "No current error"}
+                compact
+                tone={importantError ? "muted" : "ok"}
+              />
+            </div>
+            {importantError ? (
+              <div className="border-destructive/30 bg-destructive/10 rounded-md border p-3 text-sm">
+                <p className="text-destructive font-medium">{importantError.message}</p>
+                <p className="text-muted-foreground mt-1 text-xs">
+                  Open Advanced Details for source, status, and target ids.
+                </p>
               </div>
             ) : null}
           </MonitorSection>
 
-          <MonitorSection icon={BotIcon} title="Agents">
-            <StatusRow label="Default agent" value={summary?.defaultAgent?.name} />
-            <StatusRow label="Active agent" value={summary?.activeAgent?.name} />
-            <StatusRow label="Active profile" value={summary?.activeAgent?.profile} />
-            <CopyId label="Active agent id" value={summary?.identity.agentId} />
-            <form className="space-y-2" onSubmit={createAgent}>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
+          <MonitorSection icon={MessageSquareIcon} title="Chat Flow">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <StatusRow
+                label="Chat"
+                value={chatLabel}
+                compact
+                tone={
+                  chatRuntime?.state === "thread_ready" || chatRuntime?.state === "completed"
+                    ? "ok"
+                    : "muted"
+                }
+              />
+              <StatusRow
+                label="Run"
+                value={chatRuntime?.latestRun?.status ?? "No run yet"}
+                compact
+              />
+              <StatusRow
+                label="Thread"
+                value={chatRuntime?.latestThread?.status ?? "No thread yet"}
+                compact
+              />
+              <StatusRow
+                label="Policy"
+                value={
+                  chatRuntime?.latestPolicyDecision
+                    ? `${chatRuntime.latestPolicyDecision.decision}: ${chatRuntime.latestPolicyDecision.reason}`
+                    : "No policy decision yet"
+                }
+                compact
+              />
+            </div>
+            {chatRuntime?.failure ? (
+              <div className="border-destructive/30 bg-destructive/10 rounded-md border p-3 text-sm">
+                <p className="text-destructive font-medium">{chatRuntime.failure.message}</p>
+                <p className="text-muted-foreground mt-1 text-xs">
+                  {chatRuntime.failure.source}
+                  {chatRuntime.failure.status ? ` / ${chatRuntime.failure.status}` : ""}
+                </p>
+              </div>
+            ) : (
+              <EmptyPanelText>
+                {fetchError && !chatRuntime
+                  ? "The drawer could not load the Cloudflare summary. Check the current session or local auth fallback."
+                  : chatRuntime?.state === "no_session" || chatRuntime?.state === "no_thread"
+                    ? "Send a message to create the first chat session for this workspace."
+                    : "Chat state is being read from Cloudflare for the active workspace and agent."}
+              </EmptyPanelText>
+            )}
+          </MonitorSection>
+
+          <MonitorSection icon={UserIcon} title="Current Scope">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <StatusRow label="User" value={summary?.user?.email ?? summary?.user?.displayName} />
+              <StatusRow
+                label="Account"
+                value={summary?.account?.source ?? summary?.identity.workspaceSource}
+              />
+              <StatusRow
+                label="Membership"
+                value={
+                  summary?.membership
+                    ? `${summary.membership.role} / ${summary.membership.status}`
+                    : undefined
+                }
+              />
+              <StatusRow
+                label="Admin controls"
+                value={summary?.membership ? (canManageWorkspaces ? "Enabled" : "Read only") : ""}
+              />
+            </div>
+          </MonitorSection>
+
+          <MonitorSection icon={Building2Icon} title="Manage Workspace & Agents">
+            <DetailsBlock title="Workspaces">
+              <StatusRow label="Active workspace" value={summary?.workspace?.name} />
+              <form className="flex gap-2" onSubmit={createWorkspace}>
                 <input
-                  className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring min-w-0 rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-                  value={agentName}
-                  onChange={(event) => setAgentName(event.target.value)}
-                  placeholder="New test agent name"
+                  className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring min-w-0 flex-1 rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                  value={workspaceName}
+                  onChange={(event) => setWorkspaceName(event.target.value)}
+                  placeholder="New workspace name"
                   maxLength={80}
                 />
-                <select
-                  className="border-input bg-background ring-offset-background focus-visible:ring-ring rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-                  value={agentProfile}
-                  onChange={(event) =>
-                    setAgentProfile(event.target.value as "default" | "analyst" | "operator")
-                  }
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={isCreatingWorkspace || !workspaceName.trim() || !canManageWorkspaces}
                 >
-                  <option value="analyst">Analyst</option>
-                  <option value="operator">Operator</option>
-                  <option value="default">Default</option>
-                </select>
-              </div>
-              <textarea
-                className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring min-h-16 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-                value={agentDescription}
-                onChange={(event) => setAgentDescription(event.target.value)}
-                placeholder="Optional description"
-                maxLength={240}
-              />
-              <Button
-                type="submit"
-                size="sm"
-                disabled={isCreatingAgent || !agentName.trim() || !canManageAgents}
-              >
-                {isCreatingAgent ? <Loader2Icon className="animate-spin" /> : <PlusIcon />}
-                Create test agent
-              </Button>
-            </form>
-            {summary?.agents.length ? (
-              <ol className="space-y-2">
-                {summary.agents.map((agent) => (
-                  <li key={agent.id} className="border-border rounded-md border p-3 text-sm">
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="min-w-0">
-                        <span className="block truncate font-medium">{agent.name}</span>
-                        <span className="text-muted-foreground block text-xs">
-                          {agent.isActive ? "active" : "available"}
-                          {agent.isDefault ? " / default" : ""}
-                          {` / ${agent.profile}`}
+                  {isCreatingWorkspace ? <Loader2Icon className="animate-spin" /> : <PlusIcon />}
+                  Create
+                </Button>
+              </form>
+              {summary?.workspaces?.length ? (
+                <ol className="space-y-2">
+                  {summary.workspaces.map((workspace) => (
+                    <li key={workspace.id} className="border-border rounded-md border p-3 text-sm">
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium">{workspace.name}</span>
+                          <span className="text-muted-foreground block text-xs">
+                            {workspace.isActive ? "active" : "available"}
+                            {workspace.isDefault ? " / default" : ""}
+                          </span>
                         </span>
-                      </span>
-                      {agent.isActive ? (
-                        <StatusPill status="active" tone="completed" />
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => void activateAgent(agent.id)}
-                          disabled={
-                            activatingAgentId === agent.id ||
-                            !canManageAgents ||
-                            agent.status !== "active"
-                          }
-                        >
-                          {activatingAgentId === agent.id ? (
-                            <Loader2Icon className="animate-spin" />
-                          ) : null}
-                          Make active
-                        </Button>
-                      )}
-                    </div>
-                    <div className="mt-2">
-                      <StatusPill
-                        status={agent.isDefault ? `default / ${agent.status}` : agent.status}
-                        tone={agent.status}
-                      />
-                    </div>
-                    {agent.description ? (
-                      <p className="text-muted-foreground mt-1 text-xs">{agent.description}</p>
-                    ) : null}
-                    <CopyId label="Agent id" value={agent.id} />
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <EmptyPanelText>No workspace agents loaded.</EmptyPanelText>
-            )}
+                        {workspace.isActive ? (
+                          <StatusPill status="active" tone="completed" />
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => void activateWorkspace(workspace.id)}
+                            disabled={
+                              activatingWorkspaceId === workspace.id || !canManageWorkspaces
+                            }
+                          >
+                            {activatingWorkspaceId === workspace.id ? (
+                              <Loader2Icon className="animate-spin" />
+                            ) : null}
+                            Make active
+                          </Button>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <EmptyPanelText>No account workspaces loaded.</EmptyPanelText>
+              )}
+            </DetailsBlock>
+
+            <DetailsBlock title="Agents">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <StatusRow label="Active agent" value={summary?.activeAgent?.name} />
+                <StatusRow label="Profile" value={summary?.activeAgent?.profile} />
+              </div>
+              <form className="space-y-2" onSubmit={createAgent}>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
+                  <input
+                    className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring min-w-0 rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                    value={agentName}
+                    onChange={(event) => setAgentName(event.target.value)}
+                    placeholder="New test agent name"
+                    maxLength={80}
+                  />
+                  <select
+                    className="border-input bg-background ring-offset-background focus-visible:ring-ring rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                    value={agentProfile}
+                    onChange={(event) =>
+                      setAgentProfile(event.target.value as "default" | "analyst" | "operator")
+                    }
+                  >
+                    <option value="analyst">Analyst</option>
+                    <option value="operator">Operator</option>
+                    <option value="default">Default</option>
+                  </select>
+                </div>
+                <textarea
+                  className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring min-h-16 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                  value={agentDescription}
+                  onChange={(event) => setAgentDescription(event.target.value)}
+                  placeholder="Optional description"
+                  maxLength={240}
+                />
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={isCreatingAgent || !agentName.trim() || !canManageAgents}
+                >
+                  {isCreatingAgent ? <Loader2Icon className="animate-spin" /> : <PlusIcon />}
+                  Create and activate test agent
+                </Button>
+              </form>
+              {summary?.agents.length ? (
+                <ol className="space-y-2">
+                  {summary.agents.map((agent) => (
+                    <li key={agent.id} className="border-border rounded-md border p-3 text-sm">
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium">{agent.name}</span>
+                          <span className="text-muted-foreground block text-xs">
+                            {agent.isActive ? "active" : "available"}
+                            {agent.isDefault ? " / default" : ""}
+                            {` / ${agent.profile}`}
+                          </span>
+                        </span>
+                        {agent.isActive ? (
+                          <StatusPill status="active" tone="completed" />
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => void activateAgent(agent.id)}
+                            disabled={
+                              activatingAgentId === agent.id ||
+                              !canManageAgents ||
+                              agent.status !== "active"
+                            }
+                          >
+                            {activatingAgentId === agent.id ? (
+                              <Loader2Icon className="animate-spin" />
+                            ) : null}
+                            Make active
+                          </Button>
+                        )}
+                      </div>
+                      {agent.description ? (
+                        <p className="text-muted-foreground mt-1 text-xs">{agent.description}</p>
+                      ) : null}
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <EmptyPanelText>No workspace agents loaded.</EmptyPanelText>
+              )}
+            </DetailsBlock>
           </MonitorSection>
 
-          <MonitorSection icon={MessageSquareIcon} title="Chat Path">
-            <StatusRow
-              label="Runtime state"
-              value={chatRuntime?.state ?? (isLoading ? "loading" : "no summary")}
-              tone={chatRuntime?.state === "completed" ? "ok" : "muted"}
-            />
-            <StatusRow label="Latest session" value={chatRuntime?.latestSession?.status} />
-            <StatusRow label="Latest thread" value={chatRuntime?.latestThread?.status} />
-            <StatusRow label="Latest run" value={chatRuntime?.latestRun?.status} />
-            <StatusRow
-              label="Latest policy"
-              value={
-                chatRuntime?.latestPolicyDecision
-                  ? `${chatRuntime.latestPolicyDecision.decision}: ${chatRuntime.latestPolicyDecision.reason}`
-                  : undefined
-              }
-            />
-            <StatusRow label="Failure" value={chatRuntime?.failure?.message} tone="muted" />
-            <StatusRow
-              label="Latest chat event"
-              value={latestChatEvent?.type ?? "no chat event loaded"}
-              tone={latestChatEvent ? "ok" : "muted"}
-            />
-            <CopyId label="Session id" value={chatRuntime?.latestSession?.sessionId} />
-            <CopyId label="Thread id" value={chatRuntime?.latestThread?.threadId} />
-            <CopyId label="Chat intent id" value={chatRuntime?.latestIntent?.id} />
-            <CopyId label="Policy id" value={chatRuntime?.latestPolicyDecision?.id} />
-            <CopyId label="Chat run id" value={chatRuntime?.latestRun?.id} />
-            <CopyId label="Upstream run id" value={chatRuntime?.latestRun?.upstreamRunId} />
-            {chatRuntime?.events.length ? (
-              <ol className="space-y-2">
-                {chatRuntime.events.slice(0, 5).map((event) => (
-                  <li key={event.id} className="border-border rounded-md border p-3 text-sm">
-                    <span className="block truncate font-medium">{event.type}</span>
-                    <span className="text-muted-foreground block">{event.summary}</span>
-                    <span className="text-muted-foreground/80 block truncate text-xs">
-                      {formatTime(event.createdAt)}
-                      {event.targetType ? ` / ${event.targetType}` : ""}
-                    </span>
-                    <CopyId label="Event id" value={event.id} />
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <EmptyPanelText>Send a message to populate chat runtime events.</EmptyPanelText>
-            )}
-          </MonitorSection>
-
-          <MonitorSection icon={WrenchIcon} title="Demo Inspect Path">
+          <MonitorSection icon={WrenchIcon} title="Diagnostic Run">
             <div className="flex items-center justify-between gap-3">
               <StatusPill status={`demo run: ${run?.status ?? "idle"}`} tone={run?.status} />
               <Button size="sm" onClick={startDemoRun} disabled={isStarting || isDemoActive}>
@@ -533,81 +609,126 @@ export function DevMonitorDrawer({
                 Run diagnostic
               </Button>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <StatusRow label="Mode" value={run?.execution?.mode ?? "dry_run"} compact />
-              <StatusRow label="Stage" value={run?.stage ?? "observe"} compact />
-              <StatusRow
-                label="Intent"
-                value={demoSnapshot?.intent?.type ?? "not created"}
-                compact
-              />
-              <StatusRow label="Updated" value={formatTime(run?.updatedAt)} compact />
-            </div>
-            <CopyId label="Run id" value={run?.id} />
-            <RuntimeRecord
-              icon={WrenchIcon}
-              label="Tool call"
-              title={latestToolCall?.toolId ?? "none yet"}
-              detail={latestToolCall?.outputSummary ?? latestToolCall?.inputSummary}
-              status={latestToolCall?.status}
-            />
-            <RuntimeRecord
-              icon={FileTextIcon}
-              label="Artifact"
-              title={latestArtifact?.title ?? "none yet"}
-              detail={latestArtifact?.uri}
-            />
-            <RuntimeRecord
-              icon={ShieldCheckIcon}
-              label="Decision"
-              title={latestDecision?.title ?? "none yet"}
-              detail={latestDecision?.summary}
-            />
-          </MonitorSection>
-
-          <MonitorSection icon={ActivityIcon} title="Cloudflare Events">
-            {summary?.events.length ? (
-              <ol className="space-y-3">
-                {summary.events.slice(0, 12).map((event) => (
-                  <li key={event.id} className="grid grid-cols-[0.75rem_1fr] gap-3 text-sm">
-                    <span className="bg-primary mt-1.5 size-2 rounded-full" />
-                    <span className="min-w-0">
-                      <span className="block truncate font-medium">
-                        {event.type ?? "control.event"}
-                      </span>
-                      <span className="text-muted-foreground block">
-                        {event.summary ?? "Control-plane event recorded."}
-                      </span>
-                      <span className="text-muted-foreground/80 block truncate text-xs">
-                        {formatTime(event.createdAt)}
-                        {event.targetType ? ` / ${event.targetType}` : ""}
-                      </span>
-                    </span>
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <EmptyPanelText>Open chat or run the diagnostic to populate events.</EmptyPanelText>
-            )}
-          </MonitorSection>
-
-          <MonitorSection icon={AlertCircleIcon} title="Last Error">
-            {error ? <p className="text-destructive text-sm">{error}</p> : null}
-            {summary?.lastError ? (
-              <div className="border-destructive/30 bg-destructive/10 rounded-md border p-3 text-sm">
-                <p className="text-destructive font-medium">{summary.lastError.message}</p>
-                <p className="text-muted-foreground mt-1 text-xs">
-                  {summary.lastError.source}
-                  {summary.lastError.status ? ` / ${summary.lastError.status}` : ""}
-                  {summary.lastError.createdAt
-                    ? ` / ${formatTime(summary.lastError.createdAt)}`
-                    : ""}
-                </p>
-                <CopyId label="Error target id" value={summary.lastError.targetId} />
+            <DetailsBlock title="Diagnostic details">
+              <div className="grid grid-cols-2 gap-2">
+                <StatusRow label="Mode" value={run?.execution?.mode ?? "dry_run"} compact />
+                <StatusRow label="Stage" value={run?.stage ?? "observe"} compact />
+                <StatusRow
+                  label="Intent"
+                  value={demoSnapshot?.intent?.type ?? "not created"}
+                  compact
+                />
+                <StatusRow label="Updated" value={formatTime(run?.updatedAt)} compact />
               </div>
-            ) : !error ? (
-              <EmptyPanelText>No Cloudflare-owned error found for this scope.</EmptyPanelText>
-            ) : null}
+              <RuntimeRecord
+                icon={WrenchIcon}
+                label="Tool call"
+                title={latestToolCall?.toolId ?? "none yet"}
+                detail={latestToolCall?.outputSummary ?? latestToolCall?.inputSummary}
+                status={latestToolCall?.status}
+              />
+              <RuntimeRecord
+                icon={FileTextIcon}
+                label="Artifact"
+                title={latestArtifact?.title ?? "none yet"}
+                detail={latestArtifact?.uri}
+              />
+              <RuntimeRecord
+                icon={ShieldCheckIcon}
+                label="Decision"
+                title={latestDecision?.title ?? "none yet"}
+                detail={latestDecision?.summary}
+              />
+            </DetailsBlock>
+          </MonitorSection>
+
+          <MonitorSection icon={AlertCircleIcon} title="Advanced Details">
+            <DetailsBlock title="Raw scope ids">
+              <CopyId label="User id" value={summary?.identity.userId} />
+              <CopyId label="Account id" value={summary?.account?.id} />
+              <CopyId label="Workspace id" value={summary?.identity.workspaceId} />
+              <CopyId label="Active agent id" value={summary?.identity.agentId} />
+              <CopyId label="Session id" value={chatRuntime?.latestSession?.sessionId} />
+              <CopyId label="Thread id" value={chatRuntime?.latestThread?.threadId} />
+              <CopyId label="Chat intent id" value={chatRuntime?.latestIntent?.id} />
+              <CopyId label="Policy id" value={chatRuntime?.latestPolicyDecision?.id} />
+              <CopyId label="Chat run id" value={chatRuntime?.latestRun?.id} />
+              <CopyId label="Upstream run id" value={chatRuntime?.latestRun?.upstreamRunId} />
+              <CopyId label="Demo run id" value={run?.id} />
+            </DetailsBlock>
+
+            <DetailsBlock title="Membership and external identity">
+              <StatusRow label="Auth mode" value={summary?.identity.authMode} />
+              <StatusRow label="Account source" value={summary?.account?.source} />
+              <StatusRow label="Membership source" value={summary?.membership?.source} />
+              <StatusRow label="Roles" value={listValue(summary?.membership?.roles)} />
+              <StatusRow label="Permissions" value={listValue(summary?.membership?.permissions)} />
+              {summary?.externalMembership ? (
+                <div className="border-border rounded-md border p-3">
+                  <p className="text-muted-foreground text-xs">External WorkOS signal</p>
+                  <StatusRow
+                    label="Role / status"
+                    value={[
+                      summary.externalMembership.role ?? "not available",
+                      summary.externalMembership.status ?? "not available",
+                    ].join(" / ")}
+                    compact
+                  />
+                  <StatusRow
+                    label="Roles"
+                    value={listValue(summary.externalMembership.roles)}
+                    compact
+                  />
+                  <StatusRow
+                    label="Permissions"
+                    value={listValue(summary.externalMembership.permissions)}
+                    compact
+                  />
+                </div>
+              ) : null}
+            </DetailsBlock>
+
+            <DetailsBlock title="Cloudflare events">
+              {summary?.events.length ? (
+                <ol className="space-y-3">
+                  {summary.events.slice(0, 12).map((event) => (
+                    <li key={event.id} className="grid grid-cols-[0.75rem_1fr] gap-3 text-sm">
+                      <span className="bg-primary mt-1.5 size-2 rounded-full" />
+                      <span className="min-w-0">
+                        <span className="block truncate font-medium">
+                          {event.type ?? "control.event"}
+                        </span>
+                        <span className="text-muted-foreground block">
+                          {event.summary ?? "Control-plane event recorded."}
+                        </span>
+                        <span className="text-muted-foreground/80 block truncate text-xs">
+                          {formatTime(event.createdAt)}
+                          {event.targetType ? ` / ${event.targetType}` : ""}
+                        </span>
+                        <CopyId label="Event id" value={event.id} />
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <EmptyPanelText>Open chat or run the diagnostic to populate events.</EmptyPanelText>
+              )}
+            </DetailsBlock>
+
+            <DetailsBlock title="Error internals" defaultOpen={Boolean(importantError)}>
+              {importantError ? (
+                <div className="border-destructive/30 bg-destructive/10 rounded-md border p-3 text-sm">
+                  <p className="text-destructive font-medium">{importantError.message}</p>
+                  <p className="text-muted-foreground mt-1 text-xs">
+                    {importantError.source}
+                    {importantError.status ? ` / ${importantError.status}` : ""}
+                  </p>
+                  <CopyId label="Error target id" value={importantError.targetId} />
+                </div>
+              ) : (
+                <EmptyPanelText>No Cloudflare-owned error found for this scope.</EmptyPanelText>
+              )}
+            </DetailsBlock>
           </MonitorSection>
         </div>
       </DialogContent>

@@ -171,9 +171,9 @@ Implemented:
 
 - Dev Monitor v1 as the first read-only admin visibility slice:
   Cloudflare `GET /admin/workspace-summary`, Vercel
-  `GET /api/workbench/admin-summary`, and a drawer that shows resolved
-  account, workspace, membership, agents, chat path, demo path, recent events,
-  and last Cloudflare-owned error.
+  `GET /api/workbench/admin-summary`, and a flow-first drawer that shows chat
+  readiness, active workspace/agent, latest events, and important errors before
+  secondary management controls and advanced raw details.
 - Workspace management v0 as the first Cloudflare-owned workspace model
   slice: D1 active workspace preference, Cloudflare `GET /workspaces`,
   `POST /workspaces`, `POST /workspaces/:workspaceId/activate`, Vercel

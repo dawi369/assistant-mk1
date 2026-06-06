@@ -50,7 +50,8 @@ Current implemented layout:
 
 - Main thread region using assistant-ui.
 - Top-right auth controls.
-- Top-right Dev Monitor drawer for Cloudflare-owned admin/runtime visibility.
+- Top-right Dev Monitor drawer for flow-first Cloudflare-owned admin/runtime
+  visibility.
 - Dev Monitor diagnostic action for `demo.inspect`.
 
 Target layout:
@@ -248,10 +249,14 @@ Source:
 Implemented:
 
 - assistant-ui thread remains primary.
-- Dev Monitor shows Cloudflare-derived account, workspace, membership, agents,
-  chat path, demo path, recent events, and last error.
+- Dev Monitor opens as a flow-first panel: chat readiness, active workspace,
+  active agent/profile, latest meaningful event, and important errors are
+  shown first.
 - Dev Monitor supports name-only workspace create/switch, test agent creation,
-  and active-agent switching for the current workspace.
+  and active-agent switching for the current workspace as secondary management
+  controls.
+- Raw ids, external WorkOS signals, recent Cloudflare events, and diagnostic
+  internals stay available in advanced details.
 - `demo.inspect` remains a dev diagnostic action, not a product-level workflow.
 
 Next UI targets:

@@ -50,7 +50,11 @@ agent ids.
 
 Dev Monitor v1 is the first admin visibility slice. It replaces scattered
 runtime widgets with one Cloudflare-backed admin summary while keeping the
-existing top-right drawer and demo.inspect diagnostic action.
+existing top-right drawer and demo.inspect diagnostic action. The current
+drawer is flow-first: it leads with chat readiness, active workspace, active
+agent/profile, latest meaningful event, and the important error. Workspace and
+agent management remain available as secondary controls, while raw ids, recent
+events, and external WorkOS signals stay in advanced details.
 
 Workspace management v0 is the current Dev Monitor-only slice: list workspaces
 for the current WorkOS account, create a name-only workspace, and switch the
@@ -113,7 +117,8 @@ Near-term WorkOS, workspace, and Cloudflare ownership sequence:
 Implemented:
 
 - Default assistant-ui chat remains the normal screen.
-- Dev Monitor provides Cloudflare-derived admin/runtime visibility.
+- Dev Monitor provides Cloudflare-derived admin/runtime visibility with a
+  flow-first chat overview and secondary workspace/agent controls.
 - WorkOS, workspace, membership, and active agent scope are server-derived.
 - The first typed diagnostic tool path exists through `demo.inspect`.
 
