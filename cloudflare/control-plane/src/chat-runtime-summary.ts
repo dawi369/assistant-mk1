@@ -1,0 +1,187 @@
+import {
+  getLatestChatIntent,
+  getLatestChatPolicyDecision,
+  getLatestChatRun,
+  getLatestChatSession,
+  toChatIntentSnapshot,
+  toChatPolicyDecisionSnapshot,
+  toChatRunSnapshot,
+  toChatSessionSnapshot,
+  toChatThreadSnapshot,
+} from "./chat-boundary-store";
+import { json } from "./http";
+import { toControlPlaneEventSnapshot } from "./control-plane-events";
+import type {
+  AgentIdentity,
+  ChatRunRow,
+  ChatThreadRow,
+  ControlPlaneEventRow,
+  Env,
+  TenantScope,
+} from "./types";
+
+type ChatRuntimeState =
+  | "no_session"
+  | "no_thread"
+  | "thread_ready"
+  | "blocked"
+  | "running"
+  | "failed"
+  | "completed";
+
+export const latestThreadForSession = async (
+  env: Env,
+  scope: TenantScope,
+  sessionId: string,
+  activeThreadId?: string,
+) => {
+  if (activeThreadId) {
+    const activeThread = await env.DB.prepare(
+      `SELECT thread_id, session_id, user_id, workspace_id, agent_id, status, upstream_json,
+              created_at, updated_at, last_seen_at
+       FROM chat_threads
+       WHERE user_id = ? AND workspace_id = ? AND session_id = ? AND thread_id = ?
+       LIMIT 1`,
+    )
+      .bind(scope.userId, scope.workspaceId, sessionId, activeThreadId)
+      .first<ChatThreadRow>();
+    if (activeThread) return activeThread;
+  }
+
+  return env.DB.prepare(
+    `SELECT thread_id, session_id, user_id, workspace_id, agent_id, status, upstream_json,
+            created_at, updated_at, last_seen_at
+     FROM chat_threads
+     WHERE user_id = ? AND workspace_id = ? AND session_id = ?
+     ORDER BY updated_at DESC, created_at DESC
+     LIMIT 1`,
+  )
+    .bind(scope.userId, scope.workspaceId, sessionId)
+    .first<ChatThreadRow>();
+};
+
+const latestFailedChatRun = (env: Env, scope: TenantScope) =>
+  env.DB.prepare(
+    `SELECT id, intent_id, policy_decision_id, thread_id, user_id, workspace_id, agent_id,
+            upstream_run_id, status, metadata_json, error, started_at, completed_at,
+            failed_at, updated_at
+     FROM chat_runs
+     WHERE user_id = ? AND workspace_id = ? AND (status = 'failed' OR error IS NOT NULL)
+     ORDER BY updated_at DESC, started_at DESC
+     LIMIT 1`,
+  )
+    .bind(scope.userId, scope.workspaceId)
+    .first<ChatRunRow>();
+
+const chatRuntimeEvents = async (env: Env, identity: AgentIdentity, limit = 8) => {
+  const events = await env.DB.prepare(
+    `SELECT id, user_id, workspace_id, agent_id, type, summary, target_type, target_id,
+            data_json, created_at
+     FROM control_plane_events
+     WHERE user_id = ? AND workspace_id = ? AND type LIKE 'chat.%'
+     ORDER BY rowid DESC
+     LIMIT ?`,
+  )
+    .bind(identity.scope.userId, identity.scope.workspaceId, limit)
+    .all<ControlPlaneEventRow>();
+  return events.results.map(toControlPlaneEventSnapshot);
+};
+
+const deriveState = (input: {
+  hasSession: boolean;
+  hasThread: boolean;
+  latestRun: ChatRunRow | null;
+  latestPolicyDecision: Awaited<ReturnType<typeof getLatestChatPolicyDecision>>;
+}): ChatRuntimeState => {
+  if (!input.hasSession) return "no_session";
+  if (!input.hasThread) return "no_thread";
+  if (input.latestPolicyDecision?.decision === "block" && !input.latestRun) return "blocked";
+  if (input.latestRun?.status === "failed" || input.latestRun?.error) return "failed";
+  if (input.latestRun?.status === "running") return "running";
+  if (input.latestRun?.status === "completed") return "completed";
+  return "thread_ready";
+};
+
+const failureSummary = (
+  state: ChatRuntimeState,
+  latestRun: ChatRunRow | null,
+  latestPolicyDecision: Awaited<ReturnType<typeof getLatestChatPolicyDecision>>,
+  failedChatRun: ChatRunRow | null,
+) => {
+  if (state === "failed" && latestRun) {
+    return {
+      source: "chat-run",
+      message: latestRun.error ?? "Chat run failed.",
+      status: latestRun.status,
+      targetId: latestRun.id,
+      createdAt: latestRun.updated_at,
+    };
+  }
+
+  if (state === "blocked" && latestPolicyDecision) {
+    return {
+      source: "chat-policy",
+      message: latestPolicyDecision.reason,
+      status: latestPolicyDecision.decision,
+      targetId: latestPolicyDecision.id,
+      createdAt: latestPolicyDecision.created_at,
+    };
+  }
+
+  if (failedChatRun) {
+    return {
+      source: "chat-run",
+      message: failedChatRun.error ?? "Previous chat run failed.",
+      status: failedChatRun.status,
+      targetId: failedChatRun.id,
+      createdAt: failedChatRun.updated_at,
+    };
+  }
+
+  return null;
+};
+
+export const getChatRuntimeSummary = async (env: Env, identity: AgentIdentity) => {
+  const latestSession = await getLatestChatSession(env, identity.scope);
+  const latestThread = latestSession
+    ? await latestThreadForSession(
+        env,
+        identity.scope,
+        latestSession.session_id,
+        latestSession.active_thread_id ?? undefined,
+      )
+    : null;
+
+  const [latestRun, latestIntent, latestPolicyDecision, failedChatRun, events] = await Promise.all([
+    latestThread ? getLatestChatRun(env, identity.scope, latestThread.thread_id) : null,
+    latestThread ? getLatestChatIntent(env, identity.scope, latestThread.thread_id) : null,
+    latestThread ? getLatestChatPolicyDecision(env, identity.scope, latestThread.thread_id) : null,
+    latestFailedChatRun(env, identity.scope),
+    chatRuntimeEvents(env, identity),
+  ]);
+
+  const state = deriveState({
+    hasSession: Boolean(latestSession),
+    hasThread: Boolean(latestThread),
+    latestRun,
+    latestPolicyDecision,
+  });
+
+  return {
+    state,
+    latestSession: toChatSessionSnapshot(latestSession),
+    latestThread: latestThread ? toChatThreadSnapshot(latestThread) : null,
+    latestRun: toChatRunSnapshot(latestRun),
+    latestIntent: toChatIntentSnapshot(latestIntent),
+    latestPolicyDecision: toChatPolicyDecisionSnapshot(latestPolicyDecision),
+    events,
+    failure: failureSummary(state, latestRun, latestPolicyDecision, failedChatRun),
+  };
+};
+
+export const handleChatRuntimeSummary = async (env: Env, identity: AgentIdentity) =>
+  json({
+    ok: true,
+    generatedAt: new Date().toISOString(),
+    chatRuntime: await getChatRuntimeSummary(env, identity),
+  });

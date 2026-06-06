@@ -144,6 +144,8 @@ The next steps should keep WorkOS and Assistant-MK1 responsibilities separate:
    routing preferences for existing agents.
 5. More Cloudflare ownership: Cloudflare should own app authorization, scoped
    state access, events, audit, run control, tool policy, and secret policy.
+   The active v0 slice exposes chat runtime state from Cloudflare-owned D1 rows
+   after trusted scope resolution.
 6. Stronger Vercel-to-Cloudflare trust boundary: Vercel should forward
    server-derived identity through a stricter internal contract, not
    browser-controlled scope.

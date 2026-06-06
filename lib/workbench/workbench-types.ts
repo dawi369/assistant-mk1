@@ -73,6 +73,74 @@ export type ControlPlaneEventsResponse = {
   error?: string;
 };
 
+export type ChatRuntimeSummary = {
+  state:
+    | "no_session"
+    | "no_thread"
+    | "thread_ready"
+    | "blocked"
+    | "running"
+    | "failed"
+    | "completed";
+  latestSession: {
+    sessionId?: Id;
+    agentId?: Id;
+    status?: string;
+    activeThreadId?: Id;
+    createdAt?: string;
+    updatedAt?: string;
+    lastSeenAt?: string;
+  } | null;
+  latestThread: {
+    threadId?: Id;
+    sessionId?: Id;
+    agentId?: Id;
+    status?: string;
+    createdAt?: string;
+    updatedAt?: string;
+    lastSeenAt?: string;
+  } | null;
+  latestRun: {
+    id?: Id;
+    threadId?: Id;
+    upstreamRunId?: Id;
+    status?: string;
+    error?: string;
+    startedAt?: string;
+    completedAt?: string;
+    failedAt?: string;
+    updatedAt?: string;
+  } | null;
+  latestIntent: {
+    id?: Id;
+    executionMode?: string;
+    status?: string;
+    updatedAt?: string;
+  } | null;
+  latestPolicyDecision: {
+    id?: Id;
+    decision?: string;
+    reason?: string;
+    executionMode?: string;
+    createdAt?: string;
+  } | null;
+  events: ControlPlaneEvent[];
+  failure: {
+    source: "chat-run" | "chat-policy";
+    message: string;
+    status?: string;
+    targetId?: Id;
+    createdAt?: string;
+  } | null;
+};
+
+export type ChatRuntimeSummaryResponse = {
+  ok?: boolean;
+  generatedAt?: string;
+  chatRuntime?: ChatRuntimeSummary;
+  error?: string;
+};
+
 export type WorkspaceContextResponse = {
   ok?: boolean;
   context?: {
@@ -188,50 +256,8 @@ export type CloudflareAdminSummaryResponse = {
       createdAt?: string;
       updatedAt?: string;
     }>;
-    chat: {
-      latestSession: {
-        sessionId?: Id;
-        agentId?: Id;
-        status?: string;
-        activeThreadId?: Id;
-        createdAt?: string;
-        updatedAt?: string;
-        lastSeenAt?: string;
-      } | null;
-      latestThread: {
-        threadId?: Id;
-        sessionId?: Id;
-        agentId?: Id;
-        status?: string;
-        createdAt?: string;
-        updatedAt?: string;
-        lastSeenAt?: string;
-      } | null;
-      latestRun: {
-        id?: Id;
-        threadId?: Id;
-        upstreamRunId?: Id;
-        status?: string;
-        error?: string;
-        startedAt?: string;
-        completedAt?: string;
-        failedAt?: string;
-        updatedAt?: string;
-      } | null;
-      latestIntent: {
-        id?: Id;
-        executionMode?: string;
-        status?: string;
-        updatedAt?: string;
-      } | null;
-      latestPolicyDecision: {
-        id?: Id;
-        decision?: string;
-        reason?: string;
-        executionMode?: string;
-        createdAt?: string;
-      } | null;
-    };
+    chat: Omit<ChatRuntimeSummary, "state" | "events" | "failure">;
+    chatRuntime: ChatRuntimeSummary;
     demo: {
       latestRun: CloudflareOwnedDemoRunSnapshot | null;
     };

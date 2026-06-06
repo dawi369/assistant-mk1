@@ -137,6 +137,15 @@ for this activity feed, so browser-visible runtime progress can come from
 Cloudflare-owned state without exposing Cloudflare credentials or tenant scope
 to the browser.
 
+The current implementation also exposes a scoped chat runtime summary:
+Cloudflare `GET /chat/runtime-summary` and Vercel
+`GET /api/workbench/chat-runtime-summary`. The summary is derived only after
+Cloudflare resolves the trusted user, active workspace, membership, and active
+agent. It reports the latest session, active or latest owned thread, latest
+intent, policy decision, run status/error, recent chat events, and a compact
+state such as `no_session`, `thread_ready`, `blocked`, `running`, `failed`, or
+`completed`.
+
 This is observable control-plane state, not transcript persistence and not the
 final Cloudflare-owned conversation stream. The assistant message stream still
 passes through the LangGraph-compatible facade while Cloudflare accumulates the

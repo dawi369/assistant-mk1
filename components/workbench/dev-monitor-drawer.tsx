@@ -73,14 +73,17 @@ export function DevMonitorDrawer({
   const [error, setError] = useState<string | null>(null);
 
   const demoSnapshot = summary?.demo.latestRun ?? null;
+  const chatRuntime = summary?.chatRuntime ?? null;
   const run = demoSnapshot?.run;
   const isDemoActive = run?.status ? !terminalStatuses.has(run.status) : false;
+  const isChatActive = chatRuntime?.state === "running";
   const latestToolCall = demoSnapshot?.toolCalls.at(-1);
   const latestArtifact = demoSnapshot?.artifacts.at(-1);
   const latestDecision = demoSnapshot?.decisions.at(-1);
   const latestChatEvent = useMemo(
-    () => summary?.events.find((event) => event.type?.startsWith("chat.")),
-    [summary?.events],
+    () =>
+      chatRuntime?.events.at(0) ?? summary?.events.find((event) => event.type?.startsWith("chat.")),
+    [chatRuntime?.events, summary?.events],
   );
   const canManageWorkspaces =
     summary?.membership?.status === "active" &&
@@ -110,10 +113,10 @@ export function DevMonitorDrawer({
   }, [open]);
 
   useEffect(() => {
-    if (!open || !isDemoActive) return;
+    if (!open || (!isDemoActive && !isChatActive)) return;
     const interval = window.setInterval(() => void loadSummary(), 750);
     return () => window.clearInterval(interval);
-  }, [open, isDemoActive]);
+  }, [open, isDemoActive, isChatActive]);
 
   const startDemoRun = async () => {
     setIsStarting(true);
@@ -402,25 +405,51 @@ export function DevMonitorDrawer({
           </MonitorSection>
 
           <MonitorSection icon={MessageSquareIcon} title="Chat Path">
-            <StatusRow label="Latest session" value={summary?.chat.latestSession?.status} />
-            <StatusRow label="Latest thread" value={summary?.chat.latestThread?.status} />
-            <StatusRow label="Latest run" value={summary?.chat.latestRun?.status} />
+            <StatusRow
+              label="Runtime state"
+              value={chatRuntime?.state ?? (isLoading ? "loading" : "no summary")}
+              tone={chatRuntime?.state === "completed" ? "ok" : "muted"}
+            />
+            <StatusRow label="Latest session" value={chatRuntime?.latestSession?.status} />
+            <StatusRow label="Latest thread" value={chatRuntime?.latestThread?.status} />
+            <StatusRow label="Latest run" value={chatRuntime?.latestRun?.status} />
             <StatusRow
               label="Latest policy"
               value={
-                summary?.chat.latestPolicyDecision
-                  ? `${summary.chat.latestPolicyDecision.decision}: ${summary.chat.latestPolicyDecision.reason}`
+                chatRuntime?.latestPolicyDecision
+                  ? `${chatRuntime.latestPolicyDecision.decision}: ${chatRuntime.latestPolicyDecision.reason}`
                   : undefined
               }
             />
+            <StatusRow label="Failure" value={chatRuntime?.failure?.message} tone="muted" />
             <StatusRow
               label="Latest chat event"
               value={latestChatEvent?.type ?? "no chat event loaded"}
               tone={latestChatEvent ? "ok" : "muted"}
             />
-            <CopyId label="Session id" value={summary?.chat.latestSession?.sessionId} />
-            <CopyId label="Thread id" value={summary?.chat.latestThread?.threadId} />
-            <CopyId label="Chat run id" value={summary?.chat.latestRun?.id} />
+            <CopyId label="Session id" value={chatRuntime?.latestSession?.sessionId} />
+            <CopyId label="Thread id" value={chatRuntime?.latestThread?.threadId} />
+            <CopyId label="Chat intent id" value={chatRuntime?.latestIntent?.id} />
+            <CopyId label="Policy id" value={chatRuntime?.latestPolicyDecision?.id} />
+            <CopyId label="Chat run id" value={chatRuntime?.latestRun?.id} />
+            <CopyId label="Upstream run id" value={chatRuntime?.latestRun?.upstreamRunId} />
+            {chatRuntime?.events.length ? (
+              <ol className="space-y-2">
+                {chatRuntime.events.slice(0, 5).map((event) => (
+                  <li key={event.id} className="border-border rounded-md border p-3 text-sm">
+                    <span className="block truncate font-medium">{event.type}</span>
+                    <span className="text-muted-foreground block">{event.summary}</span>
+                    <span className="text-muted-foreground/80 block truncate text-xs">
+                      {formatTime(event.createdAt)}
+                      {event.targetType ? ` / ${event.targetType}` : ""}
+                    </span>
+                    <CopyId label="Event id" value={event.id} />
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <EmptyPanelText>Send a message to populate chat runtime events.</EmptyPanelText>
+            )}
           </MonitorSection>
 
           <MonitorSection icon={WrenchIcon} title="Demo Inspect Path">

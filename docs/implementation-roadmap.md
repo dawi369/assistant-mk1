@@ -188,12 +188,13 @@ Implemented:
 
 Next target:
 
-- Add one real data-client repository group beyond the demo snapshot path.
-- Prefer workspace context, decisions, audit events, or artifact metadata before
-  R2/DO provisioning.
+- Add a focused chat-runtime summary repository over the existing D1 chat
+  session, thread, intent, policy, run, and event tables.
+- Surface the resolved chat state in Dev Monitor before broader R2/DO
+  provisioning or customer-facing admin screens.
 - Keep Fly/LangGraph state access mediated through Cloudflare APIs.
 - Strengthen the Vercel-to-Cloudflare trust boundary with a stricter signed or
-  service-authenticated server contract.
+  service-authenticated server contract after this observability slice.
 
 Exit criteria:
 
@@ -215,7 +216,9 @@ execution and the facade remains LangGraph-compatible.
 
 Next target:
 
-- Cloudflare-style control-plane ingress and scoped data APIs.
+- Cloudflare `GET /chat/runtime-summary` plus Vercel
+  `GET /api/workbench/chat-runtime-summary` as the first dedicated read model
+  for chat runtime state.
 - Cloudflare-owned user-facing stream for conversation and workflow progress,
   building on the event feed as the first observable state source.
 - Progress callbacks or scoped status writes from Fly/LangGraph into canonical

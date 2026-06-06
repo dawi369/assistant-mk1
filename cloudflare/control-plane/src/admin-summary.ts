@@ -1,14 +1,4 @@
-import {
-  getLatestChatIntent,
-  getLatestChatPolicyDecision,
-  getLatestChatSession,
-  getLatestChatRun,
-  toChatIntentSnapshot,
-  toChatPolicyDecisionSnapshot,
-  toChatRunSnapshot,
-  toChatSessionSnapshot,
-  toChatThreadSnapshot,
-} from "./chat-boundary-store";
+import { getChatRuntimeSummary } from "./chat-runtime-summary";
 import { handleLatestControlPlaneEvents } from "./control-plane-events";
 import { getControlRunSnapshot, readLatestControlRun } from "./demo-run-store";
 import { json, parseDataJson, parseJson } from "./http";
@@ -24,8 +14,6 @@ import {
 import type {
   AgentIdentity,
   AgentRow,
-  ChatRunRow,
-  ChatThreadRow,
   ControlPlaneEventRow,
   ControlRunRow,
   Env,
@@ -89,50 +77,6 @@ const toWorkspaceSummary = (row: WorkspaceRow, activeWorkspaceId: string) => ({
   updatedAt: row.updated_at,
 });
 
-const latestThreadForSession = async (
-  env: Env,
-  scope: TenantScope,
-  sessionId: string,
-  activeThreadId?: string,
-) => {
-  if (activeThreadId) {
-    const activeThread = await env.DB.prepare(
-      `SELECT thread_id, session_id, user_id, workspace_id, agent_id, status, upstream_json,
-              created_at, updated_at, last_seen_at
-       FROM chat_threads
-       WHERE user_id = ? AND workspace_id = ? AND session_id = ? AND thread_id = ?
-       LIMIT 1`,
-    )
-      .bind(scope.userId, scope.workspaceId, sessionId, activeThreadId)
-      .first<ChatThreadRow>();
-    if (activeThread) return activeThread;
-  }
-
-  return env.DB.prepare(
-    `SELECT thread_id, session_id, user_id, workspace_id, agent_id, status, upstream_json,
-            created_at, updated_at, last_seen_at
-     FROM chat_threads
-     WHERE user_id = ? AND workspace_id = ? AND session_id = ?
-     ORDER BY updated_at DESC, created_at DESC
-     LIMIT 1`,
-  )
-    .bind(scope.userId, scope.workspaceId, sessionId)
-    .first<ChatThreadRow>();
-};
-
-const latestFailedChatRun = (env: Env, scope: TenantScope) =>
-  env.DB.prepare(
-    `SELECT id, intent_id, policy_decision_id, thread_id, user_id, workspace_id, agent_id,
-            upstream_run_id, status, metadata_json, error, started_at, completed_at,
-            failed_at, updated_at
-     FROM chat_runs
-     WHERE user_id = ? AND workspace_id = ? AND (status = 'failed' OR error IS NOT NULL)
-     ORDER BY updated_at DESC, started_at DESC
-     LIMIT 1`,
-  )
-    .bind(scope.userId, scope.workspaceId)
-    .first<ChatRunRow>();
-
 const latestFailedControlRun = (env: Env, scope: TenantScope) =>
   env.DB.prepare(
     `SELECT id, user_id, workspace_id, agent_id, workflow_intent_id, status, execution_json,
@@ -191,7 +135,7 @@ export const handleAdminWorkspaceSummary = async (
     defaultAgent,
     agents,
     accountWorkspaces,
-    latestSession,
+    chatRuntime,
     latestDemoRun,
     events,
   ] = await Promise.all([
@@ -207,31 +151,12 @@ export const handleAdminWorkspaceSummary = async (
           accountId: identity.accountId,
         })
       : Promise.resolve({ results: [] }),
-    getLatestChatSession(env, identity.scope),
+    getChatRuntimeSummary(env, identity),
     readLatestControlRun(env, identity.scope),
     handleLatestControlPlaneEvents(env, identity, new URL("https://internal/events?limit=12")),
   ]);
 
-  const latestThread = latestSession
-    ? await latestThreadForSession(
-        env,
-        identity.scope,
-        latestSession.session_id,
-        latestSession.active_thread_id ?? undefined,
-      )
-    : null;
-  const [
-    latestChatRun,
-    latestIntent,
-    latestPolicyDecision,
-    failedChatRun,
-    failedControlRun,
-    errorEvent,
-  ] = await Promise.all([
-    latestThread ? getLatestChatRun(env, identity.scope, latestThread.thread_id) : null,
-    latestThread ? getLatestChatIntent(env, identity.scope, latestThread.thread_id) : null,
-    latestThread ? getLatestChatPolicyDecision(env, identity.scope, latestThread.thread_id) : null,
-    latestFailedChatRun(env, identity.scope),
+  const [failedControlRun, errorEvent] = await Promise.all([
     latestFailedControlRun(env, identity.scope),
     latestErrorEvent(env, identity.scope),
   ]);
@@ -241,13 +166,13 @@ export const handleAdminWorkspaceSummary = async (
     : null;
   const failedControlData = failedControlRun ? parseDataJson(failedControlRun.data_json) : {};
   const lastError = newestError([
-    failedChatRun
+    chatRuntime.failure
       ? {
           source: "chat",
-          message: failedChatRun.error ?? "Chat run failed.",
-          status: failedChatRun.status,
-          targetId: failedChatRun.id,
-          createdAt: failedChatRun.updated_at,
+          message: chatRuntime.failure.message,
+          status: chatRuntime.failure.status,
+          targetId: chatRuntime.failure.targetId,
+          createdAt: chatRuntime.failure.createdAt,
         }
       : null,
     failedControlRun
@@ -325,12 +250,13 @@ export const handleAdminWorkspaceSummary = async (
         toAgentSummary(workspaceAgent, identity.agentId),
       ),
       chat: {
-        latestSession: toChatSessionSnapshot(latestSession),
-        latestThread: latestThread ? toChatThreadSnapshot(latestThread) : null,
-        latestRun: toChatRunSnapshot(latestChatRun),
-        latestIntent: toChatIntentSnapshot(latestIntent),
-        latestPolicyDecision: toChatPolicyDecisionSnapshot(latestPolicyDecision),
+        latestSession: chatRuntime.latestSession,
+        latestThread: chatRuntime.latestThread,
+        latestRun: chatRuntime.latestRun,
+        latestIntent: chatRuntime.latestIntent,
+        latestPolicyDecision: chatRuntime.latestPolicyDecision,
       },
+      chatRuntime,
       demo: {
         latestRun: demoSnapshot,
       },

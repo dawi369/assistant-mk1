@@ -6,6 +6,7 @@ import {
 } from "./demo-runs";
 import { handleAdminWorkspaceSummary } from "./admin-summary";
 import { handleActivateAgent, handleListAgents } from "./agents";
+import { handleChatRuntimeSummary } from "./chat-runtime-summary";
 import {
   handleControlPlaneEvents,
   handleControlPlaneEventStream,
@@ -52,6 +53,10 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
 
   if (request.method === "GET" && url.pathname === "/admin/workspace-summary") {
     return handleAdminWorkspaceSummary(request, env, identity);
+  }
+
+  if (request.method === "GET" && url.pathname === "/chat/runtime-summary") {
+    return handleChatRuntimeSummary(env, identity);
   }
 
   if (request.method === "GET" && url.pathname === "/workspaces") {

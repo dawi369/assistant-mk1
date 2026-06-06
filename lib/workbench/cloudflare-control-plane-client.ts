@@ -7,6 +7,7 @@ import type {
   CloudflareOwnedDemoRunResponse,
   CloudflareWorkspaceMutationResponse,
   CloudflareWorkspacesResponse,
+  ChatRuntimeSummaryResponse,
   ControlPlaneEventsResponse,
   WorkspaceContextResponse,
 } from "@/lib/workbench/workbench-types";
@@ -19,6 +20,8 @@ export type {
   CloudflareOwnedDemoRunSnapshot,
   CloudflareWorkspaceMutationResponse,
   CloudflareWorkspacesResponse,
+  ChatRuntimeSummary,
+  ChatRuntimeSummaryResponse,
   ControlPlaneEvent,
   ControlPlaneEventsResponse,
   WorkspaceContextResponse,
@@ -125,6 +128,9 @@ export const getWorkspaceContext = () =>
 
 export const getCloudflareAdminSummary = () =>
   requestControlPlane<CloudflareAdminSummaryResponse>("/admin/workspace-summary");
+
+export const getChatRuntimeSummary = () =>
+  requestControlPlane<ChatRuntimeSummaryResponse>("/chat/runtime-summary");
 
 export const getCloudflareWorkspaces = () =>
   requestControlPlane<CloudflareWorkspacesResponse>("/workspaces");

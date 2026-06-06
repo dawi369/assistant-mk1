@@ -81,7 +81,9 @@ Near-term WorkOS, workspace, and Cloudflare ownership sequence:
    workspace-scoped agent list and Cloudflare-owned active-agent preference.
    Agent creation/configuration remains operator-managed for now.
 5. More Cloudflare ownership: move context, policy, audit, events, run state,
-   tool authorization, and eventually secret access behind Cloudflare APIs.
+   tool authorization, and eventually secret access behind Cloudflare APIs. The
+   active v0 slice is a Cloudflare-owned chat runtime summary shown in Dev
+   Monitor.
 6. Stronger Vercel-to-Cloudflare trust boundary: replace loose trusted headers
    with a stricter signed or service-authenticated server contract.
 7. WorkOS organization UX: handle org switching, personal fallback, onboarding,
