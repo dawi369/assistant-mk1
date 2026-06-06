@@ -2,15 +2,19 @@
 
 Assistant-MK1 is a reusable agent framework. Infrastructure should support many apps and many users without making Polymancer the only product shape.
 
+Document status: this page intentionally compares the current hosted dev
+baseline with the target runtime. Use `docs/deployment-vercel.md` and
+`docs/dev-infrastructure-readiness.md` as runbooks.
+
 ## Target Topology
 
 ```txt
 browser
   -> Vercel Next.js app
   -> WorkOS AuthKit session via the Next SDK
-  -> Vercel server facade derives trusted user, account, workspace, roles, and permissions
+  -> Vercel server facade derives trusted user/account identity and external membership signals
   -> Cloudflare control plane over a server-to-server boundary
-  -> membership, agent access, and policy checks
+  -> active workspace, membership, agent access, and policy checks
   -> typed intent router
   -> run control record
   -> Fly LangGraph workflow or tool runner
@@ -70,9 +74,8 @@ Cloudflare APIs or callbacks.
 ## Request Flow
 
 1. A user sends a message or an external event arrives.
-2. Vercel derives WorkOS user, account id, default workspace id, safe roles,
-   and permissions from the server session, or a trusted trigger supplies
-   equivalent metadata.
+2. Vercel derives WorkOS user, account id, and safe external membership signals
+   from the server session, or a trusted trigger supplies equivalent metadata.
 3. Cloudflare resolves `userId`, `accountId`, `workspaceId`, membership, and
    active agent from that trusted context.
 4. The conversational agent reads scoped canonical state and answers directly when possible.

@@ -13,7 +13,7 @@ context is a bounded view over that truth.
 - Avoid dumping entire histories into prompts.
 - Prefer durable records and artifacts over vague summaries.
 - Keep prompt prefixes cache-friendly where practical.
-- Screen untrusted project/user text before injecting it.
+- Screen untrusted app, domain, and user text before injecting it.
 
 ## Context Tiers
 
@@ -29,7 +29,7 @@ Stable context changes rarely:
 - product/runtime principles
 - enabled tool guidance
 - assistant-ui/runtime usage hints when relevant
-- project-level operating rules from trusted config
+- app/domain operating rules from trusted config
 
 ### Scoped
 

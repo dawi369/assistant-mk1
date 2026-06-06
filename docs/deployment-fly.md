@@ -37,7 +37,6 @@ Optional:
 fly secrets set LANGSMITH_API_KEY=...
 fly secrets set LANGSMITH_TRACING=true
 fly secrets set LANGSMITH_PROJECT=assistant-mk1-langgraph-dev
-fly secrets set LANGCHAIN_API_KEY=...
 ```
 
 ## First Deploy
@@ -146,7 +145,7 @@ the current schema. The rebuild command drops remote dev D1 tables by design.
 Frontend:
 
 - Open the Vercel URL.
-- Run "Run demo inspect" and confirm the workbench panel shows completed run,
+- Run "Run demo inspect" and confirm the Dev Monitor shows completed run,
   tool call, artifact, decision, and audit timeline.
 - Send a message.
 - Confirm a thread is created and streaming works.

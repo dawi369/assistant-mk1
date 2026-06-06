@@ -15,7 +15,7 @@ This page maps storage ownership. See `docs/db-contracts.md` for docs-first dura
 
 - Tenant scope: `userId` and `workspaceId`.
 - User: authenticated person.
-- Workspace: project/team/account boundary.
+- Workspace: work, team, account, or domain boundary.
 - Agent: configured assistant instance within a workspace.
 - Thread: conversation or task continuity.
 - Workflow intent: typed escalation request.

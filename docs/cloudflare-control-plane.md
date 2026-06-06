@@ -2,6 +2,12 @@
 
 Cloudflare is the preferred future live multi-user control plane for Assistant-MK1.
 
+Document status: Cloudflare already owns the current authz/control-plane slice
+for users, accounts, workspaces, memberships, active workspace preferences,
+operator-provisioned agents, active agent preferences, demo runs, and the
+transitional LangGraph facade. Durable Objects, R2 artifacts, richer policy,
+secret custody, and production admin flows are still target work.
+
 ## Role
 
 Cloudflare should own coordination, not arbitrary heavy execution.
@@ -87,14 +93,15 @@ Every Cloudflare entry point must derive tenant scope from trusted auth/session/
 All D1 queries, R2 object keys, Durable Object IDs, and tool-runner calls must include tenant scope.
 
 The hosted web boundary uses WorkOS AuthKit in Vercel/Next to derive trusted
-identity. Vercel maps WorkOS user, account source, default workspace, roles,
-and permissions into a server-to-server call to Cloudflare. Cloudflare resolves
-the internal user, account, workspace, membership, and active agent, then
-enforces ownership before reading or writing control-plane state. In the
-current pre-user dev environment, Cloudflare auto-bootstraps D1-backed user,
-default workspace, active membership, and default agent rows on first valid
-WorkOS-shaped request. Cloudflare then resolves the active agent from D1,
-falling back to the workspace default agent when no user preference exists.
+identity. Vercel maps WorkOS user, account source, and external role/permission
+signals into a server-to-server call to Cloudflare. Cloudflare resolves the
+internal user, active workspace, membership, and active agent, then enforces
+ownership before reading or writing control-plane state. In the current
+pre-user dev environment, Cloudflare auto-bootstraps D1-backed user, default
+workspace, initial active membership, and default agent rows on first valid
+WorkOS-shaped request. Cloudflare then resolves the active workspace and active
+agent from D1 preferences, falling back to defaults when no user preference
+exists.
 
 Local development can still fall back to server-derived `WORKBENCH_DEV_*`
 identity values when WorkOS is not configured. The durable rule is that Worker
@@ -136,11 +143,11 @@ passes through the LangGraph-compatible facade while Cloudflare accumulates the
 session, policy, run, and event ownership needed to replace that stream later.
 
 This is still not complete production authorization. WorkOS is the hosted web
-auth provider, and Cloudflare now owns the first D1-backed membership and
-default-agent resolution slice, but richer role policy, explicit invites/admin
-flows, tool authorization, and secret authorization are still future gates. The
-durable rule is that Vercel owns the hosted web session, Cloudflare enforces
-membership, agent access, session, thread, and run ownership from trusted scope,
-and Fly remains the execution plane. The facade must not expose the Fly token to
-Vercel or the browser, and it must not become the permanent product API by
-accident.
+auth provider, and Cloudflare now owns the first D1-backed membership and agent
+routing slices, but explicit invites/admin flows, tool authorization, secret
+authorization, and a stronger Vercel-to-Cloudflare trust contract are still
+future gates. The durable rule is that Vercel owns the hosted web session,
+Cloudflare enforces membership, agent access, session, thread, and run
+ownership from trusted scope, and Fly remains the execution plane. The facade
+must not expose the Fly token to Vercel or the browser, and it must not become
+the permanent product API by accident.

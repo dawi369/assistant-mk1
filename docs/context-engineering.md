@@ -15,7 +15,7 @@ The durable entity contract lives in `docs/db-contracts.md`. This page explains 
 Each record should capture:
 
 - Tenant scope: `userId` and `workspaceId`.
-- App-defined category data when useful: belief, strategy, plan, action, policy, preference, or another project-specific category.
+- App-defined category data when useful: belief, strategy, plan, action, policy, preference, or another domain-specific category.
 - Thesis: the claim or decision.
 - Evidence, counter-evidence, alternatives, confidence, and freshness when the app needs them.
 - Provenance: user note, tool result, workflow output, external trigger, manual override, artifact, or run.
@@ -40,9 +40,9 @@ advanced memory behavior.
 
 Suggested tiers:
 
-- Stable: agent identity, project rules, and guidance for the currently exposed
+- Stable: agent identity, app/domain rules, and guidance for the currently exposed
   tools.
-- Scoped: trusted workspace, project, thread, and active run state.
+- Scoped: trusted workspace, domain context, thread, and active run state.
 - Retrieved: relevant decision records, managed state, ledgers, artifacts, and
   audit summaries.
 - Volatile: current time, model/provider metadata, active interrupt state, and

@@ -9,7 +9,9 @@ The reference target is Polymancer: a future Polymarket-focused assistant that p
 ## Current Direction
 
 - Develop and test locally for fast iteration.
-- Use Fly.io as the hosted dev/staging runtime after feature slices.
+- Use Vercel for the hosted web/session boundary, Cloudflare Worker/D1 for
+  app authorization and control-plane ownership, and Fly.io for LangGraph/tool
+  execution.
 - Keep docs repo-native in Markdown so coding agents and humans share the same source of truth.
 - Use LangGraph Agent Server concepts directly: threads, runs, interrupts, crons, and webhooks.
 - Keep OpenRouter provider credentials server-side.
@@ -20,7 +22,7 @@ The reference target is Polymancer: a future Polymarket-focused assistant that p
 
 ## Phase 1: Foundation
 
-Status: in progress.
+Status: mostly implemented for the current pre-user hosted baseline.
 
 - Add repo operating docs.
 - Standardize on pnpm because `pnpm-lock.yaml` is tracked.
@@ -28,16 +30,21 @@ Status: in progress.
 - Add token-protected external signal ingress.
 - Add basic infrastructure docs for Cloudflare control plane, Fly tool runners, storage, secrets, and execution policy.
 - Add docs-first DB contracts for tenant-scoped durable entities and data-client boundaries.
+- Add WorkOS hosted sign-in through Vercel.
+- Add Cloudflare D1-backed users, workspaces, memberships, active workspace
+  preference, operator-provisioned agents, and active agent routing.
 - Verify local typecheck, build, lint, and dev smoke.
 
 ## Phase 2: Workbench UX
 
-Status: planned.
+Status: partially implemented as default chat plus Dev Monitor.
 
-- Add project context surface.
-- Show thread/run status in the UI.
-- Add interrupt approval/resume flows.
-- Add artifact and execution history surfaces.
+- Keep default assistant-ui chat as the normal app surface.
+- Use Dev Monitor for current account, workspace, membership, agents, chat path,
+  demo path, events, errors, and workspace/agent operator controls.
+- Add interrupt approval/resume flows when a real workflow needs them.
+- Add artifact and execution history surfaces beyond the current diagnostic
+  slice.
 - Add tool visibility: enabled tools, recent calls, permissions, execution policy, and failure state.
 - Add generic managed-state/ledger views that can represent trades, tasks, deployments, documents, tickets, or other domain assets.
 - Add decision-record views so users can ask why the agent believes or planned something and get a provenance-backed answer.
@@ -45,13 +52,14 @@ Status: planned.
 
 ## Phase 3: Durable Runtime
 
-Status: planned.
+Status: partially implemented around Cloudflare-owned control-plane state.
 
 - Validate persistence behavior for interrupted work across restart.
-- Validate the Cloudflare control-plane and Fly tool-runner split with a minimal signed tool call.
+- Validate the Cloudflare control-plane and Fly tool-runner split with more
+  than the current signed `demo.inspect` diagnostic.
 - Add first cron-triggered workflow.
 - Add first external webhook/signal integration.
-- Add first typed tool adapter and first CLI/OSS-backed tool adapter.
+- Add first CLI/OSS-backed tool adapter.
 - Add first typed workflow intent and generic lifecycle demo using `observe -> analyze -> propose -> execute -> review`.
 - Define encrypted secret custody, per-user tool permissions, audit events, execution policies, and kill switches before live external mutation.
 - Decide whether production persistence needs managed LangGraph Platform, Postgres-backed self-hosting, or another durable store.

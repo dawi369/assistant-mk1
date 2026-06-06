@@ -1,4 +1,14 @@
-This is a reusable agent workbench built from the [assistant-ui](https://github.com/assistant-ui/assistant-ui) LangGraph starter. It ships a minimal OpenRouter-backed agent (`backend/agent.ts`), a Next.js chat UI that streams from it, and the first runtime seams for hosted staging, external starts, cron creation, and interrupt resumes.
+Assistant-MK1 is a reusable agent workbench built from the
+[assistant-ui](https://github.com/assistant-ui/assistant-ui) LangGraph starter.
+It keeps assistant-ui as the default chat surface while Vercel, WorkOS,
+Cloudflare, Fly, and LangGraph are being shaped into a production-oriented
+runtime boundary.
+
+Current hosted development uses WorkOS AuthKit at the Vercel web boundary,
+Cloudflare Worker/D1 for app authorization and control-plane state, and Fly for
+LangGraph/tool execution. The codebase is still pre-user and schema-rebuildable,
+but tenant scope, membership, workspace, and agent routing are already
+server-derived instead of browser supplied.
 
 ## Getting Started
 
@@ -15,7 +25,9 @@ This is a reusable agent workbench built from the [assistant-ui](https://github.
    - `OPENROUTER_MODEL` — override the default model id
    - `OPENROUTER_SITE_URL` / `OPENROUTER_APP_NAME` — OpenRouter attribution metadata
    - `LANGSMITH_TRACING` / `LANGSMITH_API_KEY` / `LANGSMITH_PROJECT` — tracing
-   - `LANGCHAIN_API_KEY` — only needed when pointing `LANGGRAPH_API_URL` at a protected hosted LangGraph endpoint
+   - `WORKOS_*` — hosted sign-in with WorkOS AuthKit
+   - `CLOUDFLARE_CONTROL_PLANE_*` — local or hosted Worker facade/authz path
+   - `WORKBENCH_DEV_*` — local fallback identity when WorkOS is not configured
 
 2. Install deps and run both the LangGraph backend and the Next.js frontend:
 
@@ -25,7 +37,7 @@ This is a reusable agent workbench built from the [assistant-ui](https://github.
    ```
 
    - `localhost:2024` — LangGraph dev server (serves the `agent` graph)
-   - `localhost:3000` — Next.js app (proxies `/api/*` → `LANGGRAPH_API_URL`)
+   - `localhost:3000` — Next.js app (proxies `/api/*` to `LANGGRAPH_API_URL`)
 
    Run them individually with `pnpm dev:backend` and `pnpm dev:frontend`.
 
@@ -58,6 +70,7 @@ langgraph.json      LangGraph CLI config (graph id, node version, env file)
 
 - `AGENTS.md` — repo instructions for coding agents
 - `goal.md` — product goal, phases, and done bar
+- `docs/README.md` — docs map that separates current implementation from target architecture
 - `docs/architecture.md` — system shape and seams
 - `docs/diagrams/README.md` — git-tracked Mermaid topology diagram workflow
 - `docs/implementation-roadmap.md` — staged path from current starter to target workbench

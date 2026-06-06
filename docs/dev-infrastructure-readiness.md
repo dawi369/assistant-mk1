@@ -13,9 +13,10 @@ database, the Vercel frontend, and the dedicated Fly LangGraph runtime gateway.
 - Vercel frontend: `https://assistant-mk1.vercel.app`
 - Hosted auth: WorkOS AuthKit on Vercel; WorkOS `user.id` maps to internal
   `userId`. WorkOS `organizationId` maps to `workos-org:<organizationId>` when
-  present, then to `workspace:workos-org:<organizationId>:default`; pre-user
-  sessions without an organization use `workos-personal:<user-id>` and its
-  default workspace.
+  present. Pre-user sessions without an organization use
+  `workos-personal:<user-id>`. Cloudflare creates the account's default
+  workspace, stores the user's active workspace preference, and resolves the
+  active workspace from D1.
 - Required smoke: `CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> pnpm smoke:cloudflare-workbench-run`
 - Cloudflare Worker: `assistant-mk1-dev-control-plane`
 - Cloudflare D1 database: `assistant_mk1_dev`
@@ -34,13 +35,13 @@ the Fly gateway with `LANGGRAPH_UPSTREAM_TOKEN`.
 Hosted Vercel requests derive tenant scope from the WorkOS server session.
 Users must complete WorkOS sign-in before the workbench can call Cloudflare.
 When WorkOS provides an organization, that organization is treated as the
-customer/company account source and receives one default workspace in this
-slice. During the current pre-user phase, sessions without an organization use
-a stable personal account and default workspace fallback. Cloudflare
-auto-bootstraps D1-backed user, default workspace, active membership, and
-default agent rows for the current dev environment. Hosted WorkOS traffic does
-not use `WORKBENCH_DEV_AGENT_ID`; Cloudflare resolves the active agent from D1,
-falling back to the workspace default agent when no user preference exists.
+customer/company account source. During the current pre-user phase, sessions
+without an organization use a stable personal account fallback. Cloudflare
+auto-bootstraps D1-backed user, default workspace, initial active membership,
+and default agent rows for the current dev environment. Hosted WorkOS traffic
+does not use `WORKBENCH_DEV_WORKSPACE_ID` or `WORKBENCH_DEV_AGENT_ID`;
+Cloudflare resolves the active workspace and active agent from D1, falling back
+to account/workspace defaults when no user preference exists.
 
 The `/langgraph` facade also stores tenant-scoped chat sessions, chat thread
 ownership, chat intents, policy decisions, and minimal chat run envelopes in
@@ -64,7 +65,6 @@ Optional secrets:
 - `LANGSMITH_API_KEY`
 - `LANGSMITH_TRACING`
 - `LANGSMITH_PROJECT`
-- `LANGCHAIN_API_KEY`
 
 Committed Fly env:
 
@@ -124,6 +124,10 @@ To prove D1 tenant isolation at the Worker boundary, run:
 pnpm smoke:tenant-isolation
 pnpm smoke:cloudflare-authz
 pnpm smoke:cloudflare-workspace-context
+pnpm smoke:cloudflare-workspaces
+pnpm smoke:cloudflare-membership-policy
+pnpm smoke:cloudflare-agent-selection
+pnpm smoke:cloudflare-admin-summary
 pnpm smoke:cloudflare-session-boundary
 pnpm smoke:cloudflare-chat-boundary
 pnpm smoke:cloudflare-policy-boundary
@@ -134,8 +138,11 @@ pnpm smoke:cloudflare-event-stream
 Those smokes use two trusted dev tenant identities. They verify each tenant sees
 only its own workbench runs, chat sessions, and LangGraph chat threads. The
 authz smoke verifies the WorkOS-shaped no-agent-header path auto-bootstraps
-D1-backed user/workspace/membership/default-agent rows, reuses the default
+D1-backed user/workspace/membership/default-agent rows, reuses the active
 agent, rejects disabled membership, and hides cross-workspace sessions. The
+workspace, membership-policy, agent-selection, and admin-summary smokes verify
+Cloudflare-owned workspace activation, D1-owned membership authorization,
+active-agent preferences, and the Dev Monitor summary path. The
 workspace-context smoke verifies the same resolved identity is exposed safely
 for the dev monitor before any demo run exists. The policy smoke also verifies
 that normal `ask` chat passes, `execute` chat is
@@ -265,14 +272,13 @@ secondary local demo route.
 
 Tenant scope for the hosted Vercel baseline is server-derived from WorkOS
 AuthKit. Vercel/Next maps WorkOS `user.id` to internal `userId` and WorkOS
-`organizationId` to `workos-org:<organizationId>` when present. Vercel derives
-the current default workspace id as `workspace:<account-id>:default`. During
-pre-user development, signed-in WorkOS sessions without an organization fall
-back to a stable `workos-personal:<user-id>` account and default workspace,
-then Vercel forwards those values and safe user/membership metadata to the
-Worker as trusted headers. Cloudflare resolves membership and the active agent
-from D1 before reading or writing control-plane state. Browser requests never
-choose tenant scope or agent identity. In the B2B north star,
+`organizationId` to `workos-org:<organizationId>` when present. During pre-user
+development, signed-in WorkOS sessions without an organization fall back to a
+stable `workos-personal:<user-id>` account. Vercel forwards those values and
+safe user/membership metadata to the Worker as trusted headers. Cloudflare
+resolves the active workspace, membership, and active agent from D1 before
+reading or writing control-plane state. Browser requests never choose tenant
+scope, workspace identity, or agent identity. In the B2B north star,
 WorkOS organizations represent customer or company account sources; one account
 has one default workspace now and can have multiple workspaces later. The WorkOS
 client id and API key must come from the same WorkOS app/environment, and the
@@ -312,8 +318,8 @@ Planned bindings:
 Before creating additional Cloudflare resources, define:
 
 - Which `AgentFrameworkDataClient` repository group is implemented first.
-- The richer production authorization policy beyond the first WorkOS-backed
-  membership/default-agent resolver.
+- The richer production authorization policy beyond current WorkOS-backed
+  membership policy and agent routing.
 - The minimum D1 tables or Durable Object storage required for that repository
   group.
 - The R2 object key convention for artifact metadata produced by the demo slice.

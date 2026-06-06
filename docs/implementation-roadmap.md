@@ -158,6 +158,8 @@ Current baseline:
 ```txt
 Vercel workbench facade
   -> Cloudflare Worker
+  -> D1-backed user/account/workspace/membership/agent authz
+  -> active workspace and active agent preferences
   -> WorkflowIntent
   -> RunRecord
   -> ToolCallRecord
@@ -165,25 +167,33 @@ Vercel workbench facade
   -> scoped snapshot reads
 ```
 
+Implemented:
+
+- Dev Monitor v1 as the first read-only admin visibility slice:
+  Cloudflare `GET /admin/workspace-summary`, Vercel
+  `GET /api/workbench/admin-summary`, and a drawer that shows resolved
+  account, workspace, membership, agents, chat path, demo path, recent events,
+  and last Cloudflare-owned error.
+- Workspace management v0 as the first Cloudflare-owned workspace model
+  slice: D1 active workspace preference, Cloudflare `GET /workspaces`,
+  `POST /workspaces`, `POST /workspaces/:workspaceId/activate`, Vercel
+  facades, and Dev Monitor-only list/create/switch controls.
+- Membership source-of-truth v0: WorkOS role/permission headers can seed
+  missing memberships, but Cloudflare D1 membership role/status/permissions are
+  authoritative after bootstrap. Active members can read context; `owner` and
+  `admin` gate workspace writes.
+- Agent routing v0: operator-provisioned agents stay workspace-scoped,
+  Cloudflare stores active-agent preferences per user/workspace, and Dev
+  Monitor can activate existing agents.
+
 Next target:
 
 - Add one real data-client repository group beyond the demo snapshot path.
 - Prefer workspace context, decisions, audit events, or artifact metadata before
   R2/DO provisioning.
 - Keep Fly/LangGraph state access mediated through Cloudflare APIs.
-- Add Dev Monitor v1 as the first read-only admin visibility slice:
-  Cloudflare `GET /admin/workspace-summary`, Vercel
-  `GET /api/workbench/admin-summary`, and a drawer that shows resolved
-  account, workspace, membership, agents, chat path, demo path, recent events,
-  and last Cloudflare-owned error.
-- Add workspace management v0 as the first Cloudflare-owned workspace model
-  slice: D1 active workspace preference, Cloudflare `GET /workspaces`,
-  `POST /workspaces`, `POST /workspaces/:workspaceId/activate`, Vercel
-  facades, and Dev Monitor-only list/create/switch controls.
-- Add membership source-of-truth v0: WorkOS role/permission headers can seed
-  missing memberships, but Cloudflare D1 membership role/status/permissions are
-  authoritative after bootstrap. Active members can read context; `owner` and
-  `admin` gate workspace writes.
+- Strengthen the Vercel-to-Cloudflare trust boundary with a stricter signed or
+  service-authenticated server contract.
 
 Exit criteria:
 
@@ -211,10 +221,10 @@ Next target:
 - Progress callbacks or scoped status writes from Fly/LangGraph into canonical
   state.
 - Trigger and schedule handling through trusted tenant metadata.
-- Expand WorkOS-backed identity beyond the first D1 membership/default-agent
-  slice: richer roles, customer-facing workspace administration, tool
-  authorization, and trigger-owned tenant metadata, without moving tenant
-  enforcement back into the browser.
+- Expand WorkOS-backed identity beyond the first D1 membership and agent
+  routing slices: customer-facing workspace administration, tool
+  authorization, trigger-owned tenant metadata, and clearer organization UX
+  without moving tenant enforcement back into the browser.
 - Sequence the workspace/authz product work as admin visibility, workspace
   management, membership source of truth, agent routing, broader Cloudflare
   ownership, stronger Vercel-to-Cloudflare trust, and WorkOS organization UX.
@@ -232,9 +242,10 @@ Goal: allow mutation-capable tools only after platform safety exists.
 
 Required before live external mutation:
 
-- Auth and workspace membership. WorkOS AuthKit sign-in and the first
-  Cloudflare D1-backed membership/default-agent resolver exist, but production
-  role policy, explicit admin flows, and tool authorization are still required.
+- Auth and workspace membership. WorkOS AuthKit sign-in, Cloudflare D1-backed
+  membership policy, workspace management v0, and agent routing v0 exist, but
+  explicit customer admin flows, invites, and tool authorization are still
+  required.
 - Encrypted secret custody.
 - Tenant isolation tests.
 - Policy limits, approvals, cooldowns, allowlists, denylists, and kill switches.

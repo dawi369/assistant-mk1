@@ -4,6 +4,10 @@ Assistant-MK1 is an operator workbench built around chat, not a generic chatbot
 wrapper. The UI should make long-running agent work inspectable without hiding
 the underlying state.
 
+Document status: the current UI is default assistant-ui chat plus a top-right
+Dev Monitor drawer. The surfaces below describe the target workbench as runtime
+data matures.
+
 ## Assistant-UI Leverage Map
 
 Use assistant-ui directly for:
@@ -42,11 +46,18 @@ should compose around the thread.
 
 ## Primary Layout
 
-First useful layout:
+Current implemented layout:
 
 - Main thread region using assistant-ui.
-- Compact run/status strip near the thread.
-- Right-side or collapsible workbench panel for inspectable state.
+- Top-right auth controls.
+- Top-right Dev Monitor drawer for Cloudflare-owned admin/runtime visibility.
+- Dev Monitor diagnostic action for `demo.inspect`.
+
+Target layout:
+
+- Compact run/status strip near the thread when chat/workflow state needs a
+  customer-visible status surface.
+- Collapsible workbench/admin panel for inspectable runtime state.
 - Artifact/history drawer or tab.
 - Tool/policy panel for enabled tools and recent calls.
 
@@ -232,15 +243,23 @@ Source:
 - trigger records
 - audit events
 
-## First UI Slice
+## Current UI Baseline
 
-The first implementation should add only enough UI to prove the architecture:
+Implemented:
 
 - assistant-ui thread remains primary.
-- run/status strip shows current run.
-- side panel shows artifacts, audit, and tool call summary for the mock vertical
-  slice.
-- interrupt display supports approve/deny only if the vertical slice needs it.
+- Dev Monitor shows Cloudflare-derived account, workspace, membership, agents,
+  chat path, demo path, recent events, and last error.
+- Dev Monitor supports name-only workspace create/switch and activation of
+  existing operator-provisioned agents.
+- `demo.inspect` remains a dev diagnostic action, not a product-level workflow.
+
+Next UI targets:
+
+- Customer-facing run/status strip when a real workflow produces useful state.
+- Artifact/history surfaces beyond the diagnostic run snapshot.
+- Interrupt display only when a workflow needs approve/deny/resume.
+- Tool and policy visibility after the next real tool adapter lands.
 
 Avoid building every panel before one vertical slice produces real data.
 

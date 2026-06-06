@@ -4,6 +4,9 @@ The workbench is the reusable frontend layer this repo is meant to become. Chat 
 
 Polymancer is one benchmark reference app because it stresses autonomy, secrets, ledgers, execution policy, and fast external signals. The framework must stay generic: the same surfaces should support deployment agents, research assistants, document workflows, issue triage, operations copilots, and other agent projects.
 
+Document status: the current product surface is default assistant-ui chat plus
+Dev Monitor. The workbench surfaces below are the direction, not all shipped UI.
+
 ## Core Flows
 
 - Work context: show the active app/domain context, environment, docs, repo
@@ -102,19 +105,27 @@ Near-term WorkOS, workspace, and Cloudflare ownership sequence:
 - Tools that mutate external state must support deterministic execution modes such as ask, dry-run, and execute, with policy checks outside the model.
 - Tool output should be structured enough for the UI to show results, failures, artifacts, and follow-up actions without parsing prose.
 
-## First UI Milestones
+## UI Baseline And Next Milestones
 
-1. Add a workbench shell around the existing thread.
-2. Add a compact status surface for current thread/run state.
-3. Add interrupt display and resume actions.
-4. Add artifact list and execution history.
-5. Add project context configuration that can be swapped per downstream app.
-6. Add read-only admin visibility for workspace, membership, and agent context.
-7. Add tool registry UI and a first typed tool demo.
-8. Add a first CLI/OSS-backed tool demo with timeout, logs, and typed output.
-9. Add generic managed-state and audit surfaces.
-10. Add user/workspace scoping before any hosted multi-user runtime.
-11. Add decision-record surfaces for provenance-backed recall.
+Implemented:
+
+- Default assistant-ui chat remains the normal screen.
+- Dev Monitor provides Cloudflare-derived admin/runtime visibility.
+- WorkOS, workspace, membership, and active agent scope are server-derived.
+- The first typed diagnostic tool path exists through `demo.inspect`.
+
+Next milestones:
+
+1. Add a compact status surface for real chat/workflow run state when it is
+   useful outside Dev Monitor.
+2. Add interrupt display and resume actions when a workflow requires approval.
+3. Add artifact list and execution history beyond diagnostic snapshots.
+4. Add domain context configuration that can be swapped per downstream app.
+5. Add tool registry UI and a first non-diagnostic tool adapter.
+6. Add a first CLI/OSS-backed tool with timeout, logs, structured output, and
+   artifact metadata.
+7. Add generic managed-state and audit surfaces.
+8. Add decision-record surfaces for provenance-backed recall.
 
 ## Design Principle
 

@@ -4,15 +4,17 @@ Assistant-MK1 is a reusable agent workbench with a conversational control plane,
 
 The architecture is generic, but it is evaluated against demanding reference apps such as Polymancer and deployment agents. Reference apps are stress tests for long-running autonomy, secrets, ledgers, execution policy, tools, external triggers, and multi-user isolation. The primitives must remain reusable across agent projects.
 
+Document status: this page describes the current system shape plus target
+subsystems. For the current-vs-target docs map, start with `docs/README.md`.
+
 ## System Shape
 
 - Next.js App Router serves the frontend and browser-facing API facade.
 - WorkOS AuthKit runs through the Next.js SDK at the Vercel web boundary.
 - assistant-ui renders the thread, composer, messages, reasoning, tools, and attachments.
 - `@assistant-ui/react-langgraph` adapts the UI runtime to LangGraph threads and streams.
-- Vercel derives trusted WorkOS user, account source, default workspace, safe
-  roles, and permissions before calling Cloudflare
-  server-to-server.
+- Vercel derives trusted WorkOS user, account source, and external membership
+  signals before calling Cloudflare server-to-server.
 - Cloudflare owns membership and agent authorization, durable workbench run
   control, tenant state, audit records, and mediated storage access.
 - Workspaces are customer/team tenant boundaries. Agents are runtime assistant
