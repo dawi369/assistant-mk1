@@ -38,8 +38,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { chatRuntimeStateLabel, chatRuntimeStateTone } from "@/lib/workbench/chat-runtime-display";
 import type {
-  ChatRuntimeSummary,
   CloudflareAdminSummaryResponse,
   CloudflareOwnedDemoRunResponse,
 } from "@/lib/workbench/workbench-types";
@@ -56,41 +56,6 @@ const readJsonResponse = async <T,>(response: Response, fallback: string): Promi
 };
 
 const listValue = (items?: string[]) => (items && items.length > 0 ? items.join(", ") : undefined);
-
-const chatStateLabel = (state?: ChatRuntimeSummary["state"] | null) => {
-  switch (state) {
-    case "no_session":
-    case "no_thread":
-      return "No chat yet";
-    case "thread_ready":
-      return "Ready";
-    case "blocked":
-      return "Blocked by policy";
-    case "running":
-      return "Running";
-    case "failed":
-      return "Failed";
-    case "completed":
-      return "Completed";
-    default:
-      return "Loading";
-  }
-};
-
-const chatStateTone = (state?: ChatRuntimeSummary["state"] | null) => {
-  switch (state) {
-    case "thread_ready":
-    case "completed":
-      return "completed";
-    case "running":
-      return "running";
-    case "blocked":
-    case "failed":
-      return "failed";
-    default:
-      return undefined;
-  }
-};
 
 function DetailsBlock({
   title,
@@ -167,8 +132,9 @@ export function DevMonitorDrawer({
             targetId: summary.lastError.targetId,
           }
         : null;
-  const chatLabel = fetchError && !chatRuntime ? "Unavailable" : chatStateLabel(chatRuntime?.state);
-  const chatTone = fetchError && !chatRuntime ? "failed" : chatStateTone(chatRuntime?.state);
+  const chatLabel =
+    fetchError && !chatRuntime ? "Unavailable" : chatRuntimeStateLabel(chatRuntime?.state);
+  const chatTone = fetchError && !chatRuntime ? "failed" : chatRuntimeStateTone(chatRuntime?.state);
 
   const loadSummary = async () => {
     setIsLoading(true);
@@ -653,7 +619,7 @@ export function DevMonitorDrawer({
               <CopyId label="Chat intent id" value={chatRuntime?.latestIntent?.id} />
               <CopyId label="Policy id" value={chatRuntime?.latestPolicyDecision?.id} />
               <CopyId label="Chat run id" value={chatRuntime?.latestRun?.id} />
-              <CopyId label="Upstream run id" value={chatRuntime?.latestRun?.upstreamRunId} />
+              <CopyId label="External run id" value={chatRuntime?.latestRun?.upstreamRunId} />
               <CopyId label="Demo run id" value={run?.id} />
             </DetailsBlock>
 

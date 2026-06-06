@@ -29,7 +29,11 @@ Examples:
 
 ## Threads
 
-A thread is the persistent container for a conversation or task. The frontend creates and loads threads through the LangGraph SDK. Long-running workflows should store their continuity in a thread rather than relying on browser state.
+A thread is the persistent container for a conversation or task. The frontend
+currently creates and loads threads through the LangGraph SDK contract, but
+hosted simple chat is served by Cloudflare through a compatible `/langgraph`
+subset. Long-running workflows should store their continuity in a thread rather
+than relying on browser state.
 
 ## Runs
 
@@ -150,7 +154,11 @@ Create a cron:
 
 ## Persistence
 
-Local development may use the LangGraph dev server's default behavior. Hosted staging must verify whether interrupted work survives restart before relying on it.
+Local development may use the LangGraph dev server's default behavior for
+workflow-engine testing. Hosted simple chat should not rely on Fly Machine or
+LangGraph dev-server memory. It is Cloudflare-owned and scoped through D1.
+Hosted workflow escalation must still verify whether interrupted LangGraph work
+survives restart before relying on it.
 
 Production persistence should separate concerns:
 

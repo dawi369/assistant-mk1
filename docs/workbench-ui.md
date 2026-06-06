@@ -249,6 +249,9 @@ Source:
 Implemented:
 
 - assistant-ui thread remains primary.
+- The normal shell includes a compact server-derived runtime hint for active
+  workspace, active agent/profile, chat state, and quick access to Dev Monitor
+  when the latest runtime state needs attention.
 - Dev Monitor opens as a flow-first panel: chat readiness, active workspace,
   active agent/profile, latest meaningful event, and important errors are
   shown first.
@@ -258,10 +261,14 @@ Implemented:
 - Raw ids, external WorkOS signals, recent Cloudflare events, and diagnostic
   internals stay available in advanced details.
 - `demo.inspect` remains a dev diagnostic action, not a product-level workflow.
+- The empty chat state stays default assistant-ui but includes practical
+  starter prompts for readiness, project planning, agent behavior, and failure
+  explanation.
 
 Next UI targets:
 
-- Customer-facing run/status strip when a real workflow produces useful state.
+- Customer-facing run/status strip only when a real workflow produces state
+  richer than the compact chat hint.
 - Artifact/history surfaces beyond the diagnostic run snapshot.
 - Interrupt display only when a workflow needs approve/deny/resume.
 - Tool and policy visibility after the next real tool adapter lands.

@@ -5,6 +5,9 @@
   "compatibility_date": "2026-06-01",
   "vars": {
     "LANGGRAPH_UPSTREAM_URL": "https://assistant-mk1-langgraph-dev.fly.dev",
+    "OPENROUTER_MODEL": "deepseek/deepseek-v4-flash",
+    "OPENROUTER_SITE_URL": "https://assistant-mk1.vercel.app",
+    "OPENROUTER_APP_NAME": "assistant-mk1-cloudflare-chat",
   },
   "d1_databases": [
     {

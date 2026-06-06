@@ -188,9 +188,7 @@ const main = async () => {
   );
   await allowed.response.text();
   const completed = await waitForCompletedRun(tenants.a, allowed.threadId);
-  if (!completed.latestRun?.upstreamRunId) {
-    throw new Error("allowed event-feed run is missing upstream LangGraph run id");
-  }
+  if (!completed.latestRun?.id) throw new Error("allowed event-feed run is missing run id");
 
   const executeBlock = await startStream(
     tenants.a,

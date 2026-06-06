@@ -39,6 +39,7 @@ import {
   MessagePrimitive,
   SuggestionPrimitive,
   ThreadPrimitive,
+  useAui,
   useAuiState,
 } from "@assistant-ui/react";
 import {
@@ -132,9 +133,82 @@ const ThreadWelcome: FC = () => {
 };
 
 const ThreadSuggestions: FC = () => {
+  const runtimeSuggestionCount = useAuiState((s) => s.suggestions.suggestions.length);
+
   return (
     <div className="aui-thread-welcome-suggestions grid w-full gap-2 pb-4 @md:grid-cols-2">
-      <ThreadPrimitive.Suggestions>{() => <ThreadSuggestionItem />}</ThreadPrimitive.Suggestions>
+      {runtimeSuggestionCount > 0 ? (
+        <ThreadPrimitive.Suggestions>{() => <ThreadSuggestionItem />}</ThreadPrimitive.Suggestions>
+      ) : (
+        starterSuggestions.map((suggestion) => (
+          <StaticSuggestionItem
+            key={suggestion.title}
+            title={suggestion.title}
+            description={suggestion.description}
+            prompt={suggestion.prompt}
+          />
+        ))
+      )}
+    </div>
+  );
+};
+
+const starterSuggestions = [
+  {
+    title: "Run a readiness check",
+    description: "Confirm the chat loop is responding.",
+    prompt:
+      "Give me a concise readiness check for this chat session. Keep it practical and mention what you can help with next.",
+  },
+  {
+    title: "Plan a project handoff",
+    description: "Test a workbench-style planning response.",
+    prompt:
+      "Help me turn a rough project idea into a short implementation plan with assumptions, risks, and next checks.",
+  },
+  {
+    title: "Test agent behavior",
+    description: "Ask for a focused operator-style answer.",
+    prompt:
+      "Act as a concise operator assistant. List the first three checks you would run before taking action on a new workspace task.",
+  },
+  {
+    title: "Explain a failure",
+    description: "Practice debugging from symptoms.",
+    prompt:
+      "If I tell you a chat message failed or did nothing, what exact facts should we inspect first?",
+  },
+] as const;
+
+const StaticSuggestionItem: FC<{
+  title: string;
+  description: string;
+  prompt: string;
+}> = ({ title, description, prompt }) => {
+  const aui = useAui();
+  const disabled = useAuiState((s) => s.thread.isDisabled || s.thread.isRunning);
+  const sendPrompt = () => {
+    if (disabled) return;
+    aui.thread().append({
+      content: [{ type: "text", text: prompt }],
+      runConfig: aui.composer().getState().runConfig,
+    });
+    aui.composer().setText("");
+  };
+
+  return (
+    <div className="aui-thread-welcome-suggestion-display fade-in slide-in-from-bottom-2 animate-in fill-mode-both duration-200 nth-[n+3]:hidden @md:nth-[n+3]:block">
+      <Button
+        variant="ghost"
+        disabled={disabled}
+        onClick={sendPrompt}
+        className="aui-thread-welcome-suggestion bg-background hover:bg-muted h-auto w-full flex-wrap items-start justify-start gap-1 rounded-3xl border px-4 py-3 text-start text-sm transition-colors @md:flex-col"
+      >
+        <span className="aui-thread-welcome-suggestion-text-1 font-medium">{title}</span>
+        <span className="aui-thread-welcome-suggestion-text-2 text-muted-foreground">
+          {description}
+        </span>
+      </Button>
     </div>
   );
 };
@@ -218,7 +292,7 @@ const MessageError: FC = () => {
   return (
     <MessagePrimitive.Error>
       <ErrorPrimitive.Root className="aui-message-error-root border-destructive bg-destructive/10 text-destructive dark:bg-destructive/5 mt-2 rounded-md border p-3 text-sm dark:text-red-200">
-        <ErrorPrimitive.Message className="aui-message-error-message line-clamp-2" />
+        <ErrorPrimitive.Message className="aui-message-error-message whitespace-pre-wrap break-words" />
       </ErrorPrimitive.Root>
     </MessagePrimitive.Error>
   );

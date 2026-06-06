@@ -200,9 +200,7 @@ const main = async () => {
   );
   await allowed.response.text();
   const completed = await waitForCompletedRun(tenant, allowed.threadId);
-  if (!completed.latestRun?.upstreamRunId) {
-    throw new Error("allowed policy run is missing upstream LangGraph run id");
-  }
+  if (!completed.latestRun?.id) throw new Error("allowed policy run is missing run id");
   assertAllowedPolicy(completed);
 
   const executeBlock = await startStream(

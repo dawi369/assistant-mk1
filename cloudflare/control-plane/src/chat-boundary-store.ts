@@ -70,7 +70,8 @@ export const getLatestChatSession = async (env: Env, scope: TenantScope) =>
 export const getOrCreateLatestChatSession = async (env: Env, identity: AgentIdentity) => {
   const latest = await getLatestChatSession(env, identity.scope);
   return (
-    latest?.session_id ?? (await createChatSession(env, identity, { source: "langgraph-facade" }))
+    latest?.session_id ??
+    (await createChatSession(env, identity, { source: "cloudflare-chat-runtime" }))
   );
 };
 
@@ -125,6 +126,24 @@ export const storeChatThread = async (
       timestamp,
       timestamp,
     )
+    .run();
+};
+
+export const updateChatThreadUpstream = async (
+  env: Env,
+  scope: TenantScope,
+  threadId: string,
+  upstream: Record<string, unknown>,
+) => {
+  const timestamp = new Date().toISOString();
+  await env.DB.prepare(
+    `UPDATE chat_threads
+     SET upstream_json = ?,
+         updated_at = ?,
+         last_seen_at = ?
+     WHERE user_id = ? AND workspace_id = ? AND thread_id = ?`,
+  )
+    .bind(toJson(upstream), timestamp, timestamp, scope.userId, scope.workspaceId, threadId)
     .run();
 };
 

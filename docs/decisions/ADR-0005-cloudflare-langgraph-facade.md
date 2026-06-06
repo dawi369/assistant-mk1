@@ -1,13 +1,13 @@
 # ADR-0005: Cloudflare LangGraph Facade
 
-Status: accepted
+Status: superseded by Cloudflare-owned simple chat for normal messages
 
 ## Context
 
-Assistant-MK1 currently uses assistant-ui with the LangGraph SDK for chat
+Assistant-MK1 uses assistant-ui with the LangGraph SDK-shaped contract for chat
 threads and streaming. The north-star runtime says Cloudflare should own the
 user-facing control-plane boundary, while Fly remains the execution plane for
-LangGraph and heavy tools.
+LangGraph workflows and heavy tools.
 
 Jumping directly to a custom Cloudflare chat runtime would force a frontend and
 streaming rewrite before auth, durable thread state, and data-client expansion
@@ -16,11 +16,14 @@ are ready.
 ## Decision
 
 Insert Cloudflare as a LangGraph-compatible facade between Vercel and Fly.
+This was the transitional decision.
 
 Vercel keeps the browser-facing `/api/*` contract used by assistant-ui. Its
 server-side proxy sends trusted dev identity and dev control-plane auth to
-Cloudflare. Cloudflare validates that boundary, then proxies `/langgraph/*` to
-the Fly LangGraph runtime with the Fly gateway token.
+Cloudflare. Cloudflare validates that boundary. Normal simple chat is now
+handled by Cloudflare directly behind the same `/langgraph` compatibility
+shape. Fly/LangGraph are reserved for explicit heavy workflow escalation and
+other non-simple runtime paths.
 
 Cloudflare must stream upstream responses through without buffering. This is a
 stepping stone toward a real Cloudflare-owned conversational control plane, not

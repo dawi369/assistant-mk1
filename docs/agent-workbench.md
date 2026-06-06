@@ -119,13 +119,15 @@ Implemented:
 - Default assistant-ui chat remains the normal screen.
 - Dev Monitor provides Cloudflare-derived admin/runtime visibility with a
   flow-first chat overview and secondary workspace/agent controls.
+- The normal chat shell has a compact server-derived runtime hint for active
+  workspace, active agent/profile, chat state, and error detail access.
 - WorkOS, workspace, membership, and active agent scope are server-derived.
 - The first typed diagnostic tool path exists through `demo.inspect`.
 
 Next milestones:
 
-1. Add a compact status surface for real chat/workflow run state when it is
-   useful outside Dev Monitor.
+1. Make agent profiles affect runtime behavior through server-owned prompt and
+   tool configuration.
 2. Add interrupt display and resume actions when a workflow requires approval.
 3. Add artifact list and execution history beyond diagnostic snapshots.
 4. Add domain context configuration that can be swapped per downstream app.

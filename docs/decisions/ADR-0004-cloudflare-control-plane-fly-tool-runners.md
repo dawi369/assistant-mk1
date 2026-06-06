@@ -26,6 +26,8 @@ LangGraph and tool runners use mediated Cloudflare APIs for app-state reads and 
 - R2 stores artifacts and blobs, not app database records.
 - Every tool call must carry tenant scope, permission context, execution mode/policy, and audit output.
 - The frontend streams from Cloudflare, not directly from Fly by default.
-- The current assistant-ui chat path may temporarily proxy from Vercel to Fly LangGraph until Cloudflare owns the user-facing conversational stream.
+- The current assistant-ui chat path uses a LangGraph-shaped browser contract,
+  but normal simple chat is Cloudflare-owned. Fly/LangGraph are reserved for
+  explicit heavy workflow escalation.
 - Workflow DB access is mediated by Cloudflare APIs first to prevent cross-user contamination.
 - The current local/Fly LangGraph starter remains useful for development and staged validation while the target runtime evolves.

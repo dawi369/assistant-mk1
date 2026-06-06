@@ -12,16 +12,21 @@ subsystems. For the current-vs-target docs map, start with `docs/README.md`.
 - Next.js App Router serves the frontend and browser-facing API facade.
 - WorkOS AuthKit runs through the Next.js SDK at the Vercel web boundary.
 - assistant-ui renders the thread, composer, messages, reasoning, tools, and attachments.
-- `@assistant-ui/react-langgraph` adapts the UI runtime to LangGraph threads and streams.
+- `@assistant-ui/react-langgraph` adapts the UI runtime to the LangGraph-shaped
+  thread and stream contract. Hosted simple chat is served by Cloudflare behind
+  that compatibility contract.
 - Vercel derives trusted WorkOS user, account source, and external membership
   signals before calling Cloudflare server-to-server.
 - Cloudflare owns membership and agent authorization, durable workbench run
   control, tenant state, audit records, and mediated storage access.
 - Workspaces are customer/team tenant boundaries. Agents are runtime assistant
   configurations scoped to a workspace.
-- Fly runs LangGraph and signed server-side executor work.
-- LangGraph currently runs the starter backend graph exported from `backend/agent.ts`.
-- OpenRouter is configured server-side through `ChatOpenRouter`.
+- Fly runs LangGraph workflow services and signed server-side executor work for
+  heavy execution.
+- LangGraph currently remains available through the starter backend graph
+  exported from `backend/agent.ts` for workflow/escalation testing.
+- OpenRouter is configured server-side for Cloudflare simple chat and for the
+  Fly/LangGraph workflow runtime.
 - Vercel hosts the deployed Next.js frontend.
 
 ## Control Plane Shape
@@ -98,9 +103,9 @@ Browser -> Vercel Next.js frontend
         -> Fly runtime executor for signed work
 
 Browser -> Vercel Next.js /api facade
-        -> Cloudflare /langgraph facade
-        -> Fly LangGraph runtime gateway
-        -> LangGraph server
+        -> Cloudflare /langgraph compatibility facade
+        -> Cloudflare simple chat runtime for normal messages
+        -> Fly LangGraph runtime gateway for explicit escalation
 ```
 
 Vercel owns hosted web sign-in and the browser-facing API facade. Cloudflare is

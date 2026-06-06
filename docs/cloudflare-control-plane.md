@@ -4,10 +4,10 @@ Cloudflare is the preferred future live multi-user control plane for Assistant-M
 
 Document status: Cloudflare already owns the current authz/control-plane slice
 for users, accounts, workspaces, memberships, active workspace preferences,
-workspace-scoped test agents, active agent preferences, demo runs, and the
-transitional LangGraph facade. Durable Objects, R2 artifacts, richer policy,
-secret custody, customer-facing agent configuration, and production admin flows
-are still target work.
+workspace-scoped test agents, active agent preferences, demo runs, and
+Cloudflare-native simple chat behind the LangGraph-compatible browser contract.
+Durable Objects, R2 artifacts, richer policy, secret custody, customer-facing
+agent configuration, and production admin flows are still target work.
 
 ## Role
 
@@ -109,26 +109,30 @@ identity values when WorkOS is not configured. The durable rule is that Worker
 storage operations take trusted scope explicitly and executor callbacks resolve
 scope from the stored run record.
 
-## LangGraph Facade
+## Chat Runtime And LangGraph Facade
 
 The current hosted chat path uses `/langgraph/*` on the Worker as a
 LangGraph-compatible facade. Vercel keeps the same browser-facing `/api/*`
 contract, but the server-side proxy authenticates to Cloudflare with trusted
-dev identity headers. Cloudflare then streams the request to the Fly LangGraph
-gateway with the upstream gateway token.
+dev identity headers.
 
-Cloudflare now owns the first chat session boundary invariant: sessions,
-LangGraph thread ids, chat intents, policy decisions, and minimal chat run
-envelopes are registered in D1 with trusted tenant scope. Thread-scoped facade
-requests must match stored ownership before they are proxied to Fly. Streamed
-chat runs create an intent, pass through a deterministic dev policy gate, and
-then get a minimal Cloudflare run envelope so the control plane can prove a
-tenant-scoped request happened without storing the full transcript.
+For simple assistant chat, Cloudflare now satisfies the subset of the LangGraph
+API shape that assistant-ui uses: thread creation, thread state reads, and
+`/runs/stream`. The Worker resolves the trusted user, account, active
+workspace, membership, and active agent, records the session/thread/intent/
+policy/run state in D1, calls the model provider directly, and streams
+LangGraph-compatible SSE chunks back to the browser. Fly is not on the normal
+simple-chat path.
+
+Fly/LangGraph remain available as the execution plane for graph-shaped
+workflows, heavy tools, browser automation, and future escalation paths. Other
+LangGraph-compatible endpoints can still fall through to the Fly gateway when
+they are explicitly needed, but that is not the default for a plain message.
 
 The current dev policy is intentionally small. Chat defaults to `ask`,
-`ask`/`dry_run` can pass to Fly, `execute` is blocked until approval policy
-exists, and a second same-thread stream is blocked while another run is still
-`running`.
+`ask`/`dry_run` can run through the Cloudflare simple-chat path, `execute` is
+blocked until approval policy exists, and a second same-thread stream is
+blocked while another run is still `running`.
 
 Cloudflare also records tenant-scoped control-plane events for session,
 thread, intent, policy, and run progress. The current browser-facing workbench
@@ -147,10 +151,11 @@ intent, policy decision, run status/error, recent chat events, and a compact
 state such as `no_session`, `thread_ready`, `blocked`, `running`, `failed`, or
 `completed`.
 
-This is observable control-plane state, not transcript persistence and not the
-final Cloudflare-owned conversation stream. The assistant message stream still
-passes through the LangGraph-compatible facade while Cloudflare accumulates the
-session, policy, run, and event ownership needed to replace that stream later.
+This is observable control-plane state plus lightweight transcript continuity
+for the current simple-chat path. It is not the final Agent Runtime Config or
+tool-execution model. The durable north star remains: Cloudflare owns the
+user-facing conversation/control plane, and Fly executes signed heavy work
+only when the control plane escalates to it.
 
 This is still not complete production authorization. WorkOS is the hosted web
 auth provider, and Cloudflare now owns the first D1-backed membership and agent
@@ -158,6 +163,6 @@ routing slices, but explicit invites/admin flows, tool authorization, secret
 authorization, and a stronger Vercel-to-Cloudflare trust contract are still
 future gates. The durable rule is that Vercel owns the hosted web session,
 Cloudflare enforces membership, agent access, session, thread, and run
-ownership from trusted scope, and Fly remains the execution plane. The facade
-must not expose the Fly token to Vercel or the browser, and it must not become
-the permanent product API by accident.
+ownership from trusted scope, and Fly remains the heavy execution plane. The
+facade must not expose the Fly token to Vercel or the browser, and it must not
+be mistaken for the final product API.

@@ -54,7 +54,7 @@ Use four visibly separated pillars plus one sidecar cluster:
 - `Vercel / Frontend`: Next.js app, assistant-ui thread, `/api` LangGraph
   facade, `external-signals` API, and workbench API routes.
 - `Cloudflare / Worker Control Plane`: control-plane Worker, trusted dev
-  identity, demo run APIs, and run callback endpoint.
+  identity, simple chat runtime, demo run APIs, and run callback endpoint.
 - `Fly.io / LangGraph Execution`: runtime gateway, LangGraph server,
   `backend/agent.ts`, and signed demo executor.
 - `Durable Data Plane`: current D1 demo/control records plus planned R2,
@@ -65,7 +65,9 @@ Use four visibly separated pillars plus one sidecar cluster:
 Typed arrow categories:
 
 - `chat request`: assistant-ui traffic flows through the Vercel `/api` facade to
-  the Fly LangGraph gateway.
+  Cloudflare's LangGraph-compatible simple chat runtime.
+- `explicit escalation`: Cloudflare can still call the Fly LangGraph gateway
+  when a future workflow needs graph-shaped/heavy execution.
 - `trusted ingress`: external signals enter through the Vercel API route before
   calling the server-side runtime.
 - `workbench action`: Vercel workbench routes call the Cloudflare Worker with

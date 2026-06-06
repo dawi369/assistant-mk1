@@ -13,8 +13,8 @@ or live mutation tools until the slice that needs them is explicitly scoped.
 - Vercel hosts the Next.js assistant UI and browser-facing API facade.
 - assistant-ui owns the first chat surface, message rendering, composer,
   attachments, tool-call rendering primitives, and stream ergonomics.
-- `@assistant-ui/react-langgraph` bridges the browser runtime to LangGraph
-  threads and streams through the Fly LangGraph runtime gateway.
+- `@assistant-ui/react-langgraph` bridges the browser runtime to a
+  LangGraph-shaped thread and stream contract.
 - `backend/agent.ts` is a minimal OpenRouter-backed LangGraph graph.
 - `/api/[..._path]` proxies browser LangGraph SDK traffic.
 - `/api/external-signals` is a token-protected staging ingress for starts,
@@ -32,12 +32,15 @@ or live mutation tools until the slice that needs them is explicitly scoped.
   tenant scope, D1-backed run snapshots, callbacks, and tenant-isolation smoke
   coverage.
 - Cloudflare fronts hosted LangGraph-compatible chat traffic, stores
-  tenant-scoped chat sessions, thread ownership, chat intents, policy
-  decisions, minimal chat run envelopes, and control-plane activity events.
+  tenant-scoped chat sessions, thread ownership, lightweight transcript
+  continuity, chat intents, policy decisions, chat run envelopes, and
+  control-plane activity events. Normal simple chat is answered from
+  Cloudflare, not Fly.
   The workbench can subscribe to those activity events through a browser-safe
   Vercel facade.
 - Fly runs the dedicated LangGraph runtime gateway and signed `demo.inspect`
-  executor endpoint.
+  executor endpoint. It is the heavy workflow/tool execution plane, not the
+  normal simple-chat path.
 
 ## Assistant-UI Principle
 
@@ -174,6 +177,9 @@ Implemented:
   `GET /api/workbench/admin-summary`, and a flow-first drawer that shows chat
   readiness, active workspace/agent, latest events, and important errors before
   secondary management controls and advanced raw details.
+- Chat polish checkpoint v0: the normal shell has a compact server-derived
+  runtime hint for active workspace, active agent/profile, chat state, and
+  error-detail access while keeping assistant-ui as the primary chat surface.
 - Workspace management v0 as the first Cloudflare-owned workspace model
   slice: D1 active workspace preference, Cloudflare `GET /workspaces`,
   `POST /workspaces`, `POST /workspaces/:workspaceId/activate`, Vercel
@@ -189,8 +195,8 @@ Implemented:
 Next target:
 
 - Make agent profiles affect runtime behavior through server-owned prompt/tool
-  configuration after the workspace-scoped loading and preference model is
-  verified.
+  configuration now that the workspace-scoped loading, preference model, and
+  chat polish checkpoint are in place.
 - Keep Fly/LangGraph state access mediated through Cloudflare APIs.
 - Strengthen the Vercel-to-Cloudflare trust boundary with a stricter signed or
   service-authenticated server contract after this observability slice.
@@ -207,19 +213,21 @@ Exit criteria:
 Goal: move user-facing conversation and workflow progress behind Cloudflare.
 
 Current baseline: workbench run control is Cloudflare-owned, and assistant-ui
-chat now flows through the Cloudflare `/langgraph` facade. Cloudflare owns
-tenant-scoped session/thread ownership, chat intents, policy decisions, minimal
-run envelopes, a tenant-scoped control-plane event feed, and a short-lived SSE
-stream for browser-visible runtime activity. Fly/LangGraph still own graph
-execution and the facade remains LangGraph-compatible.
+chat now flows through the Cloudflare `/langgraph` compatibility facade.
+Cloudflare owns normal simple chat, tenant-scoped session/thread ownership,
+lightweight transcript continuity, chat intents, policy decisions, run
+envelopes, a tenant-scoped control-plane event feed, and a short-lived SSE
+stream for browser-visible runtime activity. Fly/LangGraph still own complex
+workflow execution and explicit heavy escalation.
 
 Next target:
 
 - Cloudflare `GET /chat/runtime-summary` plus Vercel
   `GET /api/workbench/chat-runtime-summary` as the first dedicated read model
   for chat runtime state.
-- Cloudflare-owned user-facing stream for conversation and workflow progress,
-  building on the event feed as the first observable state source.
+- Broaden the Cloudflare-owned stream from simple chat into richer conversation
+  and workflow progress, building on the event feed as the first observable
+  state source.
 - Progress callbacks or scoped status writes from Fly/LangGraph into canonical
   state.
 - Trigger and schedule handling through trusted tenant metadata.

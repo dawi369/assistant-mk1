@@ -1,16 +1,11 @@
 import {
-  createChatIntent,
-  createChatPolicyDecision,
-  createChatRun,
   createChatSession,
   getLatestChatIntent,
   getLatestChatPolicyDecision,
   getLatestChatRun,
   getLatestChatSession,
-  getLatestRunningChatRun,
   getOwnedChatSession,
   getOwnedChatThread,
-  storeChatThread,
   toChatIntentSnapshot,
   toChatPolicyDecisionSnapshot,
   toChatRunSnapshot,
@@ -18,10 +13,13 @@ import {
   toChatThreadSnapshot,
   touchChatSession,
   touchChatThread,
-  updateChatRun,
 } from "./chat-boundary-store";
 import { toAgentRuntimeMetadata } from "./agent-records";
-import { deriveChatExecutionMode, evaluateChatRunPolicy } from "./chat-policy";
+import {
+  handleCloudflareCreateThread,
+  handleCloudflareRunStream,
+  handleCloudflareThreadState,
+} from "./cloudflare-chat-runtime";
 import { appendControlPlaneEvent } from "./control-plane-events";
 import { selectAgent } from "./authz-store";
 import { isRecord, json, parseJson } from "./http";
@@ -72,120 +70,8 @@ const isCreateThreadRequest = (request: Request, pathname: string) =>
 const isThreadRunStreamRequest = (request: Request, pathname: string) =>
   request.method === "POST" && /^\/langgraph\/threads\/[^/]+\/runs\/stream$/.test(pathname);
 
-const summarizeChatRunRequest = (
-  body: unknown,
-  input: { bodyBytes: number; requestedExecutionMode?: string },
-) => {
-  if (!isRecord(body)) {
-    return {
-      bodyBytes: input.bodyBytes,
-      requestedExecutionMode: input.requestedExecutionMode,
-    };
-  }
-
-  const requestInput = isRecord(body.input) ? body.input : {};
-  const messages = Array.isArray(requestInput.messages) ? requestInput.messages : [];
-  return {
-    assistantId: typeof body.assistant_id === "string" ? body.assistant_id : undefined,
-    streamMode:
-      typeof body.stream_mode === "string" || Array.isArray(body.stream_mode)
-        ? body.stream_mode
-        : undefined,
-    messageCount: messages.length,
-    bodyBytes: input.bodyBytes,
-    requestedExecutionMode: input.requestedExecutionMode,
-  };
-};
-
-const parseSseMetadata = (chunk: string) => {
-  const metadata = [...chunk.matchAll(/^event: metadata\r?\ndata: (.+)$/gm)]
-    .map((match) => parseJson(match[1] ?? ""))
-    .find(isRecord);
-  const upstreamRunId = metadata?.run_id;
-  return {
-    metadata,
-    upstreamRunId: typeof upstreamRunId === "string" ? upstreamRunId : undefined,
-  };
-};
-
-const trackStreamRun = async (
-  env: Env,
-  identity: AgentIdentity,
-  threadId: string,
-  runId: string,
-  body: ReadableStream<Uint8Array> | null,
-) => {
-  if (!body) {
-    await updateChatRun(env, {
-      runId,
-      scope: identity.scope,
-      status: "completed",
-      metadata: { stream: "empty" },
-    });
-    await appendControlPlaneEvent(env, identity, {
-      type: "chat.run.completed",
-      summary: "Chat run completed with an empty upstream stream.",
-      targetType: "chat_run",
-      targetId: runId,
-      data: { threadId, stream: "empty" },
-    });
-    return;
-  }
-
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let upstreamRunId: string | undefined;
-  let metadata: Record<string, unknown> = {};
-
-  try {
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer = `${buffer}${decoder.decode(value, { stream: true })}`;
-      const parsed = parseSseMetadata(buffer);
-      if (parsed.upstreamRunId) upstreamRunId = parsed.upstreamRunId;
-      if (parsed.metadata) metadata = parsed.metadata;
-      if (buffer.length > 8192) buffer = buffer.slice(-4096);
-    }
-
-    const parsed = parseSseMetadata(`${buffer}${decoder.decode()}`);
-    if (parsed.upstreamRunId) upstreamRunId = parsed.upstreamRunId;
-    if (parsed.metadata) metadata = parsed.metadata;
-
-    await updateChatRun(env, {
-      runId,
-      scope: identity.scope,
-      status: "completed",
-      upstreamRunId,
-      metadata,
-    });
-    await appendControlPlaneEvent(env, identity, {
-      type: "chat.run.completed",
-      summary: "Chat run completed.",
-      targetType: "chat_run",
-      targetId: runId,
-      data: { threadId, upstreamRunId },
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown chat stream tracking failure";
-    await updateChatRun(env, {
-      runId,
-      scope: identity.scope,
-      status: "failed",
-      upstreamRunId,
-      metadata,
-      error: message,
-    });
-    await appendControlPlaneEvent(env, identity, {
-      type: "chat.run.failed",
-      summary: "Chat run tracking failed.",
-      targetType: "chat_run",
-      targetId: runId,
-      data: { threadId, upstreamRunId, error: message },
-    });
-  }
-};
+const isThreadStateRequest = (request: Request, pathname: string) =>
+  request.method === "GET" && /^\/langgraph\/threads\/[^/]+\/state$/.test(pathname);
 
 const fetchUpstream = (
   request: Request,
@@ -206,74 +92,10 @@ const fetchUpstream = (
   });
 };
 
-const handleCreateThread = async (
-  request: Request,
-  env: Env,
-  url: URL,
-  identity: AgentIdentity,
-  config: { baseUrl: string; token: string },
-) => {
-  const upstream = await fetchUpstream(request, env, url, config);
-  const headers = responseHeaders(upstream);
-  const body = await upstream.text();
-
-  if (!upstream.ok) {
-    return new Response(body, {
-      status: upstream.status,
-      statusText: upstream.statusText,
-      headers,
-    });
-  }
-
-  const parsed = parseJson(body);
-  if (!isRecord(parsed) || typeof parsed.thread_id !== "string") {
-    return json(
-      { ok: false, error: "LangGraph upstream did not return a thread_id" },
-      { status: 502 },
-    );
-  }
-
-  const activeAgent = await selectAgent(env, identity.agentId, identity.scope.workspaceId);
-  const agentMetadata = toAgentRuntimeMetadata(activeAgent, identity.agentId);
-  const existingSession = await getLatestChatSession(env, identity.scope);
-  const createdSession = !existingSession || existingSession.agent_id !== identity.agentId;
-  const resolvedSessionId =
-    !createdSession && existingSession
-      ? existingSession.session_id
-      : await createChatSession(env, identity, {
-          source: "langgraph-facade",
-          agent: agentMetadata,
-        });
-  if (createdSession) {
-    await appendControlPlaneEvent(env, identity, {
-      type: "chat.session.created",
-      summary: "Created chat session for LangGraph thread ownership.",
-      targetType: "chat_session",
-      targetId: resolvedSessionId,
-      data: { source: "langgraph-facade", agent: agentMetadata },
-    });
-  }
-  await storeChatThread(env, identity, resolvedSessionId, parsed.thread_id, parsed);
-  await appendControlPlaneEvent(env, identity, {
-    type: "chat.thread.created",
-    summary: "Registered LangGraph thread ownership in Cloudflare.",
-    targetType: "chat_thread",
-    targetId: parsed.thread_id,
-    data: { sessionId: resolvedSessionId, agent: agentMetadata },
-  });
-  await touchChatSession(env, identity.scope, resolvedSessionId, parsed.thread_id);
-
-  return new Response(body, {
-    status: upstream.status,
-    statusText: upstream.statusText,
-    headers,
-  });
-};
-
 export const handleLangGraphFacade = async (
   request: Request,
   env: Env,
-  ctx: WorkerExecutionContext,
+  _ctx: WorkerExecutionContext,
   identity: AgentIdentity,
   url: URL,
 ) => {
@@ -292,19 +114,8 @@ export const handleLangGraphFacade = async (
     });
   }
 
-  const config = upstreamConfig(env);
-  if (!config) {
-    return json(
-      {
-        ok: false,
-        error: "LANGGRAPH_UPSTREAM_URL and LANGGRAPH_UPSTREAM_TOKEN are required",
-      },
-      { status: 500 },
-    );
-  }
-
   if (isCreateThreadRequest(request, url.pathname)) {
-    return handleCreateThread(request, env, url, identity, config);
+    return handleCloudflareCreateThread(env, identity);
   }
 
   const threadId = threadScopedPath(url.pathname);
@@ -315,140 +126,23 @@ export const handleLangGraphFacade = async (
     await touchChatSession(env, identity.scope, thread.session_id, threadId);
   }
 
+  if (threadId && thread && isThreadStateRequest(request, url.pathname)) {
+    return handleCloudflareThreadState(thread);
+  }
+
   if (threadId && thread && isThreadRunStreamRequest(request, url.pathname)) {
-    const bodyText = await request.text();
-    const parsedBody = parseJson(bodyText);
-    const { executionMode, invalidExecutionMode, requestedExecutionMode } =
-      deriveChatExecutionMode(parsedBody);
-    const runningRun = await getLatestRunningChatRun(env, identity.scope, threadId);
-    const policy = evaluateChatRunPolicy({
-      executionMode,
-      invalidExecutionMode,
-      runningRun,
-    });
-    const payload = summarizeChatRunRequest(parsedBody, {
-      bodyBytes: bodyText.length,
-      requestedExecutionMode,
-    });
-    const activeAgent = await selectAgent(env, identity.agentId, identity.scope.workspaceId);
-    const agentMetadata = toAgentRuntimeMetadata(activeAgent, identity.agentId);
-    const intentId = await createChatIntent(env, identity, {
-      sessionId: thread.session_id,
-      threadId,
-      executionMode,
-      status: policy.decision === "allow" ? "allowed" : "blocked",
-      payload: { ...payload, agent: agentMetadata },
-    });
-    await appendControlPlaneEvent(env, identity, {
-      type: "chat.intent.created",
-      summary: "Created chat response intent.",
-      targetType: "chat_intent",
-      targetId: intentId,
-      data: {
-        threadId,
-        sessionId: thread.session_id,
-        executionMode,
-        status: policy.decision,
-        agent: agentMetadata,
+    return handleCloudflareRunStream(env, identity, thread, await request.text());
+  }
+
+  const config = upstreamConfig(env);
+  if (!config) {
+    return json(
+      {
+        ok: false,
+        error: "LANGGRAPH_UPSTREAM_URL and LANGGRAPH_UPSTREAM_TOKEN are required",
       },
-    });
-    const policyDecisionId = await createChatPolicyDecision(env, identity, {
-      intentId,
-      threadId,
-      decision: policy.decision,
-      reason: policy.reason,
-      executionMode,
-      limits: { sameThreadConcurrency: 1 },
-    });
-    await appendControlPlaneEvent(env, identity, {
-      type: policy.decision === "allow" ? "chat.policy.allowed" : "chat.policy.blocked",
-      summary: policy.reason,
-      targetType: "chat_policy_decision",
-      targetId: policyDecisionId,
-      data: { threadId, intentId, executionMode, agent: agentMetadata },
-    });
-
-    if (policy.decision === "block") {
-      return json(
-        {
-          ok: false,
-          error: policy.reason,
-          intentId,
-          policyDecisionId,
-          decision: policy.decision,
-        },
-        { status: policy.status },
-      );
-    }
-
-    const runId = await createChatRun(env, identity, {
-      threadId,
-      intentId,
-      policyDecisionId,
-      metadata: { executionMode, agent: agentMetadata },
-    });
-    await appendControlPlaneEvent(env, identity, {
-      type: "chat.run.started",
-      summary: "Started Cloudflare-gated chat run.",
-      targetType: "chat_run",
-      targetId: runId,
-      data: { threadId, intentId, policyDecisionId, executionMode, agent: agentMetadata },
-    });
-    const upstream = await fetchUpstream(request, env, url, config, bodyText);
-
-    if (!upstream.ok) {
-      const error = `${upstream.status} ${upstream.statusText}`;
-      await updateChatRun(env, {
-        runId,
-        scope: identity.scope,
-        status: "failed",
-        error,
-      });
-      await appendControlPlaneEvent(env, identity, {
-        type: "chat.run.failed",
-        summary: "Chat run failed before upstream stream tracking started.",
-        targetType: "chat_run",
-        targetId: runId,
-        data: { threadId, error },
-      });
-      return new Response(upstream.body, {
-        status: upstream.status,
-        statusText: upstream.statusText,
-        headers: responseHeaders(upstream),
-      });
-    }
-
-    if (upstream.body) {
-      const [clientBody, trackingBody] = upstream.body.tee();
-      ctx.waitUntil(trackStreamRun(env, identity, threadId, runId, trackingBody));
-      return new Response(clientBody, {
-        status: upstream.status,
-        statusText: upstream.statusText,
-        headers: responseHeaders(upstream),
-      });
-    }
-
-    await updateChatRun(env, {
-      runId,
-      scope: identity.scope,
-      status: upstream.ok ? "completed" : "failed",
-      error: upstream.ok ? undefined : `${upstream.status} ${upstream.statusText}`,
-    });
-    await appendControlPlaneEvent(env, identity, {
-      type: upstream.ok ? "chat.run.completed" : "chat.run.failed",
-      summary: upstream.ok
-        ? "Chat run completed without an upstream response body."
-        : "Chat run failed without an upstream response body.",
-      targetType: "chat_run",
-      targetId: runId,
-      data: { threadId },
-    });
-
-    return new Response(upstream.body, {
-      status: upstream.status,
-      statusText: upstream.statusText,
-      headers: responseHeaders(upstream),
-    });
+      { status: 500 },
+    );
   }
 
   const upstream = await fetchUpstream(request, env, url, config);

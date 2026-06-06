@@ -22,6 +22,7 @@ flowchart LR
     direction TB
     worker["control-plane Worker"]
     trustedIdentity["trusted dev identity"]
+    simpleChat["simple chat runtime"]
     demoRuns["demo run APIs"]
     callback["run callback endpoint"]
   end
@@ -50,7 +51,10 @@ flowchart LR
 
   nextApp -- "renders" --> assistantUi
   assistantUi -- "chat request" --> apiFacade
-  apiFacade -- "proxy" --> gateway
+  apiFacade -- "trusted proxy" --> worker
+  worker -- "simple chat stream" --> simpleChat
+  simpleChat -- "model call" --> openrouter
+  worker -. "explicit escalation" .-> gateway
   gateway -- "LangGraph API" --> langgraph
   langgraph -- "loads graph" --> agentGraph
   agentGraph -- "model call" --> openrouter
@@ -72,7 +76,7 @@ flowchart LR
   langgraph -. "planned checkpoints" .-> workflowState
 
   class nextApp,assistantUi,apiFacade,signalApi,workbenchApi vercel
-  class worker,trustedIdentity,demoRuns,callback cloudflare
+  class worker,trustedIdentity,simpleChat,demoRuns,callback cloudflare
   class gateway,langgraph,agentGraph,executor fly
   class d1 data
   class r2,durableObject,workflowState planned

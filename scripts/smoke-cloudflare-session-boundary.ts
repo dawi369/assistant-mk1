@@ -250,9 +250,8 @@ const main = async () => {
 
   const runThreadA = await runStreamOnNewThread(tenants.a, "session boundary stream");
   const completed = await waitForCompletedRun(tenants.a, runThreadA, sessionA.sessionId!);
-  if (!completed.latestRun?.upstreamRunId) {
-    throw new Error("completed run is missing upstream LangGraph run id");
-  }
+  const completedRunId = completed.latestRun?.id;
+  if (!completedRunId) throw new Error("completed run is missing run id");
 
   console.log("Cloudflare session boundary smoke passed");
   console.log(
@@ -262,8 +261,7 @@ const main = async () => {
         tenantBSessionId: sessionB.sessionId,
         tenantAThreadId: threadA,
         runThreadId: runThreadA,
-        trackedRunId: completed.latestRun.id,
-        upstreamRunId: completed.latestRun.upstreamRunId,
+        trackedRunId: completedRunId,
       },
       null,
       2,

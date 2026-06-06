@@ -1,6 +1,10 @@
 CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=replace-with-local-dev-token
 LANGGRAPH_UPSTREAM_URL=http://127.0.0.1:2024
 LANGGRAPH_UPSTREAM_TOKEN=replace-with-local-langgraph-proxy-token
+OPENROUTER_API_KEY=replace-with-local-openrouter-key
+OPENROUTER_MODEL=deepseek/deepseek-v4-flash
+OPENROUTER_SITE_URL=http://localhost:3000
+OPENROUTER_APP_NAME=assistant-mk1-cloudflare-chat-local
 WORKBENCH_EXECUTOR_URL=http://localhost:3000/api/workbench/executors/demo-inspect
 WORKBENCH_EXECUTOR_TOKEN=replace-with-local-executor-token
 

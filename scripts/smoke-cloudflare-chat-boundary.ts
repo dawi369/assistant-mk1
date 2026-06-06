@@ -202,10 +202,8 @@ const main = async () => {
 
   const runThreadA = await runStreamOnNewThread(tenants.a, "chat boundary stream");
   const completedSnapshot = await waitForTrackedRun(tenants.a, runThreadA);
-
-  if (!completedSnapshot.latestRun?.upstreamRunId) {
-    throw new Error("tracked chat run is missing upstream LangGraph run id");
-  }
+  const completedRunId = completedSnapshot.latestRun?.id;
+  if (!completedRunId) throw new Error("tracked chat run is missing run id");
 
   console.log("Cloudflare chat boundary smoke passed");
   console.log(
@@ -214,8 +212,7 @@ const main = async () => {
         tenantAThreadId: threadA,
         tenantBThreadId: threadB,
         runThreadId: runThreadA,
-        trackedRunId: completedSnapshot.latestRun.id,
-        upstreamRunId: completedSnapshot.latestRun.upstreamRunId,
+        trackedRunId: completedRunId,
       },
       null,
       2,

@@ -12,15 +12,16 @@ Browser -> Vercel Next.js frontend
         -> Fly LangGraph runtime executor for demo.inspect callbacks
 
 Browser -> Vercel Next.js /api proxy
-        -> Cloudflare /langgraph facade
-        -> Fly LangGraph runtime gateway
-        -> Fly LangGraph server
+        -> Cloudflare /langgraph compatibility facade
+        -> Cloudflare-owned simple chat runtime for normal messages
+        -> Fly LangGraph runtime gateway only for explicit heavy escalation
 ```
 
 Vercel owns frontend rendering and browser-facing API proxying. Cloudflare owns
-run control, tenant state, chat sessions, chat thread ownership, chat intents,
-chat policy decisions, and the control-plane activity feed plus event stream.
-Fly owns LangGraph and signed executor work.
+run control, tenant state, simple chat runtime, chat sessions, chat thread
+ownership, chat intents, chat policy decisions, and the control-plane activity
+feed plus event stream. Fly owns LangGraph workflow execution and signed
+executor work when Cloudflare escalates to heavy compute.
 
 WorkOS AuthKit is the current hosted identity boundary. Vercel maps WorkOS
 identity into trusted headers; the browser never sends tenant scope directly.
@@ -66,8 +67,10 @@ available; otherwise the pre-user dev fallback account id is
 `workos-personal:<user-id>`. Cloudflare auto-bootstraps D1-backed user, default
 workspace, initial membership, and default agent rows for the current pre-user
 dev environment, then resolves the active workspace and active agent before
-touching control-plane state. Cloudflare stores the Fly gateway token as
-`LANGGRAPH_UPSTREAM_TOKEN`. Browser requests never provide tenant ids or agent
+touching control-plane state. Cloudflare stores the OpenRouter key for
+Cloudflare-native simple chat and the Fly gateway token as
+`LANGGRAPH_UPSTREAM_TOKEN` for explicit LangGraph/Fly escalation. Browser
+requests never provide tenant ids or agent
 ids directly.
 
 ## Deploy
@@ -108,7 +111,7 @@ Run `pnpm smoke:cloudflare-session-boundary` and
 `pnpm smoke:cloudflare-chat-boundary` against the Worker after rebuilding the
 current D1 schema to prove tenant-scoped session and thread ownership. Run
 `pnpm smoke:cloudflare-policy-boundary` to prove Cloudflare gates chat
-execution before proxying to Fly. Run `pnpm smoke:cloudflare-event-feed` to
+execution before any model call or heavy escalation. Run `pnpm smoke:cloudflare-event-feed` to
 prove the browser-visible activity source is backed by Cloudflare events, and
 `pnpm smoke:cloudflare-event-stream` to prove those events can stream live from
 Cloudflare.
