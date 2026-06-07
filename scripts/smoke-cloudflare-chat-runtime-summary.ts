@@ -1,13 +1,4 @@
-type WorkOsIdentity = {
-  userId: string;
-  accountId: string;
-  email: string;
-};
-
-type ThreadResponse = {
-  thread_id?: string;
-  error?: string;
-};
+import { type TenantIdentity, createSmokeContext, runSmoke, sleep } from "./smoke-utils";
 
 type ChatRuntimeSummaryResponse = {
   ok?: boolean;
@@ -52,61 +43,31 @@ type ChatRuntimeSummaryResponse = {
   error?: string;
 };
 
-const baseUrl = (process.env.CLOUDFLARE_CONTROL_PLANE_URL ?? "http://localhost:8787").replace(
-  /\/$/,
-  "",
-);
-const token = process.env.CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN ?? "local-dev-token";
-const pollTimeoutMs = Number(process.env.SMOKE_TIMEOUT_MS ?? 30_000);
-const pollIntervalMs = Number(process.env.SMOKE_POLL_INTERVAL_MS ?? 400);
-const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+const { baseUrl, suffix, pollTimeoutMs, pollIntervalMs, headersFor, readJson, createThread } =
+  createSmokeContext();
 
-const tenantA = {
+const tenantA: TenantIdentity = {
   userId: `chat-runtime-user-a-${suffix}`,
   accountId: `workos-org:chat-runtime-org-a-${suffix}`,
+  accountSource: "workos-organization",
   email: `chat-runtime-a-${suffix}@example.com`,
-} satisfies WorkOsIdentity;
-
-const tenantB = {
-  userId: `chat-runtime-user-b-${suffix}`,
-  accountId: `workos-org:chat-runtime-org-b-${suffix}`,
-  email: `chat-runtime-b-${suffix}@example.com`,
-} satisfies WorkOsIdentity;
-
-const headersFor = (identity: WorkOsIdentity) => ({
-  authorization: `Bearer ${token}`,
-  "content-type": "application/json",
-  "x-assistant-mk1-user-id": identity.userId,
-  "x-assistant-mk1-account-id": identity.accountId,
-  "x-assistant-mk1-account-source": "workos-organization",
-  "x-assistant-mk1-user-email": identity.email,
-  "x-assistant-mk1-membership-role": "owner",
-  "x-assistant-mk1-membership-roles": JSON.stringify(["owner"]),
-});
-
-const readJson = async <T>(
-  path: string,
-  identity: WorkOsIdentity,
-  init?: RequestInit,
-): Promise<T> => {
-  const response = await fetch(`${baseUrl}${path}`, {
-    ...init,
-    headers: {
-      ...headersFor(identity),
-      ...init?.headers,
-    },
-  });
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`${init?.method ?? "GET"} ${path} failed with ${response.status}: ${body}`);
-  }
-  return (await response.json()) as T;
+  role: "owner",
+  roles: ["owner"],
 };
 
-const getRuntimeSummary = (identity: WorkOsIdentity) =>
+const tenantB: TenantIdentity = {
+  userId: `chat-runtime-user-b-${suffix}`,
+  accountId: `workos-org:chat-runtime-org-b-${suffix}`,
+  accountSource: "workos-organization",
+  email: `chat-runtime-b-${suffix}@example.com`,
+  role: "owner",
+  roles: ["owner"],
+};
+
+const getRuntimeSummary = (identity: TenantIdentity) =>
   readJson<ChatRuntimeSummaryResponse>("/chat/runtime-summary", identity);
 
-const requireSummaryState = async (identity: WorkOsIdentity, state: string, label: string) => {
+const requireSummaryState = async (identity: TenantIdentity, state: string, label: string) => {
   const summary = await getRuntimeSummary(identity);
   if (!summary.ok || summary.chatRuntime?.state !== state) {
     throw new Error(
@@ -116,19 +77,8 @@ const requireSummaryState = async (identity: WorkOsIdentity, state: string, labe
   return summary;
 };
 
-const createThread = async (identity: WorkOsIdentity) => {
-  const thread = await readJson<ThreadResponse>("/langgraph/threads", identity, {
-    method: "POST",
-    body: "{}",
-  });
-  if (!thread.thread_id) throw new Error(thread.error ?? "thread_id missing");
-  return thread.thread_id;
-};
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
 const waitForRuntimeState = async (
-  identity: WorkOsIdentity,
+  identity: TenantIdentity,
   expectedState: string,
   label: string,
 ) => {
@@ -143,7 +93,7 @@ const waitForRuntimeState = async (
   throw new Error(`${label} did not reach ${expectedState} within ${pollTimeoutMs}ms`);
 };
 
-const runStream = async (identity: WorkOsIdentity, threadId: string, assistantId = "agent") => {
+const runStream = async (identity: TenantIdentity, threadId: string, assistantId = "agent") => {
   const response = await fetch(
     `${baseUrl}/langgraph/threads/${encodeURIComponent(threadId)}/runs/stream`,
     {
@@ -167,7 +117,7 @@ const runStream = async (identity: WorkOsIdentity, threadId: string, assistantId
   return { response, body };
 };
 
-const assertThreadHidden = async (identity: WorkOsIdentity, threadId: string) => {
+const assertThreadHidden = async (identity: TenantIdentity, threadId: string) => {
   const response = await fetch(
     `${baseUrl}/internal/chat-boundary/threads/${encodeURIComponent(threadId)}/snapshot`,
     {
@@ -180,7 +130,7 @@ const assertThreadHidden = async (identity: WorkOsIdentity, threadId: string) =>
   }
 };
 
-const main = async () => {
+runSmoke("Cloudflare chat runtime summary smoke", async () => {
   console.log(`Smoking Cloudflare chat runtime summary at ${baseUrl}`);
 
   await requireSummaryState(tenantA, "no_session", "empty tenant");
@@ -227,7 +177,6 @@ const main = async () => {
     throw new Error("failed runtime summary did not include failure details");
   }
 
-  console.log("Cloudflare chat runtime summary smoke passed");
   console.log(
     JSON.stringify(
       {
@@ -241,11 +190,6 @@ const main = async () => {
       2,
     ),
   );
-};
-
-main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exitCode = 1;
 });
 
 export {};

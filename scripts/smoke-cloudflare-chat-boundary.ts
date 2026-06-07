@@ -1,13 +1,4 @@
-type TenantIdentity = {
-  userId: string;
-  workspaceId: string;
-  agentId: string;
-};
-
-type ThreadResponse = {
-  thread_id?: string;
-  error?: string;
-};
+import { type TenantIdentity, createSmokeContext, runSmoke, sleep } from "./smoke-utils";
 
 type BoundarySnapshot = {
   ok?: boolean;
@@ -26,14 +17,8 @@ type BoundarySnapshot = {
   error?: string;
 };
 
-const baseUrl = (process.env.CLOUDFLARE_CONTROL_PLANE_URL ?? "http://localhost:8787").replace(
-  /\/$/,
-  "",
-);
-const token = process.env.CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN ?? "local-dev-token";
-const pollTimeoutMs = Number(process.env.SMOKE_TIMEOUT_MS ?? 30_000);
-const pollIntervalMs = Number(process.env.SMOKE_POLL_INTERVAL_MS ?? 400);
-const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+const { baseUrl, suffix, pollTimeoutMs, pollIntervalMs, headersFor, readJson, createThread } =
+  createSmokeContext();
 
 const tenants = {
   a: {
@@ -47,42 +32,6 @@ const tenants = {
     agentId: `chat-tenant-b-agent-${suffix}`,
   },
 } satisfies Record<string, TenantIdentity>;
-
-const headersFor = (identity: TenantIdentity) => ({
-  authorization: `Bearer ${token}`,
-  "content-type": "application/json",
-  "x-assistant-mk1-user-id": identity.userId,
-  "x-assistant-mk1-workspace-id": identity.workspaceId,
-  "x-assistant-mk1-agent-id": identity.agentId,
-});
-
-const readJson = async <T>(
-  path: string,
-  identity: TenantIdentity,
-  init?: RequestInit,
-): Promise<T> => {
-  const response = await fetch(`${baseUrl}${path}`, {
-    ...init,
-    headers: {
-      ...headersFor(identity),
-      ...init?.headers,
-    },
-  });
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`${init?.method ?? "GET"} ${path} failed with ${response.status}: ${body}`);
-  }
-  return (await response.json()) as T;
-};
-
-const createThread = async (identity: TenantIdentity) => {
-  const thread = await readJson<ThreadResponse>("/langgraph/threads", identity, {
-    method: "POST",
-    body: "{}",
-  });
-  if (!thread.thread_id) throw new Error(thread.error ?? "thread_id missing");
-  return thread.thread_id;
-};
 
 const assertThreadVisible = async (identity: TenantIdentity, threadId: string) => {
   const snapshot = await getBoundarySnapshot(identity, threadId);
@@ -123,8 +72,6 @@ const assertBoundaryScope = (
     throw new Error("chat boundary snapshot returned the wrong tenant/thread ownership");
   }
 };
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const runStreamOnNewThread = async (identity: TenantIdentity, label: string) => {
   let lastError = "";
@@ -186,7 +133,7 @@ const waitForTrackedRun = async (identity: TenantIdentity, threadId: string) => 
   throw new Error(`chat run tracking did not complete within ${pollTimeoutMs}ms`);
 };
 
-const main = async () => {
+runSmoke("Cloudflare chat boundary smoke", async () => {
   console.log(`Smoking Cloudflare chat boundary at ${baseUrl}`);
 
   const threadA = await createThread(tenants.a);
@@ -205,7 +152,6 @@ const main = async () => {
   const completedRunId = completedSnapshot.latestRun?.id;
   if (!completedRunId) throw new Error("tracked chat run is missing run id");
 
-  console.log("Cloudflare chat boundary smoke passed");
   console.log(
     JSON.stringify(
       {
@@ -218,11 +164,6 @@ const main = async () => {
       2,
     ),
   );
-};
-
-main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exitCode = 1;
 });
 
 export {};

@@ -1,13 +1,4 @@
-type TenantIdentity = {
-  userId: string;
-  workspaceId: string;
-  agentId: string;
-};
-
-type ThreadResponse = {
-  thread_id?: string;
-  error?: string;
-};
+import { type TenantIdentity, createSmokeContext, runSmoke, sleep } from "./smoke-utils";
 
 type BoundarySnapshot = {
   ok?: boolean;
@@ -33,85 +24,27 @@ type BoundarySnapshot = {
   error?: string;
 };
 
-const baseUrl = (process.env.CLOUDFLARE_CONTROL_PLANE_URL ?? "http://localhost:8787").replace(
-  /\/$/,
-  "",
-);
-const token = process.env.CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN ?? "local-dev-token";
-const pollTimeoutMs = Number(process.env.SMOKE_TIMEOUT_MS ?? 30_000);
-const pollIntervalMs = Number(process.env.SMOKE_POLL_INTERVAL_MS ?? 400);
+const {
+  baseUrl,
+  pollTimeoutMs,
+  pollIntervalMs,
+  readJson,
+  streamBody,
+  startStream,
+  startAcceptedStreamOnNewThread,
+} = createSmokeContext();
 
-const tenant = {
+const tenant: TenantIdentity = {
   userId: "policy-tenant-user",
   workspaceId: "policy-tenant-workspace",
   agentId: "policy-tenant-agent",
-} satisfies TenantIdentity;
-
-const headersFor = (identity: TenantIdentity) => ({
-  authorization: `Bearer ${token}`,
-  "content-type": "application/json",
-  "x-assistant-mk1-user-id": identity.userId,
-  "x-assistant-mk1-workspace-id": identity.workspaceId,
-  "x-assistant-mk1-agent-id": identity.agentId,
-});
-
-const readJson = async <T>(
-  path: string,
-  identity: TenantIdentity,
-  init?: RequestInit,
-): Promise<T> => {
-  const response = await fetch(`${baseUrl}${path}`, {
-    ...init,
-    headers: {
-      ...headersFor(identity),
-      ...init?.headers,
-    },
-  });
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`${init?.method ?? "GET"} ${path} failed with ${response.status}: ${body}`);
-  }
-  return (await response.json()) as T;
 };
-
-const createThread = async (identity: TenantIdentity) => {
-  const thread = await readJson<ThreadResponse>("/langgraph/threads", identity, {
-    method: "POST",
-    body: "{}",
-  });
-  if (!thread.thread_id) throw new Error(thread.error ?? "thread_id missing");
-  return thread.thread_id;
-};
-
-const streamBody = (input: { content: string; executionMode?: "ask" | "dry_run" | "execute" }) =>
-  JSON.stringify({
-    assistant_id: "agent",
-    execution_mode: input.executionMode,
-    input: {
-      messages: [
-        {
-          role: "user",
-          content: input.content,
-        },
-      ],
-    },
-    stream_mode: ["messages"],
-  });
-
-const startStream = (identity: TenantIdentity, threadId: string, body: string) =>
-  fetch(`${baseUrl}/langgraph/threads/${encodeURIComponent(threadId)}/runs/stream`, {
-    method: "POST",
-    headers: headersFor(identity),
-    body,
-  });
 
 const getBoundarySnapshot = (identity: TenantIdentity, threadId: string) =>
   readJson<BoundarySnapshot>(
     `/internal/chat-boundary/threads/${encodeURIComponent(threadId)}/snapshot`,
     identity,
   );
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const waitForCompletedRun = async (identity: TenantIdentity, threadId: string) => {
   const startedAt = Date.now();
@@ -164,31 +97,7 @@ const assertResponseStatus = async (response: Response, status: number, label: s
   await response.text();
 };
 
-const startAcceptedStreamOnNewThread = async (
-  identity: TenantIdentity,
-  body: string,
-  label: string,
-) => {
-  let lastError = "";
-
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
-    const threadId = await createThread(identity);
-    const response = await startStream(identity, threadId, body);
-    if (response.ok) return { threadId, response };
-
-    const responseBody = await response.text();
-    lastError = `${response.status}: ${responseBody}`;
-    if (response.status !== 422 || !responseBody.includes("Thread is already running")) {
-      throw new Error(`${label} failed with ${lastError}`);
-    }
-
-    await sleep(1_000);
-  }
-
-  throw new Error(`${label} failed after retries with ${lastError}`);
-};
-
-const main = async () => {
+runSmoke("Cloudflare policy boundary smoke", async () => {
   console.log(`Smoking Cloudflare policy boundary at ${baseUrl}`);
 
   const allowed = await startAcceptedStreamOnNewThread(
@@ -243,7 +152,6 @@ const main = async () => {
   await firstConcurrent.response.text();
   await waitForCompletedRun(tenant, firstConcurrent.threadId);
 
-  console.log("Cloudflare policy boundary smoke passed");
   console.log(
     JSON.stringify(
       {
@@ -258,11 +166,6 @@ const main = async () => {
       2,
     ),
   );
-};
-
-main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exitCode = 1;
 });
 
 export {};

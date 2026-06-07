@@ -1,8 +1,4 @@
-type TenantIdentity = {
-  userId: string;
-  workspaceId: string;
-  agentId: string;
-};
+import { type TenantIdentity, createSmokeContext, runSmoke, sleep } from "./smoke-utils";
 
 type SessionSnapshot = {
   sessionId?: string;
@@ -16,11 +12,6 @@ type SessionSnapshot = {
 type SessionResponse = {
   ok?: boolean;
   session?: SessionSnapshot | null;
-  error?: string;
-};
-
-type ThreadResponse = {
-  thread_id?: string;
   error?: string;
 };
 
@@ -43,14 +34,8 @@ type BoundarySnapshot = {
   error?: string;
 };
 
-const baseUrl = (process.env.CLOUDFLARE_CONTROL_PLANE_URL ?? "http://localhost:8787").replace(
-  /\/$/,
-  "",
-);
-const token = process.env.CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN ?? "local-dev-token";
-const pollTimeoutMs = Number(process.env.SMOKE_TIMEOUT_MS ?? 30_000);
-const pollIntervalMs = Number(process.env.SMOKE_POLL_INTERVAL_MS ?? 400);
-const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+const { baseUrl, suffix, pollTimeoutMs, pollIntervalMs, headersFor, readJson, createThread } =
+  createSmokeContext();
 
 const tenants = {
   a: {
@@ -65,33 +50,6 @@ const tenants = {
   },
 } satisfies Record<string, TenantIdentity>;
 
-const headersFor = (identity: TenantIdentity) => ({
-  authorization: `Bearer ${token}`,
-  "content-type": "application/json",
-  "x-assistant-mk1-user-id": identity.userId,
-  "x-assistant-mk1-workspace-id": identity.workspaceId,
-  "x-assistant-mk1-agent-id": identity.agentId,
-});
-
-const readJson = async <T>(
-  path: string,
-  identity: TenantIdentity,
-  init?: RequestInit,
-): Promise<T> => {
-  const response = await fetch(`${baseUrl}${path}`, {
-    ...init,
-    headers: {
-      ...headersFor(identity),
-      ...init?.headers,
-    },
-  });
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`${init?.method ?? "GET"} ${path} failed with ${response.status}: ${body}`);
-  }
-  return (await response.json()) as T;
-};
-
 const createSession = async (identity: TenantIdentity) => {
   const response = await readJson<SessionResponse>("/sessions", identity, {
     method: "POST",
@@ -105,15 +63,6 @@ const latestSession = async (identity: TenantIdentity) => {
   const response = await readJson<SessionResponse>("/sessions/latest", identity);
   if (!response.session?.sessionId) throw new Error(response.error ?? "latest session missing");
   return response.session;
-};
-
-const createThread = async (identity: TenantIdentity) => {
-  const thread = await readJson<ThreadResponse>("/langgraph/threads", identity, {
-    method: "POST",
-    body: "{}",
-  });
-  if (!thread.thread_id) throw new Error(thread.error ?? "thread_id missing");
-  return thread.thread_id;
 };
 
 const assertSessionScope = (
@@ -143,8 +92,6 @@ const getBoundarySnapshot = (identity: TenantIdentity, threadId: string) =>
     `/internal/chat-boundary/threads/${encodeURIComponent(threadId)}/snapshot`,
     identity,
   );
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const runStreamOnNewThread = async (identity: TenantIdentity, label: string) => {
   let lastError = "";
@@ -217,7 +164,7 @@ const waitForCompletedRun = async (
   throw new Error(`chat run tracking did not complete within ${pollTimeoutMs}ms`);
 };
 
-const main = async () => {
+runSmoke("Cloudflare session boundary smoke", async () => {
   console.log(`Smoking Cloudflare session boundary at ${baseUrl}`);
 
   const sessionA = await createSession(tenants.a);
@@ -253,7 +200,6 @@ const main = async () => {
   const completedRunId = completed.latestRun?.id;
   if (!completedRunId) throw new Error("completed run is missing run id");
 
-  console.log("Cloudflare session boundary smoke passed");
   console.log(
     JSON.stringify(
       {
@@ -267,11 +213,6 @@ const main = async () => {
       2,
     ),
   );
-};
-
-main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exitCode = 1;
 });
 
 export {};

@@ -1,3 +1,5 @@
+import { runSmoke } from "./smoke-utils";
+
 type HealthResponse = {
   ok?: boolean;
   service?: string;
@@ -22,7 +24,7 @@ const readJson = async <T>(path: string, init?: RequestInit): Promise<T> => {
   return (await response.json()) as T;
 };
 
-const main = async () => {
+runSmoke("LangGraph runtime gateway smoke", async () => {
   console.log(`Smoking LangGraph runtime gateway at ${baseUrl}`);
 
   const health = await readJson<HealthResponse>("/health");
@@ -42,13 +44,7 @@ const main = async () => {
     throw new Error(thread.error ?? "runtime gateway did not create a LangGraph thread");
   }
 
-  console.log("LangGraph runtime gateway smoke passed");
   console.log(JSON.stringify({ threadId: thread.thread_id }, null, 2));
-};
-
-main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exitCode = 1;
 });
 
 export {};

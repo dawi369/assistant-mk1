@@ -1,8 +1,4 @@
-type TenantIdentity = {
-  userId: string;
-  workspaceId: string;
-  agentId: string;
-};
+import { type TenantIdentity, createSmokeContext, runSmoke, sleep } from "./smoke-utils";
 
 type SmokeSnapshot = {
   scope?: {
@@ -25,13 +21,7 @@ type SmokeResponse = {
   error?: string;
 };
 
-const baseUrl = (process.env.CLOUDFLARE_CONTROL_PLANE_URL ?? "http://localhost:8787").replace(
-  /\/$/,
-  "",
-);
-const token = process.env.CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN ?? "local-dev-token";
-const pollTimeoutMs = Number(process.env.SMOKE_TIMEOUT_MS ?? 30_000);
-const pollIntervalMs = Number(process.env.SMOKE_POLL_INTERVAL_MS ?? 400);
+const { baseUrl, pollTimeoutMs, pollIntervalMs, headersFor, readJson } = createSmokeContext();
 
 const tenants = {
   a: {
@@ -45,33 +35,6 @@ const tenants = {
     agentId: "tenant-b-agent",
   },
 } satisfies Record<string, TenantIdentity>;
-
-const headersFor = (identity: TenantIdentity) => ({
-  authorization: `Bearer ${token}`,
-  "content-type": "application/json",
-  "x-assistant-mk1-user-id": identity.userId,
-  "x-assistant-mk1-workspace-id": identity.workspaceId,
-  "x-assistant-mk1-agent-id": identity.agentId,
-});
-
-const readJson = async <T>(
-  path: string,
-  identity: TenantIdentity,
-  init?: RequestInit,
-): Promise<T> => {
-  const response = await fetch(`${baseUrl}${path}`, {
-    ...init,
-    headers: {
-      ...headersFor(identity),
-      ...init?.headers,
-    },
-  });
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`${init?.method ?? "GET"} ${path} failed with ${response.status}: ${body}`);
-  }
-  return (await response.json()) as T;
-};
 
 const requireSnapshot = (body: SmokeResponse, label: string): SmokeSnapshot => {
   if (!body.snapshot) throw new Error(`${label} did not return a snapshot`);
@@ -93,8 +56,6 @@ const requireArray = (snapshot: SmokeSnapshot, key: keyof SmokeSnapshot) => {
     throw new Error(`completed snapshot is missing ${key}`);
   }
 };
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const waitForCompletedRun = async (identity: TenantIdentity, runId: string) => {
   const startedAt = Date.now();
@@ -160,28 +121,15 @@ const assertCrossTenantRunHidden = async (
   }
 };
 
-const main = async () => {
+runSmoke("Tenant isolation smoke", async () => {
   console.log(`Smoking tenant isolation at ${baseUrl}`);
 
   const tenantARunId = await startAndComplete(tenants.a);
   const tenantBRunId = await startAndComplete(tenants.b);
 
-  const latestA = requireSnapshot(
-    await readJson<SmokeResponse>("/workbench/demo-runs/latest", tenants.a),
-    "tenant A latest run",
-  );
-  const latestB = requireSnapshot(
-    await readJson<SmokeResponse>("/workbench/demo-runs/latest", tenants.b),
-    "tenant B latest run",
-  );
+  await assertCrossTenantRunHidden(tenants.b, tenantARunId, "tenant B reading tenant A run");
+  await assertCrossTenantRunHidden(tenants.a, tenantBRunId, "tenant A reading tenant B run");
 
-  if (latestA.run?.id !== tenantARunId) throw new Error("tenant A latest run was not isolated");
-  if (latestB.run?.id !== tenantBRunId) throw new Error("tenant B latest run was not isolated");
-
-  await assertCrossTenantRunHidden(tenants.a, tenantBRunId, "tenant A");
-  await assertCrossTenantRunHidden(tenants.b, tenantARunId, "tenant B");
-
-  console.log("Tenant isolation smoke passed");
   console.log(
     JSON.stringify(
       {
@@ -192,11 +140,6 @@ const main = async () => {
       2,
     ),
   );
-};
-
-main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exitCode = 1;
 });
 
 export {};

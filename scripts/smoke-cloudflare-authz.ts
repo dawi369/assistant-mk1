@@ -1,15 +1,9 @@
-type TenantIdentity = {
-  userId: string;
-  accountId: string;
-  accountSource: string;
-  workspaceId: string;
-  email?: string;
-  name?: string;
-  role?: string;
-  roles?: string[];
-  permissions?: string[];
-  membershipStatus?: string;
-};
+import {
+  type TenantIdentity,
+  createSmokeContext,
+  defaultWorkspaceId,
+  runSmoke,
+} from "./smoke-utils";
 
 type SessionResponse = {
   ok?: boolean;
@@ -29,13 +23,7 @@ type ResolvedSession = {
   agentId: string;
 };
 
-const baseUrl = (process.env.CLOUDFLARE_CONTROL_PLANE_URL ?? "http://localhost:8787").replace(
-  /\/$/,
-  "",
-);
-const token = process.env.CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN ?? "local-dev-token";
-const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-const defaultWorkspaceId = (accountId: string) => `workspace:${accountId}:default`;
+const { baseUrl, suffix, headersFor, readJson } = createSmokeContext();
 
 const tenantA: TenantIdentity = {
   userId: `authz-user-a-${suffix}`,
@@ -70,49 +58,6 @@ const disabledTenant: TenantIdentity = {
   name: "Authz Smoke Disabled User",
   role: "member",
   membershipStatus: "disabled",
-};
-
-const headersFor = (identity: TenantIdentity) => {
-  const headers: Record<string, string> = {
-    authorization: `Bearer ${token}`,
-    "content-type": "application/json",
-    "x-assistant-mk1-user-id": identity.userId,
-    "x-assistant-mk1-account-id": identity.accountId,
-    "x-assistant-mk1-account-source": identity.accountSource,
-    "x-assistant-mk1-workspace-id": identity.workspaceId,
-  };
-
-  if (identity.email) headers["x-assistant-mk1-user-email"] = identity.email;
-  if (identity.name) headers["x-assistant-mk1-user-name"] = identity.name;
-  if (identity.role) headers["x-assistant-mk1-membership-role"] = identity.role;
-  if (identity.roles) headers["x-assistant-mk1-membership-roles"] = JSON.stringify(identity.roles);
-  if (identity.permissions) {
-    headers["x-assistant-mk1-membership-permissions"] = JSON.stringify(identity.permissions);
-  }
-  if (identity.membershipStatus) {
-    headers["x-assistant-mk1-membership-status"] = identity.membershipStatus;
-  }
-
-  return headers;
-};
-
-const readJson = async <T>(
-  path: string,
-  identity: TenantIdentity,
-  init?: RequestInit,
-): Promise<T> => {
-  const response = await fetch(`${baseUrl}${path}`, {
-    ...init,
-    headers: {
-      ...headersFor(identity),
-      ...init?.headers,
-    },
-  });
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`${init?.method ?? "GET"} ${path} failed with ${response.status}: ${body}`);
-  }
-  return (await response.json()) as T;
 };
 
 const createSession = (identity: TenantIdentity) =>
@@ -173,7 +118,7 @@ const assertDisabledMembership = async () => {
   }
 };
 
-const main = async () => {
+runSmoke("Cloudflare D1 authz smoke", async () => {
   console.log(`Smoking Cloudflare D1 authz at ${baseUrl}`);
 
   const sessionA = requireSession(await createSession(tenantA), tenantA, "tenant A session");
@@ -192,7 +137,6 @@ const main = async () => {
   await assertSessionHidden(tenantA, sessionB.sessionId, "tenant A");
   await assertDisabledMembership();
 
-  console.log("Cloudflare D1 authz smoke passed");
   console.log(
     JSON.stringify(
       {
@@ -205,11 +149,6 @@ const main = async () => {
       2,
     ),
   );
-};
-
-main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exitCode = 1;
 });
 
 export {};

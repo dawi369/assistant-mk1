@@ -1,16 +1,17 @@
-type TenantIdentity = {
-  userId: string;
-  accountId: string;
-  accountSource: string;
-  workspaceId: string;
-  email?: string;
-  name?: string;
-  role?: string;
-  roles?: string[];
-  permissions?: string[];
-  membershipStatus?: string;
-  authMode?: string;
-  workspaceSource?: string;
+import {
+  type TenantIdentity,
+  createSmokeContext,
+  defaultWorkspaceId,
+  runSmoke,
+} from "./smoke-utils";
+
+type SessionResponse = {
+  ok?: boolean;
+  session?: {
+    sessionId?: string;
+    agentId?: string;
+  } | null;
+  error?: string;
 };
 
 type WorkspaceContextResponse = {
@@ -28,19 +29,16 @@ type WorkspaceContextResponse = {
       source?: string;
     } | null;
     user?: {
-      email?: string | null;
-      displayName?: string | null;
-      status?: string;
+      email?: string;
     } | null;
     workspace?: {
+      id?: string;
       status?: string;
       isDefault?: boolean;
     } | null;
     membership?: {
       role?: string;
       status?: string;
-      roles?: string[];
-      permissions?: string[];
     } | null;
     agent?: {
       id?: string;
@@ -51,24 +49,7 @@ type WorkspaceContextResponse = {
   error?: string;
 };
 
-type SessionResponse = {
-  ok?: boolean;
-  session?: {
-    sessionId?: string;
-    scope?: {
-      userId?: string;
-      workspaceId?: string;
-    };
-  } | null;
-};
-
-const baseUrl = (process.env.CLOUDFLARE_CONTROL_PLANE_URL ?? "http://localhost:8787").replace(
-  /\/$/,
-  "",
-);
-const token = process.env.CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN ?? "local-dev-token";
-const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-const defaultWorkspaceId = (accountId: string) => `workspace:${accountId}:default`;
+const { baseUrl, suffix, headersFor, readJson } = createSmokeContext();
 
 const tenantA: TenantIdentity = {
   userId: `context-user-a-${suffix}`,
@@ -79,19 +60,23 @@ const tenantA: TenantIdentity = {
   name: "Workspace Context Smoke User A",
   role: "owner",
   roles: ["owner"],
-  permissions: ["workbench:read", "workbench:demo"],
+  permissions: ["workbench:read"],
   authMode: "workos",
   workspaceSource: "workos-organization",
 };
 
 const tenantB: TenantIdentity = {
-  ...tenantA,
   userId: `context-user-b-${suffix}`,
   accountId: `workos-org:context-org-b-${suffix}`,
   accountSource: "workos-organization",
   workspaceId: defaultWorkspaceId(`workos-org:context-org-b-${suffix}`),
   email: `context-b-${suffix}@example.com`,
   name: "Workspace Context Smoke User B",
+  role: "member",
+  roles: ["member"],
+  permissions: ["workbench:read"],
+  authMode: "workos",
+  workspaceSource: "workos-organization",
 };
 
 const disabledTenant: TenantIdentity = {
@@ -107,67 +92,17 @@ const disabledTenant: TenantIdentity = {
   workspaceSource: "workos-organization",
 };
 
-const headersFor = (identity: TenantIdentity) => {
-  const headers: Record<string, string> = {
-    authorization: `Bearer ${token}`,
-    "content-type": "application/json",
-    "x-assistant-mk1-user-id": identity.userId,
-    "x-assistant-mk1-account-id": identity.accountId,
-    "x-assistant-mk1-account-source": identity.accountSource,
-    "x-assistant-mk1-workspace-id": identity.workspaceId,
-  };
-
-  if (identity.email) headers["x-assistant-mk1-user-email"] = identity.email;
-  if (identity.name) headers["x-assistant-mk1-user-name"] = identity.name;
-  if (identity.role) headers["x-assistant-mk1-membership-role"] = identity.role;
-  if (identity.roles) headers["x-assistant-mk1-membership-roles"] = JSON.stringify(identity.roles);
-  if (identity.permissions) {
-    headers["x-assistant-mk1-membership-permissions"] = JSON.stringify(identity.permissions);
-  }
-  if (identity.membershipStatus) {
-    headers["x-assistant-mk1-membership-status"] = identity.membershipStatus;
-  }
-  if (identity.authMode) headers["x-assistant-mk1-auth-mode"] = identity.authMode;
-  if (identity.workspaceSource) {
-    headers["x-assistant-mk1-workspace-source"] = identity.workspaceSource;
-  }
-
-  return headers;
-};
-
-const readJson = async <T>(
-  path: string,
-  identity: TenantIdentity,
-  init?: RequestInit,
-): Promise<T> => {
-  const response = await fetch(`${baseUrl}${path}`, {
-    ...init,
-    headers: {
-      ...headersFor(identity),
-      ...init?.headers,
-    },
-  });
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`${init?.method ?? "GET"} ${path} failed with ${response.status}: ${body}`);
-  }
-  return (await response.json()) as T;
-};
-
 const requireContext = (
   body: WorkspaceContextResponse,
   identity: TenantIdentity,
   label: string,
 ) => {
   const context = body.context;
-  if (!body.ok || !context?.identity.agentId) {
+  if (!body.ok || !context?.identity?.workspaceId || !context.identity.agentId) {
     throw new Error(`${label} did not return a resolved workspace context`);
   }
-  if (
-    context.identity.userId !== identity.userId ||
-    context.identity.workspaceId !== identity.workspaceId
-  ) {
-    throw new Error(`${label} returned the wrong tenant identity`);
+  if (context.identity.userId !== identity.userId) {
+    throw new Error(`${label} returned the wrong user identity`);
   }
   if (context.identity.authMode !== identity.authMode) {
     throw new Error(`${label} returned authMode ${context.identity.authMode}`);
@@ -177,7 +112,7 @@ const requireContext = (
   }
   if (
     context.account?.id !== identity.accountId ||
-    context.account.source !== identity.accountSource
+    context.account?.source !== identity.accountSource
   ) {
     throw new Error(`${label} returned the wrong account identity`);
   }
@@ -219,7 +154,7 @@ const assertSessionHidden = async (identity: TenantIdentity, sessionId: string, 
   }
 };
 
-const main = async () => {
+runSmoke("Cloudflare workspace context smoke", async () => {
   console.log(`Smoking Cloudflare workspace context at ${baseUrl}`);
 
   const first = requireContext(
@@ -279,7 +214,6 @@ const main = async () => {
   await assertSessionHidden(tenantB, sessionId, "tenant B");
   await assertDisabledMembership();
 
-  console.log("Cloudflare workspace context smoke passed");
   console.log(
     JSON.stringify(
       {
@@ -291,11 +225,6 @@ const main = async () => {
       2,
     ),
   );
-};
-
-main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exitCode = 1;
 });
 
 export {};

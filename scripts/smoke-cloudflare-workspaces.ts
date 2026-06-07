@@ -1,16 +1,9 @@
-type TenantIdentity = {
-  userId: string;
-  accountId: string;
-  accountSource: string;
-  email?: string;
-  name?: string;
-  role?: string;
-  roles?: string[];
-  permissions?: string[];
-  membershipStatus?: string;
-  authMode?: string;
-  workspaceSource?: string;
-};
+import {
+  type TenantIdentity,
+  createSmokeContext,
+  defaultWorkspaceId,
+  runSmoke,
+} from "./smoke-utils";
 
 type WorkspaceSummary = {
   id?: string;
@@ -60,13 +53,8 @@ type AdminSummaryResponse = {
   error?: string;
 };
 
-const baseUrl = (process.env.CLOUDFLARE_CONTROL_PLANE_URL ?? "http://localhost:8787").replace(
-  /\/$/,
-  "",
-);
-const token = process.env.CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN ?? "local-dev-token";
-const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-const defaultWorkspaceId = (accountId: string) => `workspace:${accountId}:default`;
+const { baseUrl, suffix, headersFor, readJson } = createSmokeContext();
+
 const accountId = `workos-org:workspaces-org-${suffix}`;
 const defaultWorkspace = defaultWorkspaceId(accountId);
 
@@ -100,52 +88,6 @@ const disabledTenant: TenantIdentity = {
   membershipStatus: "disabled",
 };
 
-const headersFor = (identity: TenantIdentity) => {
-  const headers: Record<string, string> = {
-    authorization: `Bearer ${token}`,
-    "content-type": "application/json",
-    "x-assistant-mk1-user-id": identity.userId,
-    "x-assistant-mk1-account-id": identity.accountId,
-    "x-assistant-mk1-account-source": identity.accountSource,
-  };
-
-  if (identity.email) headers["x-assistant-mk1-user-email"] = identity.email;
-  if (identity.name) headers["x-assistant-mk1-user-name"] = identity.name;
-  if (identity.role) headers["x-assistant-mk1-membership-role"] = identity.role;
-  if (identity.roles) headers["x-assistant-mk1-membership-roles"] = JSON.stringify(identity.roles);
-  if (identity.permissions) {
-    headers["x-assistant-mk1-membership-permissions"] = JSON.stringify(identity.permissions);
-  }
-  if (identity.membershipStatus) {
-    headers["x-assistant-mk1-membership-status"] = identity.membershipStatus;
-  }
-  if (identity.authMode) headers["x-assistant-mk1-auth-mode"] = identity.authMode;
-  if (identity.workspaceSource) {
-    headers["x-assistant-mk1-workspace-source"] = identity.workspaceSource;
-  }
-
-  return headers;
-};
-
-const readJson = async <T>(
-  path: string,
-  identity: TenantIdentity = tenant,
-  init?: RequestInit,
-): Promise<T> => {
-  const response = await fetch(`${baseUrl}${path}`, {
-    ...init,
-    headers: {
-      ...headersFor(identity),
-      ...init?.headers,
-    },
-  });
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`${init?.method ?? "GET"} ${path} failed with ${response.status}: ${body}`);
-  }
-  return (await response.json()) as T;
-};
-
 const requireSummary = (body: AdminSummaryResponse, label: string) => {
   const summary = body.summary;
   if (!body.ok || !summary?.identity?.workspaceId || !summary.identity.agentId) {
@@ -154,7 +96,10 @@ const requireSummary = (body: AdminSummaryResponse, label: string) => {
   if (summary.identity.userId !== tenant.userId) {
     throw new Error(`${label} returned the wrong user identity`);
   }
-  if (summary.account?.id !== tenant.accountId || summary.account.source !== tenant.accountSource) {
+  if (
+    summary.account?.id !== tenant.accountId ||
+    summary.account?.source !== tenant.accountSource
+  ) {
     throw new Error(`${label} returned the wrong account identity`);
   }
   if (!summary.defaultAgent?.id || !summary.defaultAgent.isDefault) {
@@ -185,18 +130,18 @@ const assertCrossAccountActivationHidden = async (workspaceId: string) => {
   }
 };
 
-const main = async () => {
+runSmoke("Cloudflare workspaces smoke", async () => {
   console.log(`Smoking Cloudflare workspaces at ${baseUrl}`);
 
   const initial = requireSummary(
-    await readJson<AdminSummaryResponse>("/admin/workspace-summary"),
+    await readJson<AdminSummaryResponse>("/admin/workspace-summary", tenant),
     "initial admin summary",
   );
   if (initial.identity?.workspaceId !== defaultWorkspace || !initial.workspace?.isDefault) {
     throw new Error("initial request did not resolve the account default workspace");
   }
 
-  const firstList = await readJson<WorkspacesResponse>("/workspaces");
+  const firstList = await readJson<WorkspacesResponse>("/workspaces", tenant);
   if (!firstList.ok || firstList.activeWorkspaceId !== defaultWorkspace) {
     throw new Error("workspace list did not mark the default workspace active");
   }
@@ -215,7 +160,7 @@ const main = async () => {
   }
 
   const afterCreate = requireSummary(
-    await readJson<AdminSummaryResponse>("/admin/workspace-summary"),
+    await readJson<AdminSummaryResponse>("/admin/workspace-summary", tenant),
     "created workspace admin summary",
   );
   if (
@@ -228,7 +173,7 @@ const main = async () => {
   const createdAgentId = afterCreate.identity.agentId;
 
   const repeated = requireSummary(
-    await readJson<AdminSummaryResponse>("/admin/workspace-summary"),
+    await readJson<AdminSummaryResponse>("/admin/workspace-summary", tenant),
     "repeated admin summary",
   );
   if (
@@ -250,7 +195,7 @@ const main = async () => {
   }
 
   const afterActivate = requireSummary(
-    await readJson<AdminSummaryResponse>("/admin/workspace-summary"),
+    await readJson<AdminSummaryResponse>("/admin/workspace-summary", tenant),
     "default reactivation admin summary",
   );
   if (
@@ -262,7 +207,6 @@ const main = async () => {
 
   await assertDisabledMembership();
 
-  console.log("Cloudflare workspaces smoke passed");
   console.log(
     JSON.stringify(
       {
@@ -276,11 +220,6 @@ const main = async () => {
       2,
     ),
   );
-};
-
-main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exitCode = 1;
 });
 
 export {};
