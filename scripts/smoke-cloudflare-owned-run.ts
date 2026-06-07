@@ -1,3 +1,5 @@
+import { runSmoke, sleep } from "./smoke-utils";
+
 type SmokeSnapshot = {
   scope?: {
     userId?: string;
@@ -70,8 +72,6 @@ const requireExpectedScope = (snapshot: SmokeSnapshot, label: string) => {
   }
 };
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
 const waitForCompletedRun = async (runId: string) => {
   const startedAt = Date.now();
 
@@ -96,7 +96,7 @@ const waitForCompletedRun = async (runId: string) => {
   throw new Error(`Cloudflare-owned demo run did not complete within ${pollTimeoutMs}ms`);
 };
 
-const main = async () => {
+runSmoke("Cloudflare-owned workbench smoke", async () => {
   console.log(`Smoking Cloudflare-owned workbench run at ${baseUrl}`);
 
   const started = requireSnapshot(
@@ -119,7 +119,6 @@ const main = async () => {
   requireArray(completed, "decisions");
   requireArray(completed, "auditEvents");
 
-  console.log("Cloudflare-owned workbench smoke passed");
   console.log(
     JSON.stringify(
       {
@@ -134,11 +133,6 @@ const main = async () => {
       2,
     ),
   );
-};
-
-main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exitCode = 1;
 });
 
 export {};

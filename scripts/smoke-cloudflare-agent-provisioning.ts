@@ -1,10 +1,4 @@
-type TenantIdentity = {
-  userId: string;
-  accountId: string;
-  email: string;
-  role?: string;
-  roles?: string[];
-};
+import { type TenantIdentity, createSmokeContext, runSmoke, sleep } from "./smoke-utils";
 
 type AgentSummary = {
   id: string;
@@ -65,95 +59,44 @@ type WorkspaceMutationResponse = {
   error?: string;
 };
 
-type ThreadResponse = {
-  thread_id?: string;
-  error?: string;
-};
+const {
+  baseUrl,
+  suffix,
+  pollTimeoutMs,
+  pollIntervalMs,
+  headersFor,
+  readJson,
+  assertStatus,
+  createThread,
+} = createSmokeContext();
 
-const baseUrl = (process.env.CLOUDFLARE_CONTROL_PLANE_URL ?? "http://localhost:8787").replace(
-  /\/$/,
-  "",
-);
-const token = process.env.CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN ?? "local-dev-token";
-const pollTimeoutMs = Number(process.env.SMOKE_TIMEOUT_MS ?? 30_000);
-const pollIntervalMs = Number(process.env.SMOKE_POLL_INTERVAL_MS ?? 400);
-const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 const accountId = `workos-org:agent-provisioning-org-${suffix}`;
 
-const owner = {
+const owner: TenantIdentity = {
   userId: `agent-provisioning-owner-${suffix}`,
   accountId,
+  accountSource: "workos-organization",
   email: `agent-provisioning-owner-${suffix}@example.com`,
   role: "owner",
   roles: ["owner"],
-} satisfies TenantIdentity;
+};
 
-const member = {
+const member: TenantIdentity = {
   userId: `agent-provisioning-member-${suffix}`,
   accountId,
+  accountSource: "workos-organization",
   email: `agent-provisioning-member-${suffix}@example.com`,
   role: "member",
   roles: ["member"],
-} satisfies TenantIdentity;
+};
 
-const otherAccount = {
+const otherAccount: TenantIdentity = {
   userId: `agent-provisioning-other-${suffix}`,
   accountId: `workos-org:agent-provisioning-other-org-${suffix}`,
+  accountSource: "workos-organization",
   email: `agent-provisioning-other-${suffix}@example.com`,
   role: "owner",
   roles: ["owner"],
-} satisfies TenantIdentity;
-
-const headersFor = (identity: TenantIdentity) => {
-  const headers: Record<string, string> = {
-    authorization: `Bearer ${token}`,
-    "content-type": "application/json",
-    "x-assistant-mk1-user-id": identity.userId,
-    "x-assistant-mk1-account-id": identity.accountId,
-    "x-assistant-mk1-account-source": "workos-organization",
-    "x-assistant-mk1-user-email": identity.email,
-  };
-  if (identity.role) headers["x-assistant-mk1-membership-role"] = identity.role;
-  if (identity.roles) headers["x-assistant-mk1-membership-roles"] = JSON.stringify(identity.roles);
-  return headers;
-};
-
-const readJson = async <T>(
-  path: string,
-  identity: TenantIdentity,
-  init?: RequestInit,
-): Promise<T> => {
-  const response = await fetch(`${baseUrl}${path}`, {
-    ...init,
-    headers: {
-      ...headersFor(identity),
-      ...init?.headers,
-    },
-  });
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`${init?.method ?? "GET"} ${path} failed with ${response.status}: ${body}`);
-  }
-  return (await response.json()) as T;
-};
-
-const assertStatus = async (
-  path: string,
-  identity: TenantIdentity,
-  expectedStatus: number,
-  init?: RequestInit,
-) => {
-  const response = await fetch(`${baseUrl}${path}`, {
-    ...init,
-    headers: {
-      ...headersFor(identity),
-      ...init?.headers,
-    },
-  });
-  if (response.status !== expectedStatus) {
-    const body = await response.text();
-    throw new Error(`${path} expected ${expectedStatus}, got ${response.status}: ${body}`);
-  }
 };
 
 const adminSummary = async (identity: TenantIdentity, label: string) => {
@@ -189,15 +132,6 @@ const activateWorkspace = (identity: TenantIdentity, workspaceId: string) =>
     { method: "POST" },
   );
 
-const createThread = async (identity: TenantIdentity) => {
-  const thread = await readJson<ThreadResponse>("/langgraph/threads", identity, {
-    method: "POST",
-    body: "{}",
-  });
-  if (!thread.thread_id) throw new Error(thread.error ?? "thread_id missing");
-  return thread.thread_id;
-};
-
 const runStream = async (identity: TenantIdentity, threadId: string) => {
   const response = await fetch(
     `${baseUrl}/langgraph/threads/${encodeURIComponent(threadId)}/runs/stream`,
@@ -221,8 +155,6 @@ const runStream = async (identity: TenantIdentity, threadId: string) => {
   const body = await response.text();
   if (!response.ok) throw new Error(`chat run failed with ${response.status}: ${body}`);
 };
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const waitForCompletedRun = async (identity: TenantIdentity, expectedAgentId: string) => {
   const startedAt = Date.now();
@@ -254,7 +186,7 @@ const waitForCompletedRun = async (identity: TenantIdentity, expectedAgentId: st
   throw new Error(`chat run did not complete within ${pollTimeoutMs}ms`);
 };
 
-const main = async () => {
+runSmoke("Cloudflare agent provisioning smoke", async () => {
   console.log(`Smoking Cloudflare agent provisioning at ${baseUrl}`);
 
   const initialSummary = await adminSummary(owner, "initial owner");
@@ -334,7 +266,6 @@ const main = async () => {
     },
   );
 
-  console.log("Cloudflare agent provisioning smoke passed");
   console.log(
     JSON.stringify(
       {
@@ -347,11 +278,6 @@ const main = async () => {
       2,
     ),
   );
-};
-
-main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exitCode = 1;
 });
 
 export {};

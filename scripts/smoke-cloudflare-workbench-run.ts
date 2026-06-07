@@ -1,16 +1,10 @@
-type TenantIdentity = {
-  userId: string;
-  accountId: string;
-  accountSource: string;
-  workspaceId: string;
-  email?: string;
-  name?: string;
-  role?: string;
-  roles?: string[];
-  permissions?: string[];
-  authMode?: string;
-  workspaceSource?: string;
-};
+import {
+  type TenantIdentity,
+  createSmokeContext,
+  defaultWorkspaceId,
+  runSmoke,
+  sleep,
+} from "./smoke-utils";
 
 type SmokeSnapshot = {
   scope?: {
@@ -34,15 +28,10 @@ type SmokeResponse = {
   error?: string;
 };
 
-const baseUrl = (process.env.CLOUDFLARE_CONTROL_PLANE_URL ?? "http://localhost:8787").replace(
-  /\/$/,
-  "",
-);
-const token = process.env.CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN ?? "local-dev-token";
-const pollTimeoutMs = Number(process.env.SMOKE_TIMEOUT_MS ?? 30_000);
-const pollIntervalMs = Number(process.env.SMOKE_POLL_INTERVAL_MS ?? 500);
-const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-const defaultWorkspaceId = (accountId: string) => `workspace:${accountId}:default`;
+const { baseUrl, suffix, pollTimeoutMs, pollIntervalMs, readJson } = createSmokeContext({
+  pollIntervalDefault: 500,
+});
+
 const accountId = process.env.SMOKE_WORKOS_ACCOUNT_ID ?? `workos-org:workbench-org-${suffix}`;
 
 const identity: TenantIdentity = {
@@ -59,44 +48,6 @@ const identity: TenantIdentity = {
     .filter(Boolean),
   authMode: "workos",
   workspaceSource: process.env.SMOKE_WORKSPACE_SOURCE ?? "workos-organization",
-};
-
-const headersFor = (tenant: TenantIdentity) => {
-  const headers: Record<string, string> = {
-    authorization: `Bearer ${token}`,
-    "content-type": "application/json",
-    "x-assistant-mk1-user-id": tenant.userId,
-    "x-assistant-mk1-account-id": tenant.accountId,
-    "x-assistant-mk1-account-source": tenant.accountSource,
-    "x-assistant-mk1-workspace-id": tenant.workspaceId,
-  };
-
-  if (tenant.email) headers["x-assistant-mk1-user-email"] = tenant.email;
-  if (tenant.name) headers["x-assistant-mk1-user-name"] = tenant.name;
-  if (tenant.role) headers["x-assistant-mk1-membership-role"] = tenant.role;
-  if (tenant.roles) headers["x-assistant-mk1-membership-roles"] = JSON.stringify(tenant.roles);
-  if (tenant.permissions) {
-    headers["x-assistant-mk1-membership-permissions"] = JSON.stringify(tenant.permissions);
-  }
-  if (tenant.authMode) headers["x-assistant-mk1-auth-mode"] = tenant.authMode;
-  if (tenant.workspaceSource) headers["x-assistant-mk1-workspace-source"] = tenant.workspaceSource;
-
-  return headers;
-};
-
-const readJson = async <T>(path: string, init?: RequestInit): Promise<T> => {
-  const response = await fetch(`${baseUrl}${path}`, {
-    ...init,
-    headers: {
-      ...headersFor(identity),
-      ...init?.headers,
-    },
-  });
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`${init?.method ?? "GET"} ${path} failed with ${response.status}: ${body}`);
-  }
-  return (await response.json()) as T;
 };
 
 const requireSnapshot = (body: SmokeResponse, label: string): SmokeSnapshot => {
@@ -122,14 +73,12 @@ const requireExpectedScope = (snapshot: SmokeSnapshot, label: string) => {
   }
 };
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
 const waitForCompletedRun = async (runId: string) => {
   const startedAt = Date.now();
 
   while (Date.now() - startedAt < pollTimeoutMs) {
     const latest = requireSnapshot(
-      await readJson<SmokeResponse>("/workbench/demo-runs/latest"),
+      await readJson<SmokeResponse>("/workbench/demo-runs/latest", identity),
       "latest Cloudflare-owned demo run",
     );
 
@@ -148,11 +97,11 @@ const waitForCompletedRun = async (runId: string) => {
   throw new Error(`Cloudflare-owned demo run did not complete within ${pollTimeoutMs}ms`);
 };
 
-const main = async () => {
+runSmoke("Cloudflare workbench run smoke", async () => {
   console.log(`Smoking Cloudflare workbench run at ${baseUrl}`);
 
   const started = requireSnapshot(
-    await readJson<SmokeResponse>("/workbench/demo-runs", { method: "POST" }),
+    await readJson<SmokeResponse>("/workbench/demo-runs", identity, { method: "POST" }),
     "started Cloudflare-owned demo run",
   );
   if (started.run?.status !== "queued") {
@@ -171,7 +120,6 @@ const main = async () => {
   requireArray(completed, "decisions");
   requireArray(completed, "auditEvents");
 
-  console.log("Cloudflare workbench run smoke passed");
   console.log(
     JSON.stringify(
       {
@@ -186,11 +134,6 @@ const main = async () => {
       2,
     ),
   );
-};
-
-main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exitCode = 1;
 });
 
 export {};

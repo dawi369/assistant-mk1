@@ -1,26 +1,16 @@
 import { randomUUID } from "node:crypto";
 
-type TenantIdentity = {
-  userId: string;
-  workspaceId: string;
-  agentId: string;
-};
-
-type ThreadResponse = {
-  thread_id?: string;
-  error?: string;
-};
+import { type TenantIdentity, createSmokeContext, runSmoke, sleep } from "./smoke-utils";
 
 type EventSnapshot = {
   id?: string;
   type?: string;
 };
 
-const baseUrl = (process.env.CLOUDFLARE_CONTROL_PLANE_URL ?? "http://localhost:8787").replace(
-  /\/$/,
-  "",
-);
-const token = process.env.CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN ?? "local-dev-token";
+const { baseUrl, headersFor, createThread } = createSmokeContext({
+  pollTimeoutDefault: 45_000,
+});
+
 const timeoutMs = Number(process.env.SMOKE_TIMEOUT_MS ?? 45_000);
 const suffix = randomUUID();
 
@@ -30,64 +20,23 @@ const tenantA: TenantIdentity = {
   agentId: `stream-tenant-a-agent-${suffix}`,
 };
 
-const headersFor = (identity: TenantIdentity) => ({
-  authorization: `Bearer ${token}`,
-  "content-type": "application/json",
-  "x-assistant-mk1-user-id": identity.userId,
-  "x-assistant-mk1-workspace-id": identity.workspaceId,
-  "x-assistant-mk1-agent-id": identity.agentId,
-});
-
-const readJson = async <T>(
-  path: string,
-  identity: TenantIdentity,
-  init?: RequestInit,
-): Promise<T> => {
-  const response = await fetch(`${baseUrl}${path}`, {
-    ...init,
-    headers: {
-      ...headersFor(identity),
-      ...init?.headers,
-    },
-  });
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`${init?.method ?? "GET"} ${path} failed with ${response.status}: ${body}`);
-  }
-  return (await response.json()) as T;
-};
-
-const createThread = async (identity: TenantIdentity) => {
-  const thread = await readJson<ThreadResponse>("/langgraph/threads", identity, {
-    method: "POST",
-    body: "{}",
-  });
-  if (!thread.thread_id) throw new Error(thread.error ?? "thread_id missing");
-  return thread.thread_id;
-};
-
-const streamBody = () =>
-  JSON.stringify({
-    assistant_id: "agent",
-    input: {
-      messages: [
-        {
-          role: "user",
-          content: "Say one short sentence confirming the event stream is live.",
-        },
-      ],
-    },
-    stream_mode: ["messages"],
-  });
-
 const startRunStream = (identity: TenantIdentity, threadId: string) =>
   fetch(`${baseUrl}/langgraph/threads/${encodeURIComponent(threadId)}/runs/stream`, {
     method: "POST",
     headers: headersFor(identity),
-    body: streamBody(),
+    body: JSON.stringify({
+      assistant_id: "agent",
+      input: {
+        messages: [
+          {
+            role: "user",
+            content: "Say one short sentence confirming the event stream is live.",
+          },
+        ],
+      },
+      stream_mode: ["messages"],
+    }),
   });
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const parseSseBlocks = (raw: string) =>
   raw
@@ -164,7 +113,7 @@ const collectStreamEvents = async (identity: TenantIdentity, expectedTypes: stri
   throw new Error(`event stream is missing expected types: ${missing.join(", ")}`);
 };
 
-const main = async () => {
+runSmoke("Cloudflare event stream smoke", async () => {
   console.log(`Smoking Cloudflare event stream at ${baseUrl}`);
 
   const expectedTypes = [
@@ -201,7 +150,6 @@ const main = async () => {
   await run.text();
   const streamEvents = await streamEventsPromise;
 
-  console.log("Cloudflare event stream smoke passed");
   console.log(
     JSON.stringify(
       {
@@ -213,11 +161,6 @@ const main = async () => {
       2,
     ),
   );
-};
-
-main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exitCode = 1;
 });
 
 export {};

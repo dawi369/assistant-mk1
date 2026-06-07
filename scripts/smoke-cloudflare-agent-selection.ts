@@ -1,14 +1,9 @@
-type TenantIdentity = {
-  userId: string;
-  accountId: string;
-  accountSource: string;
-  email?: string;
-  name?: string;
-  role?: string;
-  roles?: string[];
-  permissions?: string[];
-  membershipStatus?: string;
-};
+import {
+  type TenantIdentity,
+  createSmokeContext,
+  defaultWorkspaceId,
+  runSmoke,
+} from "./smoke-utils";
 
 type AgentSummary = {
   id?: string;
@@ -64,14 +59,10 @@ type SessionResponse = {
   error?: string;
 };
 
-const baseUrl = (process.env.CLOUDFLARE_CONTROL_PLANE_URL ?? "http://localhost:8787").replace(
-  /\/$/,
-  "",
-);
-const token = process.env.CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN ?? "local-dev-token";
-const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+const { baseUrl, suffix, readJson, assertStatus } = createSmokeContext();
+
 const accountId = `workos-org:agent-selection-org-${suffix}`;
-const defaultWorkspaceId = `workspace:${accountId}:default`;
+const defaultWsId = defaultWorkspaceId(accountId);
 
 const ownerTenant: TenantIdentity = {
   userId: `agent-selection-owner-${suffix}`,
@@ -112,48 +103,6 @@ const disabledTenant: TenantIdentity = {
   membershipStatus: "disabled",
 };
 
-const headersFor = (identity: TenantIdentity) => {
-  const headers: Record<string, string> = {
-    authorization: `Bearer ${token}`,
-    "content-type": "application/json",
-    "x-assistant-mk1-user-id": identity.userId,
-    "x-assistant-mk1-account-id": identity.accountId,
-    "x-assistant-mk1-account-source": identity.accountSource,
-  };
-
-  if (identity.email) headers["x-assistant-mk1-user-email"] = identity.email;
-  if (identity.name) headers["x-assistant-mk1-user-name"] = identity.name;
-  if (identity.role) headers["x-assistant-mk1-membership-role"] = identity.role;
-  if (identity.roles) headers["x-assistant-mk1-membership-roles"] = JSON.stringify(identity.roles);
-  if (identity.permissions) {
-    headers["x-assistant-mk1-membership-permissions"] = JSON.stringify(identity.permissions);
-  }
-  if (identity.membershipStatus) {
-    headers["x-assistant-mk1-membership-status"] = identity.membershipStatus;
-  }
-
-  return headers;
-};
-
-const readJson = async <T>(
-  path: string,
-  identity: TenantIdentity = ownerTenant,
-  init?: RequestInit,
-): Promise<T> => {
-  const response = await fetch(`${baseUrl}${path}`, {
-    ...init,
-    headers: {
-      ...headersFor(identity),
-      ...init?.headers,
-    },
-  });
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`${init?.method ?? "GET"} ${path} failed with ${response.status}: ${body}`);
-  }
-  return (await response.json()) as T;
-};
-
 const requireSummary = (body: AdminSummaryResponse, label: string) => {
   const summary = body.summary;
   if (!body.ok || !summary?.identity?.workspaceId || !summary.identity.agentId) {
@@ -171,35 +120,14 @@ const requireSummary = (body: AdminSummaryResponse, label: string) => {
   return summary;
 };
 
-const assertStatus = async (
-  path: string,
-  identity: TenantIdentity,
-  expectedStatus: number,
-  init?: RequestInit,
-) => {
-  const response = await fetch(`${baseUrl}${path}`, {
-    ...init,
-    headers: {
-      ...headersFor(identity),
-      ...init?.headers,
-    },
-  });
-  if (response.status !== expectedStatus) {
-    const body = await response.text();
-    throw new Error(
-      `${init?.method ?? "GET"} ${path} expected ${expectedStatus}, got ${response.status}: ${body}`,
-    );
-  }
-};
-
-const main = async () => {
+runSmoke("Cloudflare agent selection smoke", async () => {
   console.log(`Smoking Cloudflare agent selection at ${baseUrl}`);
 
   const initial = requireSummary(
-    await readJson<AdminSummaryResponse>("/admin/workspace-summary"),
+    await readJson<AdminSummaryResponse>("/admin/workspace-summary", ownerTenant),
     "initial admin summary",
   );
-  if (initial.identity?.workspaceId !== defaultWorkspaceId) {
+  if (initial.identity?.workspaceId !== defaultWsId) {
     throw new Error("initial request did not resolve the account default workspace");
   }
   if (initial.activeAgent?.id !== initial.defaultAgent?.id) {
@@ -210,7 +138,7 @@ const main = async () => {
     throw new Error("initial summary did not include an active agent id");
   }
 
-  const list = await readJson<AgentsResponse>("/agents");
+  const list = await readJson<AgentsResponse>("/agents", ownerTenant);
   if (!list.ok || list.activeAgentId !== activeAgentId) {
     throw new Error("agent list did not expose the resolved active agent");
   }
@@ -256,7 +184,6 @@ const main = async () => {
 
   await assertStatus("/agents", disabledTenant, 403);
 
-  console.log("Cloudflare agent selection smoke passed");
   console.log(
     JSON.stringify(
       {
@@ -269,11 +196,6 @@ const main = async () => {
       2,
     ),
   );
-};
-
-main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exitCode = 1;
 });
 
 export {};
