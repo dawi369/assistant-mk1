@@ -12,10 +12,12 @@ export function WorkbenchShell() {
 
   return (
     <div className="bg-background relative h-dvh overflow-hidden">
-      <div className="absolute top-3 right-3 z-20 flex items-center gap-2">
+      <div className="absolute top-3 right-3 z-20 flex max-w-[calc(100vw-1.5rem)] flex-col items-end gap-2">
+        <div className="flex items-center justify-end gap-2">
+          <AuthButton />
+          <DevMonitorDrawer open={drawerOpen} onOpenChange={setDrawerOpen} />
+        </div>
         <WorkbenchRuntimeHint onOpenMonitor={() => setDrawerOpen(true)} />
-        <AuthButton />
-        <DevMonitorDrawer open={drawerOpen} onOpenChange={setDrawerOpen} />
       </div>
 
       <Assistant />
