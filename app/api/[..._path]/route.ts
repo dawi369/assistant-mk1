@@ -11,11 +11,27 @@ import { getWorkbenchIdentityHeaders } from "@/lib/workbench/agent-identity";
 
 export const runtime = "nodejs";
 
-function getCorsHeaders() {
+function getAllowedOrigin(requestOrigin: string | null) {
+  const allowed = process.env.ALLOWED_ORIGINS?.split(",").map((s) => s.trim());
+  if (!allowed || allowed.length === 0) return null;
+  if (allowed.includes("*")) return "*";
+  if (requestOrigin && allowed.includes(requestOrigin)) return requestOrigin;
+  return null;
+}
+
+function getCorsHeaders(requestOrigin: string | null = null) {
+  const origin = getAllowedOrigin(requestOrigin);
+  if (!origin) {
+    return {
+      "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+      "Access-Control-Allow-Headers": "content-type, authorization, x-api-key",
+    };
+  }
   return {
-    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "*",
+    "Access-Control-Allow-Headers": "content-type, authorization, x-api-key",
+    ...(origin !== "*" && { Vary: "Origin" }),
   };
 }
 
@@ -42,6 +58,7 @@ const proxyHeaders = async () => {
 };
 
 async function handleRequest(req: NextRequest, method: string) {
+  const requestOrigin = req.headers.get("origin");
   try {
     const apiUrl = requiredEnv("LANGGRAPH_API_URL").replace(/\/$/, "");
     const path = req.nextUrl.pathname.replace(/^\/?api\//, "");
@@ -71,7 +88,7 @@ async function handleRequest(req: NextRequest, method: string) {
     headers.delete("content-encoding");
     headers.delete("content-length");
     headers.delete("transfer-encoding");
-    const corsHeaders = getCorsHeaders();
+    const corsHeaders = getCorsHeaders(requestOrigin);
     for (const [key, value] of Object.entries(corsHeaders)) {
       headers.set(key, value);
     }
@@ -94,8 +111,8 @@ export const POST = (req: NextRequest) => handleRequest(req, "POST");
 export const PUT = (req: NextRequest) => handleRequest(req, "PUT");
 export const PATCH = (req: NextRequest) => handleRequest(req, "PATCH");
 export const DELETE = (req: NextRequest) => handleRequest(req, "DELETE");
-export const OPTIONS = () =>
+export const OPTIONS = (req: NextRequest) =>
   new NextResponse(null, {
     status: 204,
-    headers: getCorsHeaders(),
+    headers: getCorsHeaders(req.headers.get("origin")),
   });

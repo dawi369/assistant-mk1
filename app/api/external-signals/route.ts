@@ -5,6 +5,8 @@
  * create LangGraph crons. It is intentionally server-side and bearer-token
  * protected so external triggers do not bypass runtime authentication checks.
  */
+import { timingSafeEqual } from "node:crypto";
+
 import { Client } from "@langchain/langgraph-sdk";
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -22,6 +24,13 @@ type ExternalSignalPayload = {
   timezone?: string;
   webhook?: string;
   metadata?: Record<string, unknown>;
+};
+
+const constantTimeEqual = (a: string, b: string) => {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
 };
 
 const getBearerToken = (req: NextRequest) => {
@@ -56,7 +65,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "EXTERNAL_SIGNAL_TOKEN is not configured" }, { status: 503 });
   }
 
-  if (getBearerToken(req) !== expectedToken) {
+  const provided = getBearerToken(req);
+  if (!provided || !constantTimeEqual(provided, expectedToken)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

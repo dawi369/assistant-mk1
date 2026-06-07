@@ -104,14 +104,20 @@ export const handleLangGraphFacade = async (
   }
 
   if (request.method === "OPTIONS") {
-    return new Response(null, {
-      status: 204,
-      headers: {
-        "access-control-allow-headers": "*",
-        "access-control-allow-methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-        "access-control-allow-origin": "*",
-      },
-    });
+    const requestOrigin = request.headers.get("origin");
+    const allowedOrigins = env.ALLOWED_ORIGINS?.split(",").map((s: string) => s.trim());
+    const origin = allowedOrigins?.includes("*")
+      ? "*"
+      : requestOrigin && allowedOrigins?.includes(requestOrigin)
+        ? requestOrigin
+        : null;
+    const headers: Record<string, string> = {
+      "access-control-allow-headers": "content-type, authorization, x-api-key",
+      "access-control-allow-methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+    };
+    if (origin) headers["access-control-allow-origin"] = origin;
+    if (origin && origin !== "*") headers["vary"] = "Origin";
+    return new Response(null, { status: 204, headers });
   }
 
   if (isCreateThreadRequest(request, url.pathname)) {

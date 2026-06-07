@@ -1,3 +1,5 @@
+import { timingSafeEqual } from "node:crypto";
+
 import type { Env } from "./types";
 
 export const userIdHeader = "x-assistant-mk1-user-id";
@@ -18,6 +20,13 @@ export const json = (body: unknown, init?: ResponseInit) =>
 export const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+const constantTimeEqual = (a: string, b: string) => {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
+};
+
 export const requireAuth = (request: Request, env: Env) => {
   const token = env.CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN;
   if (!token) {
@@ -29,7 +38,11 @@ export const requireAuth = (request: Request, env: Env) => {
 
   const authorization = request.headers.get("authorization");
   const apiKey = request.headers.get("x-api-key");
-  if (authorization !== `Bearer ${token}` && apiKey !== token) {
+  const bearerMatch = authorization?.startsWith("Bearer ")
+    ? constantTimeEqual(authorization.slice(7), token)
+    : false;
+  const apiKeyMatch = apiKey ? constantTimeEqual(apiKey, token) : false;
+  if (!bearerMatch && !apiKeyMatch) {
     return json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 
