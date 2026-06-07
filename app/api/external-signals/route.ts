@@ -10,6 +10,8 @@ import { timingSafeEqual } from "node:crypto";
 import { Client } from "@langchain/langgraph-sdk";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { toWorkbenchApiError } from "@/lib/workbench/api-errors";
+
 export const runtime = "nodejs";
 
 type SignalAction = "start" | "resume" | "create_cron";
@@ -121,11 +123,6 @@ export async function POST(req: NextRequest) {
       run,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    const status =
-      error instanceof Error && "status" in error && typeof error.status === "number"
-        ? error.status
-        : 500;
-    return NextResponse.json({ error: message }, { status });
+    return toWorkbenchApiError(error, "External signal request failed", { defaultStatus: 500 });
   }
 }

@@ -7,6 +7,7 @@
  */
 import { type NextRequest, NextResponse } from "next/server";
 
+import { toWorkbenchApiError } from "@/lib/workbench/api-errors";
 import { getWorkbenchIdentityHeaders } from "@/lib/workbench/agent-identity";
 
 export const runtime = "nodejs";
@@ -99,10 +100,7 @@ async function handleRequest(req: NextRequest, method: string) {
       headers,
     });
   } catch (e: unknown) {
-    const message = e instanceof Error ? e.message : String(e);
-    const status =
-      e instanceof Error && "status" in e && typeof e.status === "number" ? e.status : 500;
-    return NextResponse.json({ error: message }, { status });
+    return toWorkbenchApiError(e, "LangGraph proxy request failed");
   }
 }
 

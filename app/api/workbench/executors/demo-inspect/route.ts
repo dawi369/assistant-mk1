@@ -7,6 +7,7 @@ import {
   type DemoInspectExecutorRequest,
   validateDemoInspectExecutorRequest,
 } from "@/lib/workbench/demo-inspect-executor";
+import { toWorkbenchApiError } from "@/lib/workbench/api-errors";
 
 export const runtime = "nodejs";
 
@@ -46,8 +47,8 @@ export async function POST(request: NextRequest) {
   try {
     return NextResponse.json(await executeDemoInspectExecutorRequest(parsed.request));
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Executor request failed";
-    console.error("Demo inspect executor error", { error: message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return toWorkbenchApiError(error, "Demo inspect executor request failed", {
+      defaultStatus: 500,
+    });
   }
 }

@@ -22,7 +22,7 @@ import {
 import { handleWorkspaceContext } from "./workspace-context";
 import { handleActivateWorkspace, handleCreateWorkspace, handleListWorkspaces } from "./workspaces";
 import { resolveAgentIdentity } from "./authz";
-import { json, requireAuth } from "./http";
+import { internalErrorResponse, json, requireAuth } from "./http";
 import type { Env, WorkerExecutionContext } from "./types";
 
 const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionContext) => {
@@ -36,7 +36,7 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
     });
   }
 
-  const authResponse = requireAuth(request, env);
+  const authResponse = await requireAuth(request, env);
   if (authResponse) return authResponse;
 
   if (request.method === "POST" && url.pathname === "/internal/workbench/run-callbacks") {
@@ -142,9 +142,7 @@ export default {
     try {
       return await handleRequest(request, env, ctx);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Internal control-plane error";
-      console.error("Unhandled control-plane error", { error: message });
-      return json({ ok: false, error: message }, { status: 500 });
+      return internalErrorResponse("Unhandled control-plane error", error);
     }
   },
 };
