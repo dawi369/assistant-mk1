@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { Readable } from "node:stream";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
@@ -37,12 +38,23 @@ const readJsonBody = async <T>(request: IncomingMessage): Promise<T | null> => {
   }
 };
 
+const constantTimeEqual = (a: string, b: string) => {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
+};
+
 const bearerToken = (value: string) => `Bearer ${value}`;
 
 const isAuthorized = (request: IncomingMessage, token: string) => {
-  return (
-    request.headers["x-api-key"] === token || request.headers.authorization === bearerToken(token)
-  );
+  const apiKey = Array.isArray(request.headers["x-api-key"])
+    ? request.headers["x-api-key"][0]
+    : request.headers["x-api-key"];
+  const authorization = request.headers.authorization;
+  if (apiKey && constantTimeEqual(apiKey, token)) return true;
+  if (authorization && constantTimeEqual(authorization, bearerToken(token))) return true;
+  return false;
 };
 
 const requireProxyAuth = (request: IncomingMessage, response: ServerResponse) => {
@@ -67,7 +79,8 @@ const requireExecutorAuth = (request: IncomingMessage, response: ServerResponse)
     return false;
   }
 
-  if (request.headers.authorization !== bearerToken(token)) {
+  const authorization = request.headers.authorization;
+  if (!authorization || !constantTimeEqual(authorization, bearerToken(token))) {
     json(response, 401, { ok: false, error: "unauthorized" });
     return false;
   }
@@ -161,7 +174,6 @@ const server = createServer((request, response) => {
       json(response, langGraphReady ? 200 : 503, {
         ok: langGraphReady,
         service: "assistant-mk1-langgraph-runtime",
-        langGraphUpstreamUrl,
         langGraphReady,
       });
       return;

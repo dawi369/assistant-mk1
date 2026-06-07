@@ -31,6 +31,7 @@ export type Env = {
   OPENROUTER_APP_NAME?: string;
   WORKBENCH_EXECUTOR_URL?: string;
   WORKBENCH_EXECUTOR_TOKEN?: string;
+  ALLOWED_ORIGINS?: string;
 };
 
 export type WorkerExecutionContext = {

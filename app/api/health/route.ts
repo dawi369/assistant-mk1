@@ -13,7 +13,7 @@ export function GET() {
   return NextResponse.json({
     ok: true,
     service: "assistant-mk1",
-    langGraphApiUrl: process.env.LANGGRAPH_API_URL ?? null,
+    langGraphConfigured: Boolean(process.env.LANGGRAPH_API_URL),
     assistantId: process.env.NEXT_PUBLIC_LANGGRAPH_ASSISTANT_ID ?? null,
   });
 }

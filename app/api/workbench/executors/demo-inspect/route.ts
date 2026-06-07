@@ -1,3 +1,5 @@
+import { timingSafeEqual } from "node:crypto";
+
 import { NextResponse, type NextRequest } from "next/server";
 
 import {
@@ -16,6 +18,13 @@ const readRequest = async (request: NextRequest): Promise<DemoInspectExecutorReq
   }
 };
 
+const constantTimeEqual = (a: string, b: string) => {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
+};
+
 export async function POST(request: NextRequest) {
   const token = process.env.WORKBENCH_EXECUTOR_TOKEN;
   if (!token) {
@@ -25,7 +34,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (request.headers.get("authorization") !== `Bearer ${token}`) {
+  const authorization = request.headers.get("authorization") ?? "";
+  if (!authorization.startsWith("Bearer ") || !constantTimeEqual(authorization.slice(7), token)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
