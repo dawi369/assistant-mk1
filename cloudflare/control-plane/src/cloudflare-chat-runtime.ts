@@ -32,6 +32,24 @@ type StoredMessage = {
   response_metadata?: Record<string, unknown>;
 };
 
+type ChatRuntimeErrorCode =
+  | "unsupported_assistant"
+  | "missing_model_secret"
+  | "upstream_failed"
+  | "runtime_failed";
+
+class ChatRuntimeError extends Error {
+  constructor(
+    message: string,
+    readonly errorCode: ChatRuntimeErrorCode,
+    readonly retryable: boolean,
+    readonly detail?: string,
+  ) {
+    super(message);
+    this.name = "ChatRuntimeError";
+  }
+}
+
 const modelProvider = "openrouter";
 
 const sseHeaders = {
@@ -315,7 +333,11 @@ export const handleCloudflareRunStream = async (
     decision: policy.decision,
     reason: policy.reason,
     executionMode,
-    limits: { sameThreadConcurrency: 1 },
+    limits: {
+      sameThreadConcurrency: 1,
+      errorCode: policy.errorCode,
+      retryable: policy.retryable,
+    },
   });
   await appendControlPlaneEvent(env, identity, {
     type: policy.decision === "allow" ? "chat.policy.allowed" : "chat.policy.blocked",
@@ -337,6 +359,8 @@ export const handleCloudflareRunStream = async (
       {
         ok: false,
         error: policy.reason,
+        errorCode: policy.errorCode ?? "policy_blocked",
+        retryable: policy.retryable ?? false,
         intentId,
         policyDecisionId,
         decision: policy.decision,
@@ -390,12 +414,17 @@ export const handleCloudflareRunStream = async (
   });
 
   if (requestedAssistantId !== "agent") {
-    const error = `Unsupported assistant id for Cloudflare simple chat: ${String(requestedAssistantId)}`;
+    const error = "This assistant runtime is not available for Cloudflare simple chat.";
     await updateChatRun(env, {
       runId,
       scope: identity.scope,
       status: "failed",
-      metadata: { runtime: "cloudflare-simple-chat" },
+      metadata: {
+        runtime: "cloudflare-simple-chat",
+        errorCode: "unsupported_assistant",
+        retryable: false,
+        requestedAssistantId,
+      },
       error,
     });
     await appendControlPlaneEvent(env, identity, {
@@ -403,18 +432,31 @@ export const handleCloudflareRunStream = async (
       summary: "Cloudflare simple chat rejected an unsupported assistant id.",
       targetType: "chat_run",
       targetId: runId,
-      data: { threadId: thread.thread_id, error },
+      data: {
+        threadId: thread.thread_id,
+        error,
+        errorCode: "unsupported_assistant",
+        retryable: false,
+        requestedAssistantId,
+      },
     });
-    return json({ ok: false, error }, { status: 422 });
+    return json(
+      { ok: false, error, errorCode: "unsupported_assistant", retryable: false },
+      { status: 422 },
+    );
   }
 
   if (!env.OPENROUTER_API_KEY) {
-    const error = "OPENROUTER_API_KEY is not configured for Cloudflare simple chat.";
+    const error = "Chat model is not configured for Cloudflare simple chat.";
     await updateChatRun(env, {
       runId,
       scope: identity.scope,
       status: "failed",
-      metadata: { runtime: "cloudflare-simple-chat" },
+      metadata: {
+        runtime: "cloudflare-simple-chat",
+        errorCode: "missing_model_secret",
+        retryable: false,
+      },
       error,
     });
     await appendControlPlaneEvent(env, identity, {
@@ -422,9 +464,17 @@ export const handleCloudflareRunStream = async (
       summary: "Cloudflare simple chat model secret is missing.",
       targetType: "chat_run",
       targetId: runId,
-      data: { threadId: thread.thread_id, error },
+      data: {
+        threadId: thread.thread_id,
+        error,
+        errorCode: "missing_model_secret",
+        retryable: false,
+      },
     });
-    return json({ ok: false, error }, { status: 500 });
+    return json(
+      { ok: false, error, errorCode: "missing_model_secret", retryable: false },
+      { status: 500 },
+    );
   }
 
   const model = runtimeConfig.model;
@@ -462,8 +512,13 @@ export const handleCloudflareRunStream = async (
           });
 
           if (!response.ok || !response.body) {
-            const error = await readOpenRouterError(response);
-            throw new Error(error);
+            const detail = await readOpenRouterError(response);
+            throw new ChatRuntimeError(
+              "The response failed. Try again or start a new chat.",
+              "upstream_failed",
+              true,
+              detail,
+            );
           }
 
           const reader = response.body.getReader();
@@ -538,12 +593,27 @@ export const handleCloudflareRunStream = async (
           });
           controller.close();
         } catch (error) {
-          const message = error instanceof Error ? error.message : "Cloudflare simple chat failed.";
+          const runtimeError =
+            error instanceof ChatRuntimeError
+              ? error
+              : new ChatRuntimeError(
+                  "The response failed. Try again or start a new chat.",
+                  "runtime_failed",
+                  true,
+                  error instanceof Error ? error.message : undefined,
+                );
+          const message = runtimeError.message;
           await updateChatRun(env, {
             runId,
             scope: identity.scope,
             status: "failed",
-            metadata: { ...metadata, outputChars: assistantText.length },
+            metadata: {
+              ...metadata,
+              outputChars: assistantText.length,
+              errorCode: runtimeError.errorCode,
+              retryable: runtimeError.retryable,
+              errorDetail: runtimeError.detail,
+            },
             error: truncate(message),
           });
           await appendControlPlaneEvent(env, identity, {
@@ -551,9 +621,21 @@ export const handleCloudflareRunStream = async (
             summary: "Cloudflare-owned simple chat run failed.",
             targetType: "chat_run",
             targetId: runId,
-            data: { threadId: thread.thread_id, error: truncate(message) },
+            data: {
+              threadId: thread.thread_id,
+              error: truncate(message),
+              errorCode: runtimeError.errorCode,
+              retryable: runtimeError.retryable,
+              errorDetail: runtimeError.detail,
+            },
           });
-          controller.enqueue(sse("error", { message: truncate(message) }));
+          controller.enqueue(
+            sse("error", {
+              message: truncate(message),
+              errorCode: runtimeError.errorCode,
+              retryable: runtimeError.retryable,
+            }),
+          );
           controller.close();
         }
       })();

@@ -140,6 +140,7 @@ export type ChatRuntimeSummary = {
     decision?: string;
     reason?: string;
     executionMode?: string;
+    limits?: Record<string, unknown>;
     createdAt?: string;
   } | null;
   events: ControlPlaneEvent[];
@@ -149,6 +150,8 @@ export type ChatRuntimeSummary = {
     status?: string;
     targetId?: Id;
     createdAt?: string;
+    errorCode?: string;
+    retryable?: boolean;
   } | null;
 };
 

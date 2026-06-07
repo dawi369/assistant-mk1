@@ -28,6 +28,7 @@ import {
   StatusRow,
   terminalStatuses,
 } from "@/components/workbench/dev-monitor-primitives";
+import { NewChatButton } from "@/components/workbench/new-chat-button";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
@@ -38,6 +39,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { workbenchSummaryRefreshEvent } from "@/lib/workbench/admin-summary-events";
 import { chatRuntimeStateLabel, chatRuntimeStateTone } from "@/lib/workbench/chat-runtime-display";
 import type {
   CloudflareAdminSummaryResponse,
@@ -127,6 +129,7 @@ export function DevMonitorDrawer({
           source: chatRuntime.failure.source,
           status: chatRuntime.failure.status,
           targetId: chatRuntime.failure.targetId,
+          errorCode: chatRuntime.failure.errorCode,
         }
       : summary?.lastError
         ? {
@@ -134,6 +137,7 @@ export function DevMonitorDrawer({
             source: summary.lastError.source,
             status: summary.lastError.status,
             targetId: summary.lastError.targetId,
+            errorCode: undefined,
           }
         : null;
   const chatLabel =
@@ -162,6 +166,8 @@ export function DevMonitorDrawer({
   useEffect(() => {
     if (!open) return;
     void loadSummary();
+    window.addEventListener(workbenchSummaryRefreshEvent, loadSummary);
+    return () => window.removeEventListener(workbenchSummaryRefreshEvent, loadSummary);
   }, [open]);
 
   useEffect(() => {
@@ -362,6 +368,12 @@ export function DevMonitorDrawer({
           </MonitorSection>
 
           <MonitorSection icon={MessageSquareIcon} title="Chat Flow">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-muted-foreground text-xs">
+                Start a fresh Cloudflare-owned thread for the current workspace and agent.
+              </p>
+              <NewChatButton className="shrink-0" />
+            </div>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <StatusRow
                 label="Chat"
@@ -379,8 +391,19 @@ export function DevMonitorDrawer({
                 compact
               />
               <StatusRow
+                label="Error category"
+                value={chatRuntime?.failure?.errorCode ?? "none"}
+                compact
+              />
+              <StatusRow
                 label="Thread"
-                value={chatRuntime?.latestThread?.status ?? "No thread yet"}
+                value={
+                  chatRuntime?.latestThread
+                    ? `${chatRuntime.latestThread.status ?? "active"}${
+                        chatRuntime.latestRun ? "" : " / fresh"
+                      }`
+                    : "No thread yet"
+                }
                 compact
               />
               <StatusRow
@@ -408,6 +431,7 @@ export function DevMonitorDrawer({
                 <p className="text-muted-foreground mt-1 text-xs">
                   {chatRuntime.failure.source}
                   {chatRuntime.failure.status ? ` / ${chatRuntime.failure.status}` : ""}
+                  {chatRuntime.failure.errorCode ? ` / ${chatRuntime.failure.errorCode}` : ""}
                 </p>
               </div>
             ) : (
@@ -758,6 +782,7 @@ export function DevMonitorDrawer({
                   <p className="text-muted-foreground mt-1 text-xs">
                     {importantError.source}
                     {importantError.status ? ` / ${importantError.status}` : ""}
+                    {importantError.errorCode ? ` / ${importantError.errorCode}` : ""}
                   </p>
                   <CopyId label="Error target id" value={importantError.targetId} />
                 </div>

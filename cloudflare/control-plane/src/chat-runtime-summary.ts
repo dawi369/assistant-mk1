@@ -9,7 +9,7 @@ import {
   toChatSessionSnapshot,
   toChatThreadSnapshot,
 } from "./chat-boundary-store";
-import { json } from "./http";
+import { json, parseDataJson } from "./http";
 import { toControlPlaneEventSnapshot } from "./control-plane-events";
 import type {
   AgentIdentity,
@@ -95,22 +95,28 @@ const failureSummary = (
   latestPolicyDecision: Awaited<ReturnType<typeof getLatestChatPolicyDecision>>,
 ) => {
   if (state === "failed" && latestRun) {
+    const metadata = parseDataJson(latestRun.metadata_json);
     return {
       source: "chat-run",
       message: latestRun.error ?? "Chat run failed.",
       status: latestRun.status,
       targetId: latestRun.id,
       createdAt: latestRun.updated_at,
+      errorCode: typeof metadata.errorCode === "string" ? metadata.errorCode : "runtime_failed",
+      retryable: typeof metadata.retryable === "boolean" ? metadata.retryable : true,
     };
   }
 
   if (state === "blocked" && latestPolicyDecision) {
+    const limits = parseDataJson(latestPolicyDecision.limits_json);
     return {
       source: "chat-policy",
       message: latestPolicyDecision.reason,
       status: latestPolicyDecision.decision,
       targetId: latestPolicyDecision.id,
       createdAt: latestPolicyDecision.created_at,
+      errorCode: typeof limits.errorCode === "string" ? limits.errorCode : "policy_blocked",
+      retryable: typeof limits.retryable === "boolean" ? limits.retryable : false,
     };
   }
 

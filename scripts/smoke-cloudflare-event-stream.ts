@@ -139,7 +139,7 @@ runSmoke("Cloudflare event stream smoke", async () => {
 
     const body = await response.text();
     lastRunError = `${response.status}: ${body}`;
-    if (response.status !== 422 || !body.includes("Thread is already running")) {
+    if (response.status !== 409 || !body.includes("already_running")) {
       throw new Error(`chat run stream failed with ${lastRunError}`);
     }
 

@@ -8,7 +8,7 @@
  * should stay provider-agnostic; model credentials and graph logic live on the
  * server side.
  */
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import {
   unstable_createLangGraphStream,
@@ -21,7 +21,7 @@ import { Thread } from "@/components/assistant-ui/thread";
 
 const ASSISTANT_ID = process.env.NEXT_PUBLIC_LANGGRAPH_ASSISTANT_ID!;
 
-export function Assistant() {
+export function Assistant({ children }: { children?: ReactNode }) {
   const client = useMemo(() => createClient(), []);
   const stream = useMemo(
     () =>
@@ -52,6 +52,7 @@ export function Assistant() {
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
+      {children}
       <Thread />
     </AssistantRuntimeProvider>
   );

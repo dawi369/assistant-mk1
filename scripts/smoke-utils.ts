@@ -209,7 +209,7 @@ export function createSmokeContext(options?: {
 
       const responseBody = await response.text();
       lastError = `${response.status}: ${responseBody}`;
-      if (response.status !== 422 || !responseBody.includes("Thread is already running")) {
+      if (response.status !== 409 || !responseBody.includes("already_running")) {
         throw new Error(`${label} failed with ${lastError}`);
       }
 

@@ -38,9 +38,12 @@ type ChatRuntimeSummaryResponse = {
       message?: string;
       status?: string;
       targetId?: string;
+      errorCode?: string;
+      retryable?: boolean;
     } | null;
   };
   error?: string;
+  errorCode?: string;
 };
 
 const { baseUrl, suffix, pollTimeoutMs, pollIntervalMs, headersFor, readJson, createThread } =
@@ -148,32 +151,52 @@ runSmoke("Cloudflare chat runtime summary smoke", async () => {
   await assertThreadHidden(tenantB, threadId);
 
   const runResult = await runStream(tenantA, threadId);
-  if (!runResult.response.ok) {
-    throw new Error(`valid chat run failed with ${runResult.response.status}: ${runResult.body}`);
-  }
-
-  const completedSummary = await waitForRuntimeState(tenantA, "completed", "valid chat run");
+  const completedSummary = runResult.response.ok
+    ? await waitForRuntimeState(tenantA, "completed", "valid chat run")
+    : await (async () => {
+        const body = JSON.parse(runResult.body) as { errorCode?: string };
+        if (runResult.response.status !== 500 || body.errorCode !== "missing_model_secret") {
+          throw new Error(
+            `valid chat run failed with ${runResult.response.status}: ${runResult.body}`,
+          );
+        }
+        const failedSecretSummary = await waitForRuntimeState(
+          tenantA,
+          "failed",
+          "missing model secret chat run",
+        );
+        if (failedSecretSummary.chatRuntime?.failure?.errorCode !== "missing_model_secret") {
+          throw new Error("missing model secret did not surface stable failure metadata");
+        }
+        return failedSecretSummary;
+      })();
   if (!completedSummary.chatRuntime?.latestRun?.id) {
-    throw new Error("completed runtime summary did not include a chat run");
+    throw new Error("runtime summary did not include a chat run");
   }
   if (!completedSummary.chatRuntime.latestIntent?.id) {
-    throw new Error("completed runtime summary did not include a chat intent");
+    throw new Error("runtime summary did not include a chat intent");
   }
   if (!completedSummary.chatRuntime.latestPolicyDecision?.id) {
-    throw new Error("completed runtime summary did not include a policy decision");
+    throw new Error("runtime summary did not include a policy decision");
   }
   if (!completedSummary.chatRuntime.events?.some((event) => event.type?.startsWith("chat."))) {
-    throw new Error("completed runtime summary did not include chat events");
+    throw new Error("runtime summary did not include chat events");
   }
 
   const failureThreadId = await createThread(tenantA);
   const failedRun = await runStream(tenantA, failureThreadId, "__missing_assistant__");
-  if (failedRun.response.ok) {
-    throw new Error("invalid assistant run unexpectedly succeeded");
+  const failedRunBody = JSON.parse(failedRun.body) as { errorCode?: string };
+  if (failedRun.response.status !== 422 || failedRunBody.errorCode !== "unsupported_assistant") {
+    throw new Error(
+      `invalid assistant expected 422 unsupported_assistant, got ${failedRun.response.status}: ${failedRun.body}`,
+    );
   }
 
   const failedSummary = await waitForRuntimeState(tenantA, "failed", "invalid assistant run");
-  if (!failedSummary.chatRuntime?.failure?.message) {
+  if (
+    !failedSummary.chatRuntime?.failure?.message ||
+    failedSummary.chatRuntime.failure.errorCode !== "unsupported_assistant"
+  ) {
     throw new Error("failed runtime summary did not include failure details");
   }
 
@@ -182,6 +205,7 @@ runSmoke("Cloudflare chat runtime summary smoke", async () => {
       {
         threadId,
         completedRunId: completedSummary.chatRuntime.latestRun.id,
+        completedRunStatus: completedSummary.chatRuntime.latestRun.status,
         failureThreadId,
         failedRunId: failedSummary.chatRuntime.latestRun?.id,
         failedRunStatus: failedSummary.chatRuntime.latestRun?.status,

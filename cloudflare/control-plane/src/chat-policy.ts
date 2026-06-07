@@ -6,6 +6,8 @@ export type ChatPolicyResult = {
   executionMode: ExecutionMode;
   reason: string;
   status: 200 | 403 | 409;
+  errorCode?: "already_running" | "policy_blocked" | "unsupported_execution_mode";
+  retryable?: boolean;
 };
 
 const executionModes = new Set<ExecutionMode>(["ask", "dry_run", "execute"]);
@@ -41,6 +43,8 @@ export const evaluateChatRunPolicy = (input: {
       executionMode: input.executionMode,
       reason: `Unsupported chat execution mode: ${input.invalidExecutionMode}`,
       status: 403,
+      errorCode: "unsupported_execution_mode",
+      retryable: false,
     };
   }
 
@@ -48,8 +52,10 @@ export const evaluateChatRunPolicy = (input: {
     return {
       decision: "block",
       executionMode: input.executionMode,
-      reason: "A chat run is already running for this thread",
+      reason: "A response is already running. Wait or start a new chat.",
       status: 409,
+      errorCode: "already_running",
+      retryable: true,
     };
   }
 
@@ -59,6 +65,8 @@ export const evaluateChatRunPolicy = (input: {
       executionMode: input.executionMode,
       reason: "Chat execute mode is blocked until approval policy exists",
       status: 403,
+      errorCode: "policy_blocked",
+      retryable: false,
     };
   }
 

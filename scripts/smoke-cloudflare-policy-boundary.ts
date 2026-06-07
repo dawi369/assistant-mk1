@@ -29,6 +29,7 @@ const {
   pollTimeoutMs,
   pollIntervalMs,
   readJson,
+  createThread,
   streamBody,
   startStream,
   startAcceptedStreamOnNewThread,
@@ -97,70 +98,116 @@ const assertResponseStatus = async (response: Response, status: number, label: s
   await response.text();
 };
 
+const readErrorCode = async (response: Response) => {
+  const bodyText = await response.text();
+  const body = JSON.parse(bodyText) as { errorCode?: string };
+  return { bodyText, errorCode: body.errorCode };
+};
+
+const assertErrorResponse = async (
+  response: Response,
+  input: { status: number; errorCode: string; label: string },
+) => {
+  const bodyText = await response.text();
+  if (response.status !== input.status) {
+    throw new Error(`${input.label} expected ${input.status}, got ${response.status}: ${bodyText}`);
+  }
+  const body = JSON.parse(bodyText) as { errorCode?: string };
+  if (body.errorCode !== input.errorCode) {
+    throw new Error(
+      `${input.label} expected errorCode ${input.errorCode}, got ${body.errorCode ?? "none"}`,
+    );
+  }
+};
+
 runSmoke("Cloudflare policy boundary smoke", async () => {
   console.log(`Smoking Cloudflare policy boundary at ${baseUrl}`);
 
-  const allowed = await startAcceptedStreamOnNewThread(
+  const allowedThreadId = await createThread(tenant);
+  const allowedResponse = await startStream(
     tenant,
+    allowedThreadId,
     streamBody({
       content: "Say one short sentence confirming the policy boundary is live.",
     }),
-    "allowed stream",
   );
-  await allowed.response.text();
-  const completed = await waitForCompletedRun(tenant, allowed.threadId);
+  const missingModelSecret = !allowedResponse.ok;
+  const completed = allowedResponse.ok
+    ? await (async () => {
+        await allowedResponse.text();
+        return waitForCompletedRun(tenant, allowedThreadId);
+      })()
+    : await (async () => {
+        const { bodyText, errorCode } = await readErrorCode(allowedResponse);
+        if (allowedResponse.status !== 500 || errorCode !== "missing_model_secret") {
+          throw new Error(`allowed stream failed with ${allowedResponse.status}: ${bodyText}`);
+        }
+        return getBoundarySnapshot(tenant, allowedThreadId);
+      })();
   if (!completed.latestRun?.id) throw new Error("allowed policy run is missing run id");
   assertAllowedPolicy(completed);
 
   const executeBlock = await startStream(
     tenant,
-    allowed.threadId,
+    allowedThreadId,
     streamBody({
       content: "Attempt execute mode.",
       executionMode: "execute",
     }),
   );
   await assertResponseStatus(executeBlock, 403, "execute-mode policy block");
-  const executeBlockedSnapshot = await getBoundarySnapshot(tenant, allowed.threadId);
+  const executeBlockedSnapshot = await getBoundarySnapshot(tenant, allowedThreadId);
   assertBlockedPolicy(executeBlockedSnapshot, {
     decisionStatus: "blocked",
     executionMode: "execute",
   });
 
-  const firstConcurrent = await startAcceptedStreamOnNewThread(
-    tenant,
-    streamBody({
-      content: "Reply with three short sentences to keep this run briefly open.",
-    }),
-    "first concurrent stream",
-  );
+  let concurrentThreadId: string | null = null;
+  let duplicateBlockPolicyId: string | undefined;
 
-  const duplicateConcurrent = await startStream(
-    tenant,
-    firstConcurrent.threadId,
-    streamBody({
-      content: "Attempt a second run on the same thread.",
-    }),
-  );
-  await assertResponseStatus(duplicateConcurrent, 409, "same-thread running policy block");
-  const duplicateBlockedSnapshot = await getBoundarySnapshot(tenant, firstConcurrent.threadId);
-  assertBlockedPolicy(duplicateBlockedSnapshot, {
-    decisionStatus: "blocked",
-    executionMode: "ask",
-  });
+  if (!missingModelSecret) {
+    const firstConcurrent = await startAcceptedStreamOnNewThread(
+      tenant,
+      streamBody({
+        content: "Reply with three short sentences to keep this run briefly open.",
+      }),
+      "first concurrent stream",
+    );
+    concurrentThreadId = firstConcurrent.threadId;
 
-  await firstConcurrent.response.text();
-  await waitForCompletedRun(tenant, firstConcurrent.threadId);
+    const duplicateConcurrent = await startStream(
+      tenant,
+      firstConcurrent.threadId,
+      streamBody({
+        content: "Attempt a second run on the same thread.",
+      }),
+    );
+    await assertErrorResponse(duplicateConcurrent, {
+      status: 409,
+      errorCode: "already_running",
+      label: "same-thread running policy block",
+    });
+    const duplicateBlockedSnapshot = await getBoundarySnapshot(tenant, firstConcurrent.threadId);
+    assertBlockedPolicy(duplicateBlockedSnapshot, {
+      decisionStatus: "blocked",
+      executionMode: "ask",
+    });
+    duplicateBlockPolicyId = duplicateBlockedSnapshot.latestPolicyDecision?.id;
+
+    await firstConcurrent.response.text();
+    await waitForCompletedRun(tenant, firstConcurrent.threadId);
+  }
 
   console.log(
     JSON.stringify(
       {
-        allowedThreadId: allowed.threadId,
+        allowedThreadId,
         allowedRunId: completed.latestRun.id,
         allowedIntentId: completed.latestIntent?.id,
+        missingModelSecret,
         executeBlockPolicyId: executeBlockedSnapshot.latestPolicyDecision?.id,
-        concurrentThreadId: firstConcurrent.threadId,
-        duplicateBlockPolicyId: duplicateBlockedSnapshot.latestPolicyDecision?.id,
+        concurrentThreadId,
+        duplicateBlockPolicyId,
       },
       null,
       2,

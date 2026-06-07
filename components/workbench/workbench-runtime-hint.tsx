@@ -5,6 +5,7 @@ import { useAuth } from "@workos-inc/authkit-nextjs/components";
 import { AlertCircleIcon, BotIcon, Building2Icon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { workbenchSummaryRefreshEvent } from "@/lib/workbench/admin-summary-events";
 import { chatRuntimeStateLabel, chatRuntimeStateTone } from "@/lib/workbench/chat-runtime-display";
 import type { CloudflareAdminSummaryResponse } from "@/lib/workbench/workbench-types";
 import { cn } from "@/lib/utils";
@@ -42,7 +43,11 @@ export function WorkbenchRuntimeHint({ onOpenMonitor }: { onOpenMonitor: () => v
 
     void loadSummary();
     const interval = window.setInterval(() => void loadSummary(), refreshIntervalMs);
-    return () => window.clearInterval(interval);
+    window.addEventListener(workbenchSummaryRefreshEvent, loadSummary);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener(workbenchSummaryRefreshEvent, loadSummary);
+    };
   }, [loading, user]);
 
   const chatRuntime = summary?.chatRuntime ?? null;
