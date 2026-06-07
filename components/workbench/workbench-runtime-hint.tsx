@@ -27,7 +27,8 @@ export function WorkbenchRuntimeHint({ onOpenMonitor }: { onOpenMonitor: () => v
     try {
       const nextSummary = await readSummary();
       setSummary(nextSummary);
-    } catch {
+    } catch (error) {
+      console.error("Failed to load admin summary", error);
       setSummary(null);
     }
   };

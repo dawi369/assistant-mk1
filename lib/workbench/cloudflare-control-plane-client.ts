@@ -182,5 +182,11 @@ export const streamControlPlaneEvents = async (after?: string | null) => {
       accept: "text/event-stream",
     },
   });
-  return fetch(request.url, request.init);
+  const response = await fetchWithTimeout(request.url, request.init);
+
+  if (!response.ok) {
+    throw new ControlPlaneRequestError(await parseErrorBody(response), response.status);
+  }
+
+  return response;
 };

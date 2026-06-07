@@ -44,8 +44,8 @@ export function Assistant() {
         messages: LangChainMessage[];
       }>(externalId);
       return {
-        messages: state.values.messages,
-        interrupts: state.tasks[0]?.interrupts,
+        messages: state.values?.messages ?? [],
+        interrupts: state.tasks?.[0]?.interrupts,
       };
     },
   });
