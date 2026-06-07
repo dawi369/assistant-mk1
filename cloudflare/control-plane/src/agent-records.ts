@@ -21,6 +21,24 @@ export type AgentRuntimeConfig = {
   source: "agent" | "system-default";
 };
 
+export type AgentBehaviorConfig = {
+  profile: AgentProfile;
+  source: "server-preset";
+  version: "2026-06-07";
+  instructionId: `agent-behavior-${AgentProfile}`;
+};
+
+const behaviorVersion = "2026-06-07" as const;
+
+const behaviorInstructions = {
+  default:
+    "You are the default assistant for this workspace. Be clear, practical, and concise. Ask for missing context when it materially affects the answer. Keep responses useful across many project types and avoid assuming a domain that was not provided.",
+  analyst:
+    "You are operating in analyst mode for this workspace. Emphasize structure, tradeoffs, assumptions, and verification. Prefer careful analysis over speed, but keep conclusions actionable and avoid unnecessary detail.",
+  operator:
+    "You are operating in operator mode for this workspace. Emphasize direct next actions, execution readiness, blockers, and concise status. Prefer checkable steps and concrete outcomes over broad exploration.",
+} satisfies Record<AgentProfile, string>;
+
 const isAgentProfile = (value: string): value is AgentProfile =>
   agentProfiles.includes(value as AgentProfile);
 
@@ -74,6 +92,19 @@ export const resolveAgentRuntimeConfig = (env: Env, row: AgentRow | null): Agent
   };
 };
 
+export const resolveAgentBehaviorConfig = (row: AgentRow | null): AgentBehaviorConfig => {
+  const profile = row ? getAgentProfile(row) : "default";
+  return {
+    profile,
+    source: "server-preset",
+    version: behaviorVersion,
+    instructionId: `agent-behavior-${profile}`,
+  };
+};
+
+export const resolveAgentBehaviorInstruction = (row: AgentRow | null) =>
+  behaviorInstructions[resolveAgentBehaviorConfig(row).profile];
+
 export const toAgentSummary = (env: Env, row: AgentRow, activeAgentId: string) => ({
   id: row.id,
   name: row.name,
@@ -81,6 +112,7 @@ export const toAgentSummary = (env: Env, row: AgentRow, activeAgentId: string) =
   status: row.status,
   profile: getAgentProfile(row),
   runtime: resolveAgentRuntimeConfig(env, row),
+  behavior: resolveAgentBehaviorConfig(row),
   isDefault: row.is_default === 1,
   isActive: row.id === activeAgentId,
   createdAt: row.created_at,
@@ -94,12 +126,14 @@ export const toAgentRuntimeMetadata = (env: Env, row: AgentRow | null, fallbackA
         name: row.name,
         profile: getAgentProfile(row),
         runtime: resolveAgentRuntimeConfig(env, row),
+        behavior: resolveAgentBehaviorConfig(row),
         isDefault: row.is_default === 1,
       }
     : {
         id: fallbackAgentId,
         profile: "default" satisfies AgentProfile,
         runtime: resolveAgentRuntimeConfig(env, null),
+        behavior: resolveAgentBehaviorConfig(null),
       };
 
 export const insertAgent = async (

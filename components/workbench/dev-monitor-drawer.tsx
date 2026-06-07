@@ -515,6 +515,8 @@ export function DevMonitorDrawer({
                 <StatusRow label="Profile" value={summary?.activeAgent?.profile} />
                 <StatusRow label="Model" value={summary?.activeAgent?.runtime.model} />
                 <StatusRow label="Model source" value={summary?.activeAgent?.runtime.source} />
+                <StatusRow label="Behavior" value={summary?.activeAgent?.behavior.profile} />
+                <StatusRow label="Behavior source" value={summary?.activeAgent?.behavior.source} />
               </div>
               <form className="space-y-2" onSubmit={createAgent}>
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
@@ -682,6 +684,13 @@ export function DevMonitorDrawer({
                 value={String(summary?.activeAgent?.runtime.maxTokens ?? "")}
               />
               <StatusRow label="Source" value={summary?.activeAgent?.runtime.source} />
+            </DetailsBlock>
+
+            <DetailsBlock title="Agent behavior config">
+              <StatusRow label="Profile" value={summary?.activeAgent?.behavior.profile} />
+              <StatusRow label="Source" value={summary?.activeAgent?.behavior.source} />
+              <StatusRow label="Version" value={summary?.activeAgent?.behavior.version} />
+              <CopyId label="Instruction id" value={summary?.activeAgent?.behavior.instructionId} />
             </DetailsBlock>
 
             <DetailsBlock title="Membership and external identity">

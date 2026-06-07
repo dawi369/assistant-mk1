@@ -81,6 +81,13 @@ export type AgentRuntimeConfig = {
   source: "agent" | "system-default";
 };
 
+export type AgentBehaviorConfig = {
+  profile: "default" | "analyst" | "operator";
+  source: "server-preset";
+  version: string;
+  instructionId: string;
+};
+
 export type ChatRuntimeSummary = {
   state:
     | "no_session"
@@ -244,6 +251,7 @@ export type CloudflareAdminSummaryResponse = {
       status: string;
       profile: "default" | "analyst" | "operator";
       runtime: AgentRuntimeConfig;
+      behavior: AgentBehaviorConfig;
       isDefault: boolean;
       isActive: boolean;
       createdAt?: string;
@@ -256,6 +264,7 @@ export type CloudflareAdminSummaryResponse = {
       status: string;
       profile: "default" | "analyst" | "operator";
       runtime: AgentRuntimeConfig;
+      behavior: AgentBehaviorConfig;
       isDefault: boolean;
       isActive: boolean;
       createdAt?: string;
@@ -268,6 +277,7 @@ export type CloudflareAdminSummaryResponse = {
       status: string;
       profile: "default" | "analyst" | "operator";
       runtime: AgentRuntimeConfig;
+      behavior: AgentBehaviorConfig;
       isDefault: boolean;
       isActive: boolean;
       createdAt?: string;
@@ -337,6 +347,7 @@ export type AgentSummary = {
   status: string;
   profile: "default" | "analyst" | "operator";
   runtime: AgentRuntimeConfig;
+  behavior: AgentBehaviorConfig;
   isDefault: boolean;
   isActive: boolean;
   createdAt?: string;
