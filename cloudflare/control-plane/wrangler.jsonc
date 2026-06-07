@@ -3,6 +3,7 @@
   "name": "assistant-mk1-dev-control-plane",
   "main": "src/index.ts",
   "compatibility_date": "2026-06-01",
+  "compatibility_flags": ["nodejs_compat"],
   "vars": {
     "LANGGRAPH_UPSTREAM_URL": "https://assistant-mk1-langgraph-dev.fly.dev",
     "OPENROUTER_MODEL": "deepseek/deepseek-v4-flash",
