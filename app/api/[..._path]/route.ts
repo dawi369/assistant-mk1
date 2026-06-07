@@ -82,11 +82,10 @@ async function handleRequest(req: NextRequest, method: string) {
       headers,
     });
   } catch (e: unknown) {
-    if (e instanceof Error) {
-      const typedError = e as Error & { status?: number };
-      return NextResponse.json({ error: typedError.message }, { status: typedError.status ?? 500 });
-    }
-    return NextResponse.json({ error: "Unknown error" }, { status: 500 });
+    const message = e instanceof Error ? e.message : String(e);
+    const status =
+      e instanceof Error && "status" in e && typeof e.status === "number" ? e.status : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }
 

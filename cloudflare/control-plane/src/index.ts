@@ -138,5 +138,13 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
 };
 
 export default {
-  fetch: handleRequest,
+  async fetch(request: Request, env: Env, ctx: WorkerExecutionContext) {
+    try {
+      return await handleRequest(request, env, ctx);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Internal control-plane error";
+      console.error("Unhandled control-plane error", { error: message });
+      return json({ ok: false, error: message }, { status: 500 });
+    }
+  },
 };

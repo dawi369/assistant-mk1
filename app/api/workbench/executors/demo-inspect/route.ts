@@ -33,5 +33,11 @@ export async function POST(request: NextRequest) {
   const parsed = validateDemoInspectExecutorRequest(body);
   if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 });
 
-  return NextResponse.json(await executeDemoInspectExecutorRequest(parsed.request));
+  try {
+    return NextResponse.json(await executeDemoInspectExecutorRequest(parsed.request));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Executor request failed";
+    console.error("Demo inspect executor error", { error: message });
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
