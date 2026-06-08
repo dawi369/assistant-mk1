@@ -29,6 +29,13 @@ type ChatRuntimeSummaryResponse = {
       decision?: string;
       reason?: string;
     } | null;
+    timings?: {
+      firstTokenMs?: number;
+      totalMs?: number;
+      preStreamMs?: number;
+      providerMs?: number;
+      stageMarks?: Record<string, number>;
+    } | null;
     events?: Array<{
       id?: string;
       type?: string;
@@ -172,6 +179,17 @@ runSmoke("Cloudflare chat runtime summary smoke", async () => {
       })();
   if (!completedSummary.chatRuntime?.latestRun?.id) {
     throw new Error("runtime summary did not include a chat run");
+  }
+  if (runResult.response.ok) {
+    if (completedSummary.chatRuntime.latestRun.upstreamRunId) {
+      throw new Error("Cloudflare simple chat run unexpectedly included an upstream run id");
+    }
+    if (!completedSummary.chatRuntime.timings?.totalMs) {
+      throw new Error("completed runtime summary did not include total timing metadata");
+    }
+    if (!completedSummary.chatRuntime.timings.stageMarks?.runCreated) {
+      throw new Error("completed runtime summary did not include runCreated timing mark");
+    }
   }
   if (!completedSummary.chatRuntime.latestIntent?.id) {
     throw new Error("runtime summary did not include a chat intent");

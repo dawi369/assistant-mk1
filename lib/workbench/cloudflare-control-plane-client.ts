@@ -8,6 +8,8 @@ import type {
   CloudflareOwnedDemoRunResponse,
   CloudflareWorkspaceMutationResponse,
   CloudflareWorkspacesResponse,
+  ChatThreadResponse,
+  ChatThreadsResponse,
   ChatRuntimeSummaryResponse,
   ControlPlaneEventsResponse,
   WorkspaceContextResponse,
@@ -23,6 +25,9 @@ export type {
   CloudflareWorkspacesResponse,
   ChatRuntimeSummary,
   ChatRuntimeSummaryResponse,
+  ChatThreadResponse,
+  ChatThreadsResponse,
+  ChatThreadSummary,
   ControlPlaneEvent,
   ControlPlaneEventsResponse,
   WorkspaceContextResponse,
@@ -132,6 +137,12 @@ export const getCloudflareAdminSummary = () =>
 
 export const getChatRuntimeSummary = () =>
   requestControlPlane<ChatRuntimeSummaryResponse>("/chat/runtime-summary");
+
+export const getChatThreads = (limit = 30) =>
+  requestControlPlane<ChatThreadsResponse>(`/chat/threads?limit=${encodeURIComponent(limit)}`);
+
+export const getChatThread = (threadId: Id) =>
+  requestControlPlane<ChatThreadResponse>(`/chat/threads/${encodeURIComponent(threadId)}`);
 
 export const getCloudflareWorkspaces = () =>
   requestControlPlane<CloudflareWorkspacesResponse>("/workspaces");

@@ -60,6 +60,22 @@ agent/profile, latest meaningful event, and the important error. Workspace and
 agent management remain available as secondary controls, while raw ids, recent
 events, and external WorkOS signals stay in advanced details.
 
+Thread history v0 is the active normal-chat polish slice. It should be
+assistant-ui-native: use the remote thread-list runtime and thread-list
+primitives for recent chats, new chat, and thread switching while Cloudflare D1
+owns thread rows, ownership checks, and active-thread state. The first version
+is intentionally limited to list, switch, and new chat for the resolved
+user/workspace/active agent. Archive, delete, rename, generated titles, search,
+shared threads, and mobile-specific history polish are future slices.
+
+Chat responsiveness and observability v0 keeps the normal assistant-ui surface
+unchanged while making runtime status feel immediate. The compact hint may use
+assistant-ui local lifecycle state for transient `Running` feedback, but
+workspace, agent, thread, run, error, and timing truth still comes from
+Cloudflare. Cloudflare stores simple-chat timing metadata on chat runs so Dev
+Monitor can show first-token and total runtime without routing small chats
+through Fly/LangGraph.
+
 Workspace management v0 is the current Dev Monitor-only slice: list workspaces
 for the current WorkOS account, create a name-only workspace, and switch the
 active workspace through Cloudflare. This is not a customer-facing workspace
@@ -121,6 +137,12 @@ Near-term WorkOS, workspace, and Cloudflare ownership sequence:
 Implemented:
 
 - Default assistant-ui chat remains the normal screen.
+- Assistant-ui-native thread history is being added as the next normal-chat
+  surface: a compact recent-chats list around the thread, backed by
+  Cloudflare-owned thread metadata.
+- Chat runtime responsiveness is being improved with assistant-ui-native local
+  run state, quieter admin-summary refreshes, and Cloudflare-owned timing
+  metadata for first-token and total runtime.
 - Dev Monitor provides Cloudflare-derived admin/runtime visibility with a
   flow-first chat overview and secondary workspace/agent controls.
 - The normal chat shell has a compact server-derived runtime hint for active
@@ -130,16 +152,20 @@ Implemented:
 
 Next milestones:
 
-1. Make agent profiles affect runtime behavior through server-owned prompt and
+1. Finish chat responsiveness and timing observability so the normal shell
+   reflects active runs immediately and Dev Monitor can explain latency.
+2. Finish recent chat history polish: list, switch, and new chat through
+   assistant-ui thread-list primitives, with Cloudflare-owned authorization.
+3. Make agent profiles affect runtime behavior through server-owned prompt and
    tool configuration.
-2. Add interrupt display and resume actions when a workflow requires approval.
-3. Add artifact list and execution history beyond diagnostic snapshots.
-4. Add domain context configuration that can be swapped per downstream app.
-5. Add tool registry UI and a first non-diagnostic tool adapter.
-6. Add a first CLI/OSS-backed tool with timeout, logs, structured output, and
+4. Add interrupt display and resume actions when a workflow requires approval.
+5. Add artifact list and execution history beyond diagnostic snapshots.
+6. Add domain context configuration that can be swapped per downstream app.
+7. Add tool registry UI and a first non-diagnostic tool adapter.
+8. Add a first CLI/OSS-backed tool with timeout, logs, structured output, and
    artifact metadata.
-7. Add generic managed-state and audit surfaces.
-8. Add decision-record surfaces for provenance-backed recall.
+9. Add generic managed-state and audit surfaces.
+10. Add decision-record surfaces for provenance-backed recall.
 
 ## Design Principle
 

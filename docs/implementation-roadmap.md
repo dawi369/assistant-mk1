@@ -180,6 +180,16 @@ Implemented:
 - Chat polish checkpoint v0: the normal shell has a compact server-derived
   runtime hint for active workspace, active agent/profile, chat state, and
   error-detail access while keeping assistant-ui as the primary chat surface.
+- Thread history v0 is the active chat-polish slice: assistant-ui's native
+  remote thread-list runtime and thread-list primitives show recent
+  Cloudflare-owned chats for the resolved user/workspace/active agent, while
+  Cloudflare D1 remains the source of truth for thread ownership and the
+  active thread.
+- Chat runtime responsiveness and observability v0 is the current stabilization
+  slice: the compact hint uses assistant-ui local lifecycle state for immediate
+  transient `Running` feedback, idle admin-summary polling is removed, and
+  Cloudflare simple-chat run metadata records timing marks for first-token,
+  provider, pre-stream, and total runtime inspection.
 - Workspace management v0 as the first Cloudflare-owned workspace model
   slice: D1 active workspace preference, Cloudflare `GET /workspaces`,
   `POST /workspaces`, `POST /workspaces/:workspaceId/activate`, Vercel
@@ -194,9 +204,13 @@ Implemented:
 
 Next target:
 
-- Make agent profiles affect runtime behavior through server-owned prompt/tool
-  configuration now that the workspace-scoped loading, preference model, and
-  chat polish checkpoint are in place.
+- Finish the chat responsiveness and timing slice before adding deeper agent
+  behavior. Recent-chat history stays assistant-ui-native, and archive/delete/
+  rename, generated titles, search, shared threads, and mobile history polish
+  remain future slices.
+- Then make agent profiles affect runtime behavior through server-owned
+  prompt/tool configuration now that the workspace-scoped loading, preference
+  model, and chat polish checkpoint are in place.
 - Keep Fly/LangGraph state access mediated through Cloudflare APIs.
 - Strengthen the Vercel-to-Cloudflare trust boundary with a stricter signed or
   service-authenticated server contract after this observability slice.
@@ -220,11 +234,18 @@ envelopes, a tenant-scoped control-plane event feed, and a short-lived SSE
 stream for browser-visible runtime activity. Fly/LangGraph still own complex
 workflow execution and explicit heavy escalation.
 
+Small chat request flow is intentionally production-shaped but still
+LangGraph-compatible for assistant-ui: browser assistant-ui runtime -> Vercel
+`/api` proxy -> Cloudflare `/langgraph` facade -> Cloudflare simple chat ->
+OpenRouter. Fly/LangGraph should not handle normal small messages; an
+`upstreamRunId` on a normal chat run means the request escalated or regressed
+away from the intended path.
+
 Next target:
 
-- Cloudflare `GET /chat/runtime-summary` plus Vercel
-  `GET /api/workbench/chat-runtime-summary` as the first dedicated read model
-  for chat runtime state.
+- Cloudflare timing metadata on simple-chat runs, surfaced through existing
+  runtime summaries and Dev Monitor, so latency can be explained by stage
+  rather than guessed from browser perception.
 - Broaden the Cloudflare-owned stream from simple chat into richer conversation
   and workflow progress, building on the event feed as the first observable
   state source.

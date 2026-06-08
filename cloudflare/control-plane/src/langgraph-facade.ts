@@ -95,7 +95,7 @@ const fetchUpstream = (
 export const handleLangGraphFacade = async (
   request: Request,
   env: Env,
-  _ctx: WorkerExecutionContext,
+  ctx: WorkerExecutionContext,
   identity: AgentIdentity,
   url: URL,
 ) => {
@@ -137,7 +137,12 @@ export const handleLangGraphFacade = async (
   }
 
   if (threadId && thread && isThreadRunStreamRequest(request, url.pathname)) {
-    return handleCloudflareRunStream(env, identity, thread, await request.text());
+    const facadeEnteredAtMs = Date.now();
+    const bodyText = await request.text();
+    return handleCloudflareRunStream(env, identity, thread, bodyText, ctx, {
+      facadeEnteredAtMs,
+      bodyReadAtMs: Date.now(),
+    });
   }
 
   const config = upstreamConfig(env);

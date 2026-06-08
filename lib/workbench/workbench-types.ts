@@ -143,6 +143,13 @@ export type ChatRuntimeSummary = {
     limits?: Record<string, unknown>;
     createdAt?: string;
   } | null;
+  timings: {
+    firstTokenMs?: number;
+    totalMs?: number;
+    preStreamMs?: number;
+    providerMs?: number;
+    stageMarks: Record<string, number>;
+  } | null;
   events: ControlPlaneEvent[];
   failure: {
     source: "chat-run" | "chat-policy";
@@ -159,6 +166,32 @@ export type ChatRuntimeSummaryResponse = {
   ok?: boolean;
   generatedAt?: string;
   chatRuntime?: ChatRuntimeSummary;
+  error?: string;
+};
+
+export type ChatThreadSummary = {
+  threadId: Id;
+  sessionId: Id;
+  agentId: Id;
+  status: string;
+  title: string;
+  createdAt?: string;
+  updatedAt?: string;
+  lastSeenAt?: string;
+  isActive: boolean;
+  latestRunStatus?: string;
+  messageCount?: number;
+};
+
+export type ChatThreadsResponse = {
+  ok?: boolean;
+  threads?: ChatThreadSummary[];
+  error?: string;
+};
+
+export type ChatThreadResponse = {
+  ok?: boolean;
+  thread?: ChatThreadSummary | null;
   error?: string;
 };
 

@@ -22,7 +22,13 @@ import { selectAgent } from "./authz-store";
 import { deriveChatExecutionMode, evaluateChatRunPolicy } from "./chat-policy";
 import { appendControlPlaneEvent } from "./control-plane-events";
 import { isRecord, json, parseDataJson, parseJson } from "./http";
-import { createId, type AgentIdentity, type ChatThreadRow, type Env } from "./types";
+import {
+  createId,
+  type AgentIdentity,
+  type ChatThreadRow,
+  type Env,
+  type WorkerExecutionContext,
+} from "./types";
 
 type StoredMessage = {
   id: string;
@@ -37,6 +43,19 @@ type ChatRuntimeErrorCode =
   | "missing_model_secret"
   | "upstream_failed"
   | "runtime_failed";
+
+type ChatRunTimingInput = {
+  facadeEnteredAtMs?: number;
+  bodyReadAtMs?: number;
+};
+
+type ChatRunTimingSnapshot = {
+  preStreamMs?: number;
+  firstTokenMs?: number;
+  providerMs?: number;
+  totalMs: number;
+  stageMarks: Record<string, number>;
+};
 
 class ChatRuntimeError extends Error {
   constructor(
@@ -62,6 +81,77 @@ const textEncoder = new TextEncoder();
 
 const sse = (event: string, data: unknown) =>
   textEncoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+
+const safeWaitUntil = (
+  ctx: WorkerExecutionContext | undefined,
+  promise: Promise<unknown>,
+  label: string,
+) => {
+  if (!ctx) {
+    void promise.catch((error) => {
+      console.error(label, error);
+    });
+    return;
+  }
+  ctx.waitUntil(
+    promise.catch((error) => {
+      console.error(label, error);
+    }),
+  );
+};
+
+const createChatRunTiming = (input?: ChatRunTimingInput) => {
+  const startedAtMs = input?.facadeEnteredAtMs ?? Date.now();
+  const stageMarks: Record<string, number> = {
+    facadeEntered: 0,
+  };
+  let providerStartedAtMs: number | null = null;
+  let providerCompletedAtMs: number | null = null;
+  let firstTokenMs: number | undefined;
+  let firstMessageChunkEmitted = false;
+
+  const elapsed = (value = Date.now()) => Math.max(0, value - startedAtMs);
+  const mark = (stage: string, atMs = Date.now()) => {
+    stageMarks[stage] = elapsed(atMs);
+    return stageMarks[stage];
+  };
+
+  if (input?.bodyReadAtMs) mark("bodyRead", input.bodyReadAtMs);
+
+  return {
+    mark,
+    markProviderStarted() {
+      providerStartedAtMs = Date.now();
+      mark("openRouterRequestStarted", providerStartedAtMs);
+    },
+    markProviderCompleted() {
+      if (providerCompletedAtMs !== null) return;
+      providerCompletedAtMs = Date.now();
+      mark("openRouterStreamCompleted", providerCompletedAtMs);
+    },
+    markFirstToken() {
+      if (firstTokenMs !== undefined) return;
+      firstTokenMs = mark("firstProviderChunk");
+    },
+    markFirstMessageChunkEmitted() {
+      if (firstMessageChunkEmitted) return;
+      firstMessageChunkEmitted = true;
+      mark("firstMessageChunkEmitted");
+    },
+    snapshot(): ChatRunTimingSnapshot {
+      const now = Date.now();
+      const providerEnd = providerCompletedAtMs ?? now;
+      return {
+        preStreamMs: stageMarks.streamResponsePrepared,
+        firstTokenMs,
+        providerMs:
+          providerStartedAtMs === null ? undefined : Math.max(0, providerEnd - providerStartedAtMs),
+        totalMs: elapsed(now),
+        stageMarks: { ...stageMarks },
+      };
+    },
+  };
+};
 
 const truncate = (value: string, max = 1200) =>
   value.length > max ? `${value.slice(0, max)}...` : value;
@@ -274,7 +364,11 @@ export const handleCloudflareRunStream = async (
   identity: AgentIdentity,
   thread: ChatThreadRow,
   bodyText: string,
+  ctx?: WorkerExecutionContext,
+  timingInput?: ChatRunTimingInput,
 ) => {
+  const timing = createChatRunTiming(timingInput);
+  timing.mark("runStreamHandlerEntered");
   const parsedBody = parseJson(bodyText);
   const { executionMode, invalidExecutionMode, requestedExecutionMode } =
     deriveChatExecutionMode(parsedBody);
@@ -311,22 +405,28 @@ export const handleCloudflareRunStream = async (
       behaviorConfig,
     },
   });
-  await appendControlPlaneEvent(env, identity, {
-    type: "chat.intent.created",
-    summary: "Created Cloudflare-owned chat response intent.",
-    targetType: "chat_intent",
-    targetId: intentId,
-    data: {
-      threadId: thread.thread_id,
-      sessionId: thread.session_id,
-      executionMode,
-      status: policy.decision,
-      runtime: "cloudflare-simple-chat",
-      agent: agentMetadata,
-      runtimeConfig,
-      behaviorConfig,
-    },
-  });
+  timing.mark("intentCreated");
+  void safeWaitUntil(
+    ctx,
+    appendControlPlaneEvent(env, identity, {
+      type: "chat.intent.created",
+      summary: "Created Cloudflare-owned chat response intent.",
+      targetType: "chat_intent",
+      targetId: intentId,
+      data: {
+        threadId: thread.thread_id,
+        sessionId: thread.session_id,
+        executionMode,
+        status: policy.decision,
+        runtime: "cloudflare-simple-chat",
+        agent: agentMetadata,
+        runtimeConfig,
+        behaviorConfig,
+        timings: timing.snapshot(),
+      },
+    }),
+    "Failed to append chat intent event",
+  );
   const policyDecisionId = await createChatPolicyDecision(env, identity, {
     intentId,
     threadId: thread.thread_id,
@@ -339,22 +439,29 @@ export const handleCloudflareRunStream = async (
       retryable: policy.retryable,
     },
   });
-  await appendControlPlaneEvent(env, identity, {
-    type: policy.decision === "allow" ? "chat.policy.allowed" : "chat.policy.blocked",
-    summary: policy.reason,
-    targetType: "chat_policy_decision",
-    targetId: policyDecisionId,
-    data: {
-      threadId: thread.thread_id,
-      intentId,
-      executionMode,
-      agent: agentMetadata,
-      runtimeConfig,
-      behaviorConfig,
-    },
-  });
+  timing.mark("policyDecisionCreated");
+  void safeWaitUntil(
+    ctx,
+    appendControlPlaneEvent(env, identity, {
+      type: policy.decision === "allow" ? "chat.policy.allowed" : "chat.policy.blocked",
+      summary: policy.reason,
+      targetType: "chat_policy_decision",
+      targetId: policyDecisionId,
+      data: {
+        threadId: thread.thread_id,
+        intentId,
+        executionMode,
+        agent: agentMetadata,
+        runtimeConfig,
+        behaviorConfig,
+        timings: timing.snapshot(),
+      },
+    }),
+    "Failed to append chat policy event",
+  );
 
   if (policy.decision === "block") {
+    timing.mark("policyBlocked");
     return json(
       {
         ok: false,
@@ -381,8 +488,10 @@ export const handleCloudflareRunStream = async (
       runtimeConfig,
       behaviorConfig,
       agent: agentMetadata,
+      timings: timing.snapshot(),
     },
   });
+  timing.mark("runCreated");
   await updateChatThreadUpstream(
     env,
     identity.scope,
@@ -396,25 +505,32 @@ export const handleCloudflareRunStream = async (
       behaviorConfig,
     }),
   );
-  await appendControlPlaneEvent(env, identity, {
-    type: "chat.run.started",
-    summary: "Started Cloudflare-owned simple chat run.",
-    targetType: "chat_run",
-    targetId: runId,
-    data: {
-      threadId: thread.thread_id,
-      intentId,
-      policyDecisionId,
-      executionMode,
-      runtime: "cloudflare-simple-chat",
-      agent: agentMetadata,
-      runtimeConfig,
-      behaviorConfig,
-    },
-  });
+  timing.mark("threadInputStored");
+  void safeWaitUntil(
+    ctx,
+    appendControlPlaneEvent(env, identity, {
+      type: "chat.run.started",
+      summary: "Started Cloudflare-owned simple chat run.",
+      targetType: "chat_run",
+      targetId: runId,
+      data: {
+        threadId: thread.thread_id,
+        intentId,
+        policyDecisionId,
+        executionMode,
+        runtime: "cloudflare-simple-chat",
+        agent: agentMetadata,
+        runtimeConfig,
+        behaviorConfig,
+        timings: timing.snapshot(),
+      },
+    }),
+    "Failed to append chat run started event",
+  );
 
   if (requestedAssistantId !== "agent") {
     const error = "This assistant runtime is not available for Cloudflare simple chat.";
+    timing.mark("unsupportedAssistantRejected");
     await updateChatRun(env, {
       runId,
       scope: identity.scope,
@@ -424,22 +540,28 @@ export const handleCloudflareRunStream = async (
         errorCode: "unsupported_assistant",
         retryable: false,
         requestedAssistantId,
+        timings: timing.snapshot(),
       },
       error,
     });
-    await appendControlPlaneEvent(env, identity, {
-      type: "chat.run.failed",
-      summary: "Cloudflare simple chat rejected an unsupported assistant id.",
-      targetType: "chat_run",
-      targetId: runId,
-      data: {
-        threadId: thread.thread_id,
-        error,
-        errorCode: "unsupported_assistant",
-        retryable: false,
-        requestedAssistantId,
-      },
-    });
+    void safeWaitUntil(
+      ctx,
+      appendControlPlaneEvent(env, identity, {
+        type: "chat.run.failed",
+        summary: "Cloudflare simple chat rejected an unsupported assistant id.",
+        targetType: "chat_run",
+        targetId: runId,
+        data: {
+          threadId: thread.thread_id,
+          error,
+          errorCode: "unsupported_assistant",
+          retryable: false,
+          requestedAssistantId,
+          timings: timing.snapshot(),
+        },
+      }),
+      "Failed to append unsupported assistant event",
+    );
     return json(
       { ok: false, error, errorCode: "unsupported_assistant", retryable: false },
       { status: 422 },
@@ -448,6 +570,7 @@ export const handleCloudflareRunStream = async (
 
   if (!env.OPENROUTER_API_KEY) {
     const error = "Chat model is not configured for Cloudflare simple chat.";
+    timing.mark("missingModelSecretRejected");
     await updateChatRun(env, {
       runId,
       scope: identity.scope,
@@ -456,21 +579,27 @@ export const handleCloudflareRunStream = async (
         runtime: "cloudflare-simple-chat",
         errorCode: "missing_model_secret",
         retryable: false,
+        timings: timing.snapshot(),
       },
       error,
     });
-    await appendControlPlaneEvent(env, identity, {
-      type: "chat.run.failed",
-      summary: "Cloudflare simple chat model secret is missing.",
-      targetType: "chat_run",
-      targetId: runId,
-      data: {
-        threadId: thread.thread_id,
-        error,
-        errorCode: "missing_model_secret",
-        retryable: false,
-      },
-    });
+    void safeWaitUntil(
+      ctx,
+      appendControlPlaneEvent(env, identity, {
+        type: "chat.run.failed",
+        summary: "Cloudflare simple chat model secret is missing.",
+        targetType: "chat_run",
+        targetId: runId,
+        data: {
+          threadId: thread.thread_id,
+          error,
+          errorCode: "missing_model_secret",
+          retryable: false,
+          timings: timing.snapshot(),
+        },
+      }),
+      "Failed to append missing model secret event",
+    );
     return json(
       { ok: false, error, errorCode: "missing_model_secret", retryable: false },
       { status: 500 },
@@ -478,9 +607,11 @@ export const handleCloudflareRunStream = async (
   }
 
   const model = runtimeConfig.model;
+  timing.mark("streamResponsePrepared");
   const stream = new ReadableStream({
     start(controller) {
       void (async () => {
+        timing.mark("streamStarted");
         let assistantText = "";
         const assistantMessageId = createId("cf-ai");
         const metadata = {
@@ -497,6 +628,8 @@ export const handleCloudflareRunStream = async (
 
         try {
           controller.enqueue(sse("metadata", metadata));
+          timing.mark("metadataEmitted");
+          timing.markProviderStarted();
           const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
             method: "POST",
             headers: openRouterHeaders(env),
@@ -520,6 +653,7 @@ export const handleCloudflareRunStream = async (
               detail,
             );
           }
+          timing.mark("openRouterResponseReceived");
 
           const reader = response.body.getReader();
           const decoder = new TextDecoder();
@@ -536,6 +670,7 @@ export const handleCloudflareRunStream = async (
               const parsed = parseOpenRouterChunk(block);
               if (parsed.done) break;
               if (!parsed.content) continue;
+              timing.markFirstToken();
               assistantText += parsed.content;
               controller.enqueue(
                 sse("messages", [
@@ -553,8 +688,10 @@ export const handleCloudflareRunStream = async (
                   metadata,
                 ]),
               );
+              timing.markFirstMessageChunkEmitted();
             }
           }
+          timing.markProviderCompleted();
 
           const finalMessages = dedupeMessages([
             ...nextMessages,
@@ -578,21 +715,37 @@ export const handleCloudflareRunStream = async (
               behaviorConfig,
             }),
           );
+          timing.mark("threadOutputStored");
+          timing.mark("runCompleted");
           await updateChatRun(env, {
             runId,
             scope: identity.scope,
             status: "completed",
-            metadata: { ...metadata, outputChars: assistantText.length },
+            metadata: {
+              ...metadata,
+              outputChars: assistantText.length,
+              timings: timing.snapshot(),
+            },
           });
-          await appendControlPlaneEvent(env, identity, {
-            type: "chat.run.completed",
-            summary: "Cloudflare-owned simple chat run completed.",
-            targetType: "chat_run",
-            targetId: runId,
-            data: { threadId: thread.thread_id, runId, runtime: "cloudflare-simple-chat" },
-          });
+          void safeWaitUntil(
+            ctx,
+            appendControlPlaneEvent(env, identity, {
+              type: "chat.run.completed",
+              summary: "Cloudflare-owned simple chat run completed.",
+              targetType: "chat_run",
+              targetId: runId,
+              data: {
+                threadId: thread.thread_id,
+                runId,
+                runtime: "cloudflare-simple-chat",
+                timings: timing.snapshot(),
+              },
+            }),
+            "Failed to append chat run completed event",
+          );
           controller.close();
         } catch (error) {
+          timing.markProviderCompleted();
           const runtimeError =
             error instanceof ChatRuntimeError
               ? error
@@ -603,6 +756,7 @@ export const handleCloudflareRunStream = async (
                   error instanceof Error ? error.message : undefined,
                 );
           const message = runtimeError.message;
+          timing.mark("runFailed");
           await updateChatRun(env, {
             runId,
             scope: identity.scope,
@@ -613,22 +767,28 @@ export const handleCloudflareRunStream = async (
               errorCode: runtimeError.errorCode,
               retryable: runtimeError.retryable,
               errorDetail: runtimeError.detail,
+              timings: timing.snapshot(),
             },
             error: truncate(message),
           });
-          await appendControlPlaneEvent(env, identity, {
-            type: "chat.run.failed",
-            summary: "Cloudflare-owned simple chat run failed.",
-            targetType: "chat_run",
-            targetId: runId,
-            data: {
-              threadId: thread.thread_id,
-              error: truncate(message),
-              errorCode: runtimeError.errorCode,
-              retryable: runtimeError.retryable,
-              errorDetail: runtimeError.detail,
-            },
-          });
+          void safeWaitUntil(
+            ctx,
+            appendControlPlaneEvent(env, identity, {
+              type: "chat.run.failed",
+              summary: "Cloudflare-owned simple chat run failed.",
+              targetType: "chat_run",
+              targetId: runId,
+              data: {
+                threadId: thread.thread_id,
+                error: truncate(message),
+                errorCode: runtimeError.errorCode,
+                retryable: runtimeError.retryable,
+                errorDetail: runtimeError.detail,
+                timings: timing.snapshot(),
+              },
+            }),
+            "Failed to append chat run failed event",
+          );
           controller.enqueue(
             sse("error", {
               message: truncate(message),

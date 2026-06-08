@@ -7,6 +7,7 @@ import {
 import { handleAdminWorkspaceSummary } from "./admin-summary";
 import { handleActivateAgent, handleCreateAgent, handleListAgents } from "./agents";
 import { handleChatRuntimeSummary } from "./chat-runtime-summary";
+import { handleGetChatThread, handleListChatThreads } from "./chat-threads";
 import {
   handleControlPlaneEvents,
   handleControlPlaneEventStream,
@@ -57,6 +58,15 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
 
   if (request.method === "GET" && url.pathname === "/chat/runtime-summary") {
     return handleChatRuntimeSummary(env, identity);
+  }
+
+  if (request.method === "GET" && url.pathname === "/chat/threads") {
+    return handleListChatThreads(env, identity, url);
+  }
+
+  const chatThreadMatch = url.pathname.match(/^\/chat\/threads\/([^/]+)$/);
+  if (request.method === "GET" && chatThreadMatch?.[1]) {
+    return handleGetChatThread(env, identity, decodeURIComponent(chatThreadMatch[1]));
   }
 
   if (request.method === "GET" && url.pathname === "/workspaces") {

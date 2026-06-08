@@ -57,6 +57,22 @@ Cloudflare activity through a same-origin Vercel facade and can subscribe to a
 short-lived Cloudflare-backed event stream for live activity updates. It is not
 a frontend auth system.
 
+The current small-chat path is:
+
+```txt
+assistant-ui runtime
+  -> Vercel /api proxy
+  -> Cloudflare /langgraph facade
+  -> Cloudflare simple chat runtime
+  -> OpenRouter
+```
+
+The LangGraph-shaped contract is compatibility for assistant-ui and thread
+history. It does not mean small chat should execute on Fly/LangGraph. A normal
+Cloudflare simple-chat run should have `runtime = cloudflare-simple-chat` and no
+`upstreamRunId`; Fly/LangGraph is reserved for explicit workflow or heavy-tool
+escalation.
+
 The north-star runtime keeps WorkOS AuthKit at the Vercel web boundary, then
 moves user-facing conversation and workflow progress streaming behind the
 Cloudflare control plane. Fly remains the execution plane for LangGraph

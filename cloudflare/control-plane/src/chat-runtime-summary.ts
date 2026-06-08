@@ -29,6 +29,33 @@ type ChatRuntimeState =
   | "failed"
   | "completed";
 
+const timingSummary = (latestRun: ChatRunRow | null) => {
+  if (!latestRun) return null;
+  const metadata = parseDataJson(latestRun.metadata_json);
+  const timings = metadata.timings;
+  if (!timings || typeof timings !== "object") return null;
+
+  const record = timings as Record<string, unknown>;
+  const stageMarks =
+    record.stageMarks && typeof record.stageMarks === "object"
+      ? (record.stageMarks as Record<string, unknown>)
+      : {};
+
+  return {
+    firstTokenMs:
+      typeof record.firstTokenMs === "number" ? Math.round(record.firstTokenMs) : undefined,
+    totalMs: typeof record.totalMs === "number" ? Math.round(record.totalMs) : undefined,
+    preStreamMs:
+      typeof record.preStreamMs === "number" ? Math.round(record.preStreamMs) : undefined,
+    providerMs: typeof record.providerMs === "number" ? Math.round(record.providerMs) : undefined,
+    stageMarks: Object.fromEntries(
+      Object.entries(stageMarks)
+        .filter((entry): entry is [string, number] => typeof entry[1] === "number")
+        .map(([key, value]) => [key, Math.round(value)]),
+    ),
+  };
+};
+
 export const latestThreadForSession = async (
   env: Env,
   scope: TenantScope,
@@ -155,6 +182,7 @@ export const getChatRuntimeSummary = async (env: Env, identity: AgentIdentity) =
     latestRun: toChatRunSnapshot(latestRun),
     latestIntent: toChatIntentSnapshot(latestIntent),
     latestPolicyDecision: toChatPolicyDecisionSnapshot(latestPolicyDecision),
+    timings: timingSummary(latestRun),
     events,
     failure: failureSummary(state, latestRun, latestPolicyDecision),
   };

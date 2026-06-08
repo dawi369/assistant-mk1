@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useAuiState } from "@assistant-ui/react";
 import { useAuth } from "@workos-inc/authkit-nextjs/components";
 import { AlertCircleIcon, BotIcon, Building2Icon } from "lucide-react";
 
@@ -11,7 +12,6 @@ import type { CloudflareAdminSummaryResponse } from "@/lib/workbench/workbench-t
 import { cn } from "@/lib/utils";
 
 const adminSummaryPath = "/api/workbench/admin-summary";
-const refreshIntervalMs = 3000;
 
 const readSummary = async () => {
   const response = await fetch(adminSummaryPath, { cache: "no-store" });
@@ -23,6 +23,8 @@ const readSummary = async () => {
 export function WorkbenchRuntimeHint({ onOpenMonitor }: { onOpenMonitor: () => void }) {
   const [summary, setSummary] = useState<CloudflareAdminSummaryResponse["summary"] | null>(null);
   const { user, loading } = useAuth();
+  const isThreadRunning = useAuiState((state) => state.thread.isRunning);
+  const isLoadingThread = useAuiState((state) => state.threads.isLoading);
 
   const loadSummary = async () => {
     try {
@@ -42,18 +44,21 @@ export function WorkbenchRuntimeHint({ onOpenMonitor }: { onOpenMonitor: () => v
     }
 
     void loadSummary();
-    const interval = window.setInterval(() => void loadSummary(), refreshIntervalMs);
     window.addEventListener(workbenchSummaryRefreshEvent, loadSummary);
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener(workbenchSummaryRefreshEvent, loadSummary);
-    };
+    return () => window.removeEventListener(workbenchSummaryRefreshEvent, loadSummary);
   }, [loading, user]);
 
   const chatRuntime = summary?.chatRuntime ?? null;
   const hasError = Boolean(chatRuntime?.failure ?? summary?.lastError);
-  const chatLabel = chatRuntimeStateLabel(chatRuntime?.state);
-  const chatTone = chatRuntimeStateTone(chatRuntime?.state);
+  const transientChatState = isThreadRunning ? "running" : null;
+  const chatLabel = isLoadingThread
+    ? "Loading"
+    : transientChatState
+      ? chatRuntimeStateLabel(transientChatState)
+      : chatRuntimeStateLabel(chatRuntime?.state);
+  const chatTone = transientChatState
+    ? chatRuntimeStateTone(transientChatState)
+    : chatRuntimeStateTone(chatRuntime?.state);
   const agentLabel = summary?.activeAgent
     ? `${summary.activeAgent.name} / ${summary.activeAgent.profile}`
     : null;

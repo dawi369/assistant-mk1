@@ -39,7 +39,10 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { workbenchSummaryRefreshEvent } from "@/lib/workbench/admin-summary-events";
+import {
+  requestWorkbenchSummaryRefresh,
+  workbenchSummaryRefreshEvent,
+} from "@/lib/workbench/admin-summary-events";
 import { chatRuntimeStateLabel, chatRuntimeStateTone } from "@/lib/workbench/chat-runtime-display";
 import type {
   CloudflareAdminSummaryResponse,
@@ -59,6 +62,12 @@ const readJsonResponse = async <T,>(response: Response, fallback: string): Promi
 };
 
 const listValue = (items?: string[]) => (items && items.length > 0 ? items.join(", ") : undefined);
+
+const formatDuration = (value?: number | null) => {
+  if (typeof value !== "number" || Number.isNaN(value)) return undefined;
+  if (value < 1000) return `${Math.round(value)}ms`;
+  return `${(value / 1000).toFixed(value < 10_000 ? 1 : 0)}s`;
+};
 
 function DetailsBlock({
   title,
@@ -185,7 +194,7 @@ export function DevMonitorDrawer({
         response,
         "Failed to start Cloudflare demo run",
       );
-      await loadSummary();
+      requestWorkbenchSummaryRefresh();
     } catch (startError) {
       setFetchError(
         startError instanceof Error ? startError.message : "Failed to start Cloudflare demo run",
@@ -210,7 +219,7 @@ export function DevMonitorDrawer({
       });
       await readJsonResponse(response, "Failed to create workspace");
       setWorkspaceName("");
-      await loadSummary();
+      requestWorkbenchSummaryRefresh();
     } catch (createError) {
       setFetchError(
         createError instanceof Error ? createError.message : "Failed to create workspace",
@@ -229,7 +238,7 @@ export function DevMonitorDrawer({
         { method: "POST" },
       );
       await readJsonResponse(response, "Failed to activate workspace");
-      await loadSummary();
+      requestWorkbenchSummaryRefresh();
     } catch (activateError) {
       setFetchError(
         activateError instanceof Error ? activateError.message : "Failed to activate workspace",
@@ -263,7 +272,7 @@ export function DevMonitorDrawer({
       setAgentDescription("");
       setAgentProfile("analyst");
       setAgentModel("deepseek/deepseek-v4-flash");
-      await loadSummary();
+      requestWorkbenchSummaryRefresh();
     } catch (createError) {
       setFetchError(createError instanceof Error ? createError.message : "Failed to create agent");
     } finally {
@@ -279,7 +288,7 @@ export function DevMonitorDrawer({
         method: "POST",
       });
       await readJsonResponse(response, "Failed to activate agent");
-      await loadSummary();
+      requestWorkbenchSummaryRefresh();
     } catch (activateError) {
       setFetchError(
         activateError instanceof Error ? activateError.message : "Failed to activate agent",
@@ -409,10 +418,20 @@ export function DevMonitorDrawer({
               <StatusRow
                 label="Runtime"
                 value={
-                  summary?.activeAgent?.runtime
-                    ? `${summary.activeAgent.runtime.provider} / ${summary.activeAgent.runtime.model}`
-                    : undefined
+                  chatRuntime?.latestRun?.metadata?.runtime
+                    ? String(chatRuntime.latestRun.metadata.runtime)
+                    : "cloudflare-simple-chat"
                 }
+                compact
+              />
+              <StatusRow
+                label="First token"
+                value={formatDuration(chatRuntime?.timings?.firstTokenMs)}
+                compact
+              />
+              <StatusRow
+                label="Total runtime"
+                value={formatDuration(chatRuntime?.timings?.totalMs)}
                 compact
               />
               <StatusRow
@@ -708,6 +727,41 @@ export function DevMonitorDrawer({
                 value={String(summary?.activeAgent?.runtime.maxTokens ?? "")}
               />
               <StatusRow label="Source" value={summary?.activeAgent?.runtime.source} />
+            </DetailsBlock>
+
+            <DetailsBlock title="Chat runtime timings">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <StatusRow
+                  label="Pre-stream"
+                  value={formatDuration(chatRuntime?.timings?.preStreamMs)}
+                  compact
+                />
+                <StatusRow
+                  label="First token"
+                  value={formatDuration(chatRuntime?.timings?.firstTokenMs)}
+                  compact
+                />
+                <StatusRow
+                  label="Provider"
+                  value={formatDuration(chatRuntime?.timings?.providerMs)}
+                  compact
+                />
+                <StatusRow
+                  label="Total"
+                  value={formatDuration(chatRuntime?.timings?.totalMs)}
+                  compact
+                />
+              </div>
+              {chatRuntime?.timings?.stageMarks &&
+              Object.keys(chatRuntime.timings.stageMarks).length > 0 ? (
+                <div className="space-y-2">
+                  {Object.entries(chatRuntime.timings.stageMarks).map(([stage, value]) => (
+                    <StatusRow key={stage} label={stage} value={formatDuration(value)} compact />
+                  ))}
+                </div>
+              ) : (
+                <EmptyPanelText>Send a message to populate Cloudflare timing marks.</EmptyPanelText>
+              )}
             </DetailsBlock>
 
             <DetailsBlock title="Agent behavior config">
