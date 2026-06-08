@@ -6,7 +6,12 @@ import {
   handleStartCloudflareDemoRun,
 } from "./demo-runs";
 import { handleAdminWorkspaceSummary } from "./admin-summary";
-import { handleActivateAgent, handleCreateAgent, handleListAgents } from "./agents";
+import {
+  handleActivateAgent,
+  handleCreateAgent,
+  handleListAgentBehaviorTemplates,
+  handleListAgents,
+} from "./agents";
 import { handleChatRuntimeSummary } from "./chat-runtime-summary";
 import { handleGetChatThread, handleListChatThreads } from "./chat-threads";
 import {
@@ -85,6 +90,10 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
 
   if (request.method === "GET" && url.pathname === "/agents") {
     return handleListAgents(env, identity);
+  }
+
+  if (request.method === "GET" && url.pathname === "/agent-behavior-templates") {
+    return handleListAgentBehaviorTemplates();
   }
 
   if (request.method === "POST" && url.pathname === "/agents") {

@@ -143,14 +143,18 @@ The next steps should keep WorkOS and assistant-mk1 responsibilities separate:
 4. Agent routing: agents remain scoped to workspaces. The current v0 keeps
    customer-facing agent provisioning out of scope while Cloudflare stores
    active-agent routing preferences and Dev Monitor can create test agents.
-5. More Cloudflare ownership: Cloudflare should own app authorization, scoped
+5. Agent behavior: active agent behavior is workspace-scoped and Cloudflare
+   owned. Repo XML prompts are seed templates; after agent creation, D1
+   `agents.data_json.behavior` is the source of truth for the injected system
+   prompt.
+6. More Cloudflare ownership: Cloudflare should own app authorization, scoped
    state access, events, audit, run control, tool policy, and secret policy.
    The active v0 slice exposes chat runtime state from Cloudflare-owned D1 rows
    after trusted scope resolution.
-6. Stronger Vercel-to-Cloudflare trust boundary: Vercel should forward
+7. Stronger Vercel-to-Cloudflare trust boundary: Vercel should forward
    server-derived identity through a stricter internal contract, not
    browser-controlled scope.
-7. WorkOS organization UX: surface current account/workspace clearly and add
+8. WorkOS organization UX: surface current account/workspace clearly and add
    organization switching or onboarding only after the internal workspace model
    is stable.
 

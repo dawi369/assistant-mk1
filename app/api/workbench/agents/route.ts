@@ -26,6 +26,7 @@ export async function POST(request: NextRequest) {
       description?: unknown;
       profile?: unknown;
       model?: unknown;
+      behaviorTemplateId?: unknown;
       activate?: unknown;
     };
     const profile =
@@ -38,6 +39,8 @@ export async function POST(request: NextRequest) {
         description: typeof body.description === "string" ? body.description : undefined,
         profile,
         model: typeof body.model === "string" ? body.model : undefined,
+        behaviorTemplateId:
+          typeof body.behaviorTemplateId === "string" ? body.behaviorTemplateId : undefined,
         activate: body.activate === true,
       }),
       { status: 201 },

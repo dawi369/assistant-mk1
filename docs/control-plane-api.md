@@ -29,6 +29,22 @@ Use for:
 - policy checks
 - tool exposure resolver
 
+## Agents And Behavior
+
+Agent operations should support:
+
+- list workspace agents
+- create a workspace-scoped agent
+- activate an agent for the current user/workspace
+- list server-owned behavior templates
+
+The current v0 HTTP surface includes Cloudflare `GET /agent-behavior-templates`
+and the Vercel facade `GET /api/workbench/agent-behavior-templates`.
+Templates are seed material. When an agent is created, the selected XML prompt
+is copied into `agents.data_json.behavior`; that D1 snapshot is the active
+runtime source of truth. Chat run metadata should reference the behavior
+template/version/source, not duplicate full prompt text.
+
 ## Threads
 
 Thread operations should support:

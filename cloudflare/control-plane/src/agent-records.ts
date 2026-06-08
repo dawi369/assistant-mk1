@@ -1,5 +1,9 @@
 import { parseDataJson } from "./http";
 import { createId, toJson, type AgentRow, type Env } from "./types";
+import {
+  createAgentBehaviorSnapshot,
+  type AgentBehaviorTemplateId,
+} from "./agent-behavior-templates";
 
 export const agentProfiles = ["default", "analyst", "operator"] as const;
 export type AgentProfile = (typeof agentProfiles)[number];
@@ -23,9 +27,12 @@ export type AgentRuntimeConfig = {
 
 export type AgentBehaviorConfig = {
   profile: AgentProfile;
-  source: "server-preset";
-  version: "2026-06-07";
-  instructionId: `agent-behavior-${AgentProfile}`;
+  source: "server-preset" | "template-snapshot";
+  version: string;
+  instructionId: string;
+  format?: "xml";
+  templateId?: string;
+  preview?: string;
 };
 
 const behaviorVersion = "2026-06-07" as const;
@@ -92,8 +99,44 @@ export const resolveAgentRuntimeConfig = (env: Env, row: AgentRow | null): Agent
   };
 };
 
-export const resolveAgentBehaviorConfig = (row: AgentRow | null): AgentBehaviorConfig => {
+const readBehaviorSnapshot = (row: AgentRow | null) => {
+  if (!row) return null;
+  const data = parseDataJson(row.data_json);
+  const behavior = data.behavior;
+  if (!behavior || typeof behavior !== "object" || Array.isArray(behavior)) return null;
+
+  const record = behavior as Record<string, unknown>;
+  if (record.source !== "template-snapshot" || record.format !== "xml") return null;
+  if (typeof record.prompt !== "string" || !record.prompt.trim()) return null;
+
+  return {
+    templateId: typeof record.templateId === "string" ? record.templateId : undefined,
+    version: typeof record.version === "string" ? record.version : "unknown",
+    prompt: record.prompt,
+  };
+};
+
+export const resolveAgentBehaviorConfig = (
+  row: AgentRow | null,
+  options?: { includePreview?: boolean },
+): AgentBehaviorConfig => {
   const profile = row ? getAgentProfile(row) : "default";
+  const snapshot = readBehaviorSnapshot(row);
+  if (snapshot) {
+    const instructionId = snapshot.templateId
+      ? `agent-behavior-${snapshot.templateId}-${snapshot.version}`
+      : `agent-behavior-template-${profile}-${snapshot.version}`;
+    return {
+      profile,
+      source: "template-snapshot",
+      version: snapshot.version,
+      instructionId,
+      format: "xml",
+      templateId: snapshot.templateId,
+      ...(options?.includePreview ? { preview: snapshot.prompt } : {}),
+    };
+  }
+
   return {
     profile,
     source: "server-preset",
@@ -102,8 +145,16 @@ export const resolveAgentBehaviorConfig = (row: AgentRow | null): AgentBehaviorC
   };
 };
 
-export const resolveAgentBehaviorInstruction = (row: AgentRow | null) =>
-  behaviorInstructions[resolveAgentBehaviorConfig(row).profile];
+export const toAgentBehaviorMetadata = (config: AgentBehaviorConfig): AgentBehaviorConfig => {
+  const { preview: _preview, ...metadata } = config;
+  return metadata;
+};
+
+export const resolveAgentBehaviorInstruction = (row: AgentRow | null) => {
+  const snapshot = readBehaviorSnapshot(row);
+  if (snapshot) return snapshot.prompt;
+  return behaviorInstructions[resolveAgentBehaviorConfig(row).profile];
+};
 
 export const toAgentSummary = (env: Env, row: AgentRow, activeAgentId: string) => ({
   id: row.id,
@@ -112,7 +163,7 @@ export const toAgentSummary = (env: Env, row: AgentRow, activeAgentId: string) =
   status: row.status,
   profile: getAgentProfile(row),
   runtime: resolveAgentRuntimeConfig(env, row),
-  behavior: resolveAgentBehaviorConfig(row),
+  behavior: resolveAgentBehaviorConfig(row, { includePreview: true }),
   isDefault: row.is_default === 1,
   isActive: row.id === activeAgentId,
   createdAt: row.created_at,
@@ -126,14 +177,14 @@ export const toAgentRuntimeMetadata = (env: Env, row: AgentRow | null, fallbackA
         name: row.name,
         profile: getAgentProfile(row),
         runtime: resolveAgentRuntimeConfig(env, row),
-        behavior: resolveAgentBehaviorConfig(row),
+        behavior: toAgentBehaviorMetadata(resolveAgentBehaviorConfig(row)),
         isDefault: row.is_default === 1,
       }
     : {
         id: fallbackAgentId,
         profile: "default" satisfies AgentProfile,
         runtime: resolveAgentRuntimeConfig(env, null),
-        behavior: resolveAgentBehaviorConfig(null),
+        behavior: toAgentBehaviorMetadata(resolveAgentBehaviorConfig(null)),
       };
 
 export const insertAgent = async (
@@ -145,6 +196,7 @@ export const insertAgent = async (
     description: string | null;
     profile: AgentProfile;
     model?: AllowedOpenRouterModel;
+    behaviorTemplateId?: AgentBehaviorTemplateId;
   },
 ) => {
   const timestamp = new Date().toISOString();
@@ -157,6 +209,7 @@ export const insertAgent = async (
         maxTokens: defaultMaxTokens,
       }
     : undefined;
+  const behavior = createAgentBehaviorSnapshot(input.profile, input.behaviorTemplateId);
   await env.DB.prepare(
     `INSERT INTO agents (
        id, workspace_id, name, description, status, is_default, created_by_user_id,
@@ -173,6 +226,7 @@ export const insertAgent = async (
       toJson({
         profile: input.profile,
         provisionedBy: "dev-monitor",
+        behavior,
         ...(runtime ? { runtime } : {}),
       }),
       timestamp,

@@ -83,9 +83,22 @@ export type AgentRuntimeConfig = {
 
 export type AgentBehaviorConfig = {
   profile: "default" | "analyst" | "operator";
-  source: "server-preset";
+  source: "server-preset" | "template-snapshot";
   version: string;
   instructionId: string;
+  format?: "xml";
+  templateId?: string;
+  preview?: string;
+};
+
+export type AgentBehaviorTemplate = {
+  id: "assistant-general" | "assistant-analyst" | "assistant-operator" | "assistant-integrator";
+  name: string;
+  description: string;
+  profile: "default" | "analyst" | "operator";
+  version: string;
+  format: "xml";
+  prompt: string;
 };
 
 export type ChatRuntimeSummary = {
@@ -394,6 +407,12 @@ export type CloudflareAgentsResponse = {
   ok?: boolean;
   activeAgentId?: Id;
   agents?: AgentSummary[];
+  error?: string;
+};
+
+export type CloudflareAgentBehaviorTemplatesResponse = {
+  ok?: boolean;
+  templates?: AgentBehaviorTemplate[];
   error?: string;
 };
 

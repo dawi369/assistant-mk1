@@ -45,6 +45,8 @@ import {
 } from "@/lib/workbench/admin-summary-events";
 import { chatRuntimeStateLabel, chatRuntimeStateTone } from "@/lib/workbench/chat-runtime-display";
 import type {
+  AgentBehaviorTemplate,
+  CloudflareAgentBehaviorTemplatesResponse,
   CloudflareAdminSummaryResponse,
   CloudflareOwnedDemoRunResponse,
 } from "@/lib/workbench/workbench-types";
@@ -53,7 +55,13 @@ const adminSummaryPath = "/api/workbench/admin-summary";
 const cloudflareDemoRunsPath = "/api/workbench/cloudflare-demo-runs";
 const workspacesPath = "/api/workbench/workspaces";
 const agentsPath = "/api/workbench/agents";
+const behaviorTemplatesPath = "/api/workbench/agent-behavior-templates";
 const agentModelOptions = ["deepseek/deepseek-v4-flash", "openai/gpt-4.1-mini"] as const;
+const defaultBehaviorTemplateByProfile = {
+  default: "assistant-general",
+  analyst: "assistant-analyst",
+  operator: "assistant-operator",
+} as const satisfies Record<"default" | "analyst" | "operator", AgentBehaviorTemplate["id"]>;
 
 const readJsonResponse = async <T,>(response: Response, fallback: string): Promise<T> => {
   const body = (await response.json().catch(() => ({}))) as T & { error?: string };
@@ -97,6 +105,7 @@ export function DevMonitorDrawer({
   onOpenChange: (open: boolean) => void;
 }) {
   const [summary, setSummary] = useState<CloudflareAdminSummaryResponse["summary"] | null>(null);
+  const [behaviorTemplates, setBehaviorTemplates] = useState<AgentBehaviorTemplate[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [isCreatingWorkspace, setIsCreatingWorkspace] = useState(false);
@@ -110,6 +119,8 @@ export function DevMonitorDrawer({
   const [agentModel, setAgentModel] = useState<(typeof agentModelOptions)[number]>(
     "deepseek/deepseek-v4-flash",
   );
+  const [agentBehaviorTemplateId, setAgentBehaviorTemplateId] =
+    useState<AgentBehaviorTemplate["id"]>("assistant-analyst");
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   const demoSnapshot = summary?.demo.latestRun ?? null;
@@ -152,6 +163,10 @@ export function DevMonitorDrawer({
   const chatLabel =
     fetchError && !chatRuntime ? "Unavailable" : chatRuntimeStateLabel(chatRuntime?.state);
   const chatTone = fetchError && !chatRuntime ? "failed" : chatRuntimeStateTone(chatRuntime?.state);
+  const selectedBehaviorTemplate = useMemo(
+    () => behaviorTemplates.find((template) => template.id === agentBehaviorTemplateId) ?? null,
+    [agentBehaviorTemplateId, behaviorTemplates],
+  );
 
   const loadSummary = async () => {
     setIsLoading(true);
@@ -172,9 +187,25 @@ export function DevMonitorDrawer({
     }
   };
 
+  const loadBehaviorTemplates = async () => {
+    try {
+      const response = await fetch(behaviorTemplatesPath, { cache: "no-store" });
+      const body = await readJsonResponse<CloudflareAgentBehaviorTemplatesResponse>(
+        response,
+        "Failed to load agent behavior templates",
+      );
+      setBehaviorTemplates(body.templates ?? []);
+    } catch (loadError) {
+      setFetchError(
+        loadError instanceof Error ? loadError.message : "Failed to load agent behavior templates",
+      );
+    }
+  };
+
   useEffect(() => {
     if (!open) return;
     void loadSummary();
+    void loadBehaviorTemplates();
     window.addEventListener(workbenchSummaryRefreshEvent, loadSummary);
     return () => window.removeEventListener(workbenchSummaryRefreshEvent, loadSummary);
   }, [open]);
@@ -264,6 +295,7 @@ export function DevMonitorDrawer({
           description: agentDescription.trim() || undefined,
           profile: agentProfile,
           model: agentModel,
+          behaviorTemplateId: agentBehaviorTemplateId,
           activate: true,
         }),
       });
@@ -272,6 +304,7 @@ export function DevMonitorDrawer({
       setAgentDescription("");
       setAgentProfile("analyst");
       setAgentModel("deepseek/deepseek-v4-flash");
+      setAgentBehaviorTemplateId("assistant-analyst");
       requestWorkbenchSummaryRefresh();
     } catch (createError) {
       setFetchError(createError instanceof Error ? createError.message : "Failed to create agent");
@@ -573,9 +606,11 @@ export function DevMonitorDrawer({
                   <select
                     className="border-input bg-background ring-offset-background focus-visible:ring-ring rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
                     value={agentProfile}
-                    onChange={(event) =>
-                      setAgentProfile(event.target.value as "default" | "analyst" | "operator")
-                    }
+                    onChange={(event) => {
+                      const nextProfile = event.target.value as "default" | "analyst" | "operator";
+                      setAgentProfile(nextProfile);
+                      setAgentBehaviorTemplateId(defaultBehaviorTemplateByProfile[nextProfile]);
+                    }}
                   >
                     <option value="analyst">Analyst</option>
                     <option value="operator">Operator</option>
@@ -595,6 +630,23 @@ export function DevMonitorDrawer({
                     </option>
                   ))}
                 </select>
+                <select
+                  className="border-input bg-background ring-offset-background focus-visible:ring-ring w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                  value={agentBehaviorTemplateId}
+                  onChange={(event) =>
+                    setAgentBehaviorTemplateId(event.target.value as AgentBehaviorTemplate["id"])
+                  }
+                >
+                  {behaviorTemplates.length === 0 ? (
+                    <option value={agentBehaviorTemplateId}>Behavior template loading...</option>
+                  ) : (
+                    behaviorTemplates.map((template) => (
+                      <option key={template.id} value={template.id}>
+                        {template.name} / {template.version}
+                      </option>
+                    ))
+                  )}
+                </select>
                 <textarea
                   className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring min-h-16 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
                   value={agentDescription}
@@ -602,6 +654,16 @@ export function DevMonitorDrawer({
                   placeholder="Optional description"
                   maxLength={240}
                 />
+                {selectedBehaviorTemplate ? (
+                  <DetailsBlock title="Selected behavior template">
+                    <StatusRow label="Name" value={selectedBehaviorTemplate.name} />
+                    <StatusRow label="Description" value={selectedBehaviorTemplate.description} />
+                    <StatusRow label="Version" value={selectedBehaviorTemplate.version} />
+                    <pre className="bg-muted/50 max-h-48 overflow-auto rounded-md p-3 text-xs whitespace-pre-wrap">
+                      {selectedBehaviorTemplate.prompt}
+                    </pre>
+                  </DetailsBlock>
+                ) : null}
                 <Button
                   type="submit"
                   size="sm"
@@ -625,6 +687,10 @@ export function DevMonitorDrawer({
                           </span>
                           <span className="text-muted-foreground block truncate text-xs">
                             {agent.runtime.provider} / {agent.runtime.model}
+                          </span>
+                          <span className="text-muted-foreground block truncate text-xs">
+                            behavior: {agent.behavior.templateId ?? agent.behavior.profile} /{" "}
+                            {agent.behavior.version}
                           </span>
                         </span>
                         {agent.isActive ? (
@@ -767,8 +833,19 @@ export function DevMonitorDrawer({
             <DetailsBlock title="Agent behavior config">
               <StatusRow label="Profile" value={summary?.activeAgent?.behavior.profile} />
               <StatusRow label="Source" value={summary?.activeAgent?.behavior.source} />
+              <StatusRow label="Format" value={summary?.activeAgent?.behavior.format} />
+              <StatusRow label="Template" value={summary?.activeAgent?.behavior.templateId} />
               <StatusRow label="Version" value={summary?.activeAgent?.behavior.version} />
               <CopyId label="Instruction id" value={summary?.activeAgent?.behavior.instructionId} />
+              {summary?.activeAgent?.behavior.preview ? (
+                <pre className="bg-muted/50 max-h-72 overflow-auto rounded-md p-3 text-xs whitespace-pre-wrap">
+                  {summary.activeAgent.behavior.preview}
+                </pre>
+              ) : (
+                <EmptyPanelText>
+                  This agent is using the legacy server preset fallback.
+                </EmptyPanelText>
+              )}
             </DetailsBlock>
 
             <DetailsBlock title="Membership and external identity">

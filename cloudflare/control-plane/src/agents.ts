@@ -4,6 +4,10 @@ import {
   normalizeOpenRouterModel,
   toAgentSummary,
 } from "./agent-records";
+import {
+  agentBehaviorTemplates,
+  normalizeAgentBehaviorTemplateId,
+} from "./agent-behavior-templates";
 import { upsertActiveAgentPreference } from "./authz";
 import { selectAgent, selectMembership, selectWorkspaceAgents } from "./authz-store";
 import { isRecord, json, parseJson } from "./http";
@@ -12,6 +16,12 @@ import type { AgentIdentity, Env } from "./types";
 
 const agentNameMaxLength = 80;
 const agentDescriptionMaxLength = 240;
+
+export const handleListAgentBehaviorTemplates = () =>
+  json({
+    ok: true,
+    templates: agentBehaviorTemplates,
+  });
 
 export const handleListAgents = async (env: Env, identity: AgentIdentity) => {
   const agents = await selectWorkspaceAgents(env, identity.scope.workspaceId);
@@ -61,6 +71,21 @@ export const handleCreateAgent = async (request: Request, env: Env, identity: Ag
     );
   }
   const model = normalizedModel ?? undefined;
+  const rawBehaviorTemplateId = isRecord(body) ? body.behaviorTemplateId : undefined;
+  const behaviorTemplateId =
+    rawBehaviorTemplateId === undefined
+      ? undefined
+      : normalizeAgentBehaviorTemplateId(rawBehaviorTemplateId);
+  if (rawBehaviorTemplateId !== undefined && !behaviorTemplateId) {
+    return json(
+      {
+        ok: false,
+        error:
+          "Agent behavior template must be one of assistant-general, assistant-analyst, assistant-operator, or assistant-integrator",
+      },
+      { status: 400 },
+    );
+  }
 
   const agentId = await insertAgent(env, {
     workspaceId: identity.scope.workspaceId,
@@ -69,6 +94,7 @@ export const handleCreateAgent = async (request: Request, env: Env, identity: Ag
     description,
     profile,
     model,
+    behaviorTemplateId: behaviorTemplateId ?? undefined,
   });
   const agent = await selectAgent(env, agentId, identity.scope.workspaceId);
   if (!agent) {

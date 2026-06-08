@@ -201,16 +201,14 @@ Implemented:
 - Agent routing v0: agents stay workspace-scoped, Cloudflare stores
   active-agent preferences per user/workspace, and Dev Monitor can create and
   activate test agents for the current workspace.
+- Agent behavior v0: new agents can import XML behavior templates into
+  `agents.data_json.behavior`; Cloudflare injects the D1 snapshot into simple
+  chat, and Dev Monitor previews the active behavior.
 
 Next target:
 
-- Finish the chat responsiveness and timing slice before adding deeper agent
-  behavior. Recent-chat history stays assistant-ui-native, and archive/delete/
-  rename, generated titles, search, shared threads, and mobile history polish
-  remain future slices.
-- Then make agent profiles affect runtime behavior through server-owned
-  prompt/tool configuration now that the workspace-scoped loading, preference
-  model, and chat polish checkpoint are in place.
+- Stabilize template-backed behavior in hosted chat, then expand it into full
+  editing, version history, approvals, and tool-specific behavior controls.
 - Keep Fly/LangGraph state access mediated through Cloudflare APIs.
 - Strengthen the Vercel-to-Cloudflare trust boundary with a stricter signed or
   service-authenticated server contract after this observability slice.
@@ -257,8 +255,9 @@ Next target:
   authorization, trigger-owned tenant metadata, and clearer organization UX
   without moving tenant enforcement back into the browser.
 - Sequence the workspace/authz product work as admin visibility, workspace
-  management, membership source of truth, agent routing, broader Cloudflare
-  ownership, stronger Vercel-to-Cloudflare trust, and WorkOS organization UX.
+  management, membership source of truth, agent routing, agent behavior,
+  broader Cloudflare ownership, stronger Vercel-to-Cloudflare trust, and WorkOS
+  organization UX.
 
 Exit criteria:
 
@@ -274,9 +273,9 @@ Goal: allow mutation-capable tools only after platform safety exists.
 Required before live external mutation:
 
 - Auth and workspace membership. WorkOS AuthKit sign-in, Cloudflare D1-backed
-  membership policy, workspace management v0, and agent routing v0 exist, but
-  explicit customer admin flows, invites, and tool authorization are still
-  required.
+  membership policy, workspace management v0, agent routing v0, and agent
+  behavior v0 exist, but explicit customer admin flows, invites, behavior
+  approvals, and tool authorization are still required.
 - Encrypted secret custody.
 - Tenant isolation tests.
 - Policy limits, approvals, cooldowns, allowlists, denylists, and kill switches.

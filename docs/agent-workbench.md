@@ -90,6 +90,15 @@ client workspaces get production agents configured during integration work, and
 apps like Polymancer can later provision isolated agents per user or workspace
 without moving scope selection into the browser.
 
+Agent behavior v0 makes those workspace-scoped agents affect the Cloudflare
+simple-chat system prompt. Behavior templates live in `docs/prompts` as seed
+material, using `docs/prompts/poke.xml` only as a structural and tonal
+reference. The active behavior for a created agent is a D1 snapshot stored in
+`agents.data_json.behavior`, so D1 remains the runtime source of truth after
+provisioning. Dev Monitor can import a template into a new agent and preview
+the active XML prompt, but full editing, version history, approvals, and a
+customer-facing agent builder remain future slices.
+
 Near-term WorkOS, workspace, and Cloudflare ownership sequence:
 
 1. Admin visibility: show the resolved account, workspace, membership, agents,
@@ -105,13 +114,16 @@ Near-term WorkOS, workspace, and Cloudflare ownership sequence:
 4. Agent routing: move from default-agent-only behavior to visible
    workspace-scoped agent list, Dev Monitor-only test agent creation, and
    Cloudflare-owned active-agent preference.
-5. More Cloudflare ownership: move context, policy, audit, events, run state,
+5. Agent behavior: make agent profiles affect runtime behavior through
+   Cloudflare-owned prompt snapshots. In v0, Dev Monitor imports XML templates
+   into D1-backed agent behavior and Cloudflare injects the active snapshot.
+6. More Cloudflare ownership: move context, policy, audit, events, run state,
    tool authorization, and eventually secret access behind Cloudflare APIs. The
    active v0 slice is a Cloudflare-owned chat runtime summary shown in Dev
    Monitor.
-6. Stronger Vercel-to-Cloudflare trust boundary: replace loose trusted headers
+7. Stronger Vercel-to-Cloudflare trust boundary: replace loose trusted headers
    with a stricter signed or service-authenticated server contract.
-7. WorkOS organization UX: handle org switching, personal fallback, onboarding,
+8. WorkOS organization UX: handle org switching, personal fallback, onboarding,
    and clear current account/current workspace display.
 
 ## Component Rules
@@ -145,6 +157,8 @@ Implemented:
   metadata for first-token and total runtime.
 - Dev Monitor provides Cloudflare-derived admin/runtime visibility with a
   flow-first chat overview and secondary workspace/agent controls.
+- Dev Monitor can create template-backed agents and preview the active XML
+  behavior snapshot stored in D1.
 - The normal chat shell has a compact server-derived runtime hint for active
   workspace, active agent/profile, chat state, and error detail access.
 - WorkOS, workspace, membership, and active agent scope are server-derived.
@@ -156,8 +170,8 @@ Next milestones:
    reflects active runs immediately and Dev Monitor can explain latency.
 2. Finish recent chat history polish: list, switch, and new chat through
    assistant-ui thread-list primitives, with Cloudflare-owned authorization.
-3. Make agent profiles affect runtime behavior through server-owned prompt and
-   tool configuration.
+3. Expand agent behavior from template import/preview into full editing,
+   version history, approvals, and tool-specific configuration.
 4. Add interrupt display and resume actions when a workflow requires approval.
 5. Add artifact list and execution history beyond diagnostic snapshots.
 6. Add domain context configuration that can be swapped per downstream app.

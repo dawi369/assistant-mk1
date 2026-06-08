@@ -13,10 +13,14 @@ type AgentBehaviorConfig = {
   source?: string;
   version?: string;
   instructionId?: string;
+  format?: string;
+  templateId?: string;
+  preview?: string;
 };
 
 type AgentSummary = {
   id?: string;
+  name?: string;
   profile?: AgentProfile;
   behavior?: AgentBehaviorConfig;
   isActive?: boolean;
@@ -45,6 +49,18 @@ type AgentMutationResponse = {
   ok?: boolean;
   activeAgentId?: string;
   agent?: AgentSummary | null;
+  error?: string;
+};
+
+type AgentBehaviorTemplatesResponse = {
+  ok?: boolean;
+  templates?: Array<{
+    id?: string;
+    name?: string;
+    version?: string;
+    format?: string;
+    prompt?: string;
+  }>;
   error?: string;
 };
 
@@ -81,6 +97,14 @@ const owner = {
   roles: ["owner"],
 } satisfies TenantIdentity;
 
+const member = {
+  userId: `agent-behavior-member-${suffix}`,
+  accountId,
+  email: `agent-behavior-member-${suffix}@example.com`,
+  role: "member",
+  roles: ["member"],
+} satisfies TenantIdentity;
+
 const headersFor = (identity: TenantIdentity) => ({
   authorization: `Bearer ${token}`,
   "content-type": "application/json",
@@ -111,6 +135,28 @@ const readJson = async <T>(
   return (await response.json()) as T;
 };
 
+const fetchRaw = (path: string, identity: TenantIdentity, init?: RequestInit) =>
+  fetch(`${baseUrl}${path}`, {
+    ...init,
+    headers: {
+      ...headersFor(identity),
+      ...init?.headers,
+    },
+  });
+
+const assertStatus = async (
+  path: string,
+  identity: TenantIdentity,
+  expectedStatus: number,
+  init?: RequestInit,
+) => {
+  const response = await fetchRaw(path, identity, init);
+  if (response.status !== expectedStatus) {
+    const body = await response.text();
+    throw new Error(`${path} expected ${expectedStatus}, got ${response.status}: ${body}`);
+  }
+};
+
 const adminSummary = async (label: string) => {
   const body = await readJson<AdminSummaryResponse>("/admin/workspace-summary", owner);
   const summary = body.summary;
@@ -123,13 +169,17 @@ const adminSummary = async (label: string) => {
   return summary;
 };
 
-const createAgent = (profile: Exclude<AgentProfile, "default">) =>
+const getTemplates = () =>
+  readJson<AgentBehaviorTemplatesResponse>("/agent-behavior-templates", owner);
+
+const createAgent = (profile: Exclude<AgentProfile, "default">, behaviorTemplateId?: string) =>
   readJson<AgentMutationResponse>("/agents", owner, {
     method: "POST",
     body: JSON.stringify({
-      name: `${profile} behavior smoke`,
+      name: `${behaviorTemplateId ?? profile} behavior smoke`,
       description: "Smoke-created behavior profile agent.",
       profile,
+      behaviorTemplateId,
       activate: true,
     }),
   });
@@ -173,7 +223,7 @@ const runStream = async (threadId: string, prompt: string) => {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const waitForCompletedRun = async (expectedProfile: AgentProfile) => {
+const waitForCompletedRun = async (expectedProfile: AgentProfile, expectedTemplateId: string) => {
   const startedAt = Date.now();
 
   while (Date.now() - startedAt < pollTimeoutMs) {
@@ -187,9 +237,14 @@ const waitForCompletedRun = async (expectedProfile: AgentProfile) => {
         !("profile" in behaviorConfig) ||
         behaviorConfig.profile !== expectedProfile ||
         !("source" in behaviorConfig) ||
-        behaviorConfig.source !== "server-preset"
+        behaviorConfig.source !== "template-snapshot" ||
+        !("templateId" in behaviorConfig) ||
+        behaviorConfig.templateId !== expectedTemplateId ||
+        "preview" in behaviorConfig
       ) {
-        throw new Error(`completed run did not use ${expectedProfile} behavior config`);
+        throw new Error(
+          `completed run did not use ${expectedProfile}/${expectedTemplateId} behavior config`,
+        );
       }
       return run.id;
     }
@@ -215,43 +270,98 @@ const assertNoStoredSystemMessages = async (threadId: string) => {
   }
 };
 
-const assertActiveProfile = async (profile: AgentProfile) => {
+const assertActiveTemplate = async (profile: AgentProfile, templateId: string) => {
   const summary = await adminSummary(`${profile} active summary`);
   if (
     summary.activeAgent?.profile !== profile ||
     summary.activeAgent.behavior?.profile !== profile ||
-    summary.activeAgent.behavior.source !== "server-preset"
+    summary.activeAgent.behavior.source !== "template-snapshot" ||
+    summary.activeAgent.behavior.templateId !== templateId ||
+    summary.activeAgent.behavior.format !== "xml" ||
+    !summary.activeAgent.behavior.preview?.includes("<identity>")
   ) {
-    throw new Error(`${profile} agent did not expose expected behavior config`);
+    throw new Error(`${profile}/${templateId} agent did not expose expected behavior config`);
   }
 };
 
 const main = async () => {
   console.log(`Smoking Cloudflare agent behavior at ${baseUrl}`);
 
-  const initial = await adminSummary("initial summary");
-  if (initial.activeAgent?.behavior?.profile !== "default") {
-    throw new Error("default agent did not resolve default behavior config");
+  const templates = await getTemplates();
+  const templateIds = new Set(templates.templates?.map((template) => template.id));
+  for (const expectedTemplateId of [
+    "assistant-general",
+    "assistant-analyst",
+    "assistant-operator",
+    "assistant-integrator",
+  ]) {
+    if (!templateIds.has(expectedTemplateId)) {
+      throw new Error(`template list did not include ${expectedTemplateId}`);
+    }
   }
 
-  for (const profile of ["analyst", "operator"] as const) {
-    const created = await createAgent(profile);
+  const initial = await adminSummary("initial summary");
+  const initialBehavior = initial.activeAgent?.behavior;
+  if (initialBehavior?.profile !== "default") {
+    throw new Error("default agent did not resolve default behavior config");
+  }
+  if (initialBehavior.source !== "server-preset") {
+    throw new Error("existing bootstrap default agent should use server-preset fallback");
+  }
+
+  await assertStatus("/agents", owner, 400, {
+    method: "POST",
+    body: JSON.stringify({
+      name: "Invalid Behavior Agent",
+      profile: "analyst",
+      behaviorTemplateId: "not-a-template",
+    }),
+  });
+
+  await adminSummary("member bootstrap");
+  await assertStatus("/agents", member, 403, {
+    method: "POST",
+    body: JSON.stringify({
+      name: "Member Behavior Agent",
+      profile: "analyst",
+      behaviorTemplateId: "assistant-analyst",
+    }),
+  });
+
+  const defaulted = await createAgent("analyst");
+  if (
+    !defaulted.ok ||
+    defaulted.agent?.behavior?.source !== "template-snapshot" ||
+    defaulted.agent.behavior.templateId !== "assistant-analyst"
+  ) {
+    throw new Error(defaulted.error ?? "omitted behavior template did not default by profile");
+  }
+
+  for (const [profile, templateId] of [
+    ["analyst", "assistant-analyst"],
+    ["operator", "assistant-operator"],
+    ["operator", "assistant-integrator"],
+  ] as const) {
+    const created = await createAgent(profile, templateId);
     if (
       !created.ok ||
       !created.agent?.id ||
       created.activeAgentId !== created.agent.id ||
-      created.agent.behavior?.profile !== profile
+      created.agent.behavior?.profile !== profile ||
+      created.agent.behavior.source !== "template-snapshot" ||
+      created.agent.behavior.templateId !== templateId ||
+      !created.agent.behavior.preview?.includes("<identity>")
     ) {
-      throw new Error(created.error ?? `${profile} behavior agent was not created`);
+      throw new Error(created.error ?? `${profile}/${templateId} behavior agent was not created`);
     }
 
-    await assertActiveProfile(profile);
+    await assertActiveTemplate(profile, templateId);
     const threadId = await createThread();
-    await runStream(threadId, `Reply with one short ${profile} mode sentence.`);
-    const runId = await waitForCompletedRun(profile);
+    await runStream(threadId, `Reply with one short ${templateId} mode sentence.`);
+    const runId = await waitForCompletedRun(profile, templateId);
     await assertNoStoredSystemMessages(threadId);
 
-    console.log(`${profile} behavior run completed: ${runId}`);
+    console.log(`${profile}/${templateId} behavior run completed: ${runId}`);
   }
 
   console.log("Cloudflare agent behavior smoke passed");
