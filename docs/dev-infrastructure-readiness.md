@@ -69,6 +69,7 @@ Optional secrets:
 - `LANGSMITH_PROJECT`
 - `SENTRY_DSN`
 - `SENTRY_ENVIRONMENT`
+- `SENTRY_TRACES_SAMPLE_RATE`
 
 Committed Fly env:
 
@@ -92,6 +93,7 @@ LANGGRAPH_UPSTREAM_URL=http://127.0.0.1:2024
 LANGGRAPH_UPSTREAM_TOKEN=local-langgraph-proxy-token
 SENTRY_DSN=
 SENTRY_ENVIRONMENT=development
+SENTRY_TRACES_SAMPLE_RATE=1.0
 WORKBENCH_EXECUTOR_URL=http://localhost:3000/api/workbench/executors/demo-inspect
 WORKBENCH_EXECUTOR_TOKEN=local-executor-token
 EOF
@@ -205,6 +207,8 @@ match the Fly `LANGGRAPH_PROXY_TOKEN`.
 
 `SENTRY_ENVIRONMENT=production` is committed for the deployed Worker. Keep
 `SENTRY_DSN` out of source and configure it as a Worker secret.
+`SENTRY_TRACES_SAMPLE_RATE=0.02` is committed for the deployed Worker to keep
+production telemetry low-noise.
 
 Cloudflare LangGraph facade smoke:
 

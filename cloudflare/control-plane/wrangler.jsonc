@@ -10,6 +10,7 @@
     "OPENROUTER_SITE_URL": "https://assistant-mk1.vercel.app",
     "OPENROUTER_APP_NAME": "assistant-mk1-cloudflare-chat",
     "SENTRY_ENVIRONMENT": "production",
+    "SENTRY_TRACES_SAMPLE_RATE": "0.02",
   },
   "d1_databases": [
     {

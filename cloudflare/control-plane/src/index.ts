@@ -149,9 +149,9 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
 };
 
 const parseSampleRate = (value: string | undefined) => {
-  if (!value) return 0.1;
+  if (!value) return 0.02;
   const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) return 0.1;
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) return 0.02;
   return parsed;
 };
 

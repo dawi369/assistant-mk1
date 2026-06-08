@@ -1,6 +1,14 @@
 import * as Sentry from "@sentry/nextjs";
 
 const dsn = process.env.NEXT_PUBLIC_SENTRY_DSN;
+const isDevelopment = process.env.NODE_ENV === "development";
+
+const parseSampleRate = (value: string | undefined, fallback: number) => {
+  if (!value) return fallback;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) return fallback;
+  return parsed;
+};
 
 if (dsn) {
   Sentry.init({
@@ -8,7 +16,10 @@ if (dsn) {
     environment:
       process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT ?? process.env.VERCEL_ENV ?? process.env.NODE_ENV,
     release: process.env.NEXT_PUBLIC_SENTRY_RELEASE ?? process.env.VERCEL_GIT_COMMIT_SHA,
-    tracesSampleRate: process.env.NODE_ENV === "development" ? 1.0 : 0.1,
+    tracesSampleRate: parseSampleRate(
+      process.env.NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE,
+      isDevelopment ? 1.0 : 0.02,
+    ),
     integrations: [
       Sentry.replayIntegration({
         maskAllText: true,
@@ -16,8 +27,14 @@ if (dsn) {
         blockAllMedia: true,
       }),
     ],
-    replaysSessionSampleRate: process.env.NODE_ENV === "development" ? 1.0 : 0.1,
-    replaysOnErrorSampleRate: 1.0,
+    replaysSessionSampleRate: parseSampleRate(
+      process.env.NEXT_PUBLIC_SENTRY_REPLAYS_SESSION_SAMPLE_RATE,
+      isDevelopment ? 1.0 : 0,
+    ),
+    replaysOnErrorSampleRate: parseSampleRate(
+      process.env.NEXT_PUBLIC_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE,
+      1.0,
+    ),
     initialScope: {
       tags: {
         service: "assistant-mk1",

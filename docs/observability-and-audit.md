@@ -114,6 +114,16 @@ secrets, model prompts containing private data, or raw tenant data to Sentry.
 Source maps should use `SENTRY_AUTH_TOKEN` only in trusted CI/deploy
 environments. Never commit the auth token or print it in logs.
 
+Production Sentry sampling should stay intentionally quiet:
+
+- Production traces default to `0.02` across Vercel and Cloudflare.
+- Local development defaults to full tracing so debugging remains easy.
+- Browser replay is sampled only on errors in production by default.
+
+Normal request transactions such as `GET /` can still appear under Sentry
+traces when they are sampled. Treat those as performance telemetry, not runtime
+errors. Unresolved issues remain the primary Sentry view for failures.
+
 ## Health And Heartbeats
 
 Health endpoint checks should distinguish:

@@ -7,6 +7,7 @@ OPENROUTER_SITE_URL=http://localhost:3000
 OPENROUTER_APP_NAME=assistant-mk1-cloudflare-chat-local
 SENTRY_DSN=
 SENTRY_ENVIRONMENT=development
+SENTRY_TRACES_SAMPLE_RATE=1.0
 WORKBENCH_EXECUTOR_URL=http://localhost:3000/api/workbench/executors/demo-inspect
 WORKBENCH_EXECUTOR_TOKEN=replace-with-local-executor-token
 

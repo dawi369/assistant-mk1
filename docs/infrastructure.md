@@ -135,6 +135,12 @@ separation for billing, access, or data residency, create a separate Sentry
 project then; do not split projects just because the infrastructure has
 multiple deploy targets.
 
+Production tracing is intentionally sampled at a low rate by default. Sentry
+may show normal request transactions when sampled; those belong to performance
+telemetry. Product-state debugging should still start from Cloudflare D1 runtime
+summaries and Dev Monitor, while unresolved Sentry issues should be treated as
+code/runtime failures.
+
 ## Stream Ownership
 
 Cloudflare owns the user-facing stream. The frontend should keep its WebSocket/SSE/HTTP streaming relationship with the conversational control plane. Fly tool runners and LangGraph workflow services should publish progress by calling Cloudflare callbacks or writing scoped status to canonical state that Cloudflare can stream.
