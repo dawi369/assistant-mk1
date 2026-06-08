@@ -23,8 +23,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Assistant-MK1",
-  description: "Reusable agent workbench for production-shaped assistant runtimes.",
+  title: "Assistant-mk1",
+  description: "Here, for you.",
 };
 
 export default function RootLayout({
