@@ -86,6 +86,34 @@ Redact before writing:
 
 Audit summaries should be safe for UI display.
 
+## External Error Monitoring
+
+Sentry is the first external exception and trace sink for assistant-mk1.
+Cloudflare D1 remains the source of truth for product state, runtime summaries,
+audit records, and "what happened?" answers; Sentry is for debugging runtime
+failures, regressions, and cross-surface traces.
+
+The current Sentry org/project is:
+
+- Org: `t23`
+- Project: `assistant-mk1`
+
+Use one project for the Assistant-MK1 product and distinguish runtime surfaces
+with tags instead of creating separate projects too early:
+
+- `runtime.surface=vercel-next` for the Vercel/Next web app and server facade.
+- `runtime.surface=cloudflare-worker` for the Cloudflare control plane Worker.
+- `runtime.surface=fly-langgraph` for the future Fly/LangGraph workflow runtime.
+
+This keeps issues, releases, and traces in one product view while preserving
+easy filters for the surfaces that fail differently. Add more tags when they
+represent real operating boundaries, such as `runtime.target`, `workspace.id`,
+or a non-sensitive agent/runtime label. Do not send provider keys, WorkOS
+secrets, model prompts containing private data, or raw tenant data to Sentry.
+
+Source maps should use `SENTRY_AUTH_TOKEN` only in trusted CI/deploy
+environments. Never commit the auth token or print it in logs.
+
 ## Health And Heartbeats
 
 Health endpoint checks should distinguish:

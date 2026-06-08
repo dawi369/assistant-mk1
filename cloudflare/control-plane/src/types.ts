@@ -29,6 +29,10 @@ export type Env = {
   OPENROUTER_MODEL?: string;
   OPENROUTER_SITE_URL?: string;
   OPENROUTER_APP_NAME?: string;
+  SENTRY_DSN?: string;
+  SENTRY_ENVIRONMENT?: string;
+  SENTRY_RELEASE?: string;
+  SENTRY_TRACES_SAMPLE_RATE?: string;
   WORKBENCH_EXECUTOR_URL?: string;
   WORKBENCH_EXECUTOR_TOKEN?: string;
   ALLOWED_ORIGINS?: string;

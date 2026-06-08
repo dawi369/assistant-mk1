@@ -21,6 +21,8 @@ database, the Vercel frontend, and the dedicated Fly LangGraph runtime gateway.
 - Cloudflare Worker: `assistant-mk1-dev-control-plane`
 - Cloudflare D1 database: `assistant_mk1_dev`
 - D1 binding: `DB`
+- Sentry: org `t23`, project `assistant-mk1`. Vercel and Cloudflare share the
+  project and are separated by `runtime.surface` tags.
 - Workbench smoke aliases:
   - `pnpm smoke:workbench` uses the Vercel/Next same-origin workbench route and
     is for local dev fallback or a future authenticated browser/session harness.
@@ -65,6 +67,8 @@ Optional secrets:
 - `LANGSMITH_API_KEY`
 - `LANGSMITH_TRACING`
 - `LANGSMITH_PROJECT`
+- `SENTRY_DSN`
+- `SENTRY_ENVIRONMENT`
 
 Committed Fly env:
 
@@ -86,6 +90,8 @@ cat > cloudflare/control-plane/.dev.vars <<'EOF'
 CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=local-dev-token
 LANGGRAPH_UPSTREAM_URL=http://127.0.0.1:2024
 LANGGRAPH_UPSTREAM_TOKEN=local-langgraph-proxy-token
+SENTRY_DSN=
+SENTRY_ENVIRONMENT=development
 WORKBENCH_EXECUTOR_URL=http://localhost:3000/api/workbench/executors/demo-inspect
 WORKBENCH_EXECUTOR_TOKEN=local-executor-token
 EOF
@@ -186,6 +192,7 @@ pnpm wrangler secret put CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN --config cloudflare/
 pnpm wrangler secret put LANGGRAPH_UPSTREAM_TOKEN --config cloudflare/control-plane/wrangler.jsonc
 pnpm wrangler secret put WORKBENCH_EXECUTOR_TOKEN --config cloudflare/control-plane/wrangler.jsonc
 pnpm wrangler secret put WORKBENCH_EXECUTOR_URL --config cloudflare/control-plane/wrangler.jsonc
+pnpm wrangler secret put SENTRY_DSN --config cloudflare/control-plane/wrangler.jsonc
 ```
 
 Use
@@ -195,6 +202,9 @@ as the remote executor URL. Do not commit token values.
 `LANGGRAPH_UPSTREAM_URL` is committed in `wrangler.jsonc` and points at
 `https://assistant-mk1-langgraph-dev.fly.dev`. `LANGGRAPH_UPSTREAM_TOKEN` must
 match the Fly `LANGGRAPH_PROXY_TOKEN`.
+
+`SENTRY_ENVIRONMENT=production` is committed for the deployed Worker. Keep
+`SENTRY_DSN` out of source and configure it as a Worker secret.
 
 Cloudflare LangGraph facade smoke:
 

@@ -116,6 +116,25 @@ Cloudflare-style Agents are the preferred future live control plane because they
 
 The current Vercel/Fly LangGraph path remains valid for development and staged validation while the Cloudflare-owned conversational control plane is built.
 
+## Observability Surfaces
+
+Assistant-MK1 uses Cloudflare-owned D1 records for durable runtime truth and
+Sentry for external exception/trace monitoring. The current Sentry project is
+`t23/assistant-mk1`.
+
+Keep Vercel, Cloudflare, and future Fly/LangGraph events in the same Sentry
+project, then filter by `runtime.surface`:
+
+- `vercel-next`
+- `cloudflare-worker`
+- `fly-langgraph`
+
+That matches the product boundary: one Assistant-MK1 product with multiple
+runtime surfaces. If a future customer deployment genuinely needs hard
+separation for billing, access, or data residency, create a separate Sentry
+project then; do not split projects just because the infrastructure has
+multiple deploy targets.
+
 ## Stream Ownership
 
 Cloudflare owns the user-facing stream. The frontend should keep its WebSocket/SSE/HTTP streaming relationship with the conversational control plane. Fly tool runners and LangGraph workflow services should publish progress by calling Cloudflare callbacks or writing scoped status to canonical state that Cloudflare can stream.

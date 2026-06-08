@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/cloudflare";
 import {
   handleGetCloudflareDemoRun,
   handleLatestCloudflareDemoRun,
@@ -147,12 +148,39 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
   return json({ ok: false, error: "not found" }, { status: 404 });
 };
 
-export default {
-  async fetch(request: Request, env: Env, ctx: WorkerExecutionContext) {
-    try {
-      return await handleRequest(request, env, ctx);
-    } catch (error) {
-      return internalErrorResponse("Unhandled control-plane error", error);
-    }
-  },
+const parseSampleRate = (value: string | undefined) => {
+  if (!value) return 0.1;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) return 0.1;
+  return parsed;
 };
+
+export default Sentry.withSentry<Env>(
+  (env) => {
+    if (!env.SENTRY_DSN) return undefined;
+
+    return {
+      dsn: env.SENTRY_DSN,
+      environment: env.SENTRY_ENVIRONMENT ?? "production",
+      release: env.SENTRY_RELEASE,
+      tracesSampleRate: parseSampleRate(env.SENTRY_TRACES_SAMPLE_RATE),
+      initialScope: {
+        tags: {
+          service: "assistant-mk1",
+          "runtime.surface": "cloudflare-worker",
+          "runtime.target": "control-plane",
+        },
+      },
+    };
+  },
+  {
+    async fetch(request: Request, env: Env, ctx: WorkerExecutionContext) {
+      try {
+        return await handleRequest(request, env, ctx);
+      } catch (error) {
+        Sentry.captureException(error);
+        return internalErrorResponse("Unhandled control-plane error", error);
+      }
+    },
+  },
+);
