@@ -792,8 +792,16 @@ export const handleCloudflareRunStream = async (
     traceId: trace.traceId,
     name: "Pre-stream total",
     layer: "cloudflare",
+    spanType: "phase",
+    isAggregate: true,
+    bottleneckCandidate: false,
     startedAtMs: trace.startedAtMs,
-    data: { runId, threadId: thread.thread_id, model },
+    data: {
+      runId,
+      threadId: thread.thread_id,
+      model,
+      note: "Overlapping phase summary from trace start through stream response preparation.",
+    },
   });
   const stream = new ReadableStream({
     start(controller) {

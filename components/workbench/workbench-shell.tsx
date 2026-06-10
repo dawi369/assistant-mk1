@@ -10,6 +10,7 @@ import {
   type AssistantSlashCommandContext,
 } from "@/components/assistant-ui/slash-command-context";
 import { AuthButton } from "@/components/auth/auth-button";
+import { WorkbenchComposerFocusProvider } from "@/components/workbench/composer-focus-context";
 import { AdminPanel } from "@/components/workbench/dev-monitor-drawer";
 import { ThreadHistorySidebar } from "@/components/workbench/thread-history-sidebar";
 import { WorkbenchAssistantEvents } from "@/components/workbench/workbench-assistant-events";
@@ -99,24 +100,26 @@ export function WorkbenchShell() {
 
   return (
     <div className="bg-background relative h-dvh overflow-hidden">
-      <AssistantSlashCommandProvider commands={slashCommands}>
-        <Assistant>
-          <WorkbenchAssistantEvents />
-          <ThreadHistorySidebar />
-          <div className="absolute top-3 right-3 z-20 flex max-w-[calc(100vw-1.5rem)] flex-col items-end gap-2">
-            <div className="flex items-center justify-end gap-2">
-              <AuthButton />
-            </div>
-            <WorkbenchRuntimeHint onOpenAdmin={openAdmin} />
-            {adminNotice ? (
-              <div className="border-border bg-background/95 text-muted-foreground rounded-md border px-2.5 py-1.5 text-xs shadow-xs backdrop-blur">
-                {adminNotice}
+      <WorkbenchComposerFocusProvider>
+        <AssistantSlashCommandProvider commands={slashCommands}>
+          <Assistant>
+            <WorkbenchAssistantEvents />
+            <ThreadHistorySidebar />
+            <div className="absolute top-3 right-3 z-20 flex max-w-[calc(100vw-1.5rem)] flex-col items-end gap-2">
+              <div className="flex items-center justify-end gap-2">
+                <AuthButton />
               </div>
-            ) : null}
-          </div>
-          <AdminPanel open={adminOpen} onOpenChange={setAdminOpen} />
-        </Assistant>
-      </AssistantSlashCommandProvider>
+              <WorkbenchRuntimeHint onOpenAdmin={openAdmin} />
+              {adminNotice ? (
+                <div className="border-border bg-background/95 text-muted-foreground rounded-md border px-2.5 py-1.5 text-xs shadow-xs backdrop-blur">
+                  {adminNotice}
+                </div>
+              ) : null}
+            </div>
+            <AdminPanel open={adminOpen} onOpenChange={setAdminOpen} />
+          </Assistant>
+        </AssistantSlashCommandProvider>
+      </WorkbenchComposerFocusProvider>
     </div>
   );
 }

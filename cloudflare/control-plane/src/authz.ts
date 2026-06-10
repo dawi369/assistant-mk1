@@ -20,6 +20,7 @@ import {
   selectWorkspace,
 } from "./authz-store";
 import { adminMembershipRoles } from "./membership-policy";
+import type { RuntimeTraceInputSpan } from "./runtime-traces";
 import { createId, toJson, type AgentIdentity, type Env } from "./types";
 
 const userEmailHeader = "x-assistant-mk1-user-email";
@@ -31,7 +32,28 @@ const membershipStatusHeader = "x-assistant-mk1-membership-status";
 const workspaceNameHeader = "x-assistant-mk1-workspace-name";
 const workspaceStatusHeader = "x-assistant-mk1-workspace-status";
 
-type ResolveResult = { ok: true; identity: AgentIdentity } | { ok: false; response: Response };
+type ResolveResult =
+  | { ok: true; identity: AgentIdentity; authzSpans: RuntimeTraceInputSpan[] }
+  | { ok: false; response: Response };
+
+const withAuthzSpan = async <T>(
+  authzSpans: RuntimeTraceInputSpan[],
+  input: Pick<RuntimeTraceInputSpan, "name" | "layer" | "data">,
+  fn: () => Promise<T>,
+) => {
+  const startedAtMs = Date.now();
+  try {
+    return await fn();
+  } finally {
+    authzSpans.push({
+      name: input.name,
+      layer: input.layer,
+      startedAtMs,
+      endedAtMs: Date.now(),
+      data: input.data,
+    });
+  }
+};
 
 const readOptionalHeader = (request: Request, name: string) =>
   request.headers.get(name)?.trim() || undefined;
@@ -400,11 +422,24 @@ const selectActiveAgent = async (env: Env, input: { userId: string; workspaceId:
 };
 
 export const resolveAgentIdentity = async (request: Request, env: Env): Promise<ResolveResult> => {
+  const authzSpans: RuntimeTraceInputSpan[] = [];
+  const headerStartedAtMs = Date.now();
   const userId = readRequiredHeader(request, userIdHeader);
   const accountId = readRequiredHeader(request, accountIdHeader);
   const accountSource = readRequiredHeader(request, accountSourceHeader);
   const workspaceId = readRequiredHeader(request, workspaceIdHeader);
   const explicitAgentId = readRequiredHeader(request, agentIdHeader);
+  authzSpans.push({
+    name: "Header/account parse",
+    layer: "cloudflare",
+    startedAtMs: headerStartedAtMs,
+    endedAtMs: Date.now(),
+    data: {
+      hasAccount: Boolean(accountId),
+      hasWorkspace: Boolean(workspaceId),
+      hasExplicitAgent: Boolean(explicitAgentId),
+    },
+  });
 
   if (!userId) {
     return {
@@ -437,6 +472,7 @@ export const resolveAgentIdentity = async (request: Request, env: Env): Promise<
         accountId: accountId ?? undefined,
         accountSource: accountSource ?? undefined,
       },
+      authzSpans,
     };
   }
 
@@ -467,19 +503,39 @@ export const resolveAgentIdentity = async (request: Request, env: Env): Promise<
     };
   }
 
-  await bootstrapAuthz(env, request, {
-    userId,
-    accountId,
-    accountSource,
-    workspaceId: expectedWorkspaceId,
-  });
-  const activeWorkspaceId = await selectActiveWorkspaceId(env, {
-    userId,
-    accountId,
-    defaultWorkspaceId: expectedWorkspaceId,
-  });
+  await withAuthzSpan(
+    authzSpans,
+    {
+      name: "User/workspace bootstrap",
+      layer: "d1",
+      data: { accountSource, defaultWorkspaceId: expectedWorkspaceId },
+    },
+    () =>
+      bootstrapAuthz(env, request, {
+        userId,
+        accountId,
+        accountSource,
+        workspaceId: expectedWorkspaceId,
+      }),
+  );
+  const activeWorkspaceId = await withAuthzSpan(
+    authzSpans,
+    {
+      name: "Active workspace preference",
+      layer: "d1",
+      data: { defaultWorkspaceId: expectedWorkspaceId },
+    },
+    () =>
+      selectActiveWorkspaceId(env, {
+        userId,
+        accountId,
+        defaultWorkspaceId: expectedWorkspaceId,
+      }),
+  );
 
-  const user = await selectUser(env, userId);
+  const user = await withAuthzSpan(authzSpans, { name: "User status resolve", layer: "d1" }, () =>
+    selectUser(env, userId),
+  );
   if (!user || user.status !== "active") {
     return {
       ok: false,
@@ -487,7 +543,15 @@ export const resolveAgentIdentity = async (request: Request, env: Env): Promise<
     };
   }
 
-  const workspace = await selectWorkspace(env, activeWorkspaceId);
+  const workspace = await withAuthzSpan(
+    authzSpans,
+    {
+      name: "Workspace status resolve",
+      layer: "d1",
+      data: { activeWorkspaceId },
+    },
+    () => selectWorkspace(env, activeWorkspaceId),
+  );
   if (!workspace || workspace.account_id !== accountId || workspace.status !== "active") {
     return {
       ok: false,
@@ -495,7 +559,15 @@ export const resolveAgentIdentity = async (request: Request, env: Env): Promise<
     };
   }
 
-  const membership = await selectMembership(env, userId, activeWorkspaceId);
+  const membership = await withAuthzSpan(
+    authzSpans,
+    {
+      name: "Membership resolve",
+      layer: "d1",
+      data: { activeWorkspaceId },
+    },
+    () => selectMembership(env, userId, activeWorkspaceId),
+  );
   if (!membership || membership.status !== "active") {
     return {
       ok: false,
@@ -503,7 +575,11 @@ export const resolveAgentIdentity = async (request: Request, env: Env): Promise<
     };
   }
 
-  const defaultWorkspace = await selectDefaultWorkspaceForAccount(env, accountId);
+  const defaultWorkspace = await withAuthzSpan(
+    authzSpans,
+    { name: "Default workspace resolve", layer: "d1" },
+    () => selectDefaultWorkspaceForAccount(env, accountId),
+  );
   if (!defaultWorkspace) {
     return {
       ok: false,
@@ -511,7 +587,15 @@ export const resolveAgentIdentity = async (request: Request, env: Env): Promise<
     };
   }
 
-  const agentResult = await selectActiveAgent(env, { userId, workspaceId: activeWorkspaceId });
+  const agentResult = await withAuthzSpan(
+    authzSpans,
+    {
+      name: "Active/default agent resolve",
+      layer: "d1",
+      data: { activeWorkspaceId },
+    },
+    () => selectActiveAgent(env, { userId, workspaceId: activeWorkspaceId }),
+  );
   if (!agentResult.ok) {
     return {
       ok: false,
@@ -527,5 +611,6 @@ export const resolveAgentIdentity = async (request: Request, env: Env): Promise<
       accountId,
       accountSource,
     },
+    authzSpans,
   };
 };

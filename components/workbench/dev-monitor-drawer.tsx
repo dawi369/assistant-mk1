@@ -28,6 +28,7 @@ import {
   StatusRow,
   terminalStatuses,
 } from "@/components/workbench/dev-monitor-primitives";
+import { useWorkbenchComposerFocus } from "@/components/workbench/composer-focus-context";
 import { NewChatButton } from "@/components/workbench/new-chat-button";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -135,16 +136,62 @@ const sortSpans = (spans: RuntimeSpan[]) =>
     return leftTime - rightTime;
   });
 
+const occupiedDuration = (spans: RuntimeSpan[]) => {
+  const intervals = spans
+    .map((span) => {
+      const start = span.offsetMs ?? 0;
+      const end = start + (span.durationMs ?? 0);
+      return end > start ? { start, end } : null;
+    })
+    .filter((interval): interval is { start: number; end: number } => Boolean(interval))
+    .sort((left, right) => left.start - right.start);
+
+  let total = 0;
+  let current: { start: number; end: number } | null = null;
+  for (const interval of intervals) {
+    if (!current) {
+      current = { ...interval };
+      continue;
+    }
+    if (interval.start <= current.end) {
+      current.end = Math.max(current.end, interval.end);
+      continue;
+    }
+    total += current.end - current.start;
+    current = { ...interval };
+  }
+  if (current) total += current.end - current.start;
+  return total;
+};
+
 function LiveRequestMap({ trace, spans }: { trace?: RuntimeTrace | null; spans: RuntimeSpan[] }) {
   const sortedSpans = sortSpans(spans);
+  const operationSpans = sortedSpans.filter((span) => span.bottleneckCandidate !== false);
+  const phaseSpans = sortedSpans.filter(
+    (span) => span.spanType === "phase" || span.isAggregate === true,
+  );
   const bottleneck =
-    sortedSpans.find((span) => span.spanId === trace?.bottleneckSpanId) ??
-    sortedSpans
+    operationSpans.find((span) => span.spanId === trace?.bottleneckSpanId) ??
+    operationSpans
       .filter((span) => typeof span.durationMs === "number")
       .sort((left, right) => (right.durationMs ?? 0) - (left.durationMs ?? 0))[0];
   const runningSpan = sortedSpans.find((span) => span.status === "running");
   const activeLayer = runningSpan?.layer ?? bottleneck?.layer ?? sortedSpans.at(-1)?.layer;
-  const maxDuration = Math.max(1, ...sortedSpans.map((span) => span.durationMs ?? 0));
+  const maxTimeline = Math.max(
+    1,
+    trace?.durationMs ?? 0,
+    ...sortedSpans.map((span) => (span.offsetMs ?? 0) + (span.durationMs ?? 0)),
+  );
+  const providerFirstToken = sortedSpans.find((span) => span.name === "OpenRouter first token");
+  const streamDuration = sortedSpans.find((span) => span.name === "Stream duration");
+  const postStream = sortedSpans.find((span) => span.name === "Post-stream D1 writes");
+  const phaseSummary = [
+    ["Pre-stream", phaseSpans.find((span) => span.name === "Pre-stream total")?.durationMs],
+    ["First token", providerFirstToken?.durationMs],
+    ["Stream", streamDuration?.durationMs],
+    ["Post-stream", postStream?.durationMs],
+    ["Total", trace?.durationMs],
+  ] as const;
 
   return (
     <MonitorSection icon={ActivityIcon} title="Live Request Map">
@@ -161,19 +208,33 @@ function LiveRequestMap({ trace, spans }: { trace?: RuntimeTrace | null; spans: 
         </div>
         <div className="grid grid-cols-2 gap-2 text-right text-xs">
           <StatusRow label="Total" value={formatDuration(trace?.durationMs)} compact />
-          <StatusRow label="Bottleneck" value={bottleneck?.name ?? "none"} compact />
+          <StatusRow
+            label={trace?.bottleneckConfidence === "fallback" ? "Bottleneck*" : "Bottleneck"}
+            value={bottleneck?.name ?? "none"}
+            compact
+          />
         </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
+        {phaseSummary.map(([label, value]) => (
+          <div key={label} className="border-border rounded-md border p-3 text-sm">
+            <p className="text-muted-foreground text-xs">{label}</p>
+            <p className="mt-1 font-medium">{formatDuration(value) ?? "-"}</p>
+          </div>
+        ))}
       </div>
 
       <div className="grid grid-cols-2 gap-2 md:grid-cols-4 lg:grid-cols-7">
         {serviceNodes.map((node) => {
-          const nodeSpans = sortedSpans.filter((span) => span.layer === node.layer);
-          const failed = nodeSpans.some(
+          const nodeAllSpans = sortedSpans.filter((span) => span.layer === node.layer);
+          const nodeSpans = nodeAllSpans.filter((span) => !span.isAggregate);
+          const failed = nodeAllSpans.some(
             (span) => span.status === "failed" || span.status === "blocked",
           );
           const completed = nodeSpans.some((span) => span.status === "completed");
           const active = activeLayer === node.layer;
-          const totalMs = nodeSpans.reduce((sum, span) => sum + (span.durationMs ?? 0), 0);
+          const totalMs = occupiedDuration(nodeSpans);
           return (
             <div
               key={node.layer}
@@ -200,7 +261,7 @@ function LiveRequestMap({ trace, spans }: { trace?: RuntimeTrace | null; spans: 
               </div>
               <p className="text-muted-foreground mt-1 text-xs">
                 {nodeSpans.length
-                  ? `${nodeSpans.length} spans / ${formatDuration(totalMs)}`
+                  ? `${nodeSpans.length} spans / ${formatDuration(totalMs)} occupied`
                   : "idle"}
               </p>
             </div>
@@ -209,30 +270,48 @@ function LiveRequestMap({ trace, spans }: { trace?: RuntimeTrace | null; spans: 
       </div>
 
       <div className="space-y-2">
-        <p className="text-muted-foreground text-xs font-medium">Waterfall</p>
+        <div className="space-y-1">
+          <p className="text-muted-foreground text-xs font-medium">Waterfall</p>
+          <p className="text-muted-foreground text-xs">
+            Phase rows summarize overlapping work and are excluded from bottleneck ranking.
+          </p>
+          {trace?.bottleneckReason ? (
+            <p className="text-muted-foreground text-xs">{trace.bottleneckReason}</p>
+          ) : null}
+        </div>
         {sortedSpans.length ? (
           sortedSpans.map((span) => (
             <div
               key={span.spanId}
-              className="grid grid-cols-[9rem_1fr_4.5rem] items-center gap-2 text-xs"
+              className="grid grid-cols-[9rem_1fr_5.5rem] items-center gap-2 text-xs"
             >
               <span className="text-muted-foreground truncate">{span.layer}</span>
               <div className="min-w-0">
                 <div className="mb-1 flex items-center justify-between gap-2">
-                  <span className="truncate font-medium">{span.name}</span>
+                  <span className="truncate font-medium">
+                    {span.name}
+                    {span.isAggregate ? (
+                      <span className="text-muted-foreground ml-1 font-normal">(phase)</span>
+                    ) : null}
+                  </span>
                   <StatusPill status={span.status} tone={traceTone(span.status)} />
                 </div>
-                <div className="bg-muted h-1.5 overflow-hidden rounded-full">
+                <div className="bg-muted relative h-1.5 overflow-hidden rounded-full">
                   <div
-                    className="bg-primary h-full rounded-full"
+                    className={[
+                      "absolute h-full rounded-full",
+                      span.isAggregate ? "bg-muted-foreground/50" : "bg-primary",
+                    ].join(" ")}
                     style={{
-                      width: `${Math.max(4, ((span.durationMs ?? 0) / maxDuration) * 100)}%`,
+                      left: `${Math.min(100, ((span.offsetMs ?? 0) / maxTimeline) * 100)}%`,
+                      width: `${Math.max(2, ((span.durationMs ?? 0) / maxTimeline) * 100)}%`,
                     }}
                   />
                 </div>
               </div>
               <span className="text-muted-foreground text-right">
                 {formatDuration(span.durationMs) ?? "-"}
+                {typeof span.offsetMs === "number" ? ` @ ${formatDuration(span.offsetMs)}` : ""}
               </span>
             </div>
           ))
@@ -251,6 +330,7 @@ export function AdminPanel({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { focusComposer } = useWorkbenchComposerFocus();
   const [summary, setSummary] = useState<CloudflareAdminSummaryResponse["summary"] | null>(null);
   const [behaviorTemplates, setBehaviorTemplates] = useState<AgentBehaviorTemplate[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -517,6 +597,10 @@ export function AdminPanel({
       <DialogContent
         className="grid h-[min(85vh,56rem)] w-[min(80vw,72rem)] max-w-[calc(100vw-2rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-[min(80vw,72rem)]"
         aria-describedby="admin-panel-description"
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          focusComposer();
+        }}
       >
         <DialogHeader className="border-border border-b px-5 py-4">
           <DialogTitle className="flex items-center gap-2 text-base">

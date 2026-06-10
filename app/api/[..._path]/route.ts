@@ -78,40 +78,47 @@ async function handleRequest(req: NextRequest, method: string) {
     searchParams.delete("nxtP_path");
     const queryString = searchParams.toString() ? `?${searchParams.toString()}` : "";
 
-    const options: RequestInit = {
-      method,
-      headers: await proxyHeaders({
+    const requestHeaders: Record<string, string> = {};
+    let body: string | undefined;
+    if (["POST", "PUT", "PATCH"].includes(method)) {
+      const contentType = req.headers.get("content-type");
+      if (contentType) {
+        requestHeaders["content-type"] = contentType;
+      }
+      body = await req.text();
+    }
+
+    Object.assign(
+      requestHeaders,
+      await proxyHeaders({
         traceId,
         startedAtMs: proxyStartedAtMs,
         durationMs: Date.now() - proxyStartedAtMs,
       }),
+    );
+    const options: RequestInit = {
+      method,
+      headers: requestHeaders,
       signal: req.signal,
+      body,
     };
-
-    if (["POST", "PUT", "PATCH"].includes(method)) {
-      const contentType = req.headers.get("content-type");
-      if (contentType) {
-        (options.headers as Record<string, string>)["content-type"] = contentType;
-      }
-      options.body = await req.text();
-    }
 
     const res = await fetch(`${apiUrl}/${path}${queryString}`, options);
 
-    const headers = new Headers(res.headers);
-    headers.set("x-assistant-mk1-trace-id", traceId);
-    headers.delete("content-encoding");
-    headers.delete("content-length");
-    headers.delete("transfer-encoding");
+    const responseHeaders = new Headers(res.headers);
+    responseHeaders.set("x-assistant-mk1-trace-id", traceId);
+    responseHeaders.delete("content-encoding");
+    responseHeaders.delete("content-length");
+    responseHeaders.delete("transfer-encoding");
     const corsHeaders = getCorsHeaders(requestOrigin);
     for (const [key, value] of Object.entries(corsHeaders)) {
-      headers.set(key, value);
+      responseHeaders.set(key, value);
     }
 
     return new NextResponse(res.body, {
       status: res.status,
       statusText: res.statusText,
-      headers,
+      headers: responseHeaders,
     });
   } catch (e: unknown) {
     return toWorkbenchApiError(e, "LangGraph proxy request failed");

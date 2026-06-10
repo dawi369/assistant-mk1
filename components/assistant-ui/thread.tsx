@@ -23,6 +23,7 @@ import {
   useAssistantSlashCommands,
   type AssistantSlashCommand,
 } from "@/components/assistant-ui/slash-command-context";
+import { useWorkbenchComposerFocus } from "@/components/workbench/composer-focus-context";
 import {
   ToolGroupContent,
   ToolGroupRoot,
@@ -60,7 +61,7 @@ import {
   RefreshCwIcon,
   SquareIcon,
 } from "lucide-react";
-import type { FC, FormEvent } from "react";
+import { useCallback, type FC, type FormEvent } from "react";
 
 export const Thread: FC = () => {
   return (
@@ -236,6 +237,7 @@ const ThreadSuggestionItem: FC = () => {
 
 const Composer: FC = () => {
   const commands = useAssistantSlashCommands();
+  const { registerComposerInput } = useWorkbenchComposerFocus();
   const aui = useAui();
   const composerText = useAuiState((s) => s.composer.text);
   const isThreadRunning = useAuiState((s) => s.thread.isRunning);
@@ -245,6 +247,12 @@ const Composer: FC = () => {
     isLoadingThread,
     isThreadRunning,
   };
+  const registerInput = useCallback(
+    (element: HTMLTextAreaElement | null) => {
+      registerComposerInput(element);
+    },
+    [registerComposerInput],
+  );
 
   const executeExactSlashCommand = (event: FormEvent<HTMLFormElement>) => {
     const normalizedText = composerText.trim().toLowerCase();
@@ -269,6 +277,7 @@ const Composer: FC = () => {
           >
             <ComposerAttachments />
             <ComposerPrimitive.Input
+              ref={registerInput}
               placeholder="Send a message..."
               className="aui-composer-input placeholder:text-muted-foreground/80 max-h-32 min-h-10 w-full resize-none bg-transparent px-1.75 py-1 text-sm outline-none"
               rows={1}

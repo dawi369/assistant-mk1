@@ -67,6 +67,7 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
     traceId: getTraceId(request),
     authzStartedAtMs,
     authzEndedAtMs,
+    authzSpans: identityResult.authzSpans,
     vercelStartedAtMs: vercelTiming.startedAtMs,
     vercelDurationMs: vercelTiming.durationMs,
   };

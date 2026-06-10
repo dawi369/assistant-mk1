@@ -162,6 +162,8 @@ export type RuntimeTrace = {
   rootName: string;
   summary?: string;
   bottleneckSpanId?: Id;
+  bottleneckConfidence?: "exact" | "fallback";
+  bottleneckReason?: string;
   data?: Record<string, unknown>;
   startedAt?: string;
   endedAt?: string;
@@ -179,6 +181,10 @@ export type RuntimeSpan = {
   name: string;
   layer: RuntimeTraceLayer;
   status: RuntimeTraceStatus;
+  spanType?: "operation" | "phase" | "event";
+  isAggregate?: boolean;
+  bottleneckCandidate?: boolean;
+  offsetMs?: number;
   data?: Record<string, unknown>;
   startedAt?: string;
   endedAt?: string;

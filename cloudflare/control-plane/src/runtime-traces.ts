@@ -27,6 +27,7 @@ export type RuntimeSpanLayer =
   | "tool";
 
 export type RuntimeSpanStatus = "running" | "completed" | "failed" | "blocked";
+export type RuntimeSpanType = "operation" | "phase" | "event";
 
 export type RuntimeTraceContext = {
   traceId: string;
@@ -39,10 +40,23 @@ export type IncomingRuntimeTrace = {
   traceId: string;
   authzStartedAtMs: number;
   authzEndedAtMs: number;
+  authzSpans?: RuntimeTraceInputSpan[];
   vercelStartedAtMs?: number | null;
   vercelDurationMs?: number | null;
   threadOwnershipStartedAtMs?: number | null;
   threadOwnershipEndedAtMs?: number | null;
+};
+
+export type RuntimeTraceInputSpan = {
+  name: string;
+  layer: RuntimeSpanLayer;
+  status?: RuntimeSpanStatus;
+  startedAtMs: number;
+  endedAtMs?: number;
+  data?: Record<string, unknown>;
+  spanType?: RuntimeSpanType;
+  isAggregate?: boolean;
+  bottleneckCandidate?: boolean;
 };
 
 const traceIdHeader = "x-assistant-mk1-trace-id";
@@ -75,13 +89,53 @@ export const readVercelTimingHeaders = (request: Request) => ({
   durationMs: readNumberHeader(request, vercelDurationHeader),
 });
 
-const computeBottleneckSpanId = (spans: RuntimeSpanRow[]) => {
+const spanSemantics = (data: Record<string, unknown>) => {
+  const spanType =
+    data.spanType === "phase" || data.spanType === "event" || data.spanType === "operation"
+      ? data.spanType
+      : "operation";
+  const isAggregate = typeof data.isAggregate === "boolean" ? data.isAggregate : false;
+  const bottleneckCandidate =
+    typeof data.bottleneckCandidate === "boolean"
+      ? data.bottleneckCandidate
+      : spanType === "operation" && !isAggregate;
+  return { spanType, isAggregate, bottleneckCandidate };
+};
+
+const computeBottleneck = (spans: RuntimeSpanRow[]) => {
   let bottleneck: RuntimeSpanRow | null = null;
-  for (const span of spans) {
+  const candidates = spans.filter((span) => {
+    const data = parseDataJson(span.data_json);
+    return spanSemantics(data).bottleneckCandidate;
+  });
+
+  for (const span of candidates) {
     if (typeof span.duration_ms !== "number") continue;
     if (!bottleneck || (bottleneck.duration_ms ?? 0) < span.duration_ms) bottleneck = span;
   }
-  return bottleneck?.span_id ?? null;
+
+  if (bottleneck) {
+    return {
+      spanId: bottleneck.span_id,
+      confidence: "exact" as const,
+      reason: "Longest operation span excluding phase summaries.",
+    };
+  }
+
+  let fallbackBottleneck: RuntimeSpanRow | null = null;
+  for (const span of spans) {
+    if (typeof span.duration_ms !== "number" || span.duration_ms <= 0) continue;
+    if (!fallbackBottleneck || (fallbackBottleneck.duration_ms ?? 0) < span.duration_ms) {
+      fallbackBottleneck = span;
+    }
+  }
+  return {
+    spanId: fallbackBottleneck?.span_id ?? null,
+    confidence: "fallback" as const,
+    reason: fallbackBottleneck
+      ? "No operation span candidates were available, so the longest non-zero span was used."
+      : "No completed span durations were available.",
+  };
 };
 
 const toTraceSummary = (row: RuntimeTraceRow) => ({
@@ -96,6 +150,12 @@ const toTraceSummary = (row: RuntimeTraceRow) => ({
   rootName: row.root_name,
   summary: row.summary ?? undefined,
   bottleneckSpanId: row.bottleneck_span_id ?? undefined,
+  bottleneckConfidence:
+    parseDataJson(row.data_json).bottleneckConfidence === "fallback" ? "fallback" : "exact",
+  bottleneckReason:
+    typeof parseDataJson(row.data_json).bottleneckReason === "string"
+      ? String(parseDataJson(row.data_json).bottleneckReason)
+      : undefined,
   data: parseDataJson(row.data_json),
   startedAt: row.started_at,
   endedAt: row.ended_at ?? undefined,
@@ -104,25 +164,39 @@ const toTraceSummary = (row: RuntimeTraceRow) => ({
   updatedAt: row.updated_at,
 });
 
-const toSpanSummary = (row: RuntimeSpanRow) => ({
-  spanId: row.span_id,
-  traceId: row.trace_id,
-  parentSpanId: row.parent_span_id ?? undefined,
-  scope: {
-    userId: row.user_id,
-    workspaceId: row.workspace_id,
-  },
-  agentId: row.agent_id,
-  name: row.name,
-  layer: row.layer,
-  status: row.status,
-  data: parseDataJson(row.data_json),
-  startedAt: row.started_at,
-  endedAt: row.ended_at ?? undefined,
-  durationMs: row.duration_ms ?? undefined,
-  createdAt: row.created_at,
-  updatedAt: row.updated_at,
-});
+const toSpanSummary = (row: RuntimeSpanRow, traceStartedAt?: string) => {
+  const data = parseDataJson(row.data_json);
+  const semantics = spanSemantics(data);
+  const traceStartMs = traceStartedAt ? Date.parse(traceStartedAt) : Number.NaN;
+  const spanStartMs = Date.parse(row.started_at);
+  const offsetMs =
+    Number.isFinite(traceStartMs) && Number.isFinite(spanStartMs)
+      ? Math.max(0, Math.round(spanStartMs - traceStartMs))
+      : undefined;
+  return {
+    spanId: row.span_id,
+    traceId: row.trace_id,
+    parentSpanId: row.parent_span_id ?? undefined,
+    scope: {
+      userId: row.user_id,
+      workspaceId: row.workspace_id,
+    },
+    agentId: row.agent_id,
+    name: row.name,
+    layer: row.layer,
+    status: row.status,
+    spanType: semantics.spanType,
+    isAggregate: semantics.isAggregate,
+    bottleneckCandidate: semantics.bottleneckCandidate,
+    offsetMs,
+    data,
+    startedAt: row.started_at,
+    endedAt: row.ended_at ?? undefined,
+    durationMs: row.duration_ms ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+};
 
 const readTraceRow = (env: Env, scope: TenantScope, traceId: string) =>
   env.DB.prepare(
@@ -170,7 +244,7 @@ export const getRuntimeTraceSnapshot = async (env: Env, scope: TenantScope, trac
   const spans = await listRuntimeSpans(env, scope, traceId);
   return {
     trace: toTraceSummary(trace),
-    spans: spans.map(toSpanSummary),
+    spans: spans.map((span) => toSpanSummary(span, trace.started_at)),
   };
 };
 
@@ -237,6 +311,9 @@ export const recordSpan = async (
     layer: RuntimeSpanLayer;
     status?: RuntimeSpanStatus;
     data?: Record<string, unknown>;
+    spanType?: RuntimeSpanType;
+    isAggregate?: boolean;
+    bottleneckCandidate?: boolean;
     startedAtMs: number;
     endedAtMs?: number;
   },
@@ -267,7 +344,14 @@ export const recordSpan = async (
       input.name,
       input.layer,
       input.status ?? "completed",
-      toJson(input.data ?? {}),
+      toJson({
+        ...input.data,
+        ...spanSemantics({
+          spanType: input.spanType ?? input.data?.spanType,
+          isAggregate: input.isAggregate ?? input.data?.isAggregate,
+          bottleneckCandidate: input.bottleneckCandidate ?? input.data?.bottleneckCandidate,
+        }),
+      }),
       toIso(input.startedAtMs),
       toIso(endedAtMs),
       duration(input.startedAtMs, endedAtMs),
@@ -286,14 +370,18 @@ export const recordIncomingRequestSpans = async (
 ) => {
   if (!incoming) return;
 
-  if (incoming.vercelStartedAtMs && incoming.vercelDurationMs) {
+  if (incoming.vercelStartedAtMs !== null && incoming.vercelStartedAtMs !== undefined) {
+    const vercelDurationMs = incoming.vercelDurationMs ?? 0;
     await recordSpan(env, identity, {
       traceId: trace.traceId,
-      name: "Vercel proxy",
+      name: "Vercel handoff",
       layer: "vercel",
       startedAtMs: incoming.vercelStartedAtMs,
-      endedAtMs: incoming.vercelStartedAtMs + incoming.vercelDurationMs,
-      data: { source: "x-assistant-mk1-vercel-duration-ms" },
+      endedAtMs: incoming.vercelStartedAtMs + vercelDurationMs,
+      data: {
+        source: "x-assistant-mk1-vercel-duration-ms",
+        note: "Pre-forward Vercel proxy setup only; not full stream duration.",
+      },
     });
   }
 
@@ -303,8 +391,18 @@ export const recordIncomingRequestSpans = async (
     layer: "cloudflare",
     startedAtMs: incoming.authzStartedAtMs,
     endedAtMs: incoming.authzEndedAtMs,
+    spanType: "phase",
+    isAggregate: true,
+    bottleneckCandidate: false,
     data: { source: "resolveAgentIdentity" },
   });
+
+  for (const span of incoming.authzSpans ?? []) {
+    await recordSpan(env, identity, {
+      traceId: trace.traceId,
+      ...span,
+    });
+  }
 
   if (incoming.threadOwnershipStartedAtMs && incoming.threadOwnershipEndedAtMs) {
     await recordSpan(env, identity, {
@@ -331,7 +429,12 @@ export const finishTrace = async (
 ) => {
   const endedAtMs = input.endedAtMs ?? Date.now();
   const spans = await listRuntimeSpans(env, identity.scope, trace.traceId);
-  const bottleneckSpanId = computeBottleneckSpanId(spans);
+  const bottleneck = computeBottleneck(spans);
+  const data = {
+    ...input.data,
+    bottleneckConfidence: bottleneck.confidence,
+    bottleneckReason: bottleneck.reason,
+  };
   await env.DB.prepare(
     `UPDATE runtime_traces
      SET status = ?, summary = ?, bottleneck_span_id = ?, data_json = ?, ended_at = ?,
@@ -341,8 +444,8 @@ export const finishTrace = async (
     .bind(
       input.status,
       input.summary ?? null,
-      bottleneckSpanId,
-      toJson(input.data ?? {}),
+      bottleneck.spanId,
+      toJson(data),
       toIso(endedAtMs),
       duration(trace.startedAtMs, endedAtMs),
       toIso(endedAtMs),

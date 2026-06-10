@@ -10,6 +10,7 @@ type RuntimeTrace = {
   kind?: string;
   status?: string;
   bottleneckSpanId?: string;
+  bottleneckConfidence?: string;
   durationMs?: number;
 };
 
@@ -18,6 +19,10 @@ type RuntimeSpan = {
   name?: string;
   layer?: string;
   status?: string;
+  spanType?: string;
+  isAggregate?: boolean;
+  bottleneckCandidate?: boolean;
+  offsetMs?: number;
   durationMs?: number;
 };
 
@@ -39,6 +44,10 @@ type ToolRunResponse = {
   run?: { id?: string; status?: string };
   toolCall?: { id?: string; status?: string } | null;
   artifact?: { id?: string } | null;
+};
+
+type ThreadResponse = {
+  thread_id?: string;
 };
 
 type AdminSummaryResponse = {
@@ -109,7 +118,24 @@ runSmoke("Cloudflare runtime traces smoke", async () => {
   const createTrace = await requireRecentTrace("chat.thread.create");
   const createDetail = await getTrace(owner, createTrace.traceId);
   requireSpan(createDetail.spans, (span) => span.name === "Cloudflare authz");
+  requireSpan(createDetail.spans, (span) => span.name === "Header/account parse");
   requireSpan(createDetail.spans, (span) => span.name === "Thread ownership write");
+
+  const syntheticTraceId = `trace-smoke-vercel-${suffix}`;
+  await readJson<ThreadResponse>("/langgraph/threads", owner, {
+    method: "POST",
+    headers: {
+      "x-assistant-mk1-trace-id": syntheticTraceId,
+      "x-assistant-mk1-vercel-started-at": String(Date.now()),
+      "x-assistant-mk1-vercel-duration-ms": "0",
+    },
+    body: "{}",
+  });
+  const syntheticTrace = await getTrace(owner, syntheticTraceId);
+  requireSpan(
+    syntheticTrace.spans,
+    (span) => span.name === "Vercel handoff" && span.durationMs === 0,
+  );
 
   const stream = await startStream(
     owner,
@@ -129,10 +155,38 @@ runSmoke("Cloudflare runtime traces smoke", async () => {
   requireSpan(chatDetail.spans, (span) => span.layer === "cloudflare");
   requireSpan(chatDetail.spans, (span) => span.layer === "d1");
   requireSpan(chatDetail.spans, (span) => span.layer === "provider");
+  requireSpan(chatDetail.spans, (span) => span.name === "Header/account parse");
+  requireSpan(chatDetail.spans, (span) => span.name === "Membership resolve");
+  requireSpan(chatDetail.spans, (span) => span.name === "Active/default agent resolve");
+  requireSpan(
+    chatDetail.spans,
+    (span) =>
+      span.name === "Pre-stream total" &&
+      span.spanType === "phase" &&
+      span.isAggregate === true &&
+      span.bottleneckCandidate === false,
+  );
   requireSpan(chatDetail.spans, (span) => span.name === "OpenRouter first token");
   requireSpan(chatDetail.spans, (span) => span.name === "Stream duration");
   if (!chatDetail.trace?.bottleneckSpanId) {
     throw new Error("chat trace did not compute bottleneck");
+  }
+  const bottleneck = requireSpan(
+    chatDetail.spans,
+    (span) => span.spanId === chatDetail.trace?.bottleneckSpanId,
+  );
+  if (bottleneck.name === "Pre-stream total") {
+    throw new Error("aggregate Pre-stream total was selected as bottleneck");
+  }
+  if (chatDetail.trace.bottleneckConfidence !== "exact") {
+    throw new Error(
+      `chat trace expected exact bottleneck, got ${chatDetail.trace.bottleneckConfidence}`,
+    );
+  }
+  for (const span of chatDetail.spans ?? []) {
+    if (typeof span.offsetMs !== "number" || span.offsetMs < 0) {
+      throw new Error(`span offset missing or invalid: ${JSON.stringify(span)}`);
+    }
   }
 
   const toolRun = await readJson<ToolRunResponse>("/tools/runs", owner, {
