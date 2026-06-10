@@ -9,7 +9,6 @@ import {
   FileTextIcon,
   Loader2Icon,
   MessageSquareIcon,
-  PanelRightOpenIcon,
   PlayIcon,
   PlusIcon,
   RefreshCwIcon,
@@ -37,7 +36,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   requestWorkbenchSummaryRefresh,
@@ -97,7 +95,7 @@ function DetailsBlock({
   );
 }
 
-export function DevMonitorDrawer({
+export function AdminPanel({
   open,
   onOpenChange,
 }: {
@@ -333,22 +331,16 @@ export function DevMonitorDrawer({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="bg-background/95 shadow-xs">
-          <PanelRightOpenIcon className="size-4" />
-          Dev Monitor
-        </Button>
-      </DialogTrigger>
       <DialogContent
-        className="top-0 right-0 left-auto h-dvh max-h-dvh w-[min(100vw,30rem)] max-w-none translate-x-0 translate-y-0 gap-0 overflow-hidden rounded-none border-y-0 border-r-0 p-0 sm:max-w-none"
-        aria-describedby="dev-monitor-description"
+        className="grid h-[min(85vh,56rem)] w-[min(80vw,72rem)] max-w-[calc(100vw-2rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-[min(80vw,72rem)]"
+        aria-describedby="admin-panel-description"
       >
         <DialogHeader className="border-border border-b px-5 py-4">
           <DialogTitle className="flex items-center gap-2 text-base">
-            <PanelRightOpenIcon className="text-muted-foreground size-4" />
-            Dev Monitor
+            <ShieldCheckIcon className="text-muted-foreground size-4" />
+            Admin
           </DialogTitle>
-          <DialogDescription id="dev-monitor-description">
+          <DialogDescription id="admin-panel-description">
             Flow-first view of Cloudflare-owned chat, workspace, agent, and diagnostic state.
           </DialogDescription>
         </DialogHeader>

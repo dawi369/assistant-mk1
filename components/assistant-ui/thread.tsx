@@ -20,6 +20,10 @@ import {
   ReasoningTrigger,
 } from "@/components/assistant-ui/reasoning";
 import {
+  useAssistantSlashCommands,
+  type AssistantSlashCommand,
+} from "@/components/assistant-ui/slash-command-context";
+import {
   ToolGroupContent,
   ToolGroupRoot,
   ToolGroupTrigger,
@@ -39,6 +43,7 @@ import {
   MessagePrimitive,
   SuggestionPrimitive,
   ThreadPrimitive,
+  unstable_useSlashCommandAdapter,
   useAui,
   useAuiState,
 } from "@assistant-ui/react";
@@ -55,7 +60,7 @@ import {
   RefreshCwIcon,
   SquareIcon,
 } from "lucide-react";
-import type { FC } from "react";
+import type { FC, FormEvent } from "react";
 
 export const Thread: FC = () => {
   return (
@@ -230,25 +235,110 @@ const ThreadSuggestionItem: FC = () => {
 };
 
 const Composer: FC = () => {
+  const commands = useAssistantSlashCommands();
+  const aui = useAui();
+  const composerText = useAuiState((s) => s.composer.text);
+  const isThreadRunning = useAuiState((s) => s.thread.isRunning);
+  const isLoadingThread = useAuiState((s) => s.threads.isLoading);
+  const commandContext = {
+    aui,
+    isLoadingThread,
+    isThreadRunning,
+  };
+
+  const executeExactSlashCommand = (event: FormEvent<HTMLFormElement>) => {
+    const normalizedText = composerText.trim().toLowerCase();
+    const command = commands.find((item) => normalizedText === `/${item.id.toLowerCase()}`);
+    if (!command) return;
+
+    event.preventDefault();
+    aui.thread().composer().setText("");
+    void command.execute(commandContext);
+  };
+
   return (
-    <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
-      <ComposerPrimitive.AttachmentDropzone asChild>
-        <div
-          data-slot="aui_composer-shell"
-          className="bg-background focus-within:border-ring/75 focus-within:ring-ring/20 data-[dragging=true]:border-ring data-[dragging=true]:bg-accent/50 flex w-full flex-col gap-2 rounded-(--composer-radius) border p-(--composer-padding) transition-shadow focus-within:ring-2 data-[dragging=true]:border-dashed"
-        >
-          <ComposerAttachments />
-          <ComposerPrimitive.Input
-            placeholder="Send a message..."
-            className="aui-composer-input placeholder:text-muted-foreground/80 max-h-32 min-h-10 w-full resize-none bg-transparent px-1.75 py-1 text-sm outline-none"
-            rows={1}
-            autoFocus
-            aria-label="Message input"
-          />
-          <ComposerAction />
-        </div>
-      </ComposerPrimitive.AttachmentDropzone>
-    </ComposerPrimitive.Root>
+    <ComposerPrimitive.Unstable_TriggerPopoverRoot>
+      <ComposerPrimitive.Root
+        className="aui-composer-root relative flex w-full flex-col"
+        onSubmit={executeExactSlashCommand}
+      >
+        <ComposerPrimitive.AttachmentDropzone asChild>
+          <div
+            data-slot="aui_composer-shell"
+            className="bg-background focus-within:border-ring/75 focus-within:ring-ring/20 data-[dragging=true]:border-ring data-[dragging=true]:bg-accent/50 flex w-full flex-col gap-2 rounded-(--composer-radius) border p-(--composer-padding) transition-shadow focus-within:ring-2 data-[dragging=true]:border-dashed"
+          >
+            <ComposerAttachments />
+            <ComposerPrimitive.Input
+              placeholder="Send a message..."
+              className="aui-composer-input placeholder:text-muted-foreground/80 max-h-32 min-h-10 w-full resize-none bg-transparent px-1.75 py-1 text-sm outline-none"
+              rows={1}
+              autoFocus
+              aria-label="Message input"
+            />
+            <ComposerAction />
+          </div>
+        </ComposerPrimitive.AttachmentDropzone>
+        <ComposerSlashCommandPopover commands={commands} commandContext={commandContext} />
+      </ComposerPrimitive.Root>
+    </ComposerPrimitive.Unstable_TriggerPopoverRoot>
+  );
+};
+
+const ComposerSlashCommandPopover: FC<{
+  commands: readonly AssistantSlashCommand[];
+  commandContext: {
+    aui: ReturnType<typeof useAui>;
+    isLoadingThread: boolean;
+    isThreadRunning: boolean;
+  };
+}> = ({ commands, commandContext }) => {
+  const slash = unstable_useSlashCommandAdapter({
+    commands: commands.map((command) => ({
+      id: command.id,
+      label: command.label,
+      description: command.description,
+      execute: () => command.execute(commandContext),
+    })),
+    removeOnExecute: true,
+  });
+
+  if (commands.length === 0) return null;
+
+  return (
+    <ComposerPrimitive.Unstable_TriggerPopover
+      char="/"
+      adapter={slash.adapter}
+      className="bg-popover text-popover-foreground absolute bottom-full left-0 z-30 mb-2 w-80 max-w-[calc(100vw-2rem)] rounded-lg border p-1 shadow-lg"
+    >
+      <ComposerPrimitive.Unstable_TriggerPopover.Action {...slash.action} />
+      <ComposerPrimitive.Unstable_TriggerPopoverItems>
+        {(items) =>
+          items.map((item, index) => {
+            const command = commands.find((entry) => entry.id === item.id);
+            const Icon = command?.icon;
+
+            return (
+              <ComposerPrimitive.Unstable_TriggerPopoverItem
+                key={item.id}
+                item={item}
+                index={index}
+                className="data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground flex w-full items-start gap-2 rounded-md px-2.5 py-2 text-left text-sm outline-none"
+              >
+                {Icon ? <Icon className="text-muted-foreground mt-0.5 size-4 shrink-0" /> : null}
+                <span className="min-w-0 flex-1">
+                  <span className="block font-medium">{item.label}</span>
+                  {item.description ? (
+                    <span className="text-muted-foreground mt-0.5 block text-xs">
+                      {item.description}
+                    </span>
+                  ) : null}
+                </span>
+              </ComposerPrimitive.Unstable_TriggerPopoverItem>
+            );
+          })
+        }
+      </ComposerPrimitive.Unstable_TriggerPopoverItems>
+    </ComposerPrimitive.Unstable_TriggerPopover>
   );
 };
 

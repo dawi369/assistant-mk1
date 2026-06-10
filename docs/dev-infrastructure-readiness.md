@@ -150,9 +150,9 @@ D1-backed user/workspace/membership/default-agent rows, reuses the active
 agent, rejects disabled membership, and hides cross-workspace sessions. The
 workspace, membership-policy, agent-selection, and admin-summary smokes verify
 Cloudflare-owned workspace activation, D1-owned membership authorization,
-active-agent preferences, and the Dev Monitor summary path. The
+active-agent preferences, and the Admin summary path. The
 workspace-context smoke verifies the same resolved identity is exposed safely
-for the dev monitor before any demo run exists. The policy smoke also verifies
+for Admin before any demo run exists. The policy smoke also verifies
 that normal `ask` chat passes, `execute` chat is
 blocked, and duplicate same-thread execution is rejected while a run is already
 `running`. The event-feed smoke verifies tenant-scoped progress events and the

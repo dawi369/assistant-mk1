@@ -38,7 +38,7 @@ use cases without confusing product organization with tenant identity.
 - Assistant-mk1 Workspace: the internal tenant boundary used by Cloudflare and
   D1. The current baseline creates one default workspace per WorkOS
   organization or personal account source, and workspace management v0 allows
-  additional workspaces to be created and activated from Dev Monitor.
+  additional workspaces to be created and activated from Admin.
   Membership, policy, secrets, tool permissions, agents, audit records, and
   durable state are scoped here.
 - Agent: a runtime assistant/configuration inside a workspace. A workspace can
@@ -113,7 +113,7 @@ agent are the committed authorization boundaries.
   Hosted WorkOS traffic resolves the active agent inside Cloudflare, falling
   back to the workspace default agent when no preference exists, instead of
   forwarding `WORKBENCH_DEV_AGENT_ID`.
-- Agent records are workspace-scoped Cloudflare D1 rows. Dev Monitor may create
+- Agent records are workspace-scoped Cloudflare D1 rows. Admin may create
   test agents, show profiles, and activate existing agents for the current
   operator. Customer-facing agent creation and configuration remain out of
   scope.
@@ -130,11 +130,10 @@ secret access policy remain production gates.
 The next steps should keep WorkOS and assistant-mk1 responsibilities separate:
 
 1. Admin visibility: expose the Cloudflare-resolved account, workspace,
-   membership, default agent, recent events, and last error in a read-only Dev
-   Monitor.
+   membership, default agent, recent events, and last error in Admin.
 2. Workspace management model: allow one WorkOS organization or personal
    account to own multiple assistant-mk1 workspaces. The current v0 is
-   Dev Monitor-only list/create/switch, with Cloudflare storing the active
+   Admin-only list/create/switch, with Cloudflare storing the active
    workspace preference.
 3. Membership source of truth: WorkOS answers who signed in and which external
    organization they came through; Cloudflare D1 answers what they can do inside
@@ -142,7 +141,7 @@ The next steps should keep WorkOS and assistant-mk1 responsibilities separate:
    members and gates workspace writes to `owner`/`admin`.
 4. Agent routing: agents remain scoped to workspaces. The current v0 keeps
    customer-facing agent provisioning out of scope while Cloudflare stores
-   active-agent routing preferences and Dev Monitor can create test agents.
+   active-agent routing preferences and Admin can create test agents.
 5. Agent behavior: active agent behavior is workspace-scoped and Cloudflare
    owned. Repo XML prompts are seed templates; after agent creation, D1
    `agents.data_json.behavior` is the source of truth for the injected system

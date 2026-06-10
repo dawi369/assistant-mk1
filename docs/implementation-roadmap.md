@@ -23,7 +23,7 @@ or live mutation tools until the slice that needs them is explicitly scoped.
   Vercel maps WorkOS `user.id` and, when present, WorkOS `organizationId` into
   trusted user/account identity before calling Cloudflare. Organization-backed
   accounts get one default workspace first and can now create additional
-  Dev Monitor-managed workspaces; the current personal account/default
+  Admin-managed workspaces; the current personal account/default
   workspace fallback keeps solo/pre-user development production-shaped.
 - Provisional framework contracts define tenant scope, workflow intents,
   run records, tool exposure, durable entities, and repository-style data
@@ -172,14 +172,16 @@ Vercel workbench facade
 
 Implemented:
 
-- Dev Monitor v1 as the first read-only admin visibility slice:
+- Admin v1 as the first read-only admin visibility slice:
   Cloudflare `GET /admin/workspace-summary`, Vercel
-  `GET /api/workbench/admin-summary`, and a flow-first drawer that shows chat
-  readiness, active workspace/agent, latest events, and important errors before
-  secondary management controls and advanced raw details.
+  `GET /api/workbench/admin-summary`, and a flow-first panel opened by the
+  local `/admin` composer command. The command is gated by server-derived
+  WorkOS/local identity and never reaches the model.
 - Chat polish checkpoint v0: the normal shell has a compact server-derived
   runtime hint for active workspace, active agent/profile, chat state, and
   error-detail access while keeping assistant-ui as the primary chat surface.
+  New chat is available as a local `/new` composer command and through the
+  recent-chats sidebar.
 - Thread history v0 is the active chat-polish slice: assistant-ui's native
   remote thread-list runtime and thread-list primitives show recent
   Cloudflare-owned chats for the resolved user/workspace/active agent, while
@@ -193,17 +195,17 @@ Implemented:
 - Workspace management v0 as the first Cloudflare-owned workspace model
   slice: D1 active workspace preference, Cloudflare `GET /workspaces`,
   `POST /workspaces`, `POST /workspaces/:workspaceId/activate`, Vercel
-  facades, and Dev Monitor-only list/create/switch controls.
+  facades, and Admin-only list/create/switch controls.
 - Membership source-of-truth v0: WorkOS role/permission headers can seed
   missing memberships, but Cloudflare D1 membership role/status/permissions are
   authoritative after bootstrap. Active members can read context; `owner` and
   `admin` gate workspace writes.
 - Agent routing v0: agents stay workspace-scoped, Cloudflare stores
-  active-agent preferences per user/workspace, and Dev Monitor can create and
+  active-agent preferences per user/workspace, and Admin can create and
   activate test agents for the current workspace.
 - Agent behavior v0: new agents can import XML behavior templates into
   `agents.data_json.behavior`; Cloudflare injects the D1 snapshot into simple
-  chat, and Dev Monitor previews the active behavior.
+  chat, and Admin previews the active behavior.
 
 Next target:
 
@@ -242,7 +244,7 @@ away from the intended path.
 Next target:
 
 - Cloudflare timing metadata on simple-chat runs, surfaced through existing
-  runtime summaries and Dev Monitor, so latency can be explained by stage
+  runtime summaries and Admin, so latency can be explained by stage
   rather than guessed from browser perception.
 - Broaden the Cloudflare-owned stream from simple chat into richer conversation
   and workflow progress, building on the event feed as the first observable

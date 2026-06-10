@@ -9,7 +9,8 @@ generic: the same surfaces should support research assistants, document
 workflows, issue triage, operations copilots, and other agent projects.
 
 Document status: the current product surface is default assistant-ui chat plus
-Dev Monitor. The workbench surfaces below are the direction, not all shipped UI.
+a command-accessed Admin panel. The workbench surfaces below are the direction,
+not all shipped UI.
 
 ## Core Flows
 
@@ -48,14 +49,16 @@ The first admin surface should show:
 - Agent list, default agent, and status.
 - Recent Cloudflare events, chat sessions, demo runs, and last errors.
 
-This belongs in a dev/admin monitor surface first, then can graduate into a
+This belongs in an admin monitor surface first, then can graduate into a
 workspace administration UI. It should never trust browser-supplied tenant or
 agent ids.
 
-Dev Monitor v1 is the first admin visibility slice. It replaces scattered
-runtime widgets with one Cloudflare-backed admin summary while keeping the
-existing top-right drawer and demo.inspect diagnostic action. The current
-drawer is flow-first: it leads with chat readiness, active workspace, active
+Admin v1 is the first admin visibility slice. It replaces scattered runtime
+widgets with one Cloudflare-backed admin summary and opens through the local
+`/admin` composer command instead of a permanent dashboard button. The command
+is stripped from the composer, never sent to the model, and gated by a
+Vercel-side allowlist derived from WorkOS/local server identity. The panel is
+flow-first: it leads with chat readiness, active workspace, active
 agent/profile, latest meaningful event, and the important error. Workspace and
 agent management remain available as secondary controls, while raw ids, recent
 events, and external WorkOS signals stay in advanced details.
@@ -72,18 +75,18 @@ Chat responsiveness and observability v0 keeps the normal assistant-ui surface
 unchanged while making runtime status feel immediate. The compact hint may use
 assistant-ui local lifecycle state for transient `Running` feedback, but
 workspace, agent, thread, run, error, and timing truth still comes from
-Cloudflare. Cloudflare stores simple-chat timing metadata on chat runs so Dev
-Monitor can show first-token and total runtime without routing small chats
+Cloudflare. Cloudflare stores simple-chat timing metadata on chat runs so Admin
+can show first-token and total runtime without routing small chats
 through Fly/LangGraph.
 
-Workspace management v0 is the current Dev Monitor-only slice: list workspaces
+Workspace management v0 is the current Admin-only slice: list workspaces
 for the current WorkOS account, create a name-only workspace, and switch the
 active workspace through Cloudflare. This is not a customer-facing workspace
 product yet; it is the operator view needed before workspace invites, role
 policy, agent routing, or deeper chat debugging.
 
-Agent routing v0 keeps agents workspace-scoped and Cloudflare-owned. Dev
-Monitor can create test agents for the active workspace, switch the current
+Agent routing v0 keeps agents workspace-scoped and Cloudflare-owned. Admin can
+create test agents for the active workspace, switch the current
 user's active agent preference, and show the active agent/profile used by chat
 runtime records. This is still not a customer-facing generic agent builder:
 client workspaces get production agents configured during integration work, and
@@ -95,7 +98,7 @@ simple-chat system prompt. Behavior templates live in `docs/prompts` as seed
 material, using `docs/prompts/poke.xml` only as a structural and tonal
 reference. The active behavior for a created agent is a D1 snapshot stored in
 `agents.data_json.behavior`, so D1 remains the runtime source of truth after
-provisioning. Dev Monitor can import a template into a new agent and preview
+provisioning. Admin can import a template into a new agent and preview
 the active XML prompt, but full editing, version history, approvals, and a
 customer-facing agent builder remain future slices.
 
@@ -105,22 +108,22 @@ Near-term WorkOS, workspace, and Cloudflare ownership sequence:
    chat path, demo path, events, and last Cloudflare-owned error.
 2. Workspace management model: list, create, default, and switch workspaces
    under a WorkOS organization or personal account. In v0 this lives only in
-   Dev Monitor, and Cloudflare stores the active workspace preference.
+   Admin, and Cloudflare stores the active workspace preference.
 3. Membership source of truth: keep WorkOS as enterprise identity and make
    Cloudflare D1 the app authorization layer for workspace roles and status.
    In v0, D1 membership rows stop being overwritten by WorkOS headers after
    bootstrap, active members can read admin context, and `owner`/`admin` gates
    workspace create/switch.
 4. Agent routing: move from default-agent-only behavior to visible
-   workspace-scoped agent list, Dev Monitor-only test agent creation, and
+   workspace-scoped agent list, Admin-only test agent creation, and
    Cloudflare-owned active-agent preference.
 5. Agent behavior: make agent profiles affect runtime behavior through
-   Cloudflare-owned prompt snapshots. In v0, Dev Monitor imports XML templates
+   Cloudflare-owned prompt snapshots. In v0, Admin imports XML templates
    into D1-backed agent behavior and Cloudflare injects the active snapshot.
 6. More Cloudflare ownership: move context, policy, audit, events, run state,
    tool authorization, and eventually secret access behind Cloudflare APIs. The
    active v0 slice is a Cloudflare-owned chat runtime summary shown in Dev
-   Monitor.
+   Admin.
 7. Stronger Vercel-to-Cloudflare trust boundary: replace loose trusted headers
    with a stricter signed or service-authenticated server contract.
 8. WorkOS organization UX: handle org switching, personal fallback, onboarding,
@@ -155,9 +158,9 @@ Implemented:
 - Chat runtime responsiveness is being improved with assistant-ui-native local
   run state, quieter admin-summary refreshes, and Cloudflare-owned timing
   metadata for first-token and total runtime.
-- Dev Monitor provides Cloudflare-derived admin/runtime visibility with a
+- Admin provides Cloudflare-derived runtime visibility with a
   flow-first chat overview and secondary workspace/agent controls.
-- Dev Monitor can create template-backed agents and preview the active XML
+- Admin can create template-backed agents and preview the active XML
   behavior snapshot stored in D1.
 - The normal chat shell has a compact server-derived runtime hint for active
   workspace, active agent/profile, chat state, and error detail access.
@@ -167,7 +170,7 @@ Implemented:
 Next milestones:
 
 1. Finish chat responsiveness and timing observability so the normal shell
-   reflects active runs immediately and Dev Monitor can explain latency.
+   reflects active runs immediately and Admin can explain latency.
 2. Finish recent chat history polish: list, switch, and new chat through
    assistant-ui thread-list primitives, with Cloudflare-owned authorization.
 3. Expand agent behavior from template import/preview into full editing,

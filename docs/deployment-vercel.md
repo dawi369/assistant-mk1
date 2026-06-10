@@ -47,12 +47,18 @@ WORKOS_CLIENT_ID=<secret>
 WORKOS_API_KEY=<secret>
 WORKOS_COOKIE_PASSWORD=<secret>
 NEXT_PUBLIC_WORKOS_REDIRECT_URI=https://assistant-mk1.vercel.app/auth/callback
+WORKBENCH_ADMIN_USER_IDS=<comma-separated-workos-user-ids>
+WORKBENCH_ADMIN_EMAILS=<comma-separated-admin-emails>
 ```
 
 `WORKOS_CLIENT_ID` and `WORKOS_API_KEY` must belong to the same WorkOS
 environment/application. A mismatched key pair causes `/auth/callback` to fail
 with WorkOS `invalid_client` / `Invalid client secret` after the upstream
 identity provider sign-in succeeds.
+
+`WORKBENCH_ADMIN_USER_IDS` and `WORKBENCH_ADMIN_EMAILS` gate the local `/admin`
+composer command and centered Admin panel. Use WorkOS user ids when available;
+email allowlisting is acceptable for the current solo/pre-user phase.
 
 Do not mirror local `.env.local` into Vercel Production blindly:
 

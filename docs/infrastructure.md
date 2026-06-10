@@ -138,7 +138,7 @@ multiple deploy targets.
 Production tracing is intentionally sampled at a low rate by default. Sentry
 may show normal request transactions when sampled; those belong to performance
 telemetry. Product-state debugging should still start from Cloudflare D1 runtime
-summaries and Dev Monitor, while unresolved Sentry issues should be treated as
+summaries and Admin, while unresolved Sentry issues should be treated as
 code/runtime failures.
 
 ## Stream Ownership

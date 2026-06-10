@@ -145,7 +145,7 @@ the current schema. The rebuild command drops remote dev D1 tables by design.
 Frontend:
 
 - Open the Vercel URL.
-- Run "Run demo inspect" and confirm the Dev Monitor shows completed run,
+- Open Admin with `/admin`, run "Run demo inspect", and confirm it shows completed run,
   tool call, artifact, decision, and audit timeline.
 - Send a message.
 - Confirm a thread is created and streaming works.

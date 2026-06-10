@@ -19,7 +19,7 @@ code changes:
   authorization model.
 - `cloudflare-control-plane.md`: current Worker/D1 responsibilities and the
   transitional LangGraph facade.
-- `agent-workbench.md`: current product scope model and Dev Monitor direction.
+- `agent-workbench.md`: current product scope model and Admin direction.
 - `implementation-roadmap.md`: baseline, completed slices, active next targets,
   and production gates.
 - `workbench-ui.md`: current UI baseline and target workbench surfaces.

@@ -4,9 +4,9 @@ Assistant-mk1 is an operator workbench built around chat, not a generic chatbot
 wrapper. The UI should make long-running agent work inspectable without hiding
 the underlying state.
 
-Document status: the current UI is default assistant-ui chat plus a top-right
-Dev Monitor drawer. The surfaces below describe the target workbench as runtime
-data matures.
+Document status: the current UI is default assistant-ui chat plus a
+command-accessed Admin panel. The surfaces below describe the target workbench
+as runtime data matures.
 
 ## Assistant-UI Leverage Map
 
@@ -50,9 +50,9 @@ Current implemented layout:
 
 - Main thread region using assistant-ui.
 - Top-right auth controls.
-- Top-right Dev Monitor drawer for flow-first Cloudflare-owned admin/runtime
-  visibility.
-- Dev Monitor diagnostic action for `demo.inspect`.
+- `/new` composer command for creating a fresh Cloudflare-owned thread.
+- `/admin` composer command for the flow-first Cloudflare-owned Admin panel.
+- Admin diagnostic action for `demo.inspect`.
 
 Target layout:
 
@@ -249,13 +249,15 @@ Source:
 Implemented:
 
 - assistant-ui thread remains primary.
+- Fresh threads are created through the local `/new` composer command or the
+  recent-chats sidebar, not a permanent top-right app button.
 - The normal shell includes a compact server-derived runtime hint for active
-  workspace, active agent/profile, chat state, and quick access to Dev Monitor
-  when the latest runtime state needs attention.
-- Dev Monitor opens as a flow-first panel: chat readiness, active workspace,
-  active agent/profile, latest meaningful event, and important errors are
-  shown first.
-- Dev Monitor supports name-only workspace create/switch, test agent creation,
+  workspace, active agent/profile, model, chat state, and quick access to
+  Admin when the latest runtime state needs attention.
+- Admin opens as a flow-first panel from the local `/admin` composer command:
+  chat readiness, active workspace, active agent/profile, latest meaningful
+  event, and important errors are shown first.
+- Admin supports name-only workspace create/switch, test agent creation,
   and active-agent switching for the current workspace as secondary management
   controls.
 - Raw ids, external WorkOS signals, recent Cloudflare events, and diagnostic
