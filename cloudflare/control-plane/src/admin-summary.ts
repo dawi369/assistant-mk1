@@ -1,4 +1,5 @@
 import { toAgentSummary } from "./agent-records";
+import { listLatestArtifacts, listLatestToolCalls, resolveToolSummaries } from "./admin-tools";
 import { getChatRuntimeSummary } from "./chat-runtime-summary";
 import { handleLatestControlPlaneEvents } from "./control-plane-events";
 import { getControlRunSnapshot, readLatestControlRun } from "./demo-run-store";
@@ -130,6 +131,9 @@ export const handleAdminWorkspaceSummary = async (
     chatRuntime,
     latestDemoRun,
     events,
+    tools,
+    latestToolCalls,
+    latestArtifacts,
   ] = await Promise.all([
     selectUser(env, identity.scope.userId),
     selectWorkspace(env, identity.scope.workspaceId),
@@ -146,6 +150,9 @@ export const handleAdminWorkspaceSummary = async (
     getChatRuntimeSummary(env, identity),
     readLatestControlRun(env, identity.scope),
     handleLatestControlPlaneEvents(env, identity, new URL("https://internal/events?limit=12")),
+    resolveToolSummaries(env, identity),
+    listLatestToolCalls(env, identity.scope),
+    listLatestArtifacts(env, identity.scope),
   ]);
 
   const [failedControlRun, errorEvent] = await Promise.all([
@@ -252,6 +259,9 @@ export const handleAdminWorkspaceSummary = async (
       demo: {
         latestRun: demoSnapshot,
       },
+      tools,
+      latestToolCalls,
+      latestArtifacts,
       events: events.events ?? [],
       lastError,
     },

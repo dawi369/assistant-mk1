@@ -7,6 +7,7 @@ import {
   Building2Icon,
   ChevronDownIcon,
   FileTextIcon,
+  LinkIcon,
   Loader2Icon,
   MessageSquareIcon,
   PlayIcon,
@@ -47,6 +48,7 @@ import type {
   CloudflareAgentBehaviorTemplatesResponse,
   CloudflareAdminSummaryResponse,
   CloudflareOwnedDemoRunResponse,
+  CloudflareToolRunResponse,
 } from "@/lib/workbench/workbench-types";
 
 const adminSummaryPath = "/api/workbench/admin-summary";
@@ -54,6 +56,7 @@ const cloudflareDemoRunsPath = "/api/workbench/cloudflare-demo-runs";
 const workspacesPath = "/api/workbench/workspaces";
 const agentsPath = "/api/workbench/agents";
 const behaviorTemplatesPath = "/api/workbench/agent-behavior-templates";
+const toolRunsPath = "/api/workbench/tools/runs";
 const agentModelOptions = ["deepseek/deepseek-v4-flash", "openai/gpt-4.1-mini"] as const;
 const defaultBehaviorTemplateByProfile = {
   default: "assistant-general",
@@ -62,10 +65,21 @@ const defaultBehaviorTemplateByProfile = {
 } as const satisfies Record<"default" | "analyst" | "operator", AgentBehaviorTemplate["id"]>;
 
 const readJsonResponse = async <T,>(response: Response, fallback: string): Promise<T> => {
-  const body = (await response.json().catch(() => ({}))) as T & { error?: string };
-  if (!response.ok) throw new Error(body.error ?? fallback);
+  const body = (await response.json().catch(() => ({}))) as T & { error?: unknown };
+  if (!response.ok) {
+    const error =
+      typeof body.error === "string"
+        ? body.error
+        : isRecord(body.error) && typeof body.error.message === "string"
+          ? body.error.message
+          : fallback;
+    throw new Error(error);
+  }
   return body;
 };
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
 
 const listValue = (items?: string[]) => (items && items.length > 0 ? items.join(", ") : undefined);
 
@@ -106,11 +120,13 @@ export function AdminPanel({
   const [behaviorTemplates, setBehaviorTemplates] = useState<AgentBehaviorTemplate[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
+  const [isRunningTool, setIsRunningTool] = useState(false);
   const [isCreatingWorkspace, setIsCreatingWorkspace] = useState(false);
   const [isCreatingAgent, setIsCreatingAgent] = useState(false);
   const [activatingWorkspaceId, setActivatingWorkspaceId] = useState<string | null>(null);
   const [activatingAgentId, setActivatingAgentId] = useState<string | null>(null);
   const [workspaceName, setWorkspaceName] = useState("");
+  const [urlInspectTarget, setUrlInspectTarget] = useState("");
   const [agentName, setAgentName] = useState("");
   const [agentDescription, setAgentDescription] = useState("");
   const [agentProfile, setAgentProfile] = useState<"default" | "analyst" | "operator">("analyst");
@@ -128,6 +144,8 @@ export function AdminPanel({
   const isChatActive = chatRuntime?.state === "running";
   const latestToolCall = demoSnapshot?.toolCalls.at(-1);
   const latestArtifact = demoSnapshot?.artifacts.at(-1);
+  const latestAdminToolCall = summary?.latestToolCalls?.at(0) ?? null;
+  const latestAdminArtifact = summary?.latestArtifacts?.at(0) ?? null;
   const latestDecision = demoSnapshot?.decisions.at(-1);
   const latestChatEvent = useMemo(
     () =>
@@ -230,6 +248,34 @@ export function AdminPanel({
       );
     } finally {
       setIsStarting(false);
+    }
+  };
+
+  const runUrlInspect = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const url = urlInspectTarget.trim();
+    if (!url) return;
+
+    setIsRunningTool(true);
+    setFetchError(null);
+    try {
+      await readJsonResponse<CloudflareToolRunResponse>(
+        await fetch(toolRunsPath, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            toolName: "url.inspect",
+            executionMode: "dry_run",
+            input: { url },
+          }),
+        }),
+        "Failed to run URL inspector",
+      );
+      requestWorkbenchSummaryRefresh();
+    } catch (toolError) {
+      setFetchError(toolError instanceof Error ? toolError.message : "Failed to run URL inspector");
+    } finally {
+      setIsRunningTool(false);
     }
   };
 
@@ -717,6 +763,130 @@ export function AdminPanel({
             </DetailsBlock>
           </MonitorSection>
 
+          <MonitorSection icon={LinkIcon} title="Tools">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <StatusRow
+                label="Registered tools"
+                value={String(summary?.tools?.length ?? 0)}
+                compact
+              />
+              <StatusRow
+                label="Model-visible tools"
+                value={String(summary?.tools?.filter((tool) => tool.modelVisible).length ?? 0)}
+                compact
+              />
+              <StatusRow
+                label="Latest tool"
+                value={latestAdminToolCall?.toolId ?? "none"}
+                compact
+              />
+              <StatusRow
+                label="Latest status"
+                value={latestAdminToolCall?.status ?? "No tool call yet"}
+                compact
+              />
+            </div>
+
+            <DetailsBlock title="Registered tools" defaultOpen>
+              {summary?.tools?.length ? (
+                <ol className="space-y-2">
+                  {summary.tools.map((tool) => (
+                    <li key={tool.name} className="border-border rounded-md border p-3 text-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium">{tool.name}</span>
+                          <span className="text-muted-foreground block text-xs">
+                            {tool.family} / {tool.kind} / {tool.mutationRisk}
+                          </span>
+                          <span className="text-muted-foreground block text-xs">
+                            modes: {tool.supportedExecutionModes.join(", ")}
+                          </span>
+                        </span>
+                        <span className="flex shrink-0 flex-col items-end gap-1">
+                          <StatusPill
+                            status={tool.adminVisible ? "Admin" : "Hidden"}
+                            tone={tool.adminVisible ? "completed" : undefined}
+                          />
+                          <StatusPill
+                            status={tool.modelVisible ? "Model" : "Not model-visible"}
+                            tone={tool.modelVisible ? "completed" : undefined}
+                          />
+                        </span>
+                      </div>
+                      <p className="text-muted-foreground mt-2 text-xs">{tool.reason}</p>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <EmptyPanelText>No tools loaded for this workspace.</EmptyPanelText>
+              )}
+            </DetailsBlock>
+
+            <DetailsBlock title="URL Inspector">
+              <form className="space-y-2" onSubmit={runUrlInspect}>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
+                  <input
+                    className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring min-w-0 rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                    value={urlInspectTarget}
+                    onChange={(event) => setUrlInspectTarget(event.target.value)}
+                    placeholder="https://example.com"
+                    inputMode="url"
+                  />
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={isRunningTool || !urlInspectTarget.trim() || !canManageAgents}
+                  >
+                    {isRunningTool ? <Loader2Icon className="animate-spin" /> : <LinkIcon />}
+                    Inspect URL
+                  </Button>
+                </div>
+                <p className="text-muted-foreground text-xs">
+                  Read-only dry-run tool. Local, private, and metadata hosts are blocked.
+                </p>
+              </form>
+            </DetailsBlock>
+
+            <DetailsBlock title="Recent tool calls">
+              {summary?.latestToolCalls?.length ? (
+                <ol className="space-y-2">
+                  {summary.latestToolCalls.slice(0, 6).map((toolCall) => (
+                    <li key={toolCall.id} className="border-border rounded-md border p-3 text-sm">
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium">{toolCall.toolId}</span>
+                          <span className="text-muted-foreground block text-xs">
+                            {toolCall.outputSummary ??
+                              toolCall.inputSummary ??
+                              "Tool call recorded"}
+                          </span>
+                          <span className="text-muted-foreground/80 block truncate text-xs">
+                            {formatTime(toolCall.finishedAt ?? toolCall.startedAt)}
+                          </span>
+                        </span>
+                        <StatusPill status={toolCall.status ?? "unknown"} tone={toolCall.status} />
+                      </div>
+                      <CopyId label="Tool call id" value={toolCall.id} />
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <EmptyPanelText>
+                  Run the URL inspector or diagnostic to populate tool calls.
+                </EmptyPanelText>
+              )}
+            </DetailsBlock>
+
+            {latestAdminArtifact ? (
+              <RuntimeRecord
+                icon={FileTextIcon}
+                label="Latest tool artifact"
+                title={latestAdminArtifact.title ?? latestAdminArtifact.id}
+                detail={latestAdminArtifact.uri}
+              />
+            ) : null}
+          </MonitorSection>
+
           <MonitorSection icon={WrenchIcon} title="Diagnostic Run">
             <div className="flex items-center justify-between gap-3">
               <StatusPill status={`demo run: ${run?.status ?? "idle"}`} tone={run?.status} />
@@ -820,6 +990,24 @@ export function AdminPanel({
               ) : (
                 <EmptyPanelText>Send a message to populate Cloudflare timing marks.</EmptyPanelText>
               )}
+            </DetailsBlock>
+
+            <DetailsBlock title="Tool internals">
+              <CopyId label="Latest tool call id" value={latestAdminToolCall?.id} />
+              <CopyId label="Latest tool run id" value={latestAdminToolCall?.runId} />
+              <CopyId label="Latest tool artifact id" value={latestAdminArtifact?.id} />
+              {latestAdminToolCall ? (
+                <pre className="bg-muted/50 max-h-72 overflow-auto rounded-md p-3 text-xs whitespace-pre-wrap">
+                  {JSON.stringify(latestAdminToolCall, null, 2)}
+                </pre>
+              ) : (
+                <EmptyPanelText>No tool call internals recorded yet.</EmptyPanelText>
+              )}
+              {latestAdminArtifact?.data ? (
+                <pre className="bg-muted/50 max-h-72 overflow-auto rounded-md p-3 text-xs whitespace-pre-wrap">
+                  {JSON.stringify(latestAdminArtifact.data, null, 2)}
+                </pre>
+              ) : null}
             </DetailsBlock>
 
             <DetailsBlock title="Agent behavior config">

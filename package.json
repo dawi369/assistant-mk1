@@ -31,6 +31,7 @@
     "smoke:cloudflare-agent-behavior": "tsx scripts/smoke-cloudflare-agent-behavior.ts",
     "smoke:cloudflare-agent-runtime-config": "tsx scripts/smoke-cloudflare-agent-runtime-config.ts",
     "smoke:cloudflare-admin-summary": "tsx scripts/smoke-cloudflare-admin-summary.ts",
+    "smoke:cloudflare-tool-admin": "tsx scripts/smoke-cloudflare-tool-admin.ts",
     "smoke:cloudflare-chat-runtime-summary": "tsx scripts/smoke-cloudflare-chat-runtime-summary.ts",
     "smoke:cloudflare-chat-reset": "tsx scripts/smoke-cloudflare-chat-reset.ts",
     "smoke:cloudflare-chat-threads": "tsx scripts/smoke-cloudflare-chat-threads.ts",

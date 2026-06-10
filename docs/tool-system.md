@@ -168,3 +168,25 @@ policy, auth, and secret custody are ready. Required shape:
 - Emits lifecycle and audit events.
 
 Do not start with a mutation-capable external integration.
+
+## Current Read-Only URL Tool
+
+`url.inspect` is the first non-demo adapter. It is Admin-triggered only in v0;
+it is not exposed to the model-visible tool list yet.
+
+Behavior:
+
+- Accepts `{ url }`.
+- Supports `dry_run` only.
+- Uses policy reference `tool-admin-readonly-v0`.
+- Allows only public `http` and `https` URLs.
+- Rejects embedded credentials and obvious local, private, or metadata hosts.
+- Uses a timeout and bounded response read.
+- Returns structured status, content metadata, timing, optional page title, and
+  retryability.
+- Records workflow intent, run, tool call, artifact, audit events, and
+  control-plane events in Cloudflare-owned state.
+
+This slice proves tool adapter execution and Admin visibility. Durable
+permission records, approvals, kill switches, secret custody, and
+model-visible tool exposure remain policy-layer work.

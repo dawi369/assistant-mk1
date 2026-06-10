@@ -6,6 +6,8 @@ import type {
   CloudflareAdminSummaryResponse,
   CloudflareAgentMutationResponse,
   CloudflareAgentsResponse,
+  CloudflareToolRunResponse,
+  CloudflareToolsResponse,
   CloudflareOwnedDemoRunResponse,
   CloudflareWorkspaceMutationResponse,
   CloudflareWorkspacesResponse,
@@ -21,6 +23,8 @@ export type {
   CloudflareAdminSummaryResponse,
   CloudflareAgentMutationResponse,
   CloudflareAgentsResponse,
+  CloudflareToolRunResponse,
+  CloudflareToolsResponse,
   CloudflareOwnedDemoRunResponse,
   CloudflareOwnedDemoRunSnapshot,
   CloudflareWorkspaceMutationResponse,
@@ -136,6 +140,18 @@ export const getWorkspaceContext = () =>
 
 export const getCloudflareAdminSummary = () =>
   requestControlPlane<CloudflareAdminSummaryResponse>("/admin/workspace-summary");
+
+export const getCloudflareTools = () => requestControlPlane<CloudflareToolsResponse>("/tools");
+
+export const runCloudflareTool = (input: {
+  toolName: "url.inspect";
+  executionMode?: "dry_run";
+  input: { url: string };
+}) =>
+  requestControlPlane<CloudflareToolRunResponse>("/tools/runs", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 
 export const getChatRuntimeSummary = () =>
   requestControlPlane<ChatRuntimeSummaryResponse>("/chat/runtime-summary");

@@ -206,11 +206,17 @@ Implemented:
 - Agent behavior v0: new agents can import XML behavior templates into
   `agents.data_json.behavior`; Cloudflare injects the D1 snapshot into simple
   chat, and Admin previews the active behavior.
+- Read-only tool adapter and Admin visibility v0 is the active tool slice:
+  Cloudflare exposes a code-backed tool registry summary, Admin can run the
+  bounded `url.inspect` dry-run tool, and D1 records the resulting
+  workflow intent, run, tool call, artifact, audit events, and control-plane
+  events. The tool is not model-visible yet.
 
 Next target:
 
-- Stabilize template-backed behavior in hosted chat, then expand it into full
-  editing, version history, approvals, and tool-specific behavior controls.
+- Stabilize `url.inspect` as the first non-demo adapter, then add the policy
+  layer for durable permissions, stronger exposure decisions, approvals, kill
+  switches, and eventual model-visible tools.
 - Keep Fly/LangGraph state access mediated through Cloudflare APIs.
 - Strengthen the Vercel-to-Cloudflare trust boundary with a stricter signed or
   service-authenticated server contract after this observability slice.
@@ -277,7 +283,8 @@ Required before live external mutation:
 - Auth and workspace membership. WorkOS AuthKit sign-in, Cloudflare D1-backed
   membership policy, workspace management v0, agent routing v0, and agent
   behavior v0 exist, but explicit customer admin flows, invites, behavior
-  approvals, and tool authorization are still required.
+  approvals, tool authorization, and model-visible tool policy are still
+  required.
 - Encrypted secret custody.
 - Tenant isolation tests.
 - Policy limits, approvals, cooldowns, allowlists, denylists, and kill switches.

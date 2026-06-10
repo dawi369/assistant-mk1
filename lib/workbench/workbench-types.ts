@@ -73,6 +73,75 @@ export type ControlPlaneEventsResponse = {
   error?: string;
 };
 
+export type ToolSummary = {
+  name: string;
+  description: string;
+  kind: string;
+  family: string;
+  status: string;
+  supportedExecutionModes: string[];
+  adminVisible: boolean;
+  modelVisible: boolean;
+  reason: string;
+  requiresSecrets: boolean;
+  mutationRisk: "read_only" | "mutation_capable";
+};
+
+export type ToolCallSummary = {
+  id: Id;
+  scope?: TenantScope;
+  agentId?: Id;
+  workflowIntentId?: Id;
+  runId?: Id;
+  toolId?: string;
+  status?: string;
+  inputSummary?: string;
+  outputSummary?: string;
+  artifactRefs?: unknown[];
+  data?: Record<string, unknown>;
+  startedAt?: string;
+  finishedAt?: string;
+  createdAt?: string;
+};
+
+export type ArtifactSummary = {
+  id: Id;
+  scope?: TenantScope;
+  kind?: string;
+  uri?: string;
+  title?: string;
+  mimeType?: string;
+  sizeBytes?: number;
+  data?: Record<string, unknown>;
+  createdAt?: string;
+};
+
+export type CloudflareToolsResponse = {
+  ok?: boolean;
+  tools?: ToolSummary[];
+  latestToolCalls?: ToolCallSummary[];
+  latestArtifacts?: ArtifactSummary[];
+  error?: string;
+};
+
+export type CloudflareToolRunResponse = {
+  ok?: boolean;
+  run?: {
+    id?: Id;
+    workflowIntentId?: Id;
+    status?: string;
+    execution?: Partial<ExecutionPolicy>;
+  };
+  toolCall?: ToolCallSummary | null;
+  artifact?: ArtifactSummary | null;
+  error?: {
+    code?: string;
+    message?: string;
+    retryable?: boolean;
+    redacted?: boolean;
+  };
+};
+
 export type AgentRuntimeConfig = {
   provider: "openrouter";
   model: string;
@@ -337,6 +406,9 @@ export type CloudflareAdminSummaryResponse = {
     demo: {
       latestRun: CloudflareOwnedDemoRunSnapshot | null;
     };
+    tools: ToolSummary[];
+    latestToolCalls: ToolCallSummary[];
+    latestArtifacts: ArtifactSummary[];
     events: ControlPlaneEvent[];
     lastError: {
       source: "chat" | "demo" | "event";

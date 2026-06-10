@@ -157,6 +157,20 @@ tool-execution model. The durable north star remains: Cloudflare owns the
 user-facing conversation/control plane, and Fly executes signed heavy work
 only when the control plane escalates to it.
 
+## Tool Admin Visibility
+
+The current tool slice is intentionally read-only and Admin-triggered.
+Cloudflare exposes `GET /tools` and `POST /tools/runs`, with Vercel facades
+under `/api/workbench/tools`. These routes resolve the current user, active
+workspace, membership, and active agent before returning tool visibility or
+starting a tool run.
+
+`url.inspect` is the first non-demo adapter. It runs in `dry_run` mode under
+the `tool-admin-readonly-v0` policy reference, rejects local/private/metadata
+targets, performs a bounded public HTTP inspection, and stores the result as
+Cloudflare-owned workflow/run/tool-call/artifact/audit/event state. It is not
+model-visible yet; model-visible tools wait for the policy layer.
+
 This is still not complete production authorization. WorkOS is the hosted web
 auth provider, and Cloudflare now owns the first D1-backed membership and agent
 routing slices, but explicit invites/admin flows, tool authorization, secret

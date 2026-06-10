@@ -102,6 +102,15 @@ provisioning. Admin can import a template into a new agent and preview
 the active XML prompt, but full editing, version history, approvals, and a
 customer-facing agent builder remain future slices.
 
+Tool adapter/Admin visibility v0 adds the first non-demo tool without making
+tools model-visible yet. Admin can run `url.inspect`, a bounded read-only URL
+inspection tool that records a workflow intent, run, tool call, artifact, audit
+events, and control-plane events in Cloudflare-owned state. The Admin Tools
+section shows registered tools, whether each is Admin-visible or model-visible,
+supported execution modes, and recent tool calls/artifacts. This proves the
+adapter and observability path before durable tool permissions, approvals, kill
+switches, secret custody, or mutation-capable tools are enabled.
+
 Near-term WorkOS, workspace, and Cloudflare ownership sequence:
 
 1. Admin visibility: show the resolved account, workspace, membership, agents,
@@ -122,8 +131,8 @@ Near-term WorkOS, workspace, and Cloudflare ownership sequence:
    into D1-backed agent behavior and Cloudflare injects the active snapshot.
 6. More Cloudflare ownership: move context, policy, audit, events, run state,
    tool authorization, and eventually secret access behind Cloudflare APIs. The
-   active v0 slice is a Cloudflare-owned chat runtime summary shown in Dev
-   Admin.
+   active v0 tool slice is an Admin-triggered read-only `url.inspect` adapter
+   with Cloudflare-owned run/tool/artifact records.
 7. Stronger Vercel-to-Cloudflare trust boundary: replace loose trusted headers
    with a stricter signed or service-authenticated server contract.
 8. WorkOS organization UX: handle org switching, personal fallback, onboarding,
@@ -162,6 +171,9 @@ Implemented:
   flow-first chat overview and secondary workspace/agent controls.
 - Admin can create template-backed agents and preview the active XML
   behavior snapshot stored in D1.
+- Admin can inspect tool registry/exposure state and run the read-only
+  `url.inspect` adapter. Tool results are stored as D1-backed tool call and
+  artifact records.
 - The normal chat shell has a compact server-derived runtime hint for active
   workspace, active agent/profile, chat state, and error detail access.
 - WorkOS, workspace, membership, and active agent scope are server-derived.
@@ -178,7 +190,8 @@ Next milestones:
 4. Add interrupt display and resume actions when a workflow requires approval.
 5. Add artifact list and execution history beyond diagnostic snapshots.
 6. Add domain context configuration that can be swapped per downstream app.
-7. Add tool registry UI and a first non-diagnostic tool adapter.
+7. Add policy v0 for durable tool permissions, exposure decisions, approvals,
+   and kill switches.
 8. Add a first CLI/OSS-backed tool with timeout, logs, structured output, and
    artifact metadata.
 9. Add generic managed-state and audit surfaces.
