@@ -225,6 +225,42 @@ export type ControlPlaneEventRow = {
   created_at: string;
 };
 
+export type RuntimeTraceRow = {
+  trace_id: string;
+  user_id: string;
+  workspace_id: string;
+  agent_id: string;
+  kind: string;
+  status: string;
+  root_name: string;
+  summary: string | null;
+  bottleneck_span_id: string | null;
+  data_json: string;
+  started_at: string;
+  ended_at: string | null;
+  duration_ms: number | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type RuntimeSpanRow = {
+  span_id: string;
+  trace_id: string;
+  parent_span_id: string | null;
+  user_id: string;
+  workspace_id: string;
+  agent_id: string;
+  name: string;
+  layer: string;
+  status: string;
+  data_json: string;
+  started_at: string;
+  ended_at: string | null;
+  duration_ms: number | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ChatSessionRow = {
   session_id: string;
   user_id: string;

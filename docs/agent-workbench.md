@@ -58,10 +58,11 @@ widgets with one Cloudflare-backed admin summary and opens through the local
 `/admin` composer command instead of a permanent dashboard button. The command
 is stripped from the composer, never sent to the model, and gated by a
 Vercel-side allowlist derived from WorkOS/local server identity. The panel is
-flow-first: it leads with chat readiness, active workspace, active
-agent/profile, latest meaningful event, and the important error. Workspace and
-agent management remain available as secondary controls, while raw ids, recent
-events, and external WorkOS signals stay in advanced details.
+flow-first: it leads with a Cloudflare-owned runtime trace graph and waterfall,
+then chat readiness, active workspace, active agent/profile, latest meaningful
+event, and the important error. Workspace and agent management remain available
+as secondary controls, while raw ids, recent events, and external WorkOS
+signals stay in advanced details.
 
 Thread history v0 is the active normal-chat polish slice. It should be
 assistant-ui-native: use the remote thread-list runtime and thread-list
@@ -111,6 +112,13 @@ supported execution modes, and recent tool calls/artifacts. This proves the
 adapter and observability path before durable tool permissions, approvals, kill
 switches, secret custody, or mutation-capable tools are enabled.
 
+Runtime trace graph v0 makes Admin the main explanation surface for request
+path and latency. Cloudflare D1 stores one trace per thread creation, simple
+chat stream, and Admin-triggered URL inspection, with spans for Vercel,
+Cloudflare authz, D1 ownership/writes, provider first token/streaming, and tool
+execution. The graph is product/runtime telemetry; Sentry remains external
+sampled error and performance telemetry.
+
 Near-term WorkOS, workspace, and Cloudflare ownership sequence:
 
 1. Admin visibility: show the resolved account, workspace, membership, agents,
@@ -132,7 +140,8 @@ Near-term WorkOS, workspace, and Cloudflare ownership sequence:
 6. More Cloudflare ownership: move context, policy, audit, events, run state,
    tool authorization, and eventually secret access behind Cloudflare APIs. The
    active v0 tool slice is an Admin-triggered read-only `url.inspect` adapter
-   with Cloudflare-owned run/tool/artifact records.
+   with Cloudflare-owned run/tool/artifact records and D1 runtime traces for
+   request-path visibility.
 7. Stronger Vercel-to-Cloudflare trust boundary: replace loose trusted headers
    with a stricter signed or service-authenticated server contract.
 8. WorkOS organization UX: handle org switching, personal fallback, onboarding,
@@ -167,8 +176,8 @@ Implemented:
 - Chat runtime responsiveness is being improved with assistant-ui-native local
   run state, quieter admin-summary refreshes, and Cloudflare-owned timing
   metadata for first-token and total runtime.
-- Admin provides Cloudflare-derived runtime visibility with a
-  flow-first chat overview and secondary workspace/agent controls.
+- Admin provides Cloudflare-derived runtime visibility with a trace graph,
+  waterfall, flow-first chat overview, and secondary workspace/agent controls.
 - Admin can create template-backed agents and preview the active XML
   behavior snapshot stored in D1.
 - Admin can inspect tool registry/exposure state and run the read-only
@@ -181,8 +190,8 @@ Implemented:
 
 Next milestones:
 
-1. Finish chat responsiveness and timing observability so the normal shell
-   reflects active runs immediately and Admin can explain latency.
+1. Use the runtime trace graph to stabilize chat and Admin-triggered tool
+   request paths before adding broader tool policy.
 2. Finish recent chat history polish: list, switch, and new chat through
    assistant-ui thread-list primitives, with Cloudflare-owned authorization.
 3. Expand agent behavior from template import/preview into full editing,

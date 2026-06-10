@@ -124,6 +124,43 @@ Normal request transactions such as `GET /` can still appear under Sentry
 traces when they are sampled. Treat those as performance telemetry, not runtime
 errors. Unresolved issues remain the primary Sentry view for failures.
 
+## Runtime Traces
+
+Runtime traces are first-party product telemetry stored in Cloudflare D1. They
+exist so Admin can answer "what exactly happened?" without digging through
+Vercel, Cloudflare, or Sentry logs.
+
+The v0 trace model is:
+
+```txt
+RuntimeTrace
+  -> RuntimeSpan[]
+```
+
+Each span records a compact, redacted step with:
+
+- trace id, span id, and optional parent span id
+- layer: browser, Vercel, Cloudflare, D1, provider, executor, or tool
+- start, end, duration, and status
+- small operational metadata only
+
+Do not store prompts, provider request bodies, auth headers, secrets, full tool
+outputs, or raw private data in trace payloads. Large outputs belong in
+artifacts. Sensitive failures belong in redacted error summaries plus Sentry
+exceptions when useful.
+
+Current traced operations:
+
+- `chat.thread.create`
+- `chat.run.stream`
+- `tool.url.inspect`
+- `diagnostic.demo.inspect` when it can be attached without broad executor
+  refactors
+
+Admin uses these D1 traces as the primary in-app request explanation: service
+map, waterfall, total duration, and bottleneck span. Sentry remains the
+external sampled error/performance system.
+
 ## Health And Heartbeats
 
 Health endpoint checks should distinguish:

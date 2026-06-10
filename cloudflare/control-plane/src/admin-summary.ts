@@ -4,6 +4,7 @@ import { getChatRuntimeSummary } from "./chat-runtime-summary";
 import { handleLatestControlPlaneEvents } from "./control-plane-events";
 import { getControlRunSnapshot, readLatestControlRun } from "./demo-run-store";
 import { json, parseDataJson, parseJson } from "./http";
+import { getLatestRuntimeTraceSnapshot, listRuntimeTraceSummaries } from "./runtime-traces";
 import {
   selectAgent,
   selectAccountWorkspacesForUser,
@@ -134,6 +135,8 @@ export const handleAdminWorkspaceSummary = async (
     tools,
     latestToolCalls,
     latestArtifacts,
+    latestTraceSnapshot,
+    recentTraces,
   ] = await Promise.all([
     selectUser(env, identity.scope.userId),
     selectWorkspace(env, identity.scope.workspaceId),
@@ -153,6 +156,8 @@ export const handleAdminWorkspaceSummary = async (
     resolveToolSummaries(env, identity),
     listLatestToolCalls(env, identity.scope),
     listLatestArtifacts(env, identity.scope),
+    getLatestRuntimeTraceSnapshot(env, identity.scope),
+    listRuntimeTraceSummaries(env, identity.scope, 10),
   ]);
 
   const [failedControlRun, errorEvent] = await Promise.all([
@@ -262,6 +267,9 @@ export const handleAdminWorkspaceSummary = async (
       tools,
       latestToolCalls,
       latestArtifacts,
+      latestTrace: latestTraceSnapshot?.trace ?? null,
+      recentTraces,
+      traceWaterfall: latestTraceSnapshot?.spans ?? [],
       events: events.events ?? [],
       lastError,
     },

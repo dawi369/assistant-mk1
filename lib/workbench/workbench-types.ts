@@ -142,6 +142,66 @@ export type CloudflareToolRunResponse = {
   };
 };
 
+export type RuntimeTraceStatus = "running" | "completed" | "failed" | "blocked";
+
+export type RuntimeTraceLayer =
+  | "browser"
+  | "vercel"
+  | "cloudflare"
+  | "d1"
+  | "provider"
+  | "executor"
+  | "tool";
+
+export type RuntimeTrace = {
+  traceId: Id;
+  scope?: TenantScope;
+  agentId?: Id;
+  kind: "chat.thread.create" | "chat.run.stream" | "tool.url.inspect" | "diagnostic.demo.inspect";
+  status: RuntimeTraceStatus;
+  rootName: string;
+  summary?: string;
+  bottleneckSpanId?: Id;
+  data?: Record<string, unknown>;
+  startedAt?: string;
+  endedAt?: string;
+  durationMs?: number;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type RuntimeSpan = {
+  spanId: Id;
+  traceId: Id;
+  parentSpanId?: Id;
+  scope?: TenantScope;
+  agentId?: Id;
+  name: string;
+  layer: RuntimeTraceLayer;
+  status: RuntimeTraceStatus;
+  data?: Record<string, unknown>;
+  startedAt?: string;
+  endedAt?: string;
+  durationMs?: number;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type CloudflareRuntimeTracesResponse = {
+  ok?: boolean;
+  latestTrace?: RuntimeTrace | null;
+  recentTraces?: RuntimeTrace[];
+  traceWaterfall?: RuntimeSpan[];
+  error?: string;
+};
+
+export type CloudflareRuntimeTraceResponse = {
+  ok?: boolean;
+  trace?: RuntimeTrace | null;
+  spans?: RuntimeSpan[];
+  error?: string;
+};
+
 export type AgentRuntimeConfig = {
   provider: "openrouter";
   model: string;
@@ -409,6 +469,9 @@ export type CloudflareAdminSummaryResponse = {
     tools: ToolSummary[];
     latestToolCalls: ToolCallSummary[];
     latestArtifacts: ArtifactSummary[];
+    latestTrace: RuntimeTrace | null;
+    recentTraces: RuntimeTrace[];
+    traceWaterfall: RuntimeSpan[];
     events: ControlPlaneEvent[];
     lastError: {
       source: "chat" | "demo" | "event";

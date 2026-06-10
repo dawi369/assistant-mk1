@@ -23,6 +23,14 @@ import { deriveChatExecutionMode, evaluateChatRunPolicy } from "./chat-policy";
 import { appendControlPlaneEvent } from "./control-plane-events";
 import { isRecord, json, parseDataJson, parseJson } from "./http";
 import {
+  finishTrace,
+  recordIncomingRequestSpans,
+  recordSpan,
+  startTrace,
+  type IncomingRuntimeTrace,
+  type RuntimeTraceContext,
+} from "./runtime-traces";
+import {
   createId,
   type AgentIdentity,
   type ChatThreadRow,
@@ -156,6 +164,23 @@ const createChatRunTiming = (input?: ChatRunTimingInput) => {
 const truncate = (value: string, max = 1200) =>
   value.length > max ? `${value.slice(0, max)}...` : value;
 
+const safeTrace = (promise: Promise<unknown> | undefined, label: string) => {
+  if (!promise) return;
+  void promise.catch((error) => {
+    console.error(label, error);
+  });
+};
+
+const finishRuntimeTrace = (
+  env: Env,
+  identity: AgentIdentity,
+  trace: RuntimeTraceContext | null,
+  input: Parameters<typeof finishTrace>[3],
+) => {
+  if (!trace) return;
+  safeTrace(finishTrace(env, identity, trace, input), "Failed to finish runtime trace");
+};
+
 const asTextContent = (content: unknown) => {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
@@ -287,64 +312,130 @@ const parseOpenRouterChunk = (block: string) => {
   };
 };
 
-export const handleCloudflareCreateThread = async (env: Env, identity: AgentIdentity) => {
-  const activeAgent = await selectAgent(env, identity.agentId, identity.scope.workspaceId);
-  const runtimeConfig = resolveAgentRuntimeConfig(env, activeAgent);
-  const behaviorConfig = resolveAgentBehaviorConfig(activeAgent);
-  const agentMetadata = toAgentRuntimeMetadata(env, activeAgent, identity.agentId);
-  const existingSession = await getLatestChatSession(env, identity.scope);
-  const createdSession = !existingSession || existingSession.agent_id !== identity.agentId;
-  const sessionId =
-    !createdSession && existingSession
-      ? existingSession.session_id
-      : await createChatSession(env, identity, {
-          source: "cloudflare-chat-runtime",
-          agent: agentMetadata,
-        });
-
-  if (createdSession) {
-    await appendControlPlaneEvent(env, identity, {
-      type: "chat.session.created",
-      summary: "Created Cloudflare-owned chat session.",
-      targetType: "chat_session",
-      targetId: sessionId,
-      data: { source: "cloudflare-chat-runtime", agent: agentMetadata },
-    });
-  }
-
-  const threadId = createId("cf-thread");
-  await storeChatThread(
-    env,
-    identity,
-    sessionId,
-    threadId,
-    threadUpstream({
-      source: "cloudflare-chat-runtime",
-      runtime: "cloudflare-simple-chat",
-      messages: [],
-      model: runtimeConfig.model,
-      runtimeConfig,
-      behaviorConfig,
-    }),
-  );
-  await touchChatSession(env, identity.scope, sessionId, threadId);
-  await appendControlPlaneEvent(env, identity, {
-    type: "chat.thread.created",
-    summary: "Created Cloudflare-owned chat thread.",
-    targetType: "chat_thread",
-    targetId: threadId,
-    data: { sessionId, source: "cloudflare-chat-runtime", agent: agentMetadata },
+export const handleCloudflareCreateThread = async (
+  env: Env,
+  identity: AgentIdentity,
+  incomingTrace?: IncomingRuntimeTrace,
+) => {
+  const trace = await startTrace(env, identity, {
+    traceId: incomingTrace?.traceId,
+    kind: "chat.thread.create",
+    rootName: "Create chat thread",
+    summary: "Create a fresh Cloudflare-owned chat thread.",
+    startedAtMs: incomingTrace?.authzStartedAtMs,
+    data: { runtime: "cloudflare-simple-chat" },
   });
+  await recordIncomingRequestSpans(env, identity, trace, incomingTrace);
 
-  return json(
-    {
-      thread_id: threadId,
-      created_at: new Date().toISOString(),
-      metadata: { source: "cloudflare-chat-runtime" },
-      status: "idle",
-    },
-    { status: 201 },
-  );
+  try {
+    const resolveStartedAtMs = Date.now();
+    const activeAgent = await selectAgent(env, identity.agentId, identity.scope.workspaceId);
+    const runtimeConfig = resolveAgentRuntimeConfig(env, activeAgent);
+    const behaviorConfig = resolveAgentBehaviorConfig(activeAgent);
+    const agentMetadata = toAgentRuntimeMetadata(env, activeAgent, identity.agentId);
+    const existingSession = await getLatestChatSession(env, identity.scope);
+    await recordSpan(env, identity, {
+      traceId: trace.traceId,
+      name: "Agent and session resolve",
+      layer: "d1",
+      startedAtMs: resolveStartedAtMs,
+      data: {
+        agentId: identity.agentId,
+        reusedSession: Boolean(existingSession && existingSession.agent_id === identity.agentId),
+      },
+    });
+
+    const createdSession = !existingSession || existingSession.agent_id !== identity.agentId;
+    const sessionStartedAtMs = Date.now();
+    const sessionId =
+      !createdSession && existingSession
+        ? existingSession.session_id
+        : await createChatSession(env, identity, {
+            source: "cloudflare-chat-runtime",
+            agent: agentMetadata,
+          });
+
+    if (createdSession) {
+      await appendControlPlaneEvent(env, identity, {
+        type: "chat.session.created",
+        summary: "Created Cloudflare-owned chat session.",
+        targetType: "chat_session",
+        targetId: sessionId,
+        data: { source: "cloudflare-chat-runtime", agent: agentMetadata },
+      });
+    }
+    await recordSpan(env, identity, {
+      traceId: trace.traceId,
+      name: "Session write",
+      layer: "d1",
+      startedAtMs: sessionStartedAtMs,
+      data: { createdSession, sessionId },
+    });
+
+    const threadId = createId("cf-thread");
+    const threadStartedAtMs = Date.now();
+    await storeChatThread(
+      env,
+      identity,
+      sessionId,
+      threadId,
+      threadUpstream({
+        source: "cloudflare-chat-runtime",
+        runtime: "cloudflare-simple-chat",
+        messages: [],
+        model: runtimeConfig.model,
+        runtimeConfig,
+        behaviorConfig,
+      }),
+    );
+    await touchChatSession(env, identity.scope, sessionId, threadId);
+    await recordSpan(env, identity, {
+      traceId: trace.traceId,
+      name: "Thread ownership write",
+      layer: "d1",
+      startedAtMs: threadStartedAtMs,
+      data: { threadId, sessionId },
+    });
+
+    const eventStartedAtMs = Date.now();
+    await appendControlPlaneEvent(env, identity, {
+      type: "chat.thread.created",
+      summary: "Created Cloudflare-owned chat thread.",
+      targetType: "chat_thread",
+      targetId: threadId,
+      data: { sessionId, source: "cloudflare-chat-runtime", agent: agentMetadata },
+    });
+    await recordSpan(env, identity, {
+      traceId: trace.traceId,
+      name: "Thread event write",
+      layer: "d1",
+      startedAtMs: eventStartedAtMs,
+      data: { targetType: "chat_thread" },
+    });
+
+    await finishTrace(env, identity, trace, {
+      status: "completed",
+      summary: "Chat thread created.",
+      data: { threadId, sessionId, runtime: "cloudflare-simple-chat" },
+    });
+
+    return json(
+      {
+        thread_id: threadId,
+        created_at: new Date().toISOString(),
+        metadata: { source: "cloudflare-chat-runtime", traceId: trace.traceId },
+        status: "idle",
+      },
+      { status: 201 },
+    );
+  } catch (error) {
+    await finishTrace(env, identity, trace, {
+      status: "failed",
+      summary: "Chat thread creation failed.",
+      data: { error: error instanceof Error ? truncate(error.message) : "Unknown error" },
+    });
+    throw error;
+  }
 };
 
 export const handleCloudflareThreadState = async (thread: ChatThreadRow) =>
@@ -366,12 +457,35 @@ export const handleCloudflareRunStream = async (
   bodyText: string,
   ctx?: WorkerExecutionContext,
   timingInput?: ChatRunTimingInput,
+  incomingTrace?: IncomingRuntimeTrace,
 ) => {
+  const trace = await startTrace(env, identity, {
+    traceId: incomingTrace?.traceId,
+    kind: "chat.run.stream",
+    rootName: "Stream chat response",
+    summary: "Run Cloudflare simple chat and stream provider output.",
+    startedAtMs: incomingTrace?.authzStartedAtMs ?? timingInput?.facadeEnteredAtMs,
+    data: {
+      runtime: "cloudflare-simple-chat",
+      threadId: thread.thread_id,
+      sessionId: thread.session_id,
+    },
+  });
+  await recordIncomingRequestSpans(env, identity, trace, incomingTrace);
   const timing = createChatRunTiming(timingInput);
   timing.mark("runStreamHandlerEntered");
+  const bodyParseStartedAtMs = Date.now();
   const parsedBody = parseJson(bodyText);
+  await recordSpan(env, identity, {
+    traceId: trace.traceId,
+    name: "Body parse",
+    layer: "cloudflare",
+    startedAtMs: bodyParseStartedAtMs,
+    data: { bodyBytes: bodyText.length },
+  });
   const { executionMode, invalidExecutionMode, requestedExecutionMode } =
     deriveChatExecutionMode(parsedBody);
+  const runSetupStartedAtMs = Date.now();
   const runningRun = await getLatestRunningChatRun(env, identity.scope, thread.thread_id);
   const policy = evaluateChatRunPolicy({
     executionMode,
@@ -389,6 +503,19 @@ export const handleCloudflareRunStream = async (
   const nextMessages = dedupeMessages(
     conversationMessages([...existingMessages, ...inputMessages]),
   );
+  await recordSpan(env, identity, {
+    traceId: trace.traceId,
+    name: "Runtime config and policy inputs",
+    layer: "d1",
+    startedAtMs: runSetupStartedAtMs,
+    data: {
+      executionMode,
+      runningRunId: runningRun?.id ?? null,
+      model: runtimeConfig.model,
+      behaviorTemplateId: behaviorConfig.templateId,
+    },
+  });
+  const recordsStartedAtMs = Date.now();
   const intentId = await createChatIntent(env, identity, {
     sessionId: thread.session_id,
     threadId: thread.thread_id,
@@ -462,6 +589,24 @@ export const handleCloudflareRunStream = async (
 
   if (policy.decision === "block") {
     timing.mark("policyBlocked");
+    await recordSpan(env, identity, {
+      traceId: trace.traceId,
+      name: "Intent/policy writes",
+      layer: "d1",
+      startedAtMs: recordsStartedAtMs,
+      status: "blocked",
+      data: { intentId, policyDecisionId, reason: policy.reason },
+    });
+    await finishTrace(env, identity, trace, {
+      status: "blocked",
+      summary: policy.reason,
+      data: {
+        threadId: thread.thread_id,
+        intentId,
+        policyDecisionId,
+        errorCode: policy.errorCode ?? "policy_blocked",
+      },
+    });
     return json(
       {
         ok: false,
@@ -506,6 +651,13 @@ export const handleCloudflareRunStream = async (
     }),
   );
   timing.mark("threadInputStored");
+  await recordSpan(env, identity, {
+    traceId: trace.traceId,
+    name: "Intent/policy/run writes",
+    layer: "d1",
+    startedAtMs: recordsStartedAtMs,
+    data: { intentId, policyDecisionId, runId, threadId: thread.thread_id },
+  });
   void safeWaitUntil(
     ctx,
     appendControlPlaneEvent(env, identity, {
@@ -531,6 +683,7 @@ export const handleCloudflareRunStream = async (
   if (requestedAssistantId !== "agent") {
     const error = "This assistant runtime is not available for Cloudflare simple chat.";
     timing.mark("unsupportedAssistantRejected");
+    const rejectionStartedAtMs = Date.now();
     await updateChatRun(env, {
       runId,
       scope: identity.scope,
@@ -543,6 +696,19 @@ export const handleCloudflareRunStream = async (
         timings: timing.snapshot(),
       },
       error,
+    });
+    await recordSpan(env, identity, {
+      traceId: trace.traceId,
+      name: "Unsupported assistant rejection",
+      layer: "cloudflare",
+      startedAtMs: rejectionStartedAtMs,
+      status: "failed",
+      data: { requestedAssistantId, errorCode: "unsupported_assistant" },
+    });
+    await finishTrace(env, identity, trace, {
+      status: "failed",
+      summary: error,
+      data: { threadId: thread.thread_id, runId, errorCode: "unsupported_assistant" },
     });
     void safeWaitUntil(
       ctx,
@@ -571,6 +737,7 @@ export const handleCloudflareRunStream = async (
   if (!env.OPENROUTER_API_KEY) {
     const error = "Chat model is not configured for Cloudflare simple chat.";
     timing.mark("missingModelSecretRejected");
+    const rejectionStartedAtMs = Date.now();
     await updateChatRun(env, {
       runId,
       scope: identity.scope,
@@ -582,6 +749,19 @@ export const handleCloudflareRunStream = async (
         timings: timing.snapshot(),
       },
       error,
+    });
+    await recordSpan(env, identity, {
+      traceId: trace.traceId,
+      name: "Missing model secret rejection",
+      layer: "cloudflare",
+      startedAtMs: rejectionStartedAtMs,
+      status: "failed",
+      data: { errorCode: "missing_model_secret" },
+    });
+    await finishTrace(env, identity, trace, {
+      status: "failed",
+      summary: error,
+      data: { threadId: thread.thread_id, runId, errorCode: "missing_model_secret" },
     });
     void safeWaitUntil(
       ctx,
@@ -608,6 +788,13 @@ export const handleCloudflareRunStream = async (
 
   const model = runtimeConfig.model;
   timing.mark("streamResponsePrepared");
+  await recordSpan(env, identity, {
+    traceId: trace.traceId,
+    name: "Pre-stream total",
+    layer: "cloudflare",
+    startedAtMs: trace.startedAtMs,
+    data: { runId, threadId: thread.thread_id, model },
+  });
   const stream = new ReadableStream({
     start(controller) {
       void (async () => {
@@ -630,6 +817,7 @@ export const handleCloudflareRunStream = async (
           controller.enqueue(sse("metadata", metadata));
           timing.mark("metadataEmitted");
           timing.markProviderStarted();
+          const providerStartedAtMs = Date.now();
           const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
             method: "POST",
             headers: openRouterHeaders(env),
@@ -658,6 +846,7 @@ export const handleCloudflareRunStream = async (
           const reader = response.body.getReader();
           const decoder = new TextDecoder();
           let buffer = "";
+          let firstTokenAtMs: number | null = null;
 
           while (true) {
             const { done, value } = await reader.read();
@@ -671,6 +860,17 @@ export const handleCloudflareRunStream = async (
               if (parsed.done) break;
               if (!parsed.content) continue;
               timing.markFirstToken();
+              if (firstTokenAtMs === null) {
+                firstTokenAtMs = Date.now();
+                await recordSpan(env, identity, {
+                  traceId: trace.traceId,
+                  name: "OpenRouter first token",
+                  layer: "provider",
+                  startedAtMs: providerStartedAtMs,
+                  endedAtMs: firstTokenAtMs,
+                  data: { model },
+                });
+              }
               assistantText += parsed.content;
               controller.enqueue(
                 sse("messages", [
@@ -692,6 +892,15 @@ export const handleCloudflareRunStream = async (
             }
           }
           timing.markProviderCompleted();
+          const providerCompletedAtMs = Date.now();
+          await recordSpan(env, identity, {
+            traceId: trace.traceId,
+            name: "Stream duration",
+            layer: "provider",
+            startedAtMs: firstTokenAtMs ?? providerStartedAtMs,
+            endedAtMs: providerCompletedAtMs,
+            data: { model, outputChars: assistantText.length },
+          });
 
           const finalMessages = dedupeMessages([
             ...nextMessages,
@@ -702,6 +911,7 @@ export const handleCloudflareRunStream = async (
               response_metadata: { model_name: model },
             },
           ]);
+          const postStreamStartedAtMs = Date.now();
           await updateChatThreadUpstream(
             env,
             identity.scope,
@@ -727,6 +937,13 @@ export const handleCloudflareRunStream = async (
               timings: timing.snapshot(),
             },
           });
+          await recordSpan(env, identity, {
+            traceId: trace.traceId,
+            name: "Post-stream D1 writes",
+            layer: "d1",
+            startedAtMs: postStreamStartedAtMs,
+            data: { runId, outputChars: assistantText.length },
+          });
           void safeWaitUntil(
             ctx,
             appendControlPlaneEvent(env, identity, {
@@ -743,6 +960,17 @@ export const handleCloudflareRunStream = async (
             }),
             "Failed to append chat run completed event",
           );
+          finishRuntimeTrace(env, identity, trace, {
+            status: "completed",
+            summary: "Chat response completed.",
+            data: {
+              threadId: thread.thread_id,
+              runId,
+              runtime: "cloudflare-simple-chat",
+              model,
+              outputChars: assistantText.length,
+            },
+          });
           controller.close();
         } catch (error) {
           timing.markProviderCompleted();
@@ -757,6 +985,7 @@ export const handleCloudflareRunStream = async (
                 );
           const message = runtimeError.message;
           timing.mark("runFailed");
+          const failureStartedAtMs = Date.now();
           await updateChatRun(env, {
             runId,
             scope: identity.scope,
@@ -770,6 +999,18 @@ export const handleCloudflareRunStream = async (
               timings: timing.snapshot(),
             },
             error: truncate(message),
+          });
+          await recordSpan(env, identity, {
+            traceId: trace.traceId,
+            name: "Run failure write",
+            layer: "d1",
+            startedAtMs: failureStartedAtMs,
+            status: "failed",
+            data: {
+              runId,
+              errorCode: runtimeError.errorCode,
+              retryable: runtimeError.retryable,
+            },
           });
           void safeWaitUntil(
             ctx,
@@ -796,6 +1037,18 @@ export const handleCloudflareRunStream = async (
               retryable: runtimeError.retryable,
             }),
           );
+          finishRuntimeTrace(env, identity, trace, {
+            status: "failed",
+            summary: truncate(message),
+            data: {
+              threadId: thread.thread_id,
+              runId,
+              runtime: "cloudflare-simple-chat",
+              model,
+              errorCode: runtimeError.errorCode,
+              retryable: runtimeError.retryable,
+            },
+          });
           controller.close();
         }
       })();

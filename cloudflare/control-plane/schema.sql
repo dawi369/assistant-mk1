@@ -1,3 +1,5 @@
+DROP TABLE IF EXISTS runtime_spans;
+DROP TABLE IF EXISTS runtime_traces;
 DROP TABLE IF EXISTS chat_runs;
 DROP TABLE IF EXISTS chat_policy_decisions;
 DROP TABLE IF EXISTS chat_intents;
@@ -225,6 +227,48 @@ CREATE TABLE control_plane_events (
 
 CREATE INDEX idx_control_plane_events_scope_latest
   ON control_plane_events (user_id, workspace_id, created_at DESC, id DESC);
+
+CREATE TABLE runtime_traces (
+  trace_id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  workspace_id TEXT NOT NULL,
+  agent_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  status TEXT NOT NULL,
+  root_name TEXT NOT NULL,
+  summary TEXT,
+  bottleneck_span_id TEXT,
+  data_json TEXT NOT NULL DEFAULT '{}',
+  started_at TEXT NOT NULL,
+  ended_at TEXT,
+  duration_ms INTEGER,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX idx_runtime_traces_scope_latest
+  ON runtime_traces (user_id, workspace_id, updated_at DESC, started_at DESC);
+
+CREATE TABLE runtime_spans (
+  span_id TEXT PRIMARY KEY,
+  trace_id TEXT NOT NULL,
+  parent_span_id TEXT,
+  user_id TEXT NOT NULL,
+  workspace_id TEXT NOT NULL,
+  agent_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  layer TEXT NOT NULL,
+  status TEXT NOT NULL,
+  data_json TEXT NOT NULL DEFAULT '{}',
+  started_at TEXT NOT NULL,
+  ended_at TEXT,
+  duration_ms INTEGER,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX idx_runtime_spans_trace_time
+  ON runtime_spans (user_id, workspace_id, trace_id, started_at ASC, created_at ASC);
 
 CREATE TABLE chat_sessions (
   session_id TEXT PRIMARY KEY,

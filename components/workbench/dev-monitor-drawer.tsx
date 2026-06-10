@@ -49,6 +49,8 @@ import type {
   CloudflareAdminSummaryResponse,
   CloudflareOwnedDemoRunResponse,
   CloudflareToolRunResponse,
+  RuntimeSpan,
+  RuntimeTrace,
 } from "@/lib/workbench/workbench-types";
 
 const adminSummaryPath = "/api/workbench/admin-summary";
@@ -109,6 +111,139 @@ function DetailsBlock({
   );
 }
 
+const serviceNodes: Array<{ layer: RuntimeSpan["layer"]; label: string }> = [
+  { layer: "browser", label: "Browser" },
+  { layer: "vercel", label: "Vercel" },
+  { layer: "cloudflare", label: "Cloudflare" },
+  { layer: "d1", label: "D1" },
+  { layer: "provider", label: "OpenRouter" },
+  { layer: "executor", label: "Executor" },
+  { layer: "tool", label: "Tool" },
+];
+
+const traceTone = (status?: RuntimeTrace["status"] | RuntimeSpan["status"]) => {
+  if (status === "completed") return "completed";
+  if (status === "failed" || status === "blocked") return "failed";
+  if (status === "running") return "running";
+  return undefined;
+};
+
+const sortSpans = (spans: RuntimeSpan[]) =>
+  [...spans].sort((left, right) => {
+    const leftTime = left.startedAt ? Date.parse(left.startedAt) : 0;
+    const rightTime = right.startedAt ? Date.parse(right.startedAt) : 0;
+    return leftTime - rightTime;
+  });
+
+function LiveRequestMap({ trace, spans }: { trace?: RuntimeTrace | null; spans: RuntimeSpan[] }) {
+  const sortedSpans = sortSpans(spans);
+  const bottleneck =
+    sortedSpans.find((span) => span.spanId === trace?.bottleneckSpanId) ??
+    sortedSpans
+      .filter((span) => typeof span.durationMs === "number")
+      .sort((left, right) => (right.durationMs ?? 0) - (left.durationMs ?? 0))[0];
+  const runningSpan = sortedSpans.find((span) => span.status === "running");
+  const activeLayer = runningSpan?.layer ?? bottleneck?.layer ?? sortedSpans.at(-1)?.layer;
+  const maxDuration = Math.max(1, ...sortedSpans.map((span) => span.durationMs ?? 0));
+
+  return (
+    <MonitorSection icon={ActivityIcon} title="Live Request Map">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusPill status={trace?.status ?? "no trace yet"} tone={traceTone(trace?.status)} />
+            <span className="text-sm font-medium">{trace?.rootName ?? "No request selected"}</span>
+          </div>
+          <p className="text-muted-foreground mt-1 text-xs">
+            {trace?.summary ??
+              "Send a message, create a thread, or run a tool to populate the trace graph."}
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-2 text-right text-xs">
+          <StatusRow label="Total" value={formatDuration(trace?.durationMs)} compact />
+          <StatusRow label="Bottleneck" value={bottleneck?.name ?? "none"} compact />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-4 lg:grid-cols-7">
+        {serviceNodes.map((node) => {
+          const nodeSpans = sortedSpans.filter((span) => span.layer === node.layer);
+          const failed = nodeSpans.some(
+            (span) => span.status === "failed" || span.status === "blocked",
+          );
+          const completed = nodeSpans.some((span) => span.status === "completed");
+          const active = activeLayer === node.layer;
+          const totalMs = nodeSpans.reduce((sum, span) => sum + (span.durationMs ?? 0), 0);
+          return (
+            <div
+              key={node.layer}
+              className={[
+                "border-border bg-background rounded-md border p-3 text-sm",
+                active ? "ring-ring ring-2" : "",
+                failed ? "border-destructive/40 bg-destructive/10" : "",
+              ].join(" ")}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="truncate font-medium">{node.label}</span>
+                <span
+                  className={[
+                    "size-2 rounded-full",
+                    failed
+                      ? "bg-destructive"
+                      : active
+                        ? "bg-primary"
+                        : completed
+                          ? "bg-emerald-500"
+                          : "bg-muted-foreground/30",
+                  ].join(" ")}
+                />
+              </div>
+              <p className="text-muted-foreground mt-1 text-xs">
+                {nodeSpans.length
+                  ? `${nodeSpans.length} spans / ${formatDuration(totalMs)}`
+                  : "idle"}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="space-y-2">
+        <p className="text-muted-foreground text-xs font-medium">Waterfall</p>
+        {sortedSpans.length ? (
+          sortedSpans.map((span) => (
+            <div
+              key={span.spanId}
+              className="grid grid-cols-[9rem_1fr_4.5rem] items-center gap-2 text-xs"
+            >
+              <span className="text-muted-foreground truncate">{span.layer}</span>
+              <div className="min-w-0">
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <span className="truncate font-medium">{span.name}</span>
+                  <StatusPill status={span.status} tone={traceTone(span.status)} />
+                </div>
+                <div className="bg-muted h-1.5 overflow-hidden rounded-full">
+                  <div
+                    className="bg-primary h-full rounded-full"
+                    style={{
+                      width: `${Math.max(4, ((span.durationMs ?? 0) / maxDuration) * 100)}%`,
+                    }}
+                  />
+                </div>
+              </div>
+              <span className="text-muted-foreground text-right">
+                {formatDuration(span.durationMs) ?? "-"}
+              </span>
+            </div>
+          ))
+        ) : (
+          <EmptyPanelText>No trace spans recorded yet.</EmptyPanelText>
+        )}
+      </div>
+    </MonitorSection>
+  );
+}
+
 export function AdminPanel({
   open,
   onOpenChange,
@@ -139,6 +274,8 @@ export function AdminPanel({
 
   const demoSnapshot = summary?.demo.latestRun ?? null;
   const chatRuntime = summary?.chatRuntime ?? null;
+  const latestTrace = summary?.latestTrace ?? null;
+  const traceWaterfall = summary?.traceWaterfall ?? [];
   const run = demoSnapshot?.run;
   const isDemoActive = run?.status ? !terminalStatuses.has(run.status) : false;
   const isChatActive = chatRuntime?.state === "running";
@@ -402,7 +539,9 @@ export function AdminPanel({
             </Button>
           </div>
 
-          <MonitorSection icon={ActivityIcon} title="Flow Overview">
+          <LiveRequestMap trace={latestTrace} spans={traceWaterfall} />
+
+          <MonitorSection icon={ActivityIcon} title="Current State">
             <div className="flex flex-wrap items-center gap-2">
               <StatusPill status={chatLabel} tone={chatTone} />
               {importantError ? <StatusPill status="Needs attention" tone="failed" /> : null}
@@ -565,543 +704,581 @@ export function AdminPanel({
             </div>
           </MonitorSection>
 
-          <MonitorSection icon={Building2Icon} title="Manage Workspace & Agents">
-            <DetailsBlock title="Workspaces">
-              <StatusRow label="Active workspace" value={summary?.workspace?.name} />
-              <form className="flex gap-2" onSubmit={createWorkspace}>
-                <input
-                  className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring min-w-0 flex-1 rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-                  value={workspaceName}
-                  onChange={(event) => setWorkspaceName(event.target.value)}
-                  placeholder="New workspace name"
-                  maxLength={80}
-                />
-                <Button
-                  type="submit"
-                  size="sm"
-                  disabled={isCreatingWorkspace || !workspaceName.trim() || !canManageWorkspaces}
-                >
-                  {isCreatingWorkspace ? <Loader2Icon className="animate-spin" /> : <PlusIcon />}
-                  Create
-                </Button>
-              </form>
-              {summary?.workspaces?.length ? (
-                <ol className="space-y-2">
-                  {summary.workspaces.map((workspace) => (
-                    <li key={workspace.id} className="border-border rounded-md border p-3 text-sm">
-                      <div className="flex items-start justify-between gap-2">
-                        <span className="min-w-0">
-                          <span className="block truncate font-medium">{workspace.name}</span>
-                          <span className="text-muted-foreground block text-xs">
-                            {workspace.isActive ? "active" : "available"}
-                            {workspace.isDefault ? " / default" : ""}
-                          </span>
-                        </span>
-                        {workspace.isActive ? (
-                          <StatusPill status="active" tone="completed" />
-                        ) : (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => void activateWorkspace(workspace.id)}
-                            disabled={
-                              activatingWorkspaceId === workspace.id || !canManageWorkspaces
-                            }
-                          >
-                            {activatingWorkspaceId === workspace.id ? (
-                              <Loader2Icon className="animate-spin" />
-                            ) : null}
-                            Make active
-                          </Button>
-                        )}
-                      </div>
-                    </li>
-                  ))}
-                </ol>
-              ) : (
-                <EmptyPanelText>No account workspaces loaded.</EmptyPanelText>
-              )}
-            </DetailsBlock>
-
-            <DetailsBlock title="Agents">
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <StatusRow label="Active agent" value={summary?.activeAgent?.name} />
-                <StatusRow label="Profile" value={summary?.activeAgent?.profile} />
-                <StatusRow label="Model" value={summary?.activeAgent?.runtime.model} />
-                <StatusRow label="Model source" value={summary?.activeAgent?.runtime.source} />
-                <StatusRow label="Behavior" value={summary?.activeAgent?.behavior.profile} />
-                <StatusRow label="Behavior source" value={summary?.activeAgent?.behavior.source} />
-              </div>
-              <form className="space-y-2" onSubmit={createAgent}>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
+          <DetailsBlock title="Manage" defaultOpen={false}>
+            <MonitorSection icon={Building2Icon} title="Workspace & Agents">
+              <DetailsBlock title="Workspaces">
+                <StatusRow label="Active workspace" value={summary?.workspace?.name} />
+                <form className="flex gap-2" onSubmit={createWorkspace}>
                   <input
-                    className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring min-w-0 rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-                    value={agentName}
-                    onChange={(event) => setAgentName(event.target.value)}
-                    placeholder="New test agent name"
+                    className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring min-w-0 flex-1 rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                    value={workspaceName}
+                    onChange={(event) => setWorkspaceName(event.target.value)}
+                    placeholder="New workspace name"
                     maxLength={80}
-                  />
-                  <select
-                    className="border-input bg-background ring-offset-background focus-visible:ring-ring rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-                    value={agentProfile}
-                    onChange={(event) => {
-                      const nextProfile = event.target.value as "default" | "analyst" | "operator";
-                      setAgentProfile(nextProfile);
-                      setAgentBehaviorTemplateId(defaultBehaviorTemplateByProfile[nextProfile]);
-                    }}
-                  >
-                    <option value="analyst">Analyst</option>
-                    <option value="operator">Operator</option>
-                    <option value="default">Default</option>
-                  </select>
-                </div>
-                <select
-                  className="border-input bg-background ring-offset-background focus-visible:ring-ring w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-                  value={agentModel}
-                  onChange={(event) =>
-                    setAgentModel(event.target.value as (typeof agentModelOptions)[number])
-                  }
-                >
-                  {agentModelOptions.map((model) => (
-                    <option key={model} value={model}>
-                      {model}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className="border-input bg-background ring-offset-background focus-visible:ring-ring w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-                  value={agentBehaviorTemplateId}
-                  onChange={(event) =>
-                    setAgentBehaviorTemplateId(event.target.value as AgentBehaviorTemplate["id"])
-                  }
-                >
-                  {behaviorTemplates.length === 0 ? (
-                    <option value={agentBehaviorTemplateId}>Behavior template loading...</option>
-                  ) : (
-                    behaviorTemplates.map((template) => (
-                      <option key={template.id} value={template.id}>
-                        {template.name} / {template.version}
-                      </option>
-                    ))
-                  )}
-                </select>
-                <textarea
-                  className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring min-h-16 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-                  value={agentDescription}
-                  onChange={(event) => setAgentDescription(event.target.value)}
-                  placeholder="Optional description"
-                  maxLength={240}
-                />
-                {selectedBehaviorTemplate ? (
-                  <DetailsBlock title="Selected behavior template">
-                    <StatusRow label="Name" value={selectedBehaviorTemplate.name} />
-                    <StatusRow label="Description" value={selectedBehaviorTemplate.description} />
-                    <StatusRow label="Version" value={selectedBehaviorTemplate.version} />
-                    <pre className="bg-muted/50 max-h-48 overflow-auto rounded-md p-3 text-xs whitespace-pre-wrap">
-                      {selectedBehaviorTemplate.prompt}
-                    </pre>
-                  </DetailsBlock>
-                ) : null}
-                <Button
-                  type="submit"
-                  size="sm"
-                  disabled={isCreatingAgent || !agentName.trim() || !canManageAgents}
-                >
-                  {isCreatingAgent ? <Loader2Icon className="animate-spin" /> : <PlusIcon />}
-                  Create and activate test agent
-                </Button>
-              </form>
-              {summary?.agents.length ? (
-                <ol className="space-y-2">
-                  {summary.agents.map((agent) => (
-                    <li key={agent.id} className="border-border rounded-md border p-3 text-sm">
-                      <div className="flex items-start justify-between gap-2">
-                        <span className="min-w-0">
-                          <span className="block truncate font-medium">{agent.name}</span>
-                          <span className="text-muted-foreground block text-xs">
-                            {agent.isActive ? "active" : "available"}
-                            {agent.isDefault ? " / default" : ""}
-                            {` / ${agent.profile}`}
-                          </span>
-                          <span className="text-muted-foreground block truncate text-xs">
-                            {agent.runtime.provider} / {agent.runtime.model}
-                          </span>
-                          <span className="text-muted-foreground block truncate text-xs">
-                            behavior: {agent.behavior.templateId ?? agent.behavior.profile} /{" "}
-                            {agent.behavior.version}
-                          </span>
-                        </span>
-                        {agent.isActive ? (
-                          <StatusPill status="active" tone="completed" />
-                        ) : (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => void activateAgent(agent.id)}
-                            disabled={
-                              activatingAgentId === agent.id ||
-                              !canManageAgents ||
-                              agent.status !== "active"
-                            }
-                          >
-                            {activatingAgentId === agent.id ? (
-                              <Loader2Icon className="animate-spin" />
-                            ) : null}
-                            Make active
-                          </Button>
-                        )}
-                      </div>
-                      {agent.description ? (
-                        <p className="text-muted-foreground mt-1 text-xs">{agent.description}</p>
-                      ) : null}
-                    </li>
-                  ))}
-                </ol>
-              ) : (
-                <EmptyPanelText>No workspace agents loaded.</EmptyPanelText>
-              )}
-            </DetailsBlock>
-          </MonitorSection>
-
-          <MonitorSection icon={LinkIcon} title="Tools">
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <StatusRow
-                label="Registered tools"
-                value={String(summary?.tools?.length ?? 0)}
-                compact
-              />
-              <StatusRow
-                label="Model-visible tools"
-                value={String(summary?.tools?.filter((tool) => tool.modelVisible).length ?? 0)}
-                compact
-              />
-              <StatusRow
-                label="Latest tool"
-                value={latestAdminToolCall?.toolId ?? "none"}
-                compact
-              />
-              <StatusRow
-                label="Latest status"
-                value={latestAdminToolCall?.status ?? "No tool call yet"}
-                compact
-              />
-            </div>
-
-            <DetailsBlock title="Registered tools" defaultOpen>
-              {summary?.tools?.length ? (
-                <ol className="space-y-2">
-                  {summary.tools.map((tool) => (
-                    <li key={tool.name} className="border-border rounded-md border p-3 text-sm">
-                      <div className="flex items-start justify-between gap-3">
-                        <span className="min-w-0">
-                          <span className="block truncate font-medium">{tool.name}</span>
-                          <span className="text-muted-foreground block text-xs">
-                            {tool.family} / {tool.kind} / {tool.mutationRisk}
-                          </span>
-                          <span className="text-muted-foreground block text-xs">
-                            modes: {tool.supportedExecutionModes.join(", ")}
-                          </span>
-                        </span>
-                        <span className="flex shrink-0 flex-col items-end gap-1">
-                          <StatusPill
-                            status={tool.adminVisible ? "Admin" : "Hidden"}
-                            tone={tool.adminVisible ? "completed" : undefined}
-                          />
-                          <StatusPill
-                            status={tool.modelVisible ? "Model" : "Not model-visible"}
-                            tone={tool.modelVisible ? "completed" : undefined}
-                          />
-                        </span>
-                      </div>
-                      <p className="text-muted-foreground mt-2 text-xs">{tool.reason}</p>
-                    </li>
-                  ))}
-                </ol>
-              ) : (
-                <EmptyPanelText>No tools loaded for this workspace.</EmptyPanelText>
-              )}
-            </DetailsBlock>
-
-            <DetailsBlock title="URL Inspector">
-              <form className="space-y-2" onSubmit={runUrlInspect}>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
-                  <input
-                    className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring min-w-0 rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-                    value={urlInspectTarget}
-                    onChange={(event) => setUrlInspectTarget(event.target.value)}
-                    placeholder="https://example.com"
-                    inputMode="url"
                   />
                   <Button
                     type="submit"
                     size="sm"
-                    disabled={isRunningTool || !urlInspectTarget.trim() || !canManageAgents}
+                    disabled={isCreatingWorkspace || !workspaceName.trim() || !canManageWorkspaces}
                   >
-                    {isRunningTool ? <Loader2Icon className="animate-spin" /> : <LinkIcon />}
-                    Inspect URL
+                    {isCreatingWorkspace ? <Loader2Icon className="animate-spin" /> : <PlusIcon />}
+                    Create
                   </Button>
+                </form>
+                {summary?.workspaces?.length ? (
+                  <ol className="space-y-2">
+                    {summary.workspaces.map((workspace) => (
+                      <li
+                        key={workspace.id}
+                        className="border-border rounded-md border p-3 text-sm"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="min-w-0">
+                            <span className="block truncate font-medium">{workspace.name}</span>
+                            <span className="text-muted-foreground block text-xs">
+                              {workspace.isActive ? "active" : "available"}
+                              {workspace.isDefault ? " / default" : ""}
+                            </span>
+                          </span>
+                          {workspace.isActive ? (
+                            <StatusPill status="active" tone="completed" />
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => void activateWorkspace(workspace.id)}
+                              disabled={
+                                activatingWorkspaceId === workspace.id || !canManageWorkspaces
+                              }
+                            >
+                              {activatingWorkspaceId === workspace.id ? (
+                                <Loader2Icon className="animate-spin" />
+                              ) : null}
+                              Make active
+                            </Button>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <EmptyPanelText>No account workspaces loaded.</EmptyPanelText>
+                )}
+              </DetailsBlock>
+
+              <DetailsBlock title="Agents">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <StatusRow label="Active agent" value={summary?.activeAgent?.name} />
+                  <StatusRow label="Profile" value={summary?.activeAgent?.profile} />
+                  <StatusRow label="Model" value={summary?.activeAgent?.runtime.model} />
+                  <StatusRow label="Model source" value={summary?.activeAgent?.runtime.source} />
+                  <StatusRow label="Behavior" value={summary?.activeAgent?.behavior.profile} />
+                  <StatusRow
+                    label="Behavior source"
+                    value={summary?.activeAgent?.behavior.source}
+                  />
                 </div>
-                <p className="text-muted-foreground text-xs">
-                  Read-only dry-run tool. Local, private, and metadata hosts are blocked.
-                </p>
-              </form>
-            </DetailsBlock>
-
-            <DetailsBlock title="Recent tool calls">
-              {summary?.latestToolCalls?.length ? (
-                <ol className="space-y-2">
-                  {summary.latestToolCalls.slice(0, 6).map((toolCall) => (
-                    <li key={toolCall.id} className="border-border rounded-md border p-3 text-sm">
-                      <div className="flex items-start justify-between gap-2">
-                        <span className="min-w-0">
-                          <span className="block truncate font-medium">{toolCall.toolId}</span>
-                          <span className="text-muted-foreground block text-xs">
-                            {toolCall.outputSummary ??
-                              toolCall.inputSummary ??
-                              "Tool call recorded"}
+                <form className="space-y-2" onSubmit={createAgent}>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
+                    <input
+                      className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring min-w-0 rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                      value={agentName}
+                      onChange={(event) => setAgentName(event.target.value)}
+                      placeholder="New test agent name"
+                      maxLength={80}
+                    />
+                    <select
+                      className="border-input bg-background ring-offset-background focus-visible:ring-ring rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                      value={agentProfile}
+                      onChange={(event) => {
+                        const nextProfile = event.target.value as
+                          | "default"
+                          | "analyst"
+                          | "operator";
+                        setAgentProfile(nextProfile);
+                        setAgentBehaviorTemplateId(defaultBehaviorTemplateByProfile[nextProfile]);
+                      }}
+                    >
+                      <option value="analyst">Analyst</option>
+                      <option value="operator">Operator</option>
+                      <option value="default">Default</option>
+                    </select>
+                  </div>
+                  <select
+                    className="border-input bg-background ring-offset-background focus-visible:ring-ring w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                    value={agentModel}
+                    onChange={(event) =>
+                      setAgentModel(event.target.value as (typeof agentModelOptions)[number])
+                    }
+                  >
+                    {agentModelOptions.map((model) => (
+                      <option key={model} value={model}>
+                        {model}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    className="border-input bg-background ring-offset-background focus-visible:ring-ring w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                    value={agentBehaviorTemplateId}
+                    onChange={(event) =>
+                      setAgentBehaviorTemplateId(event.target.value as AgentBehaviorTemplate["id"])
+                    }
+                  >
+                    {behaviorTemplates.length === 0 ? (
+                      <option value={agentBehaviorTemplateId}>Behavior template loading...</option>
+                    ) : (
+                      behaviorTemplates.map((template) => (
+                        <option key={template.id} value={template.id}>
+                          {template.name} / {template.version}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                  <textarea
+                    className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring min-h-16 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                    value={agentDescription}
+                    onChange={(event) => setAgentDescription(event.target.value)}
+                    placeholder="Optional description"
+                    maxLength={240}
+                  />
+                  {selectedBehaviorTemplate ? (
+                    <DetailsBlock title="Selected behavior template">
+                      <StatusRow label="Name" value={selectedBehaviorTemplate.name} />
+                      <StatusRow label="Description" value={selectedBehaviorTemplate.description} />
+                      <StatusRow label="Version" value={selectedBehaviorTemplate.version} />
+                      <pre className="bg-muted/50 max-h-48 overflow-auto rounded-md p-3 text-xs whitespace-pre-wrap">
+                        {selectedBehaviorTemplate.prompt}
+                      </pre>
+                    </DetailsBlock>
+                  ) : null}
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={isCreatingAgent || !agentName.trim() || !canManageAgents}
+                  >
+                    {isCreatingAgent ? <Loader2Icon className="animate-spin" /> : <PlusIcon />}
+                    Create and activate test agent
+                  </Button>
+                </form>
+                {summary?.agents.length ? (
+                  <ol className="space-y-2">
+                    {summary.agents.map((agent) => (
+                      <li key={agent.id} className="border-border rounded-md border p-3 text-sm">
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="min-w-0">
+                            <span className="block truncate font-medium">{agent.name}</span>
+                            <span className="text-muted-foreground block text-xs">
+                              {agent.isActive ? "active" : "available"}
+                              {agent.isDefault ? " / default" : ""}
+                              {` / ${agent.profile}`}
+                            </span>
+                            <span className="text-muted-foreground block truncate text-xs">
+                              {agent.runtime.provider} / {agent.runtime.model}
+                            </span>
+                            <span className="text-muted-foreground block truncate text-xs">
+                              behavior: {agent.behavior.templateId ?? agent.behavior.profile} /{" "}
+                              {agent.behavior.version}
+                            </span>
                           </span>
-                          <span className="text-muted-foreground/80 block truncate text-xs">
-                            {formatTime(toolCall.finishedAt ?? toolCall.startedAt)}
-                          </span>
-                        </span>
-                        <StatusPill status={toolCall.status ?? "unknown"} tone={toolCall.status} />
-                      </div>
-                      <CopyId label="Tool call id" value={toolCall.id} />
-                    </li>
-                  ))}
-                </ol>
-              ) : (
-                <EmptyPanelText>
-                  Run the URL inspector or diagnostic to populate tool calls.
-                </EmptyPanelText>
-              )}
-            </DetailsBlock>
+                          {agent.isActive ? (
+                            <StatusPill status="active" tone="completed" />
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => void activateAgent(agent.id)}
+                              disabled={
+                                activatingAgentId === agent.id ||
+                                !canManageAgents ||
+                                agent.status !== "active"
+                              }
+                            >
+                              {activatingAgentId === agent.id ? (
+                                <Loader2Icon className="animate-spin" />
+                              ) : null}
+                              Make active
+                            </Button>
+                          )}
+                        </div>
+                        {agent.description ? (
+                          <p className="text-muted-foreground mt-1 text-xs">{agent.description}</p>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <EmptyPanelText>No workspace agents loaded.</EmptyPanelText>
+                )}
+              </DetailsBlock>
+            </MonitorSection>
 
-            {latestAdminArtifact ? (
-              <RuntimeRecord
-                icon={FileTextIcon}
-                label="Latest tool artifact"
-                title={latestAdminArtifact.title ?? latestAdminArtifact.id}
-                detail={latestAdminArtifact.uri}
-              />
-            ) : null}
-          </MonitorSection>
-
-          <MonitorSection icon={WrenchIcon} title="Diagnostic Run">
-            <div className="flex items-center justify-between gap-3">
-              <StatusPill status={`demo run: ${run?.status ?? "idle"}`} tone={run?.status} />
-              <Button size="sm" onClick={startDemoRun} disabled={isStarting || isDemoActive}>
-                {isStarting ? <Loader2Icon className="animate-spin" /> : <PlayIcon />}
-                Run diagnostic
-              </Button>
-            </div>
-            <DetailsBlock title="Diagnostic details">
-              <div className="grid grid-cols-2 gap-2">
-                <StatusRow label="Mode" value={run?.execution?.mode ?? "dry_run"} compact />
-                <StatusRow label="Stage" value={run?.stage ?? "observe"} compact />
-                <StatusRow
-                  label="Intent"
-                  value={demoSnapshot?.intent?.type ?? "not created"}
-                  compact
-                />
-                <StatusRow label="Updated" value={formatTime(run?.updatedAt)} compact />
-              </div>
-              <RuntimeRecord
-                icon={WrenchIcon}
-                label="Tool call"
-                title={latestToolCall?.toolId ?? "none yet"}
-                detail={latestToolCall?.outputSummary ?? latestToolCall?.inputSummary}
-                status={latestToolCall?.status}
-              />
-              <RuntimeRecord
-                icon={FileTextIcon}
-                label="Artifact"
-                title={latestArtifact?.title ?? "none yet"}
-                detail={latestArtifact?.uri}
-              />
-              <RuntimeRecord
-                icon={ShieldCheckIcon}
-                label="Decision"
-                title={latestDecision?.title ?? "none yet"}
-                detail={latestDecision?.summary}
-              />
-            </DetailsBlock>
-          </MonitorSection>
-
-          <MonitorSection icon={AlertCircleIcon} title="Advanced Details">
-            <DetailsBlock title="Raw scope ids">
-              <CopyId label="User id" value={summary?.identity.userId} />
-              <CopyId label="Account id" value={summary?.account?.id} />
-              <CopyId label="Workspace id" value={summary?.identity.workspaceId} />
-              <CopyId label="Active agent id" value={summary?.identity.agentId} />
-              <CopyId label="Session id" value={chatRuntime?.latestSession?.sessionId} />
-              <CopyId label="Thread id" value={chatRuntime?.latestThread?.threadId} />
-              <CopyId label="Chat intent id" value={chatRuntime?.latestIntent?.id} />
-              <CopyId label="Policy id" value={chatRuntime?.latestPolicyDecision?.id} />
-              <CopyId label="Chat run id" value={chatRuntime?.latestRun?.id} />
-              <CopyId label="External run id" value={chatRuntime?.latestRun?.upstreamRunId} />
-              <CopyId label="Demo run id" value={run?.id} />
-            </DetailsBlock>
-
-            <DetailsBlock title="Agent runtime config">
-              <StatusRow label="Provider" value={summary?.activeAgent?.runtime.provider} />
-              <CopyId label="Model" value={summary?.activeAgent?.runtime.model} />
-              <StatusRow
-                label="Temperature"
-                value={String(summary?.activeAgent?.runtime.temperature ?? "")}
-              />
-              <StatusRow
-                label="Max tokens"
-                value={String(summary?.activeAgent?.runtime.maxTokens ?? "")}
-              />
-              <StatusRow label="Source" value={summary?.activeAgent?.runtime.source} />
-            </DetailsBlock>
-
-            <DetailsBlock title="Chat runtime timings">
+            <MonitorSection icon={LinkIcon} title="Tools">
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <StatusRow
-                  label="Pre-stream"
-                  value={formatDuration(chatRuntime?.timings?.preStreamMs)}
+                  label="Registered tools"
+                  value={String(summary?.tools?.length ?? 0)}
                   compact
                 />
                 <StatusRow
-                  label="First token"
-                  value={formatDuration(chatRuntime?.timings?.firstTokenMs)}
+                  label="Model-visible tools"
+                  value={String(summary?.tools?.filter((tool) => tool.modelVisible).length ?? 0)}
                   compact
                 />
                 <StatusRow
-                  label="Provider"
-                  value={formatDuration(chatRuntime?.timings?.providerMs)}
+                  label="Latest tool"
+                  value={latestAdminToolCall?.toolId ?? "none"}
                   compact
                 />
                 <StatusRow
-                  label="Total"
-                  value={formatDuration(chatRuntime?.timings?.totalMs)}
+                  label="Latest status"
+                  value={latestAdminToolCall?.status ?? "No tool call yet"}
                   compact
                 />
               </div>
-              {chatRuntime?.timings?.stageMarks &&
-              Object.keys(chatRuntime.timings.stageMarks).length > 0 ? (
-                <div className="space-y-2">
-                  {Object.entries(chatRuntime.timings.stageMarks).map(([stage, value]) => (
-                    <StatusRow key={stage} label={stage} value={formatDuration(value)} compact />
-                  ))}
-                </div>
-              ) : (
-                <EmptyPanelText>Send a message to populate Cloudflare timing marks.</EmptyPanelText>
-              )}
-            </DetailsBlock>
 
-            <DetailsBlock title="Tool internals">
-              <CopyId label="Latest tool call id" value={latestAdminToolCall?.id} />
-              <CopyId label="Latest tool run id" value={latestAdminToolCall?.runId} />
-              <CopyId label="Latest tool artifact id" value={latestAdminArtifact?.id} />
-              {latestAdminToolCall ? (
-                <pre className="bg-muted/50 max-h-72 overflow-auto rounded-md p-3 text-xs whitespace-pre-wrap">
-                  {JSON.stringify(latestAdminToolCall, null, 2)}
-                </pre>
-              ) : (
-                <EmptyPanelText>No tool call internals recorded yet.</EmptyPanelText>
-              )}
-              {latestAdminArtifact?.data ? (
-                <pre className="bg-muted/50 max-h-72 overflow-auto rounded-md p-3 text-xs whitespace-pre-wrap">
-                  {JSON.stringify(latestAdminArtifact.data, null, 2)}
-                </pre>
-              ) : null}
-            </DetailsBlock>
+              <DetailsBlock title="Registered tools" defaultOpen>
+                {summary?.tools?.length ? (
+                  <ol className="space-y-2">
+                    {summary.tools.map((tool) => (
+                      <li key={tool.name} className="border-border rounded-md border p-3 text-sm">
+                        <div className="flex items-start justify-between gap-3">
+                          <span className="min-w-0">
+                            <span className="block truncate font-medium">{tool.name}</span>
+                            <span className="text-muted-foreground block text-xs">
+                              {tool.family} / {tool.kind} / {tool.mutationRisk}
+                            </span>
+                            <span className="text-muted-foreground block text-xs">
+                              modes: {tool.supportedExecutionModes.join(", ")}
+                            </span>
+                          </span>
+                          <span className="flex shrink-0 flex-col items-end gap-1">
+                            <StatusPill
+                              status={tool.adminVisible ? "Admin" : "Hidden"}
+                              tone={tool.adminVisible ? "completed" : undefined}
+                            />
+                            <StatusPill
+                              status={tool.modelVisible ? "Model" : "Not model-visible"}
+                              tone={tool.modelVisible ? "completed" : undefined}
+                            />
+                          </span>
+                        </div>
+                        <p className="text-muted-foreground mt-2 text-xs">{tool.reason}</p>
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <EmptyPanelText>No tools loaded for this workspace.</EmptyPanelText>
+                )}
+              </DetailsBlock>
 
-            <DetailsBlock title="Agent behavior config">
-              <StatusRow label="Profile" value={summary?.activeAgent?.behavior.profile} />
-              <StatusRow label="Source" value={summary?.activeAgent?.behavior.source} />
-              <StatusRow label="Format" value={summary?.activeAgent?.behavior.format} />
-              <StatusRow label="Template" value={summary?.activeAgent?.behavior.templateId} />
-              <StatusRow label="Version" value={summary?.activeAgent?.behavior.version} />
-              <CopyId label="Instruction id" value={summary?.activeAgent?.behavior.instructionId} />
-              {summary?.activeAgent?.behavior.preview ? (
-                <pre className="bg-muted/50 max-h-72 overflow-auto rounded-md p-3 text-xs whitespace-pre-wrap">
-                  {summary.activeAgent.behavior.preview}
-                </pre>
-              ) : (
-                <EmptyPanelText>
-                  This agent is using the legacy server preset fallback.
-                </EmptyPanelText>
-              )}
-            </DetailsBlock>
-
-            <DetailsBlock title="Membership and external identity">
-              <StatusRow label="Auth mode" value={summary?.identity.authMode} />
-              <StatusRow label="Account source" value={summary?.account?.source} />
-              <StatusRow label="Membership source" value={summary?.membership?.source} />
-              <StatusRow label="Roles" value={listValue(summary?.membership?.roles)} />
-              <StatusRow label="Permissions" value={listValue(summary?.membership?.permissions)} />
-              {summary?.externalMembership ? (
-                <div className="border-border rounded-md border p-3">
-                  <p className="text-muted-foreground text-xs">External WorkOS signal</p>
-                  <StatusRow
-                    label="Role / status"
-                    value={[
-                      summary.externalMembership.role ?? "not available",
-                      summary.externalMembership.status ?? "not available",
-                    ].join(" / ")}
-                    compact
-                  />
-                  <StatusRow
-                    label="Roles"
-                    value={listValue(summary.externalMembership.roles)}
-                    compact
-                  />
-                  <StatusRow
-                    label="Permissions"
-                    value={listValue(summary.externalMembership.permissions)}
-                    compact
-                  />
-                </div>
-              ) : null}
-            </DetailsBlock>
-
-            <DetailsBlock title="Cloudflare events">
-              {summary?.events.length ? (
-                <ol className="space-y-3">
-                  {summary.events.slice(0, 12).map((event) => (
-                    <li key={event.id} className="grid grid-cols-[0.75rem_1fr] gap-3 text-sm">
-                      <span className="bg-primary mt-1.5 size-2 rounded-full" />
-                      <span className="min-w-0">
-                        <span className="block truncate font-medium">
-                          {event.type ?? "control.event"}
-                        </span>
-                        <span className="text-muted-foreground block">
-                          {event.summary ?? "Control-plane event recorded."}
-                        </span>
-                        <span className="text-muted-foreground/80 block truncate text-xs">
-                          {formatTime(event.createdAt)}
-                          {event.targetType ? ` / ${event.targetType}` : ""}
-                        </span>
-                        <CopyId label="Event id" value={event.id} />
-                      </span>
-                    </li>
-                  ))}
-                </ol>
-              ) : (
-                <EmptyPanelText>Open chat or run the diagnostic to populate events.</EmptyPanelText>
-              )}
-            </DetailsBlock>
-
-            <DetailsBlock title="Error internals" defaultOpen={Boolean(importantError)}>
-              {importantError ? (
-                <div className="border-destructive/30 bg-destructive/10 rounded-md border p-3 text-sm">
-                  <p className="text-destructive font-medium">{importantError.message}</p>
-                  <p className="text-muted-foreground mt-1 text-xs">
-                    {importantError.source}
-                    {importantError.status ? ` / ${importantError.status}` : ""}
-                    {importantError.errorCode ? ` / ${importantError.errorCode}` : ""}
+              <DetailsBlock title="URL Inspector">
+                <form className="space-y-2" onSubmit={runUrlInspect}>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
+                    <input
+                      className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring min-w-0 rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                      value={urlInspectTarget}
+                      onChange={(event) => setUrlInspectTarget(event.target.value)}
+                      placeholder="https://example.com"
+                      inputMode="url"
+                    />
+                    <Button
+                      type="submit"
+                      size="sm"
+                      disabled={isRunningTool || !urlInspectTarget.trim() || !canManageAgents}
+                    >
+                      {isRunningTool ? <Loader2Icon className="animate-spin" /> : <LinkIcon />}
+                      Inspect URL
+                    </Button>
+                  </div>
+                  <p className="text-muted-foreground text-xs">
+                    Read-only dry-run tool. Local, private, and metadata hosts are blocked.
                   </p>
-                  <CopyId label="Error target id" value={importantError.targetId} />
+                </form>
+              </DetailsBlock>
+
+              <DetailsBlock title="Recent tool calls">
+                {summary?.latestToolCalls?.length ? (
+                  <ol className="space-y-2">
+                    {summary.latestToolCalls.slice(0, 6).map((toolCall) => (
+                      <li key={toolCall.id} className="border-border rounded-md border p-3 text-sm">
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="min-w-0">
+                            <span className="block truncate font-medium">{toolCall.toolId}</span>
+                            <span className="text-muted-foreground block text-xs">
+                              {toolCall.outputSummary ??
+                                toolCall.inputSummary ??
+                                "Tool call recorded"}
+                            </span>
+                            <span className="text-muted-foreground/80 block truncate text-xs">
+                              {formatTime(toolCall.finishedAt ?? toolCall.startedAt)}
+                            </span>
+                          </span>
+                          <StatusPill
+                            status={toolCall.status ?? "unknown"}
+                            tone={toolCall.status}
+                          />
+                        </div>
+                        <CopyId label="Tool call id" value={toolCall.id} />
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <EmptyPanelText>
+                    Run the URL inspector or diagnostic to populate tool calls.
+                  </EmptyPanelText>
+                )}
+              </DetailsBlock>
+
+              {latestAdminArtifact ? (
+                <RuntimeRecord
+                  icon={FileTextIcon}
+                  label="Latest tool artifact"
+                  title={latestAdminArtifact.title ?? latestAdminArtifact.id}
+                  detail={latestAdminArtifact.uri}
+                />
+              ) : null}
+            </MonitorSection>
+
+            <MonitorSection icon={WrenchIcon} title="Diagnostic Run">
+              <div className="flex items-center justify-between gap-3">
+                <StatusPill status={`demo run: ${run?.status ?? "idle"}`} tone={run?.status} />
+                <Button size="sm" onClick={startDemoRun} disabled={isStarting || isDemoActive}>
+                  {isStarting ? <Loader2Icon className="animate-spin" /> : <PlayIcon />}
+                  Run diagnostic
+                </Button>
+              </div>
+              <DetailsBlock title="Diagnostic details">
+                <div className="grid grid-cols-2 gap-2">
+                  <StatusRow label="Mode" value={run?.execution?.mode ?? "dry_run"} compact />
+                  <StatusRow label="Stage" value={run?.stage ?? "observe"} compact />
+                  <StatusRow
+                    label="Intent"
+                    value={demoSnapshot?.intent?.type ?? "not created"}
+                    compact
+                  />
+                  <StatusRow label="Updated" value={formatTime(run?.updatedAt)} compact />
                 </div>
-              ) : (
-                <EmptyPanelText>No Cloudflare-owned error found for this scope.</EmptyPanelText>
-              )}
-            </DetailsBlock>
-          </MonitorSection>
+                <RuntimeRecord
+                  icon={WrenchIcon}
+                  label="Tool call"
+                  title={latestToolCall?.toolId ?? "none yet"}
+                  detail={latestToolCall?.outputSummary ?? latestToolCall?.inputSummary}
+                  status={latestToolCall?.status}
+                />
+                <RuntimeRecord
+                  icon={FileTextIcon}
+                  label="Artifact"
+                  title={latestArtifact?.title ?? "none yet"}
+                  detail={latestArtifact?.uri}
+                />
+                <RuntimeRecord
+                  icon={ShieldCheckIcon}
+                  label="Decision"
+                  title={latestDecision?.title ?? "none yet"}
+                  detail={latestDecision?.summary}
+                />
+              </DetailsBlock>
+            </MonitorSection>
+          </DetailsBlock>
+
+          <DetailsBlock title="Advanced" defaultOpen={false}>
+            <MonitorSection icon={AlertCircleIcon} title="Advanced Details">
+              <DetailsBlock title="Raw scope ids">
+                <CopyId label="Trace id" value={latestTrace?.traceId} />
+                <CopyId label="Bottleneck span id" value={latestTrace?.bottleneckSpanId} />
+                <CopyId label="User id" value={summary?.identity.userId} />
+                <CopyId label="Account id" value={summary?.account?.id} />
+                <CopyId label="Workspace id" value={summary?.identity.workspaceId} />
+                <CopyId label="Active agent id" value={summary?.identity.agentId} />
+                <CopyId label="Session id" value={chatRuntime?.latestSession?.sessionId} />
+                <CopyId label="Thread id" value={chatRuntime?.latestThread?.threadId} />
+                <CopyId label="Chat intent id" value={chatRuntime?.latestIntent?.id} />
+                <CopyId label="Policy id" value={chatRuntime?.latestPolicyDecision?.id} />
+                <CopyId label="Chat run id" value={chatRuntime?.latestRun?.id} />
+                <CopyId label="External run id" value={chatRuntime?.latestRun?.upstreamRunId} />
+                <CopyId label="Demo run id" value={run?.id} />
+              </DetailsBlock>
+
+              <DetailsBlock title="Runtime trace JSON">
+                {latestTrace ? (
+                  <pre className="bg-muted/50 max-h-72 overflow-auto rounded-md p-3 text-xs whitespace-pre-wrap">
+                    {JSON.stringify({ trace: latestTrace, spans: traceWaterfall }, null, 2)}
+                  </pre>
+                ) : (
+                  <EmptyPanelText>No runtime trace loaded yet.</EmptyPanelText>
+                )}
+              </DetailsBlock>
+
+              <DetailsBlock title="Agent runtime config">
+                <StatusRow label="Provider" value={summary?.activeAgent?.runtime.provider} />
+                <CopyId label="Model" value={summary?.activeAgent?.runtime.model} />
+                <StatusRow
+                  label="Temperature"
+                  value={String(summary?.activeAgent?.runtime.temperature ?? "")}
+                />
+                <StatusRow
+                  label="Max tokens"
+                  value={String(summary?.activeAgent?.runtime.maxTokens ?? "")}
+                />
+                <StatusRow label="Source" value={summary?.activeAgent?.runtime.source} />
+              </DetailsBlock>
+
+              <DetailsBlock title="Chat runtime timings">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <StatusRow
+                    label="Pre-stream"
+                    value={formatDuration(chatRuntime?.timings?.preStreamMs)}
+                    compact
+                  />
+                  <StatusRow
+                    label="First token"
+                    value={formatDuration(chatRuntime?.timings?.firstTokenMs)}
+                    compact
+                  />
+                  <StatusRow
+                    label="Provider"
+                    value={formatDuration(chatRuntime?.timings?.providerMs)}
+                    compact
+                  />
+                  <StatusRow
+                    label="Total"
+                    value={formatDuration(chatRuntime?.timings?.totalMs)}
+                    compact
+                  />
+                </div>
+                {chatRuntime?.timings?.stageMarks &&
+                Object.keys(chatRuntime.timings.stageMarks).length > 0 ? (
+                  <div className="space-y-2">
+                    {Object.entries(chatRuntime.timings.stageMarks).map(([stage, value]) => (
+                      <StatusRow key={stage} label={stage} value={formatDuration(value)} compact />
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyPanelText>
+                    Send a message to populate Cloudflare timing marks.
+                  </EmptyPanelText>
+                )}
+              </DetailsBlock>
+
+              <DetailsBlock title="Tool internals">
+                <CopyId label="Latest tool call id" value={latestAdminToolCall?.id} />
+                <CopyId label="Latest tool run id" value={latestAdminToolCall?.runId} />
+                <CopyId label="Latest tool artifact id" value={latestAdminArtifact?.id} />
+                {latestAdminToolCall ? (
+                  <pre className="bg-muted/50 max-h-72 overflow-auto rounded-md p-3 text-xs whitespace-pre-wrap">
+                    {JSON.stringify(latestAdminToolCall, null, 2)}
+                  </pre>
+                ) : (
+                  <EmptyPanelText>No tool call internals recorded yet.</EmptyPanelText>
+                )}
+                {latestAdminArtifact?.data ? (
+                  <pre className="bg-muted/50 max-h-72 overflow-auto rounded-md p-3 text-xs whitespace-pre-wrap">
+                    {JSON.stringify(latestAdminArtifact.data, null, 2)}
+                  </pre>
+                ) : null}
+              </DetailsBlock>
+
+              <DetailsBlock title="Agent behavior config">
+                <StatusRow label="Profile" value={summary?.activeAgent?.behavior.profile} />
+                <StatusRow label="Source" value={summary?.activeAgent?.behavior.source} />
+                <StatusRow label="Format" value={summary?.activeAgent?.behavior.format} />
+                <StatusRow label="Template" value={summary?.activeAgent?.behavior.templateId} />
+                <StatusRow label="Version" value={summary?.activeAgent?.behavior.version} />
+                <CopyId
+                  label="Instruction id"
+                  value={summary?.activeAgent?.behavior.instructionId}
+                />
+                {summary?.activeAgent?.behavior.preview ? (
+                  <pre className="bg-muted/50 max-h-72 overflow-auto rounded-md p-3 text-xs whitespace-pre-wrap">
+                    {summary.activeAgent.behavior.preview}
+                  </pre>
+                ) : (
+                  <EmptyPanelText>
+                    This agent is using the legacy server preset fallback.
+                  </EmptyPanelText>
+                )}
+              </DetailsBlock>
+
+              <DetailsBlock title="Membership and external identity">
+                <StatusRow label="Auth mode" value={summary?.identity.authMode} />
+                <StatusRow label="Account source" value={summary?.account?.source} />
+                <StatusRow label="Membership source" value={summary?.membership?.source} />
+                <StatusRow label="Roles" value={listValue(summary?.membership?.roles)} />
+                <StatusRow
+                  label="Permissions"
+                  value={listValue(summary?.membership?.permissions)}
+                />
+                {summary?.externalMembership ? (
+                  <div className="border-border rounded-md border p-3">
+                    <p className="text-muted-foreground text-xs">External WorkOS signal</p>
+                    <StatusRow
+                      label="Role / status"
+                      value={[
+                        summary.externalMembership.role ?? "not available",
+                        summary.externalMembership.status ?? "not available",
+                      ].join(" / ")}
+                      compact
+                    />
+                    <StatusRow
+                      label="Roles"
+                      value={listValue(summary.externalMembership.roles)}
+                      compact
+                    />
+                    <StatusRow
+                      label="Permissions"
+                      value={listValue(summary.externalMembership.permissions)}
+                      compact
+                    />
+                  </div>
+                ) : null}
+              </DetailsBlock>
+
+              <DetailsBlock title="Cloudflare events">
+                {summary?.events.length ? (
+                  <ol className="space-y-3">
+                    {summary.events.slice(0, 12).map((event) => (
+                      <li key={event.id} className="grid grid-cols-[0.75rem_1fr] gap-3 text-sm">
+                        <span className="bg-primary mt-1.5 size-2 rounded-full" />
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium">
+                            {event.type ?? "control.event"}
+                          </span>
+                          <span className="text-muted-foreground block">
+                            {event.summary ?? "Control-plane event recorded."}
+                          </span>
+                          <span className="text-muted-foreground/80 block truncate text-xs">
+                            {formatTime(event.createdAt)}
+                            {event.targetType ? ` / ${event.targetType}` : ""}
+                          </span>
+                          <CopyId label="Event id" value={event.id} />
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <EmptyPanelText>
+                    Open chat or run the diagnostic to populate events.
+                  </EmptyPanelText>
+                )}
+              </DetailsBlock>
+
+              <DetailsBlock title="Error internals" defaultOpen={Boolean(importantError)}>
+                {importantError ? (
+                  <div className="border-destructive/30 bg-destructive/10 rounded-md border p-3 text-sm">
+                    <p className="text-destructive font-medium">{importantError.message}</p>
+                    <p className="text-muted-foreground mt-1 text-xs">
+                      {importantError.source}
+                      {importantError.status ? ` / ${importantError.status}` : ""}
+                      {importantError.errorCode ? ` / ${importantError.errorCode}` : ""}
+                    </p>
+                    <CopyId label="Error target id" value={importantError.targetId} />
+                  </div>
+                ) : (
+                  <EmptyPanelText>No Cloudflare-owned error found for this scope.</EmptyPanelText>
+                )}
+              </DetailsBlock>
+            </MonitorSection>
+          </DetailsBlock>
         </div>
       </DialogContent>
     </Dialog>

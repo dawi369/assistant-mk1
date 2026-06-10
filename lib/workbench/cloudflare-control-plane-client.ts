@@ -6,6 +6,8 @@ import type {
   CloudflareAdminSummaryResponse,
   CloudflareAgentMutationResponse,
   CloudflareAgentsResponse,
+  CloudflareRuntimeTraceResponse,
+  CloudflareRuntimeTracesResponse,
   CloudflareToolRunResponse,
   CloudflareToolsResponse,
   CloudflareOwnedDemoRunResponse,
@@ -23,6 +25,8 @@ export type {
   CloudflareAdminSummaryResponse,
   CloudflareAgentMutationResponse,
   CloudflareAgentsResponse,
+  CloudflareRuntimeTraceResponse,
+  CloudflareRuntimeTracesResponse,
   CloudflareToolRunResponse,
   CloudflareToolsResponse,
   CloudflareOwnedDemoRunResponse,
@@ -142,6 +146,16 @@ export const getCloudflareAdminSummary = () =>
   requestControlPlane<CloudflareAdminSummaryResponse>("/admin/workspace-summary");
 
 export const getCloudflareTools = () => requestControlPlane<CloudflareToolsResponse>("/tools");
+
+export const getLatestRuntimeTraces = (limit = 10) =>
+  requestControlPlane<CloudflareRuntimeTracesResponse>(
+    `/runtime/traces/latest?limit=${encodeURIComponent(String(limit))}`,
+  );
+
+export const getRuntimeTrace = (traceId: Id) =>
+  requestControlPlane<CloudflareRuntimeTraceResponse>(
+    `/runtime/traces/${encodeURIComponent(traceId)}`,
+  );
 
 export const runCloudflareTool = (input: {
   toolName: "url.inspect";

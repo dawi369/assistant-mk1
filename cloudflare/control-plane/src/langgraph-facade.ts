@@ -23,6 +23,7 @@ import {
 import { appendControlPlaneEvent } from "./control-plane-events";
 import { selectAgent } from "./authz-store";
 import { isRecord, json, parseJson } from "./http";
+import type { IncomingRuntimeTrace } from "./runtime-traces";
 import type { AgentIdentity, Env, WorkerExecutionContext } from "./types";
 
 const allowedMethods = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]);
@@ -98,6 +99,7 @@ export const handleLangGraphFacade = async (
   ctx: WorkerExecutionContext,
   identity: AgentIdentity,
   url: URL,
+  incomingTrace?: IncomingRuntimeTrace,
 ) => {
   if (!allowedMethods.has(request.method)) {
     return json({ ok: false, error: "method not allowed" }, { status: 405 });
@@ -121,11 +123,20 @@ export const handleLangGraphFacade = async (
   }
 
   if (isCreateThreadRequest(request, url.pathname)) {
-    return handleCloudflareCreateThread(env, identity);
+    return handleCloudflareCreateThread(env, identity, incomingTrace);
   }
 
   const threadId = threadScopedPath(url.pathname);
+  const threadOwnershipStartedAtMs = threadId ? Date.now() : null;
   const thread = threadId ? await getOwnedChatThread(env, identity.scope, threadId) : null;
+  const threadOwnershipEndedAtMs = threadId ? Date.now() : null;
+  const scopedIncomingTrace = incomingTrace
+    ? {
+        ...incomingTrace,
+        threadOwnershipStartedAtMs,
+        threadOwnershipEndedAtMs,
+      }
+    : undefined;
   if (threadId) {
     if (!thread) return json({ ok: false, error: "Thread not found" }, { status: 404 });
     await touchChatThread(env, identity.scope, threadId);
@@ -139,10 +150,18 @@ export const handleLangGraphFacade = async (
   if (threadId && thread && isThreadRunStreamRequest(request, url.pathname)) {
     const facadeEnteredAtMs = Date.now();
     const bodyText = await request.text();
-    return handleCloudflareRunStream(env, identity, thread, bodyText, ctx, {
-      facadeEnteredAtMs,
-      bodyReadAtMs: Date.now(),
-    });
+    return handleCloudflareRunStream(
+      env,
+      identity,
+      thread,
+      bodyText,
+      ctx,
+      {
+        facadeEnteredAtMs,
+        bodyReadAtMs: Date.now(),
+      },
+      scopedIncomingTrace,
+    );
   }
 
   const config = upstreamConfig(env);

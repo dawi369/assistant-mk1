@@ -255,13 +255,15 @@ Implemented:
   workspace, active agent/profile, model, chat state, and quick access to
   Admin when the latest runtime state needs attention.
 - Admin opens as a flow-first panel from the local `/admin` composer command:
-  chat readiness, active workspace, active agent/profile, latest meaningful
-  event, and important errors are shown first.
+  a Cloudflare-owned request map/waterfall, chat readiness, active workspace,
+  active agent/profile, latest meaningful event, and important errors are shown
+  first.
 - Admin supports name-only workspace create/switch, test agent creation,
   and active-agent switching for the current workspace as secondary management
   controls.
-- Raw ids, external WorkOS signals, recent Cloudflare events, and diagnostic
-  internals stay available in advanced details.
+- Workspace/agent management, tool registry/run controls, diagnostic runs, raw
+  ids, external WorkOS signals, recent Cloudflare events, and diagnostic
+  internals stay available in collapsible Manage or Advanced details.
 - `demo.inspect` remains a dev diagnostic action, not a product-level workflow.
 - The empty chat state stays default assistant-ui but includes practical
   starter prompts for readiness, project planning, agent behavior, and failure
@@ -273,7 +275,8 @@ Next UI targets:
   richer than the compact chat hint.
 - Artifact/history surfaces beyond the diagnostic run snapshot.
 - Interrupt display only when a workflow needs approve/deny/resume.
-- Tool and policy visibility after the next real tool adapter lands.
+- Policy visibility for durable tool permissions, approvals, kill switches, and
+  model-visible exposure decisions.
 
 Avoid building every panel before one vertical slice produces real data.
 

@@ -4,6 +4,14 @@ import { appendControlAudit } from "./demo-run-store";
 import { isRecord, json, parseDataJson, parseJson } from "./http";
 import { isAdminMembership } from "./membership-policy";
 import {
+  finishTrace,
+  recordIncomingRequestSpans,
+  recordSpan,
+  startTrace,
+  type IncomingRuntimeTrace,
+  type RuntimeTraceContext,
+} from "./runtime-traces";
+import {
   createId,
   toJson,
   type AgentIdentity,
@@ -668,14 +676,68 @@ export const handleListTools = async (env: Env, identity: AgentIdentity) => {
   });
 };
 
-export const handleRunTool = async (request: Request, env: Env, identity: AgentIdentity) => {
+const finishToolTrace = async (
+  env: Env,
+  identity: AgentIdentity,
+  trace: RuntimeTraceContext | null,
+  input: Parameters<typeof finishTrace>[3],
+) => {
+  if (!trace) return;
+  await finishTrace(env, identity, trace, input);
+};
+
+export const handleRunTool = async (
+  request: Request,
+  env: Env,
+  identity: AgentIdentity,
+  incomingTrace?: IncomingRuntimeTrace,
+) => {
+  const bodyText = await request.text();
+  const body = parseJson(bodyText);
+  const toolName = isRecord(body) && typeof body.toolName === "string" ? body.toolName : "";
+  const trace =
+    toolName === urlInspectToolName
+      ? await startTrace(env, identity, {
+          traceId: incomingTrace?.traceId,
+          kind: "tool.url.inspect",
+          rootName: "URL inspect",
+          summary: "Run Admin-triggered read-only URL inspection.",
+          startedAtMs: incomingTrace?.authzStartedAtMs,
+          data: { toolName: urlInspectToolName },
+        })
+      : null;
+  if (trace) await recordIncomingRequestSpans(env, identity, trace, incomingTrace);
+
+  const adminCheckStartedAtMs = Date.now();
   const membership = await selectMembership(env, identity.scope.userId, identity.scope.workspaceId);
   if (!isAdminMembership(membership)) {
+    if (trace) {
+      await recordSpan(env, identity, {
+        traceId: trace.traceId,
+        name: "Policy/admin check",
+        layer: "cloudflare",
+        startedAtMs: adminCheckStartedAtMs,
+        status: "blocked",
+        data: { reason: "Workspace admin role is required" },
+      });
+      await finishToolTrace(env, identity, trace, {
+        status: "blocked",
+        summary: "Workspace admin role is required.",
+        data: { errorCode: "admin_required" },
+      });
+    }
     return json({ ok: false, error: "Workspace admin role is required" }, { status: 403 });
   }
+  if (trace) {
+    await recordSpan(env, identity, {
+      traceId: trace.traceId,
+      name: "Policy/admin check",
+      layer: "cloudflare",
+      startedAtMs: adminCheckStartedAtMs,
+      data: { role: membership?.role ?? null },
+    });
+  }
 
-  const body = parseJson(await request.text());
-  const toolName = isRecord(body) && typeof body.toolName === "string" ? body.toolName : "";
   if (toolName !== urlInspectToolName) {
     return json(
       {
@@ -711,6 +773,21 @@ export const handleRunTool = async (request: Request, env: Env, identity: AgentI
   const input = isRecord(body) ? body.input : undefined;
   const validated = validateUrlInspectInput(input);
   if (!validated.ok) {
+    if (trace) {
+      await recordSpan(env, identity, {
+        traceId: trace.traceId,
+        name: "Input validation",
+        layer: "cloudflare",
+        startedAtMs: Date.now(),
+        status: validated.status === 403 ? "blocked" : "failed",
+        data: { code: validated.error.code, url: isRecord(input) ? input.url : undefined },
+      });
+      await finishToolTrace(env, identity, trace, {
+        status: validated.status === 403 ? "blocked" : "failed",
+        summary: validated.error.message,
+        data: { error: validated.error },
+      });
+    }
     return json(
       {
         ok: false,
@@ -721,12 +798,77 @@ export const handleRunTool = async (request: Request, env: Env, identity: AgentI
     );
   }
 
+  const recordsStartedAtMs = Date.now();
   const runIdentity = await insertToolRunRecords(env, identity, {
     url: validated.url,
     executionMode,
   });
+  if (trace) {
+    await recordSpan(env, identity, {
+      traceId: trace.traceId,
+      name: "Run queued and tool-call record write",
+      layer: "d1",
+      startedAtMs: recordsStartedAtMs,
+      data: { runId: runIdentity.runId, workflowIntentId: runIdentity.workflowIntentId },
+    });
+  }
+  const toolStartedAtMs = Date.now();
+  if (trace) {
+    await recordSpan(env, identity, {
+      traceId: trace.traceId,
+      name: "Tool started",
+      layer: "tool",
+      startedAtMs: toolStartedAtMs,
+      endedAtMs: toolStartedAtMs,
+      data: { toolName: urlInspectToolName, executionMode },
+    });
+  }
+  const fetchStartedAtMs = Date.now();
   const result = await inspectUrl(validated.url);
+  if (trace) {
+    await recordSpan(env, identity, {
+      traceId: trace.traceId,
+      name: "HTTP fetch",
+      layer: "tool",
+      startedAtMs: fetchStartedAtMs,
+      status: result.ok ? "completed" : "failed",
+      data: result.ok
+        ? {
+            status: result.output.status,
+            finalUrl: result.output.finalUrl,
+            downloadedBytes: result.output.downloadedBytes,
+          }
+        : { error: result.error },
+    });
+  }
+  const finishStartedAtMs = Date.now();
   const finished = await finishToolRun(env, runIdentity, result);
+  if (trace) {
+    await recordSpan(env, identity, {
+      traceId: trace.traceId,
+      name: result.ok ? "Artifact/write completion" : "Failure write",
+      layer: "d1",
+      startedAtMs: finishStartedAtMs,
+      status: result.ok ? "completed" : "failed",
+      data: {
+        runId: runIdentity.runId,
+        toolCallId: finished.toolCallId,
+        artifactId: finished.artifact?.id ?? null,
+      },
+    });
+    await finishToolTrace(env, identity, trace, {
+      status: result.ok ? "completed" : "failed",
+      summary: result.ok ? result.output.summary : result.error.message,
+      data: {
+        runId: runIdentity.runId,
+        workflowIntentId: runIdentity.workflowIntentId,
+        toolCallId: finished.toolCallId,
+        artifactId: finished.artifact?.id ?? null,
+        toolName: urlInspectToolName,
+        error: result.ok ? undefined : result.error,
+      },
+    });
+  }
   const [latestToolCalls, latestArtifacts] = await Promise.all([
     listLatestToolCalls(env, identity.scope),
     listLatestArtifacts(env, identity.scope),

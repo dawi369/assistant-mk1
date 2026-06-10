@@ -42,8 +42,15 @@ const requiredEnv = (name: string) => {
   return value;
 };
 
-const proxyHeaders = async () => {
+const proxyHeaders = async (trace: {
+  traceId: string;
+  startedAtMs: number;
+  durationMs: number;
+}) => {
   const headers: Record<string, string> = {};
+  headers["x-assistant-mk1-trace-id"] = trace.traceId;
+  headers["x-assistant-mk1-vercel-started-at"] = String(trace.startedAtMs);
+  headers["x-assistant-mk1-vercel-duration-ms"] = String(trace.durationMs);
 
   if (process.env.CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN) {
     headers.authorization = `Bearer ${requiredEnv("CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN")}`;
@@ -60,6 +67,8 @@ const proxyHeaders = async () => {
 
 async function handleRequest(req: NextRequest, method: string) {
   const requestOrigin = req.headers.get("origin");
+  const proxyStartedAtMs = Date.now();
+  const traceId = `trace-${crypto.randomUUID()}`;
   try {
     const apiUrl = requiredEnv("LANGGRAPH_API_URL").replace(/\/$/, "");
     const path = req.nextUrl.pathname.replace(/^\/?api\//, "");
@@ -71,7 +80,11 @@ async function handleRequest(req: NextRequest, method: string) {
 
     const options: RequestInit = {
       method,
-      headers: await proxyHeaders(),
+      headers: await proxyHeaders({
+        traceId,
+        startedAtMs: proxyStartedAtMs,
+        durationMs: Date.now() - proxyStartedAtMs,
+      }),
       signal: req.signal,
     };
 
@@ -86,6 +99,7 @@ async function handleRequest(req: NextRequest, method: string) {
     const res = await fetch(`${apiUrl}/${path}${queryString}`, options);
 
     const headers = new Headers(res.headers);
+    headers.set("x-assistant-mk1-trace-id", traceId);
     headers.delete("content-encoding");
     headers.delete("content-length");
     headers.delete("transfer-encoding");

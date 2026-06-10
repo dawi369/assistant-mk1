@@ -157,6 +157,33 @@ tool-execution model. The durable north star remains: Cloudflare owns the
 user-facing conversation/control plane, and Fly executes signed heavy work
 only when the control plane escalates to it.
 
+## Runtime Traces
+
+Cloudflare D1 is also the first-party runtime trace store. The Worker writes
+`runtime_traces` and `runtime_spans` for scoped chat/thread/tool operations so
+Admin can answer which service was hit and where latency accumulated.
+
+Current trace kinds:
+
+- `chat.thread.create`
+- `chat.run.stream`
+- `tool.url.inspect`
+- `diagnostic.demo.inspect` when it can be attached without broad executor
+  refactors
+
+Trace reads are scoped after the same trusted identity resolution as every
+other workbench route:
+
+- Cloudflare `GET /runtime/traces/latest?limit=10`
+- Cloudflare `GET /runtime/traces/:traceId`
+- Vercel `GET /api/workbench/runtime-traces/latest`
+- Vercel `GET /api/workbench/runtime-traces/:traceId`
+
+Span payloads must stay compact and redacted. Store operational metadata such
+as model id, run id, safe URL summary, duration, status, and error code. Do not
+store prompts, auth headers, provider secrets, full provider payloads, or full
+tool output in trace data. Tool output belongs in artifacts.
+
 ## Tool Admin Visibility
 
 The current tool slice is intentionally read-only and Admin-triggered.

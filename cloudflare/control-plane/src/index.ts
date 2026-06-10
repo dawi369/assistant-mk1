@@ -27,6 +27,12 @@ import {
   handleLangGraphFacade,
   handleLatestChatSession,
 } from "./langgraph-facade";
+import {
+  getTraceId,
+  handleGetRuntimeTrace,
+  handleLatestRuntimeTraces,
+  readVercelTimingHeaders,
+} from "./runtime-traces";
 import { handleWorkspaceContext } from "./workspace-context";
 import { handleActivateWorkspace, handleCreateWorkspace, handleListWorkspaces } from "./workspaces";
 import { resolveAgentIdentity } from "./authz";
@@ -51,9 +57,19 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
     return handleRunCallback(request, env);
   }
 
+  const authzStartedAtMs = Date.now();
   const identityResult = await resolveAgentIdentity(request, env);
+  const authzEndedAtMs = Date.now();
   if (!identityResult.ok) return identityResult.response;
   const { identity } = identityResult;
+  const vercelTiming = readVercelTimingHeaders(request);
+  const incomingTrace = {
+    traceId: getTraceId(request),
+    authzStartedAtMs,
+    authzEndedAtMs,
+    vercelStartedAtMs: vercelTiming.startedAtMs,
+    vercelDurationMs: vercelTiming.durationMs,
+  };
 
   if (request.method === "GET" && url.pathname === "/workspace-context") {
     return handleWorkspaceContext(request, env, identity);
@@ -68,7 +84,16 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
   }
 
   if (request.method === "POST" && url.pathname === "/tools/runs") {
-    return handleRunTool(request, env, identity);
+    return handleRunTool(request, env, identity, incomingTrace);
+  }
+
+  if (request.method === "GET" && url.pathname === "/runtime/traces/latest") {
+    return handleLatestRuntimeTraces(env, identity, url);
+  }
+
+  const runtimeTraceMatch = url.pathname.match(/^\/runtime\/traces\/([^/]+)$/);
+  if (request.method === "GET" && runtimeTraceMatch?.[1]) {
+    return handleGetRuntimeTrace(env, identity, decodeURIComponent(runtimeTraceMatch[1]));
   }
 
   if (request.method === "GET" && url.pathname === "/chat/runtime-summary") {
@@ -147,7 +172,7 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
   }
 
   if (url.pathname === "/langgraph" || url.pathname.startsWith("/langgraph/")) {
-    return handleLangGraphFacade(request, env, ctx, identity, url);
+    return handleLangGraphFacade(request, env, ctx, identity, url, incomingTrace);
   }
 
   if (request.method === "POST" && url.pathname === "/workbench/demo-runs") {

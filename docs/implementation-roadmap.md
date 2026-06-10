@@ -127,9 +127,10 @@ Exit criteria met:
 Goal: make tools boring to add.
 
 Current baseline: a runtime tool registry and exposure resolver path exist for
-the deterministic `demo.inspect` dry-run tool. The next useful increment is a
-second read-only tool adapter that proves timeout, cancellation, logs,
-structured output, and artifact metadata without adding mutation capability.
+the deterministic `demo.inspect` dry-run tool and the Admin-triggered
+`url.inspect` read-only adapter. `url.inspect` proves bounded tool execution,
+structured output, artifact metadata, and Cloudflare-owned run/tool records
+without adding mutation capability.
 
 Implemented:
 
@@ -138,13 +139,16 @@ Implemented:
 - First native TypeScript demo tool.
 - Tool call records, audit events, decision summaries, and artifact metadata
   for the Cloudflare-owned demo path.
+- Read-only `url.inspect` Admin tool with timeout, private-host blocking,
+  structured report artifact, and D1-backed workflow/run/tool-call/audit/event
+  records.
 
 Next target:
 
-- First CLI/OSS-backed demo tool with timeout, cancellation, logs, structured
-  output, and artifact metadata.
 - Policy checks for `ask`, `dry_run`, and `execute` modes at the tool-runner
-  boundary.
+  boundary, backed by durable permission and exposure records.
+- First CLI/OSS-backed or external-system adapter after the policy layer can
+  explain and gate it.
 
 Exit criteria:
 
@@ -187,11 +191,11 @@ Implemented:
   Cloudflare-owned chats for the resolved user/workspace/active agent, while
   Cloudflare D1 remains the source of truth for thread ownership and the
   active thread.
-- Chat runtime responsiveness and observability v0 is the current stabilization
-  slice: the compact hint uses assistant-ui local lifecycle state for immediate
-  transient `Running` feedback, idle admin-summary polling is removed, and
-  Cloudflare simple-chat run metadata records timing marks for first-token,
-  provider, pre-stream, and total runtime inspection.
+- Chat runtime responsiveness and observability v0 is implemented: the compact
+  hint uses assistant-ui local lifecycle state for immediate transient
+  `Running` feedback, idle admin-summary polling is removed, and Cloudflare
+  simple-chat run metadata records timing marks for first-token, provider,
+  pre-stream, and total runtime inspection.
 - Workspace management v0 as the first Cloudflare-owned workspace model
   slice: D1 active workspace preference, Cloudflare `GET /workspaces`,
   `POST /workspaces`, `POST /workspaces/:workspaceId/activate`, Vercel
@@ -206,17 +210,22 @@ Implemented:
 - Agent behavior v0: new agents can import XML behavior templates into
   `agents.data_json.behavior`; Cloudflare injects the D1 snapshot into simple
   chat, and Admin previews the active behavior.
-- Read-only tool adapter and Admin visibility v0 is the active tool slice:
+- Read-only tool adapter and Admin visibility v0 is implemented:
   Cloudflare exposes a code-backed tool registry summary, Admin can run the
   bounded `url.inspect` dry-run tool, and D1 records the resulting
   workflow intent, run, tool call, artifact, audit events, and control-plane
   events. The tool is not model-visible yet.
+- Runtime trace graph and Admin redesign v0 is the active observability slice:
+  Cloudflare stores D1-backed runtime traces and spans for thread creation,
+  simple-chat streams, and Admin tool runs. Admin now leads with a live service
+  map and waterfall so request path and bottlenecks are visible before raw ids,
+  events, or management controls.
 
 Next target:
 
-- Stabilize `url.inspect` as the first non-demo adapter, then add the policy
-  layer for durable permissions, stronger exposure decisions, approvals, kill
-  switches, and eventual model-visible tools.
+- Use the trace graph to stabilize the real chat/tool paths, then add the
+  policy layer for durable permissions, stronger exposure decisions, approvals,
+  kill switches, and eventual model-visible tools.
 - Keep Fly/LangGraph state access mediated through Cloudflare APIs.
 - Strengthen the Vercel-to-Cloudflare trust boundary with a stricter signed or
   service-authenticated server contract after this observability slice.
@@ -249,9 +258,9 @@ away from the intended path.
 
 Next target:
 
-- Cloudflare timing metadata on simple-chat runs, surfaced through existing
-  runtime summaries and Admin, so latency can be explained by stage
-  rather than guessed from browser perception.
+- First-party D1 runtime traces on simple-chat and tool runs, surfaced through
+  Admin as a service map and waterfall, so latency can be explained by request
+  path and bottleneck span rather than guessed from browser perception.
 - Broaden the Cloudflare-owned stream from simple chat into richer conversation
   and workflow progress, building on the event feed as the first observable
   state source.
