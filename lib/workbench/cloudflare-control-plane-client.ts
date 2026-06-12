@@ -15,6 +15,7 @@ import type {
   CloudflareWorkspacesResponse,
   ChatThreadResponse,
   ChatThreadsResponse,
+  ChatSessionResponse,
   ChatRuntimeSummaryResponse,
   ControlPlaneEventsResponse,
   WorkspaceContextResponse,
@@ -35,6 +36,7 @@ export type {
   CloudflareWorkspacesResponse,
   ChatRuntimeSummary,
   ChatRuntimeSummaryResponse,
+  ChatSessionResponse,
   ChatThreadResponse,
   ChatThreadsResponse,
   ChatThreadSummary,
@@ -175,6 +177,17 @@ export const getChatThreads = (limit = 30) =>
 
 export const getChatThread = (threadId: Id) =>
   requestControlPlane<ChatThreadResponse>(`/chat/threads/${encodeURIComponent(threadId)}`);
+
+export const getChatSession = () => requestControlPlane<ChatSessionResponse>("/chat/session");
+
+export const createChatSessionThread = () =>
+  requestControlPlane<ChatSessionResponse>("/chat/session/threads", { method: "POST" });
+
+export const activateChatSessionThread = (threadId: Id) =>
+  requestControlPlane<ChatSessionResponse>(
+    `/chat/session/threads/${encodeURIComponent(threadId)}/activate`,
+    { method: "POST" },
+  );
 
 export const getCloudflareWorkspaces = () =>
   requestControlPlane<CloudflareWorkspacesResponse>("/workspaces");

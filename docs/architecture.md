@@ -16,9 +16,9 @@ subsystems. For the current-vs-target docs map, start with `docs/README.md`.
 - Next.js App Router serves the frontend and browser-facing API facade.
 - WorkOS AuthKit runs through the Next.js SDK at the Vercel web boundary.
 - assistant-ui renders the thread, composer, messages, reasoning, tools, and attachments.
-- `@assistant-ui/react-langgraph` adapts the UI runtime to the LangGraph-shaped
-  thread and stream contract. Hosted simple chat is served by Cloudflare behind
-  that compatibility contract.
+- `@assistant-ui/react-ai-sdk` plus Cloudflare Agents adapt the UI runtime to a
+  per-thread `AIChatAgent` Durable Object for normal hosted chat. The older
+  LangGraph-shaped contract remains available for workflow/escalation testing.
 - Vercel derives trusted WorkOS user, account source, and external membership
   signals before calling Cloudflare server-to-server.
 - Cloudflare owns membership and agent authorization, durable workbench run
@@ -29,7 +29,7 @@ subsystems. For the current-vs-target docs map, start with `docs/README.md`.
   heavy execution.
 - LangGraph currently remains available through the starter backend graph
   exported from `backend/agent.ts` for workflow/escalation testing.
-- OpenRouter is configured server-side for Cloudflare simple chat and for the
+- OpenRouter is configured server-side for Cloudflare Agent chat and for the
   Fly/LangGraph workflow runtime.
 - Vercel hosts the deployed Next.js frontend.
 
@@ -72,8 +72,11 @@ For implementation-level infrastructure responsibilities, see `docs/infrastructu
 
 ## Important Seams
 
-- `app/assistant.tsx`: creates the LangGraph SDK client and assistant-ui runtime.
-- `lib/chatApi.ts`: decides whether the browser talks to `/api` or a direct LangGraph URL.
+- `app/assistant.tsx`: creates the Cloudflare Agents / AI SDK assistant-ui
+  runtime for normal chat.
+- `lib/workbench/use-agent-connection.ts`: loads the Cloudflare-owned chat
+  session, refreshes Agent tokens, and reconnects the current per-thread
+  Durable Object runtime.
 - `app/api/[..._path]/route.ts`: Next.js catch-all proxy for LangGraph API requests. The bracketed folder name is framework syntax, not a project-specific naming convention.
 - `app/api/external-signals/route.ts`: accepts token-protected external starts, resumes, and cron creation.
 - `backend/agent.ts`: owns provider/model choice and graph behavior.
@@ -107,12 +110,13 @@ Browser -> Vercel Next.js frontend
         -> Fly runtime executor for signed work
 
 Browser -> Vercel Next.js /api facade
-        -> Cloudflare /langgraph compatibility facade
-        -> Cloudflare simple chat runtime for normal messages
+        -> Cloudflare Agent connection context
+        -> Cloudflare AIChatAgent Durable Object for normal messages
         -> Fly LangGraph runtime gateway for explicit escalation
 ```
 
 Vercel owns hosted web sign-in and the browser-facing API facade. Cloudflare is
 the authorization, control-plane, and canonical-state boundary; Fly remains the
-execution plane. The LangGraph-compatible facade keeps assistant-ui usable while
-Cloudflare-owned conversational stream ownership is built out.
+execution plane. The LangGraph-compatible facade is now transition/heavy
+workflow compatibility, while Cloudflare Agents own the normal conversational
+stream.

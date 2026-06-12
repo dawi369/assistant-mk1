@@ -73,6 +73,10 @@ personal operators that browse, decide, submit forms, track outcomes, and answer
 
 Personal Job Agent behavior must map to generic assistant-mk1 primitives:
 
+- Live chat -> Cloudflare `AIChatAgent` thread runtime for conversation only;
+  job records, browser tools, profile data, policies, credentials, schedules,
+  and audits stay in generic Cloudflare/Fly framework primitives outside the
+  per-thread Agent.
 - User career profile -> user/workspace-scoped memory and managed state.
 - Job database -> managed state records with domain-specific fields in `data`.
 - Job discovery monitor -> scheduled run or external trigger.

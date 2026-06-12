@@ -1,10 +1,12 @@
 CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=replace-with-local-dev-token
+WORKBENCH_AGENT_CONNECTION_SECRET=replace-with-local-agent-connection-secret
 LANGGRAPH_UPSTREAM_URL=http://127.0.0.1:2024
 LANGGRAPH_UPSTREAM_TOKEN=replace-with-local-langgraph-proxy-token
 OPENROUTER_API_KEY=replace-with-local-openrouter-key
 OPENROUTER_MODEL=deepseek/deepseek-v4-flash
 OPENROUTER_SITE_URL=http://localhost:3000
 OPENROUTER_APP_NAME=assistant-mk1-cloudflare-chat-local
+ALLOWED_ORIGINS=http://localhost:3000
 SENTRY_DSN=
 SENTRY_ENVIRONMENT=development
 SENTRY_TRACES_SAMPLE_RATE=1.0
@@ -14,3 +16,6 @@ WORKBENCH_EXECUTOR_TOKEN=replace-with-local-executor-token
 # Local parity requirement:
 # - CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN must match .env.local
 # - WORKBENCH_EXECUTOR_TOKEN must match .env.local
+#
+# Agent connection tokens are now minted and verified inside Cloudflare, so
+# WORKBENCH_AGENT_CONNECTION_SECRET is Worker-only for the normal chat path.

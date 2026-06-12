@@ -37,6 +37,9 @@ These requirements are generic. The same framework should support deployments, r
 
 Polymancer-specific behavior must map to generic assistant-mk1 primitives:
 
+- Live chat -> Cloudflare `AIChatAgent` thread runtime for conversation only;
+  trading state, ledgers, policies, tools, secrets, triggers, and audits stay
+  in generic Cloudflare/Fly framework primitives outside the per-thread Agent.
 - Polymarket account -> user/workspace identity and secret custody.
 - Trading tools -> typed server-side tools with permissions and deterministic execution modes.
 - Open positions -> managed state and ledger entries.

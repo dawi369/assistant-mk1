@@ -1,11 +1,11 @@
 # Assistant-mk1 Architecture Overview Diagram
 
-Last updated: 2026-06-06
+Last updated: 2026-06-11
 
 ## Purpose
 
 Show the current hosted implementation topology of assistant-mk1 after WorkOS,
-Cloudflare-owned simple chat, workspace/agent routing, and control-plane event
+Cloudflare Agent chat, workspace/agent routing, and control-plane event
 visibility landed. This diagram is an overview only: it should help a
 maintainer see the active Vercel frontend, Cloudflare Worker control-plane
 slice, Fly LangGraph/runtime executor, and durable data boundary without
@@ -41,7 +41,10 @@ agent to update adjacent docs or code without needing the old graph generator.
 - `lib/workbench/agent-identity.ts`: WorkOS/local-dev identity derivation and
   trusted headers sent from Vercel to Cloudflare
 - `app/assistant.tsx`: frontend assistant-ui runtime integration seam
-- `app/api/[..._path]/route.ts`: Next.js proxy to LangGraph API
+- `app/api/workbench/chat-session/*`: Vercel facades that ask Cloudflare for
+  the active chat session, recent threads, and Cloudflare-signed Agent token
+- `app/api/[..._path]/route.ts`: legacy/transition Next.js proxy to LangGraph
+  API for workflow escalation paths
 - `app/api/external-signals/route.ts`: token-protected external-signal ingress
 - `app/api/workbench/cloudflare-demo-runs/route.ts`: Vercel workbench facade to
   the Cloudflare control-plane Worker
@@ -52,13 +55,17 @@ agent to update adjacent docs or code without needing the old graph generator.
   run callbacks
 - `cloudflare/control-plane/src/authz.ts`: D1-backed user, workspace,
   membership, active workspace, and active agent resolution
-- `cloudflare/control-plane/src/langgraph-facade.ts`: Worker `/langgraph`
-  compatibility facade and Fly fallback/proxy path
-- `cloudflare/control-plane/src/cloudflare-chat-runtime.ts`: Cloudflare-owned
-  simple chat runtime, D1 chat state, policy decisions, and OpenRouter calls
+- `cloudflare/control-plane/src/chat-agent-connection-context.ts`: Worker
+  helper that creates/resolves the active D1 thread for Agent chat
+- `cloudflare/control-plane/src/chat-session.ts`: Worker session API that owns
+  active thread selection, workspace history, and Agent token minting
+- `cloudflare/control-plane/src/thread-chat-agent.ts`: Cloudflare
+  `AIChatAgent` Durable Object chat runtime
+- `cloudflare/control-plane/src/langgraph-facade.ts`: legacy Worker
+  `/langgraph` compatibility facade and Fly fallback/proxy path
 - `cloudflare/control-plane/schema.sql`: current D1 tables for users,
   workspaces, memberships, agents, active preferences, chat state, control
-  events, demo runs, artifacts, decisions, and audit records
+  events, runtime traces, demo runs, artifacts, decisions, and audit records
 - `scripts/langgraph-runtime-gateway.ts`: Fly runtime gateway, LangGraph proxy,
   and signed demo executor endpoint
 - `backend/agent.ts`: current LangGraph backend/provider seam
@@ -69,24 +76,26 @@ agent to update adjacent docs or code without needing the old graph generator.
 Use four visibly separated pillars plus one sidecar cluster:
 
 - `Vercel / Frontend`: Next.js app, WorkOS AuthKit session, assistant-ui
-  thread, `/api` LangGraph facade, `external-signals` API, and workbench API
+  thread, Agent connection route, `external-signals` API, and workbench API
   routes.
 - `Cloudflare / Worker Control Plane`: control-plane Worker, WorkOS scope
-  resolver, workspace and agent authorization, `/langgraph` chat facade,
-  Cloudflare simple chat runtime, workspace/agent/admin APIs, event feed/runtime
+  resolver, workspace and agent authorization, Agent thread context,
+  `AIChatAgent` Durable Object, workspace/agent/admin APIs, event feed/runtime
   summary, demo run APIs, and run callback endpoint.
 - `Fly.io / LangGraph Execution`: runtime gateway, LangGraph server,
   `backend/agent.ts`, and signed demo executor.
 - `Durable Data Plane`: current D1 user/workspace/agent records, D1 chat state,
-  D1 run/event/artifact records, plus planned R2, Durable Object, and workflow
-  checkpoint responsibilities.
+  D1 run/event/artifact records, Durable Object SQLite chat messages, plus
+  planned R2 and workflow checkpoint responsibilities.
 - `External sidecars`: external triggers and OpenRouter provider. Keep this as
   one sidecar cluster, not a fifth pillar.
 
 Typed arrow categories:
 
-- `chat request`: assistant-ui traffic flows through the Vercel `/api` facade to
-  Cloudflare's LangGraph-compatible chat facade and simple chat runtime.
+- `agent connection`: assistant-ui asks Vercel for a server-derived Agent
+  connection; Vercel calls Cloudflare, then returns a short-lived token.
+- `WebSocket chat`: assistant-ui talks directly to the Cloudflare `AIChatAgent`
+  Durable Object for normal messages.
 - `fallback/escalation proxy`: unsupported LangGraph-compatible endpoints and
   future heavy workflow escalation can still go through the Fly LangGraph
   gateway.

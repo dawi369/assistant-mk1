@@ -15,6 +15,7 @@ import { AdminPanel } from "@/components/workbench/dev-monitor-drawer";
 import { ThreadHistorySidebar } from "@/components/workbench/thread-history-sidebar";
 import { WorkbenchAssistantEvents } from "@/components/workbench/workbench-assistant-events";
 import { WorkbenchRuntimeHint } from "@/components/workbench/workbench-runtime-hint";
+import { requestWorkbenchAgentNewChat } from "@/lib/workbench/agent-chat-events";
 import { requestWorkbenchSummaryRefresh } from "@/lib/workbench/admin-summary-events";
 
 const adminAccessPath = "/api/workbench/admin-access";
@@ -62,7 +63,7 @@ export function WorkbenchShell() {
   }, [adminAccess?.isAdmin]);
 
   const startNewChat = useCallback(
-    async ({ aui, isLoadingThread, isThreadRunning }: AssistantSlashCommandContext) => {
+    async ({ isLoadingThread, isThreadRunning }: AssistantSlashCommandContext) => {
       if (isThreadRunning || isLoadingThread) {
         setAdminNotice("Wait for the current response before starting a new chat.");
         window.setTimeout(() => setAdminNotice(null), 3000);
@@ -70,7 +71,7 @@ export function WorkbenchShell() {
       }
 
       requestWorkbenchSummaryRefresh();
-      await aui.threads().switchToNewThread();
+      requestWorkbenchAgentNewChat();
       window.setTimeout(requestWorkbenchSummaryRefresh, 500);
     },
     [],
@@ -102,19 +103,19 @@ export function WorkbenchShell() {
     <div className="bg-background relative h-dvh overflow-hidden">
       <WorkbenchComposerFocusProvider>
         <AssistantSlashCommandProvider commands={slashCommands}>
-          <Assistant>
-            <WorkbenchAssistantEvents />
-            <ThreadHistorySidebar />
-            <div className="absolute top-3 right-3 z-20 flex max-w-[calc(100vw-1.5rem)] flex-col items-end gap-2">
-              <div className="flex items-center justify-end gap-2">
-                <AuthButton />
+          <div className="absolute top-3 right-3 z-30 flex max-w-[calc(100vw-1.5rem)] flex-col items-end gap-2">
+            <AuthButton />
+            {adminNotice ? (
+              <div className="border-border bg-background/95 text-muted-foreground rounded-md border px-2.5 py-1.5 text-xs shadow-xs backdrop-blur">
+                {adminNotice}
               </div>
+            ) : null}
+          </div>
+          <Assistant>
+            <ThreadHistorySidebar />
+            <WorkbenchAssistantEvents />
+            <div className="absolute top-14 right-3 z-20 flex max-w-[calc(100vw-1.5rem)] flex-col items-end gap-2">
               <WorkbenchRuntimeHint onOpenAdmin={openAdmin} />
-              {adminNotice ? (
-                <div className="border-border bg-background/95 text-muted-foreground rounded-md border px-2.5 py-1.5 text-xs shadow-xs backdrop-blur">
-                  {adminNotice}
-                </div>
-              ) : null}
             </div>
             <AdminPanel open={adminOpen} onOpenChange={setAdminOpen} />
           </Assistant>

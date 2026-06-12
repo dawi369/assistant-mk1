@@ -3,6 +3,7 @@ import {
   createSmokeContext,
   defaultWorkspaceId,
   runSmoke,
+  sleep,
 } from "./smoke-utils";
 
 type RuntimeTrace = {
@@ -59,8 +60,18 @@ type AdminSummaryResponse = {
   };
 };
 
-const { baseUrl, suffix, readJson, fetchRaw, createThread, streamBody, startStream, assertStatus } =
-  createSmokeContext();
+const {
+  baseUrl,
+  suffix,
+  pollTimeoutMs,
+  pollIntervalMs,
+  readJson,
+  fetchRaw,
+  createThread,
+  streamBody,
+  startStream,
+  assertStatus,
+} = createSmokeContext();
 
 const accountId = `workos-org:runtime-traces-org-${suffix}`;
 const workspaceId = defaultWorkspaceId(accountId);
@@ -100,6 +111,24 @@ const requireRecentTrace = async (kind: string) => {
     throw new Error(`${kind} trace missing from recent traces: ${JSON.stringify(traces)}`);
   }
   return { ...trace, traceId: trace.traceId };
+};
+
+const waitForRecentTrace = async (kind: string, status?: string) => {
+  const deadline = Date.now() + pollTimeoutMs;
+  let lastTrace: RuntimeTrace | undefined;
+
+  while (Date.now() < deadline) {
+    const traces = await getLatestTraces(owner);
+    lastTrace = traces.recentTraces?.find((item) => item.kind === kind);
+    if (lastTrace?.traceId && (!status || lastTrace.status === status)) {
+      return { ...lastTrace, traceId: lastTrace.traceId };
+    }
+    await sleep(pollIntervalMs);
+  }
+
+  throw new Error(
+    `${kind} trace did not reach ${status ?? "available"}; latest was ${JSON.stringify(lastTrace)}`,
+  );
 };
 
 const requireSpan = (
@@ -147,10 +176,7 @@ runSmoke("Cloudflare runtime traces smoke", async () => {
   }
   await stream.text();
 
-  const chatTrace = await requireRecentTrace("chat.run.stream");
-  if (chatTrace.status !== "completed") {
-    throw new Error(`chat trace expected completed, got ${chatTrace.status}`);
-  }
+  const chatTrace = await waitForRecentTrace("chat.run.stream", "completed");
   const chatDetail = await getTrace(owner, chatTrace.traceId);
   requireSpan(chatDetail.spans, (span) => span.layer === "cloudflare");
   requireSpan(chatDetail.spans, (span) => span.layer === "d1");

@@ -148,6 +148,7 @@ export type RuntimeTraceLayer =
   | "browser"
   | "vercel"
   | "cloudflare"
+  | "durable_object"
   | "d1"
   | "provider"
   | "executor"
@@ -157,7 +158,12 @@ export type RuntimeTrace = {
   traceId: Id;
   scope?: TenantScope;
   agentId?: Id;
-  kind: "chat.thread.create" | "chat.run.stream" | "tool.url.inspect" | "diagnostic.demo.inspect";
+  kind:
+    | "chat.thread.create"
+    | "chat.run.stream"
+    | "chat.agent.stream"
+    | "tool.url.inspect"
+    | "diagnostic.demo.inspect";
   status: RuntimeTraceStatus;
   rootName: string;
   summary?: string;
@@ -321,6 +327,7 @@ export type ChatThreadSummary = {
   threadId: Id;
   sessionId: Id;
   agentId: Id;
+  agent?: AgentSummary | null;
   status: string;
   title: string;
   createdAt?: string;
@@ -340,6 +347,31 @@ export type ChatThreadsResponse = {
 export type ChatThreadResponse = {
   ok?: boolean;
   thread?: ChatThreadSummary | null;
+  error?: string;
+};
+
+export type ChatSessionResponse = {
+  ok?: boolean;
+  workspace?: {
+    id: Id;
+    name: string;
+    status: string;
+    isDefault: boolean;
+  } | null;
+  activeAgent?: AgentSummary | null;
+  activeThread?: ChatThreadSummary | null;
+  threads?: ChatThreadSummary[];
+  connection?: {
+    agentHost?: string;
+    agentName?: string;
+    instanceName?: string;
+    token?: string;
+    threadId?: Id;
+    sessionId?: Id;
+    workspaceId?: Id;
+    agentId?: Id;
+  };
+  expiresAt?: string;
   error?: string;
 };
 

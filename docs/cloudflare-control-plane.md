@@ -5,9 +5,10 @@ Cloudflare is the preferred future live multi-user control plane for assistant-m
 Document status: Cloudflare already owns the current authz/control-plane slice
 for users, accounts, workspaces, memberships, active workspace preferences,
 workspace-scoped test agents, active agent preferences, demo runs, and
-Cloudflare-native simple chat behind the LangGraph-compatible browser contract.
-Durable Objects, R2 artifacts, richer policy, secret custody, customer-facing
-agent configuration, and production admin flows are still target work.
+Cloudflare Agent-backed normal chat. Durable Object SQLite owns hot per-thread
+messages, while D1 remains the product/control-plane source of truth. R2
+artifacts, richer policy, secret custody, customer-facing agent configuration,
+and production admin flows are still target work.
 
 ## Role
 
@@ -25,8 +26,9 @@ Use it for:
 - Tenant-scoped reads and writes to app data.
 - Policy checks before workflow or tool execution.
 - Streaming lightweight results back to the frontend.
-- LangGraph-compatible chat facade during the transition from assistant-ui's
-  direct LangGraph API shape to a product-specific control-plane API.
+- Cloudflare Agents for normal live chat.
+- LangGraph-compatible workflow facade only during transition or explicit
+  heavy-workflow escalation.
 
 Do not use it as the default place for:
 
@@ -109,30 +111,40 @@ identity values when WorkOS is not configured. The durable rule is that Worker
 storage operations take trusted scope explicitly and executor callbacks resolve
 scope from the stored run record.
 
-## Chat Runtime And LangGraph Facade
+## Chat Runtime And Agents
 
-The current hosted chat path uses `/langgraph/*` on the Worker as a
-LangGraph-compatible facade. Vercel keeps the same browser-facing `/api/*`
-contract, but the server-side proxy authenticates to Cloudflare with trusted
-dev identity headers.
+The current hosted chat path uses Cloudflare Agents directly. Vercel derives
+WorkOS/local identity and calls Cloudflare for the current chat session.
+Cloudflare resolves the active workspace, membership, thread, and agent from
+D1, mints a short-lived signed Agent token, and returns workspace-scoped recent
+threads. The browser uses assistant-ui's AI SDK runtime plus the Cloudflare
+Agents React client to connect to one `WorkbenchThreadChatAgent` Durable Object
+per resolved thread.
 
-For simple assistant chat, Cloudflare now satisfies the subset of the LangGraph
-API shape that assistant-ui uses: thread creation, thread state reads, and
-`/runs/stream`. The Worker resolves the trusted user, account, active
-workspace, membership, and active agent, records the session/thread/intent/
-policy/run state in D1, calls the model provider directly, and streams
-LangGraph-compatible SSE chunks back to the browser. Fly is not on the normal
-simple-chat path.
+For normal assistant chat, the Agent resolves runtime config and behavior from
+the active D1 agent, streams OpenRouter through `AIChatAgent`, persists hot
+message state in Durable Object SQLite, and mirrors compact session/thread/run/
+trace metadata into D1 for Admin. Browser requests never provide trusted
+tenant, workspace, thread, or agent scope.
+
+The latency-sensitive send path should stay small: verify the scoped Agent
+token, read cached runtime/behavior config from the Durable Object instance,
+write one minimal D1 run-start mirror batch, then start the provider request.
+Completion mirrors, trace-detail spans, event writes, and thread-touch updates
+should happen after streaming starts or through `waitUntil` where correctness
+does not depend on blocking first token. D1 is the source of truth for
+authorization and Admin visibility, but normal chat should not perform serial
+control-plane writes before contacting OpenRouter.
 
 Fly/LangGraph remain available as the execution plane for graph-shaped
 workflows, heavy tools, browser automation, and future escalation paths. Other
-LangGraph-compatible endpoints can still fall through to the Fly gateway when
-they are explicitly needed, but that is not the default for a plain message.
+LangGraph-compatible endpoints can still exist for transition and explicit
+workflow needs, but that is not the default for a plain message.
 
-The current dev policy is intentionally small. Chat defaults to `ask`,
-`ask`/`dry_run` can run through the Cloudflare simple-chat path, `execute` is
-blocked until approval policy exists, and a second same-thread stream is
-blocked while another run is still `running`.
+The current dev policy is intentionally small. Chat defaults to `ask`, Agent
+chat is available to active memberships, and mutation-capable tool execution is
+blocked until approval policy exists. Duplicate/concurrent message behavior is
+handled by the Cloudflare Agent runtime.
 
 Cloudflare also records tenant-scoped control-plane events for session,
 thread, intent, policy, and run progress. The current browser-facing workbench
@@ -151,11 +163,10 @@ intent, policy decision, run status/error, recent chat events, and a compact
 state such as `no_session`, `thread_ready`, `blocked`, `running`, `failed`, or
 `completed`.
 
-This is observable control-plane state plus lightweight transcript continuity
-for the current simple-chat path. It is not the final Agent Runtime Config or
-tool-execution model. The durable north star remains: Cloudflare owns the
-user-facing conversation/control plane, and Fly executes signed heavy work
-only when the control plane escalates to it.
+This is observable control-plane state plus Durable Object-backed live chat
+state. The durable north star remains: Cloudflare owns the user-facing
+conversation/control plane, and Fly executes signed heavy work only when the
+control plane escalates to it.
 
 ## Runtime Traces
 
@@ -166,7 +177,8 @@ Admin can answer which service was hit and where latency accumulated.
 Current trace kinds:
 
 - `chat.thread.create`
-- `chat.run.stream`
+- `chat.agent.stream`
+- `chat.run.stream` for the legacy/simple-chat transition path
 - `tool.url.inspect`
 - `diagnostic.demo.inspect` when it can be attached without broad executor
   refactors
@@ -183,6 +195,12 @@ Span payloads must stay compact and redacted. Store operational metadata such
 as model id, run id, safe URL summary, duration, status, and error code. Do not
 store prompts, auth headers, provider secrets, full provider payloads, or full
 tool output in trace data. Tool output belongs in artifacts.
+
+For latency analysis, Agent chat traces should distinguish Worker wall-clock
+duration from D1 execution metadata when available. A slow first token should
+be attributable to one of the visible stages: token verification, config cache
+miss, D1 run-start batch, provider first token, stream duration, or post-stream
+D1 mirror work.
 
 ## Tool Admin Visibility
 

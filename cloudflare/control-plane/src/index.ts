@@ -1,4 +1,5 @@
 import * as Sentry from "@sentry/cloudflare";
+import { routeAgentRequest } from "agents";
 import {
   handleGetCloudflareDemoRun,
   handleLatestCloudflareDemoRun,
@@ -14,12 +15,18 @@ import {
   handleListAgents,
 } from "./agents";
 import { handleChatRuntimeSummary } from "./chat-runtime-summary";
+import {
+  handleActivateChatSessionThread,
+  handleChatSession,
+  handleCreateChatSessionThread,
+} from "./chat-session";
 import { handleGetChatThread, handleListChatThreads } from "./chat-threads";
 import {
   handleControlPlaneEvents,
   handleControlPlaneEventStream,
   handleLatestControlPlaneEvents,
 } from "./control-plane-events";
+import { corsHeadersForRequest, withCors } from "./cors";
 import {
   handleChatBoundarySnapshot,
   handleCreateChatSession,
@@ -38,6 +45,14 @@ import { handleActivateWorkspace, handleCreateWorkspace, handleListWorkspaces } 
 import { resolveAgentIdentity } from "./authz";
 import { internalErrorResponse, json, requireAuth } from "./http";
 import type { Env, WorkerExecutionContext } from "./types";
+import { WorkbenchThreadChatAgent } from "./thread-chat-agent";
+
+export { WorkbenchThreadChatAgent };
+
+const isCloudflareAgentSdkPath = (pathname: string) => {
+  if (pathname === "/agents" || /^\/agents\/[^/]+\/activate$/.test(pathname)) return false;
+  return pathname.startsWith("/agents/") || pathname.startsWith("/agents_");
+};
 
 const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionContext) => {
   const url = new URL(request.url);
@@ -48,6 +63,19 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
       service: "assistant-mk1-control-plane",
       storage: "d1-local",
     });
+  }
+
+  if (isCloudflareAgentSdkPath(url.pathname)) {
+    if (request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: corsHeadersForRequest(request, env) });
+    }
+    const agentResponse = await routeAgentRequest(request, env);
+    if (agentResponse) return withCors(agentResponse, request, env);
+    return withCors(
+      json({ ok: false, error: "Agent route not found" }, { status: 404 }),
+      request,
+      env,
+    );
   }
 
   const authResponse = await requireAuth(request, env);
@@ -99,6 +127,26 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
 
   if (request.method === "GET" && url.pathname === "/chat/runtime-summary") {
     return handleChatRuntimeSummary(env, identity);
+  }
+
+  if (request.method === "GET" && url.pathname === "/chat/session") {
+    return handleChatSession(request, env, identity);
+  }
+
+  if (request.method === "POST" && url.pathname === "/chat/session/threads") {
+    return handleCreateChatSessionThread(request, env, identity);
+  }
+
+  const activateChatSessionThreadMatch = url.pathname.match(
+    /^\/chat\/session\/threads\/([^/]+)\/activate$/,
+  );
+  if (request.method === "POST" && activateChatSessionThreadMatch?.[1]) {
+    return handleActivateChatSessionThread(
+      request,
+      env,
+      identity,
+      decodeURIComponent(activateChatSessionThreadMatch[1]),
+    );
   }
 
   if (request.method === "GET" && url.pathname === "/chat/threads") {

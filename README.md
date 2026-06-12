@@ -60,11 +60,13 @@ app/                Next.js App Router pages + /api proxy
 app/api/[..._path]/ Next.js catch-all proxy for LangGraph API requests
 backend/agent.ts    LangGraph graph exported as `graph`
 docs/               repo-native operating docs
-lib/chatApi.ts      LangGraph SDK client factory
 langgraph.json      LangGraph CLI config (graph id, node version, env file)
 ```
 
-`app/assistant.tsx` builds the runtime with `unstable_createLangGraphStream({ client, assistantId })` from `@assistant-ui/react-langgraph`.
+`app/assistant.tsx` builds the normal chat runtime with assistant-ui, the AI SDK
+runtime adapter, and Cloudflare Agents. Vercel asks Cloudflare for the current
+chat session; Cloudflare mints the short-lived Agent token and resolves the
+active workspace, thread, and agent from D1.
 
 `app/api/[..._path]/route.ts` uses Next.js catch-all route syntax. The bracketed folder is intentionally named that way: it lets one route receive `/api/threads`, `/api/threads/:id/runs`, and other LangGraph API paths, then proxy them to `LANGGRAPH_API_URL`.
 

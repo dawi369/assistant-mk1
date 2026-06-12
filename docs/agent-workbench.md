@@ -64,21 +64,22 @@ event, and the important error. Workspace and agent management remain available
 as secondary controls, while raw ids, recent events, and external WorkOS
 signals stay in advanced details.
 
-Thread history v0 is the active normal-chat polish slice. It should be
-assistant-ui-native: use the remote thread-list runtime and thread-list
-primitives for recent chats, new chat, and thread switching while Cloudflare D1
-owns thread rows, ownership checks, and active-thread state. The first version
-is intentionally limited to list, switch, and new chat for the resolved
-user/workspace/active agent. Archive, delete, rename, generated titles, search,
-shared threads, and mobile-specific history polish are future slices.
+Thread Chat Agent v0 is the active normal-chat runtime slice. Normal chat now
+uses assistant-ui's AI SDK runtime and Cloudflare Agents: Vercel forwards
+WorkOS/local identity to Cloudflare, Cloudflare owns the active chat session and
+short-lived Agent token, and the browser connects to a per-thread `AIChatAgent`
+Durable Object. Recent chat history is workspace-scoped; selecting an old
+thread restores the agent that owns that thread. Archive, delete, rename,
+generated titles, search, shared threads, and mobile-specific history polish
+are future slices.
 
 Chat responsiveness and observability v0 keeps the normal assistant-ui surface
 unchanged while making runtime status feel immediate. The compact hint may use
 assistant-ui local lifecycle state for transient `Running` feedback, but
 workspace, agent, thread, run, error, and timing truth still comes from
-Cloudflare. Cloudflare stores simple-chat timing metadata on chat runs so Admin
-can show first-token and total runtime without routing small chats
-through Fly/LangGraph.
+Cloudflare. Cloudflare stores Agent-chat run and trace metadata so Admin can
+show first-token and total runtime without routing small chats through
+Fly/LangGraph.
 
 Workspace management v0 is the current Admin-only slice: list workspaces
 for the current WorkOS account, create a name-only workspace, and switch the
@@ -95,7 +96,7 @@ apps like Polymancer can later provision isolated agents per user or workspace
 without moving scope selection into the browser.
 
 Agent behavior v0 makes those workspace-scoped agents affect the Cloudflare
-simple-chat system prompt. Behavior templates live in `docs/prompts` as seed
+Agent system instruction. Behavior templates live in `docs/prompts` as seed
 material, using `docs/prompts/poke.xml` only as a structural and tonal
 reference. The active behavior for a created agent is a D1 snapshot stored in
 `agents.data_json.behavior`, so D1 remains the runtime source of truth after
@@ -113,11 +114,11 @@ adapter and observability path before durable tool permissions, approvals, kill
 switches, secret custody, or mutation-capable tools are enabled.
 
 Runtime trace graph v0 makes Admin the main explanation surface for request
-path and latency. Cloudflare D1 stores one trace per thread creation, simple
-chat stream, and Admin-triggered URL inspection, with spans for Vercel,
-Cloudflare authz, D1 ownership/writes, provider first token/streaming, and tool
-execution. The graph is product/runtime telemetry; Sentry remains external
-sampled error and performance telemetry.
+path and latency. Cloudflare D1 stores one trace per thread creation, Agent
+chat stream, legacy simple-chat stream, and Admin-triggered URL inspection,
+with spans for Vercel, Cloudflare Agent, Durable Object, D1, provider first
+token/streaming, and tool execution. The graph is product/runtime telemetry;
+Sentry remains external sampled error and performance telemetry.
 
 Near-term WorkOS, workspace, and Cloudflare ownership sequence:
 

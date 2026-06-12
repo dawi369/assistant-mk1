@@ -8,12 +8,18 @@ import {
   type ChatRunRow,
   type ChatSessionRow,
   type ChatThreadRow,
+  type D1Result,
   type Env,
   type ExecutionMode,
   type TenantScope,
 } from "./types";
 
 type ChatRunStatus = "running" | "completed" | "failed";
+
+const d1Duration = (result: D1Result) => {
+  const durationMs = result.meta?.duration;
+  return typeof durationMs === "number" && Number.isFinite(durationMs) ? durationMs : null;
+};
 
 export const createChatSession = async (
   env: Env,
@@ -280,6 +286,204 @@ export const createChatRun = async (
     )
     .run();
   return runId;
+};
+
+export const createAgentChatRunStartMirror = async (
+  env: Env,
+  identity: AgentIdentity,
+  input: {
+    traceId: string;
+    traceStartedAtMs: number;
+    tokenVerifyStartedAtMs: number;
+    tokenVerifyEndedAtMs: number;
+    configResolveStartedAtMs: number;
+    configResolveEndedAtMs: number;
+    configCacheStatus: "hit" | "miss";
+    sessionId: string;
+    threadId: string;
+    requestId?: string;
+    agentMetadata: unknown;
+    model: string;
+    runtimeConfig: unknown;
+    behavior: unknown;
+  },
+) => {
+  const timestamp = new Date().toISOString();
+  const traceStartedAt = new Date(input.traceStartedAtMs).toISOString();
+  const intentId = createId("cf-chat-intent");
+  const policyDecisionId = createId("cf-chat-policy");
+  const runId = createId("cf-chat-run");
+  const tokenSpanId = createId("cf-span");
+  const configSpanId = createId("cf-span");
+  const batchStartedAtMs = Date.now();
+  const results = await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO runtime_traces (
+         trace_id, user_id, workspace_id, agent_id, kind, status, root_name, summary,
+         data_json, started_at, created_at, updated_at
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(trace_id) DO UPDATE SET
+         updated_at = excluded.updated_at`,
+    ).bind(
+      input.traceId,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.agentId,
+      "chat.agent.stream",
+      "running",
+      "Cloudflare Agent chat response",
+      "Agent chat response started.",
+      toJson({
+        runtime: "cloudflare-agent-chat",
+        threadId: input.threadId,
+        sessionId: input.sessionId,
+      }),
+      traceStartedAt,
+      traceStartedAt,
+      timestamp,
+    ),
+    env.DB.prepare(
+      `INSERT INTO runtime_spans (
+         span_id, trace_id, parent_span_id, user_id, workspace_id, agent_id, name, layer, status,
+         data_json, started_at, ended_at, duration_ms, created_at, updated_at
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      tokenSpanId,
+      input.traceId,
+      null,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.agentId,
+      "Agent token verify",
+      "durable_object",
+      "completed",
+      toJson({
+        spanType: "operation",
+        isAggregate: false,
+        bottleneckCandidate: true,
+      }),
+      new Date(input.tokenVerifyStartedAtMs).toISOString(),
+      new Date(input.tokenVerifyEndedAtMs).toISOString(),
+      Math.max(0, Math.round(input.tokenVerifyEndedAtMs - input.tokenVerifyStartedAtMs)),
+      timestamp,
+      timestamp,
+    ),
+    env.DB.prepare(
+      `INSERT INTO runtime_spans (
+         span_id, trace_id, parent_span_id, user_id, workspace_id, agent_id, name, layer, status,
+         data_json, started_at, ended_at, duration_ms, created_at, updated_at
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      configSpanId,
+      input.traceId,
+      null,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.agentId,
+      input.configCacheStatus === "hit" ? "Config cache hit" : "Config cache miss",
+      input.configCacheStatus === "hit" ? "durable_object" : "d1",
+      "completed",
+      toJson({
+        cache: input.configCacheStatus,
+        model: input.model,
+        spanType: "operation",
+        isAggregate: false,
+        bottleneckCandidate: true,
+      }),
+      new Date(input.configResolveStartedAtMs).toISOString(),
+      new Date(input.configResolveEndedAtMs).toISOString(),
+      Math.max(0, Math.round(input.configResolveEndedAtMs - input.configResolveStartedAtMs)),
+      timestamp,
+      timestamp,
+    ),
+    env.DB.prepare(
+      `INSERT INTO chat_intents (
+         id, session_id, thread_id, user_id, workspace_id, agent_id, type, execution_mode,
+         status, payload_json, created_at, updated_at
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      intentId,
+      input.sessionId,
+      input.threadId,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.agentId,
+      "chat.respond",
+      "ask",
+      "allowed",
+      toJson({
+        source: "cloudflare-agent-chat",
+        runtime: "cloudflare-agent-chat",
+        requestId: input.requestId,
+        agent: input.agentMetadata,
+      }),
+      timestamp,
+      timestamp,
+    ),
+    env.DB.prepare(
+      `INSERT INTO chat_policy_decisions (
+         id, intent_id, thread_id, user_id, workspace_id, agent_id, decision, reason,
+         execution_mode, limits_json, created_at
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      policyDecisionId,
+      intentId,
+      input.threadId,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.agentId,
+      "allow",
+      "Agent chat v0 allows normal chat for active memberships.",
+      "ask",
+      toJson({
+        runtime: "cloudflare-agent-chat",
+        model: input.model,
+      }),
+      timestamp,
+    ),
+    env.DB.prepare(
+      `INSERT INTO chat_runs (
+         id, intent_id, policy_decision_id, thread_id, user_id, workspace_id, agent_id,
+         status, metadata_json,
+         started_at, updated_at
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      runId,
+      intentId,
+      policyDecisionId,
+      input.threadId,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.agentId,
+      "running",
+      toJson({
+        source: "cloudflare-agent-chat",
+        runtime: "cloudflare-agent-chat",
+        traceId: input.traceId,
+        modelProvider: "openrouter",
+        model: input.model,
+        runtimeConfig: input.runtimeConfig,
+        behavior: input.behavior,
+      }),
+      timestamp,
+      timestamp,
+    ),
+  ]);
+  const batchEndedAtMs = Date.now();
+  return {
+    intentId,
+    policyDecisionId,
+    runId,
+    batchStartedAtMs,
+    batchEndedAtMs,
+    d1DurationMs: results.reduce((sum, result) => sum + (d1Duration(result) ?? 0), 0),
+  };
 };
 
 export const updateChatRun = async (

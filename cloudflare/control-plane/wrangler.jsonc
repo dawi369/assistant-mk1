@@ -3,7 +3,7 @@
   "name": "assistant-mk1-dev-control-plane",
   "main": "src/index.ts",
   "compatibility_date": "2026-06-01",
-  "compatibility_flags": ["nodejs_als"],
+  "compatibility_flags": ["nodejs_compat", "nodejs_als"],
   "vars": {
     "LANGGRAPH_UPSTREAM_URL": "https://assistant-mk1-langgraph-dev.fly.dev",
     "OPENROUTER_MODEL": "deepseek/deepseek-v4-flash",
@@ -17,6 +17,20 @@
       "binding": "DB",
       "database_name": "assistant_mk1_dev",
       "database_id": "1b5ba1b2-e19e-4db4-825b-d911b1ddf9db",
+    },
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "WorkbenchThreadChatAgent",
+        "class_name": "WorkbenchThreadChatAgent",
+      },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1-workbench-thread-chat-agent",
+      "new_sqlite_classes": ["WorkbenchThreadChatAgent"],
     },
   ],
 }

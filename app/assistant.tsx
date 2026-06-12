@@ -1,72 +1,98 @@
 "use client";
 
 /**
- * Client runtime bridge between assistant-ui and LangGraph.
+ * Client runtime bridge between assistant-ui and Cloudflare Agents.
  *
- * This component creates the LangGraph SDK client, converts assistant-ui message
- * streams into LangGraph runs, and provides the runtime to the thread UI. It
- * should stay provider-agnostic; model credentials and graph logic live on the
- * server side.
+ * Vercel forwards the WorkOS/local session to Cloudflare. Cloudflare owns the
+ * active workspace/thread/agent session, mints the short-lived Agent token, and
+ * the browser talks to the per-thread Durable Object through the Agents SDK.
  */
-import { useMemo, type ReactNode } from "react";
+import { useMemo, type ComponentProps, type ReactNode } from "react";
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
-import {
-  unstable_createLangGraphStream,
-  useLangGraphRuntime,
-  type LangChainMessage,
-} from "@assistant-ui/react-langgraph";
+import { useAISDKRuntime } from "@assistant-ui/react-ai-sdk";
+import { useAgentChat } from "@cloudflare/ai-chat/react";
+import { useAgent } from "agents/react";
 
-import { createClient } from "@/lib/chatApi";
 import { Thread } from "@/components/assistant-ui/thread";
-import { createWorkbenchThreadListAdapter } from "@/lib/workbench/chat-thread-list-adapter";
+import { type WorkbenchAgentConnection } from "@/lib/workbench/agent-chat-events";
+import { useWorkbenchAgentConnection } from "@/lib/workbench/use-agent-connection";
 
-const ASSISTANT_ID = process.env.NEXT_PUBLIC_LANGGRAPH_ASSISTANT_ID!;
+const toAgentHostOptions = (agentHost: string) => {
+  const parsed = new URL(agentHost);
+  return {
+    host: parsed.host,
+    protocol: parsed.protocol === "http:" ? ("ws" as const) : ("wss" as const),
+  };
+};
 
 export function Assistant({ children }: { children?: ReactNode }) {
-  const client = useMemo(() => createClient(), []);
-  const createThread = useMemo(
-    () => async () => {
-      const { thread_id } = await client.threads.create();
-      return { thread_id };
-    },
-    [client],
-  );
-  const threadListAdapter = useMemo(
-    () => createWorkbenchThreadListAdapter({ createThread }),
-    [createThread],
-  );
-  const stream = useMemo(
-    () =>
-      unstable_createLangGraphStream({
-        client,
-        assistantId: ASSISTANT_ID,
-      }),
-    [client],
-  );
+  const { connection, error, retry } = useWorkbenchAgentConnection();
 
-  const runtime = useLangGraphRuntime({
-    unstable_allowCancellation: true,
-    stream,
-    unstable_threadListAdapter: threadListAdapter,
-    create: async () => {
-      const { thread_id } = await client.threads.create();
-      return { externalId: thread_id };
-    },
-    load: async (externalId) => {
-      const state = await client.threads.getState<{
-        messages: LangChainMessage[];
-      }>(externalId);
-      return {
-        messages: state.values?.messages ?? [],
-        interrupts: state.tasks?.[0]?.interrupts,
-      };
-    },
-  });
+  if (error && !connection) {
+    return (
+      <div className="flex h-full items-center justify-center p-6">
+        <div className="border-border bg-background max-w-md rounded-md border p-4 text-sm shadow-xs">
+          <div className="font-medium">Cloudflare Agent connection failed</div>
+          <p className="text-muted-foreground mt-1">{error}</p>
+          <button
+            type="button"
+            className="border-border hover:bg-muted mt-3 rounded-md border px-3 py-1.5 text-sm"
+            onClick={retry}
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!connection) {
+    return (
+      <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">
+        Connecting to Cloudflare Agent...
+      </div>
+    );
+  }
 
   return (
-    <AssistantRuntimeProvider runtime={runtime}>
+    <AgentRuntime key={connection.threadId ?? connection.instanceName} connection={connection}>
       {children}
       <Thread />
-    </AssistantRuntimeProvider>
+    </AgentRuntime>
   );
+}
+
+function AgentRuntime({
+  connection,
+  children,
+}: {
+  connection: WorkbenchAgentConnection;
+  children?: ReactNode;
+}) {
+  const hostOptions = useMemo(
+    () => toAgentHostOptions(connection.agentHost!),
+    [connection.agentHost],
+  );
+  const agent = useAgent({
+    agent: "WorkbenchThreadChatAgent",
+    name: connection.instanceName!,
+    host: hostOptions.host,
+    protocol: hostOptions.protocol,
+    query: { token: connection.token! },
+    enabled: Boolean(connection.token),
+  });
+  const chat = useAgentChat({
+    agent,
+    body: () => ({
+      token: connection.token!,
+      threadId: connection.threadId,
+      traceId: `trace-${crypto.randomUUID()}`,
+    }),
+  });
+  const runtime = useAISDKRuntime(chat);
+  const providerRuntime = runtime as unknown as ComponentProps<
+    typeof AssistantRuntimeProvider
+  >["runtime"];
+
+  return <AssistantRuntimeProvider runtime={providerRuntime}>{children}</AssistantRuntimeProvider>;
 }

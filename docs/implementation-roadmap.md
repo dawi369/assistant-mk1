@@ -13,8 +13,10 @@ or live mutation tools until the slice that needs them is explicitly scoped.
 - Vercel hosts the Next.js assistant UI and browser-facing API facade.
 - assistant-ui owns the first chat surface, message rendering, composer,
   attachments, tool-call rendering primitives, and stream ergonomics.
-- `@assistant-ui/react-langgraph` bridges the browser runtime to a
-  LangGraph-shaped thread and stream contract.
+- `@assistant-ui/react-ai-sdk` plus Cloudflare Agents now bridge the browser
+  runtime to one `AIChatAgent` Durable Object per active thread for normal
+  chat. The older LangGraph-shaped bridge remains available for workflow
+  transition paths, not normal hosted messages.
 - `backend/agent.ts` is a minimal OpenRouter-backed LangGraph graph.
 - `/api/[..._path]` proxies browser LangGraph SDK traffic.
 - `/api/external-signals` is a token-protected staging ingress for starts,
@@ -31,16 +33,16 @@ or live mutation tools until the slice that needs them is explicitly scoped.
 - Cloudflare owns the current workbench demo run path, including trusted dev
   tenant scope, D1-backed run snapshots, callbacks, and tenant-isolation smoke
   coverage.
-- Cloudflare fronts hosted LangGraph-compatible chat traffic, stores
-  tenant-scoped chat sessions, thread ownership, lightweight transcript
-  continuity, chat intents, policy decisions, chat run envelopes, and
-  control-plane activity events. Normal simple chat is answered from
-  Cloudflare, not Fly.
+- Cloudflare owns hosted normal chat through `WorkbenchThreadChatAgent`
+  Durable Objects, stores tenant-scoped chat sessions, thread ownership, chat
+  intents, policy decisions, chat run envelopes, runtime traces, and
+  control-plane activity events. Normal chat is answered from Cloudflare
+  Agents, not Fly.
   The workbench can subscribe to those activity events through a browser-safe
   Vercel facade.
 - Fly runs the dedicated LangGraph runtime gateway and signed `demo.inspect`
   executor endpoint. It is the heavy workflow/tool execution plane, not the
-  normal simple-chat path.
+  normal chat path.
 
 ## Assistant-UI Principle
 
@@ -184,18 +186,15 @@ Implemented:
 - Chat polish checkpoint v0: the normal shell has a compact server-derived
   runtime hint for active workspace, active agent/profile, chat state, and
   error-detail access while keeping assistant-ui as the primary chat surface.
-  New chat is available as a local `/new` composer command and through the
-  recent-chats sidebar.
-- Thread history v0 is the active chat-polish slice: assistant-ui's native
-  remote thread-list runtime and thread-list primitives show recent
-  Cloudflare-owned chats for the resolved user/workspace/active agent, while
-  Cloudflare D1 remains the source of truth for thread ownership and the
-  active thread.
+  New chat is available as a local `/new` composer command.
+- Thread history v0 proved recent Cloudflare-owned chat listing on the old
+  LangGraph-shaped runtime. It is temporarily minimized during the Cloudflare
+  Agents migration and should return after the direct Agent runtime is stable.
 - Chat runtime responsiveness and observability v0 is implemented: the compact
   hint uses assistant-ui local lifecycle state for immediate transient
   `Running` feedback, idle admin-summary polling is removed, and Cloudflare
-  simple-chat run metadata records timing marks for first-token, provider,
-  pre-stream, and total runtime inspection.
+  chat run metadata records timing marks for first-token, provider, pre-stream,
+  and total runtime inspection.
 - Workspace management v0 as the first Cloudflare-owned workspace model
   slice: D1 active workspace preference, Cloudflare `GET /workspaces`,
   `POST /workspaces`, `POST /workspaces/:workspaceId/activate`, Vercel
@@ -208,18 +207,28 @@ Implemented:
   active-agent preferences per user/workspace, and Admin can create and
   activate test agents for the current workspace.
 - Agent behavior v0: new agents can import XML behavior templates into
-  `agents.data_json.behavior`; Cloudflare injects the D1 snapshot into simple
+  `agents.data_json.behavior`; Cloudflare injects the D1 snapshot into Agent
   chat, and Admin previews the active behavior.
 - Read-only tool adapter and Admin visibility v0 is implemented:
   Cloudflare exposes a code-backed tool registry summary, Admin can run the
   bounded `url.inspect` dry-run tool, and D1 records the resulting
   workflow intent, run, tool call, artifact, audit events, and control-plane
   events. The tool is not model-visible yet.
-- Runtime trace graph and Admin redesign v0 is the active observability slice:
+- Runtime trace graph and Admin redesign v0 is implemented:
   Cloudflare stores D1-backed runtime traces and spans for thread creation,
-  simple-chat streams, and Admin tool runs. Admin now leads with a live service
-  map and waterfall so request path and bottlenecks are visible before raw ids,
-  events, or management controls.
+  Agent chat streams, legacy simple-chat streams, and Admin tool runs. Admin
+  now leads with a live service map and waterfall so request path and
+  bottlenecks are visible before raw ids, events, or management controls.
+- Thread Chat Agent v0 is the active chat-runtime slice: Vercel forwards
+  WorkOS/local identity to Cloudflare, Cloudflare owns the active chat session
+  and signed Agent token, and the browser connects to `WorkbenchThreadChatAgent`.
+  Durable Object SQLite owns hot per-thread message state; D1 owns workspace
+  history, active thread/agent selection, and compact run/trace metadata for
+  Admin.
+- Cloudflare Agents runtime lock-in v0 is in progress: the session layer
+  refreshes scoped tokens, each message gets its own trace, Agent runtime config
+  is cached per Durable Object instance, and the message critical path blocks
+  only on one minimal D1 run-start batch before OpenRouter starts.
 
 Next target:
 
@@ -242,28 +251,28 @@ Exit criteria:
 Goal: move user-facing conversation and workflow progress behind Cloudflare.
 
 Current baseline: workbench run control is Cloudflare-owned, and assistant-ui
-chat now flows through the Cloudflare `/langgraph` compatibility facade.
-Cloudflare owns normal simple chat, tenant-scoped session/thread ownership,
-lightweight transcript continuity, chat intents, policy decisions, run
-envelopes, a tenant-scoped control-plane event feed, and a short-lived SSE
-stream for browser-visible runtime activity. Fly/LangGraph still own complex
-workflow execution and explicit heavy escalation.
+normal chat now flows through Cloudflare Agents. Cloudflare owns normal chat,
+tenant-scoped session/thread ownership, Durable Object hot message state, chat
+intents, policy decisions, run envelopes, a tenant-scoped control-plane event
+feed, runtime traces, and browser-visible Admin/runtime summaries.
+Fly/LangGraph still own complex workflow execution and explicit heavy
+escalation.
 
-Small chat request flow is intentionally production-shaped but still
-LangGraph-compatible for assistant-ui: browser assistant-ui runtime -> Vercel
-`/api` proxy -> Cloudflare `/langgraph` facade -> Cloudflare simple chat ->
-OpenRouter. Fly/LangGraph should not handle normal small messages; an
-`upstreamRunId` on a normal chat run means the request escalated or regressed
-away from the intended path.
+Small chat request flow is intentionally production-shaped: browser
+assistant-ui runtime -> Vercel `/api/workbench/chat-session` -> Cloudflare
+active workspace/thread/agent resolution and short-lived Agent token ->
+Cloudflare `AIChatAgent` Durable Object -> OpenRouter. Fly/LangGraph should
+not handle normal small messages; an `upstreamRunId` on a normal chat run means
+the request escalated or regressed away from the intended path.
 
 Next target:
 
-- First-party D1 runtime traces on simple-chat and tool runs, surfaced through
-  Admin as a service map and waterfall, so latency can be explained by request
-  path and bottleneck span rather than guessed from browser perception.
-- Broaden the Cloudflare-owned stream from simple chat into richer conversation
-  and workflow progress, building on the event feed as the first observable
-  state source.
+- Stabilize Cloudflare-owned chat sessions with truthful first-token traces and
+  comfortable workspace-level recent-thread switching on top of the Agent
+  runtime.
+- Broaden the Cloudflare-owned stream from normal Agent chat into richer
+  workflow progress, building on the event feed and trace graph as observable
+  state sources.
 - Progress callbacks or scoped status writes from Fly/LangGraph into canonical
   state.
 - Trigger and schedule handling through trusted tenant metadata.

@@ -15,6 +15,7 @@ const limitFromUrl = (url: URL) => {
 
 const firstUserMessageTitle = (thread: ChatThreadRow) => {
   const upstream = parseDataJson(thread.upstream_json);
+  if (typeof upstream.title === "string" && upstream.title.trim()) return upstream.title.trim();
   const messages = Array.isArray(upstream.messages) ? upstream.messages : [];
   const firstUser = messages.find((message) => {
     if (!message || typeof message !== "object") return false;
@@ -47,6 +48,9 @@ const firstUserMessageTitle = (thread: ChatThreadRow) => {
 
 const messageCount = (thread: ChatThreadRow) => {
   const upstream = parseDataJson(thread.upstream_json);
+  if (typeof upstream.messageCount === "number" && Number.isFinite(upstream.messageCount)) {
+    return upstream.messageCount;
+  }
   return Array.isArray(upstream.messages) ? upstream.messages.length : 0;
 };
 

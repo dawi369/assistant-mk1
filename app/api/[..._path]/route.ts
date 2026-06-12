@@ -1,9 +1,9 @@
 /**
  * Catch-all proxy from the Next app to the LangGraph API server.
  *
- * assistant-ui and the LangGraph SDK can call `/api/...` in the browser while
- * this route forwards the request to `LANGGRAPH_API_URL`. The bracketed route
- * segment is Next.js catch-all syntax, not a product-specific endpoint name.
+ * Compatibility clients can call `/api/...` while this route forwards the
+ * request to `LANGGRAPH_API_URL`. Normal chat now uses Cloudflare Agents; this
+ * proxy remains for explicit LangGraph/heavy-workflow paths.
  */
 import { type NextRequest, NextResponse } from "next/server";
 

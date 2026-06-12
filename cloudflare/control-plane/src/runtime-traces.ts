@@ -12,6 +12,7 @@ import {
 export type RuntimeTraceKind =
   | "chat.thread.create"
   | "chat.run.stream"
+  | "chat.agent.stream"
   | "tool.url.inspect"
   | "diagnostic.demo.inspect";
 
@@ -21,6 +22,7 @@ export type RuntimeSpanLayer =
   | "browser"
   | "vercel"
   | "cloudflare"
+  | "durable_object"
   | "d1"
   | "provider"
   | "executor"

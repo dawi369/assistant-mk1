@@ -13,11 +13,11 @@ browser
   -> Vercel Next.js app
   -> WorkOS AuthKit session via the Next SDK
   -> Vercel server facade derives trusted user/account identity and external membership signals
-  -> Cloudflare control plane over a server-to-server boundary
-  -> active workspace, membership, agent access, and policy checks
-  -> typed intent router
-  -> run control record
-  -> Fly LangGraph workflow or tool runner
+  -> Cloudflare control plane over a server-to-server boundary for product/authz state
+  -> short-lived Cloudflare Agent connection token for the active thread
+  -> Cloudflare AIChatAgent Durable Object for normal live chat
+  -> typed intent/router and run control records in D1
+  -> Fly LangGraph workflow or tool runner only for explicit heavy escalation
   -> decision records, audit events, artifacts, managed state
 ```
 
@@ -39,39 +39,40 @@ The current hosted dev baseline is intentionally split but not fully at the nort
   allows multiple workspaces per organization later. The current personal
   workspace fallback exists for pre-user development and possible future solo
   use.
-- Cloudflare owns the production-shaped workbench run-control path and now
-  serves simple hosted chat through a LangGraph-compatible `/langgraph` subset,
-  with D1-backed tenant ownership for chat sessions, thread ids, lightweight
-  transcript continuity, chat intents, policy decisions, run envelopes, and
-  control-plane activity events.
+- Cloudflare owns the production-shaped workbench run-control path and normal
+  hosted chat. Vercel forwards trusted WorkOS/local identity, Cloudflare
+  resolves the active chat session and mints the short-lived Agent token, then
+  the browser connects to a Cloudflare `AIChatAgent` Durable Object. Durable
+  Object SQLite owns hot per-thread messages; D1 owns tenant-scoped sessions,
+  thread ownership, active thread/agent selection, chat intents, policy
+  decisions, run envelopes, traces, and control-plane activity events.
 - Fly runs the LangGraph runtime gateway and signed executor endpoints for
   heavy workflow/tool execution and explicit escalation.
 
-assistant-ui still talks to a LangGraph-compatible API for chat threads and
-streaming, but normal hosted chat is now answered by Cloudflare directly.
-Treat the facade as a compatibility boundary for the current UI substrate, not
-the final product API. The current boundary enforces trusted dev tenant
-ownership for sessions and thread-scoped calls, applies a small dev policy, and
-keeps Fly out of the simple-message path. The workbench can read recent
-Cloudflare activity through a same-origin Vercel facade and can subscribe to a
-short-lived Cloudflare-backed event stream for live activity updates. It is not
-a frontend auth system.
+assistant-ui now uses the Cloudflare Agents chat runtime for normal hosted
+messages. The old LangGraph-shaped facade remains a transition/compatibility
+surface and a future heavy-workflow bridge, not the normal small-message path.
+The current boundary enforces trusted tenant ownership for sessions,
+thread-scoped calls, active membership, and active agent selection, and keeps
+Fly out of normal chat. The workbench can read recent Cloudflare activity
+through a same-origin Vercel facade and can subscribe to a short-lived
+Cloudflare-backed event stream for live activity updates. It is not a frontend
+auth system.
 
 The current small-chat path is:
 
 ```txt
 assistant-ui runtime
-  -> Vercel /api proxy
-  -> Cloudflare /langgraph facade
-  -> Cloudflare simple chat runtime
+  -> Vercel /api/workbench/chat-session
+  -> Cloudflare resolves active workspace/thread/agent
+  -> Cloudflare mints short-lived Agent token
+  -> Browser connects to Cloudflare AIChatAgent Durable Object
   -> OpenRouter
 ```
 
-The LangGraph-shaped contract is compatibility for assistant-ui and thread
-history. It does not mean small chat should execute on Fly/LangGraph. A normal
-Cloudflare simple-chat run should have `runtime = cloudflare-simple-chat` and no
-`upstreamRunId`; Fly/LangGraph is reserved for explicit workflow or heavy-tool
-escalation.
+The LangGraph-shaped contract is no longer the normal chat runtime. A normal
+chat run should have `runtime = cloudflare-agent-chat`; Fly/LangGraph is
+reserved for explicit workflow or heavy-tool escalation.
 
 The north-star runtime keeps WorkOS AuthKit at the Vercel web boundary, then
 moves user-facing conversation and workflow progress streaming behind the
@@ -112,9 +113,11 @@ Canonical durable entity contracts are defined in `docs/db-contracts.md`. This i
 
 ## Runtime Split
 
-Cloudflare-style Agents are the preferred future live control plane because they fit stateful multi-user coordination. Fly is the preferred execution plane for heavy tools and LangGraph workflow workers. LangGraph remains important for complex graph-shaped workflows, but it does not have to be the always-on per-user runtime.
-
-The current Vercel/Fly LangGraph path remains valid for development and staged validation while the Cloudflare-owned conversational control plane is built.
+Cloudflare Agents are now the normal live-chat control plane because they fit
+stateful multi-user coordination. Fly is the preferred execution plane for
+heavy tools and LangGraph workflow workers. LangGraph remains important for
+complex graph-shaped workflows, but it is not the always-on per-user chat
+runtime.
 
 ## Observability Surfaces
 
@@ -148,9 +151,9 @@ Cloudflare owns the user-facing stream. The frontend should keep its WebSocket/S
 This keeps auth, tenant scope, UI state, and cross-user isolation in one place.
 
 The current implementation has the first pieces of this: a tenant-scoped
-control-plane event stream for runtime progress and a Cloudflare-owned
-simple-chat stream behind the LangGraph-compatible browser contract. Fly is
-reserved for graph-shaped workflow execution and heavy tools.
+control-plane event stream for runtime progress and a Cloudflare
+`AIChatAgent` stream for normal chat. Fly is reserved for graph-shaped workflow
+execution and heavy tools.
 
 ## Workflow Data Access
 

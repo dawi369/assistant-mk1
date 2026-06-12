@@ -30,10 +30,19 @@ Examples:
 ## Threads
 
 A thread is the persistent container for a conversation or task. The frontend
-currently creates and loads threads through the LangGraph SDK contract, but
-hosted simple chat is served by Cloudflare through a compatible `/langgraph`
-subset. Long-running workflows should store their continuity in a thread rather
-than relying on browser state.
+currently connects normal chat to a Cloudflare `AIChatAgent` Durable Object for
+the active Cloudflare-owned thread. Durable Object SQLite owns hot per-thread
+message state. D1 owns the product/control-plane thread record, active thread
+selection, Admin summaries, traces, audit, tools, and future managed state.
+Long-running workflows should store their continuity in a thread rather than
+relying on browser state.
+
+Normal chat should optimize for first token. The current Cloudflare Agent send
+path trusts the short-lived scoped Agent token, uses per-Durable-Object cached
+runtime/behavior config when available, writes one minimal D1 run-start mirror,
+and starts OpenRouter before non-critical completion/event/trace-detail writes.
+D1 stays authoritative for product/control-plane truth; Durable Object SQLite
+stays authoritative for hot live transcript state.
 
 ## Runs
 
@@ -155,10 +164,11 @@ Create a cron:
 ## Persistence
 
 Local development may use the LangGraph dev server's default behavior for
-workflow-engine testing. Hosted simple chat should not rely on Fly Machine or
-LangGraph dev-server memory. It is Cloudflare-owned and scoped through D1.
-Hosted workflow escalation must still verify whether interrupted LangGraph work
-survives restart before relying on it.
+workflow-engine testing. Hosted normal chat should not rely on Fly Machine or
+LangGraph dev-server memory. It is Cloudflare Agent-owned for live message
+state and scoped through D1 for product/control-plane truth. Hosted workflow
+escalation must still verify whether interrupted LangGraph work survives
+restart before relying on it.
 
 Production persistence should separate concerns:
 

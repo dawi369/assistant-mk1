@@ -16,13 +16,27 @@ export type D1PreparedStatement = {
   run(): Promise<unknown>;
 };
 
+export type D1Result = {
+  success?: boolean;
+  meta?: {
+    duration?: number;
+    changes?: number;
+    rows_read?: number;
+    rows_written?: number;
+  };
+  results?: unknown[];
+};
+
 export type D1Database = {
   prepare(query: string): D1PreparedStatement;
+  batch(statements: D1PreparedStatement[]): Promise<D1Result[]>;
 };
 
 export type Env = {
   DB: D1Database;
+  WorkbenchThreadChatAgent?: unknown;
   CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN?: string;
+  WORKBENCH_AGENT_CONNECTION_SECRET?: string;
   LANGGRAPH_UPSTREAM_URL?: string;
   LANGGRAPH_UPSTREAM_TOKEN?: string;
   OPENROUTER_API_KEY?: string;

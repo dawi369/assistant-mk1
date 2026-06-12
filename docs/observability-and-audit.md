@@ -140,7 +140,8 @@ RuntimeTrace
 Each span records a compact, redacted step with:
 
 - trace id, span id, and optional parent span id
-- layer: browser, Vercel, Cloudflare, D1, provider, executor, or tool
+- layer: browser, Vercel, Cloudflare, Durable Object, D1, provider, executor,
+  or tool
 - start, end, duration, and status
 - small operational metadata only
 
@@ -152,6 +153,7 @@ exceptions when useful.
 Current traced operations:
 
 - `chat.thread.create`
+- `chat.agent.stream`
 - `chat.run.stream`
 - `tool.url.inspect`
 - `diagnostic.demo.inspect` when it can be attached without broad executor

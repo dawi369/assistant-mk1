@@ -14,7 +14,7 @@ flowchart LR
     nextApp["Next.js app"]
     authKit["WorkOS AuthKit session"]
     assistantUi["assistant-ui thread"]
-    apiFacade["/api LangGraph facade"]
+    agentConnection["agent connection route"]
     signalApi["external-signals API"]
     workbenchApi["workbench API routes"]
   end
@@ -24,8 +24,8 @@ flowchart LR
     worker["control-plane Worker"]
     scopeResolver["WorkOS scope resolver"]
     authz["workspace + agent authz"]
-    chatFacade["/langgraph chat facade"]
-    simpleChat["Cloudflare simple chat"]
+    agentContext["agent thread context"]
+    threadAgent["AIChatAgent DO"]
     workbenchControl["workspace/agent/admin APIs"]
     eventFeed["event feed + runtime summary"]
     demoRuns["demo run APIs"]
@@ -45,8 +45,8 @@ flowchart LR
     d1Identity["D1 users/workspaces/agents"]
     d1Chat["D1 chat state"]
     d1Control["D1 runs/events/artifacts"]
+    durableObject["DO SQLite chat messages"]
     r2["R2 artifacts planned"]
-    durableObject["Durable Object planned"]
     workflowState["workflow checkpoints planned"]
   end
 
@@ -58,16 +58,18 @@ flowchart LR
 
   nextApp -- "renders" --> assistantUi
   nextApp -- "hosted sign-in" --> authKit
-  assistantUi -- "chat request" --> apiFacade
-  apiFacade -- "trusted proxy" --> worker
-  authKit -- "server identity" --> apiFacade
+  assistantUi -- "agent connection" --> agentConnection
+  agentConnection -- "trusted identity" --> worker
+  authKit -- "server identity" --> agentConnection
   worker -- "resolve scope" --> scopeResolver
   scopeResolver -- "membership + active agent" --> authz
-  authz -- "chat request" --> chatFacade
-  chatFacade -- "thread/state/run stream" --> simpleChat
-  simpleChat -- "model call" --> openrouter
-  simpleChat -- "session/thread/run write" --> d1Chat
-  simpleChat -- "intent/policy/event write" --> d1Control
+  authz -- "active thread" --> agentContext
+  agentContext -- "short-lived token" --> agentConnection
+  assistantUi -- "WebSocket chat" --> threadAgent
+  threadAgent -- "model call" --> openrouter
+  threadAgent -- "hot messages" --> durableObject
+  threadAgent -- "run/trace mirror" --> d1Control
+  agentContext -- "session/thread write" --> d1Chat
   worker -. "fallback/escalation proxy" .-> gateway
   gateway -- "LangGraph API" --> langgraph
   langgraph -- "loads graph" --> agentGraph
@@ -90,12 +92,11 @@ flowchart LR
   callback -- "canonical write" --> d1Control
 
   worker -. "planned storage" .-> r2
-  worker -. "planned hot state" .-> durableObject
   langgraph -. "planned checkpoints" .-> workflowState
 
-  class nextApp,authKit,assistantUi,apiFacade,signalApi,workbenchApi vercel
-  class worker,scopeResolver,authz,chatFacade,simpleChat,workbenchControl,eventFeed,demoRuns,callback cloudflare
+  class nextApp,authKit,assistantUi,agentConnection,signalApi,workbenchApi vercel
+  class worker,scopeResolver,authz,agentContext,threadAgent,workbenchControl,eventFeed,demoRuns,callback cloudflare
   class gateway,langgraph,agentGraph,executor fly
-  class d1Identity,d1Chat,d1Control data
-  class r2,durableObject,workflowState planned
+  class d1Identity,d1Chat,d1Control,durableObject data
+  class r2,workflowState planned
   class externalTriggers,openrouter sidecar

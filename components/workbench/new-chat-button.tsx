@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { ThreadListPrimitive, useAuiState } from "@assistant-ui/react";
+import { useAuiState } from "@assistant-ui/react";
 import { Loader2Icon, MessageSquarePlusIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { requestWorkbenchAgentNewChat } from "@/lib/workbench/agent-chat-events";
 import { requestWorkbenchSummaryRefresh } from "@/lib/workbench/admin-summary-events";
 import { cn } from "@/lib/utils";
 
@@ -24,30 +25,29 @@ export function NewChatButton({
     if (disabled) return;
     setIsResetting(true);
     requestWorkbenchSummaryRefresh();
+    requestWorkbenchAgentNewChat();
     window.setTimeout(requestWorkbenchSummaryRefresh, 500);
     window.setTimeout(() => setIsResetting(false), 750);
   };
 
   return (
-    <ThreadListPrimitive.New asChild>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className={cn("bg-background/95 shadow-xs", className)}
-        disabled={disabled}
-        title={
-          isRunning ? "Wait for the current response to finish before starting a new chat" : label
-        }
-        onClick={startNewChat}
-      >
-        {isResetting ? (
-          <Loader2Icon className="size-4 animate-spin" />
-        ) : (
-          <MessageSquarePlusIcon className="size-4" />
-        )}
-        {label}
-      </Button>
-    </ThreadListPrimitive.New>
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      className={cn("bg-background/95 shadow-xs", className)}
+      disabled={disabled}
+      title={
+        isRunning ? "Wait for the current response to finish before starting a new chat" : label
+      }
+      onClick={startNewChat}
+    >
+      {isResetting ? (
+        <Loader2Icon className="size-4 animate-spin" />
+      ) : (
+        <MessageSquarePlusIcon className="size-4" />
+      )}
+      {label}
+    </Button>
   );
 }

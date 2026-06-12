@@ -115,7 +115,8 @@ function DetailsBlock({
 const serviceNodes: Array<{ layer: RuntimeSpan["layer"]; label: string }> = [
   { layer: "browser", label: "Browser" },
   { layer: "vercel", label: "Vercel" },
-  { layer: "cloudflare", label: "Cloudflare" },
+  { layer: "cloudflare", label: "Cloudflare Agent" },
+  { layer: "durable_object", label: "Durable Object" },
   { layer: "d1", label: "D1" },
   { layer: "provider", label: "OpenRouter" },
   { layer: "executor", label: "Executor" },
@@ -185,11 +186,16 @@ function LiveRequestMap({ trace, spans }: { trace?: RuntimeTrace | null; spans: 
   const providerFirstToken = sortedSpans.find((span) => span.name === "OpenRouter first token");
   const streamDuration = sortedSpans.find((span) => span.name === "Stream duration");
   const postStream = sortedSpans.find((span) => span.name === "Post-stream D1 writes");
+  const mirrorWrites = sortedSpans.find((span) => span.name === "Mirror chat run records");
   const phaseSummary = [
-    ["Pre-stream", phaseSpans.find((span) => span.name === "Pre-stream total")?.durationMs],
+    [
+      "Pre-stream",
+      phaseSpans.find((span) => span.name === "Pre-stream total")?.durationMs ??
+        mirrorWrites?.durationMs,
+    ],
     ["First token", providerFirstToken?.durationMs],
     ["Stream", streamDuration?.durationMs],
-    ["Post-stream", postStream?.durationMs],
+    ["Post-stream", postStream?.durationMs ?? mirrorWrites?.durationMs],
     ["Total", trace?.durationMs],
   ] as const;
 
@@ -225,7 +231,7 @@ function LiveRequestMap({ trace, spans }: { trace?: RuntimeTrace | null; spans: 
         ))}
       </div>
 
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-4 lg:grid-cols-7">
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-8">
         {serviceNodes.map((node) => {
           const nodeAllSpans = sortedSpans.filter((span) => span.layer === node.layer);
           const nodeSpans = nodeAllSpans.filter((span) => !span.isAggregate);
@@ -714,7 +720,7 @@ export function AdminPanel({
                 value={
                   chatRuntime?.latestRun?.metadata?.runtime
                     ? String(chatRuntime.latestRun.metadata.runtime)
-                    : "cloudflare-simple-chat"
+                    : "cloudflare-agent-chat"
                 }
                 compact
               />
