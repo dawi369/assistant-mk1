@@ -8,6 +8,7 @@ import { AlertCircleIcon, BotIcon, Building2Icon, CpuIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { workbenchSummaryRefreshEvent } from "@/lib/workbench/admin-summary-events";
 import { chatRuntimeStateLabel, chatRuntimeStateTone } from "@/lib/workbench/chat-runtime-display";
+import { useWorkbenchAgentConnection } from "@/lib/workbench/use-agent-connection";
 import type { CloudflareAdminSummaryResponse } from "@/lib/workbench/workbench-types";
 import { cn } from "@/lib/utils";
 
@@ -23,6 +24,8 @@ const readSummary = async () => {
 export function WorkbenchRuntimeHint({ onOpenAdmin }: { onOpenAdmin: () => void }) {
   const [summary, setSummary] = useState<CloudflareAdminSummaryResponse["summary"] | null>(null);
   const { user, loading } = useAuth();
+  const { session, pending, latestSessionEvent, isSessionStreamConnected } =
+    useWorkbenchAgentConnection();
   const isThreadRunning = useAuiState((state) => state.thread.isRunning);
   const isLoadingThread = useAuiState((state) => state.threads.isLoading);
 
@@ -50,19 +53,30 @@ export function WorkbenchRuntimeHint({ onOpenAdmin }: { onOpenAdmin: () => void 
 
   const chatRuntime = summary?.chatRuntime ?? null;
   const hasError = Boolean(chatRuntime?.failure ?? summary?.lastError);
-  const transientChatState = isThreadRunning ? "running" : null;
-  const chatLabel = isLoadingThread
-    ? "Loading"
-    : transientChatState
-      ? chatRuntimeStateLabel(transientChatState)
-      : chatRuntimeStateLabel(chatRuntime?.state);
+  const liveChatState =
+    latestSessionEvent?.type === "chat.run.started"
+      ? "running"
+      : latestSessionEvent?.type === "chat.run.completed"
+        ? "completed"
+        : latestSessionEvent?.type === "chat.run.failed"
+          ? "failed"
+          : null;
+  const transientChatState = isThreadRunning ? "running" : liveChatState;
+  const chatLabel =
+    pending?.type === "create" || pending?.type === "activate"
+      ? "Opening"
+      : isLoadingThread
+        ? "Loading"
+        : transientChatState
+          ? chatRuntimeStateLabel(transientChatState)
+          : chatRuntimeStateLabel(chatRuntime?.state);
   const chatTone = transientChatState
     ? chatRuntimeStateTone(transientChatState)
     : chatRuntimeStateTone(chatRuntime?.state);
-  const agentLabel = summary?.activeAgent
-    ? `${summary.activeAgent.name} / ${summary.activeAgent.profile}`
-    : null;
-  const modelLabel = summary?.activeAgent?.runtime.model ?? null;
+  const activeAgent = session?.activeAgent ?? summary?.activeAgent ?? null;
+  const workspaceName = session?.workspace?.name ?? summary?.workspace?.name ?? "Workspace";
+  const agentLabel = activeAgent ? `${activeAgent.name} / ${activeAgent.profile}` : null;
+  const modelLabel = activeAgent?.runtime.model ?? null;
 
   const statusClassName = useMemo(() => {
     switch (chatTone) {
@@ -77,7 +91,7 @@ export function WorkbenchRuntimeHint({ onOpenAdmin }: { onOpenAdmin: () => void 
     }
   }, [chatTone]);
 
-  if (!summary) return null;
+  if (!summary && !session) return null;
 
   return (
     <div className="border-border bg-background/95 text-muted-foreground hidden w-[min(22rem,calc(100vw-1.5rem))] flex-col gap-1.5 rounded-md border px-2.5 py-2 text-xs shadow-xs backdrop-blur md:flex">
@@ -97,13 +111,16 @@ export function WorkbenchRuntimeHint({ onOpenAdmin }: { onOpenAdmin: () => void 
           </Button>
         ) : null}
       </div>
-      <RuntimeHintRow
-        icon={Building2Icon}
-        label="Workspace"
-        value={summary.workspace?.name ?? "Workspace"}
-      />
+      <RuntimeHintRow icon={Building2Icon} label="Workspace" value={workspaceName} />
       <RuntimeHintRow icon={BotIcon} label="Agent" value={agentLabel ?? "Agent"} />
       <RuntimeHintRow icon={CpuIcon} label="Model" value={modelLabel ?? "System default"} />
+      {session?.isStale ? (
+        <div className="text-muted-foreground/80 text-[11px]">
+          Using cached display while Cloudflare refreshes.
+        </div>
+      ) : isSessionStreamConnected ? (
+        <div className="text-muted-foreground/80 text-[11px]">Live session updates connected.</div>
+      ) : null}
     </div>
   );
 }

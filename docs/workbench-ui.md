@@ -53,6 +53,8 @@ Current implemented layout:
 - `/new` composer command for creating a fresh Cloudflare-owned thread.
 - `/admin` composer command for the flow-first Cloudflare-owned Admin panel.
 - Admin diagnostic action for `demo.inspect`.
+- Cache-backed recent-chat sidebar for display-only workspace history. Cached
+  rows can paint immediately, then reconcile with Cloudflare.
 
 Target layout:
 
@@ -63,6 +65,20 @@ Target layout:
 - Tool/policy panel for enabled tools and recent calls.
 
 The first screen should be the usable workbench, not a landing page.
+
+Thread transitions should not blank the whole app after the first successful
+Cloudflare Agent connection. `/new` may insert a pending local "New chat" row,
+and selecting an old thread may highlight the cached row immediately, but
+Cloudflare must still confirm the active thread/agent and mint the signed Agent
+token before the runtime actually switches.
+
+The shell subscribes to one Cloudflare-owned session event stream after a
+trusted session is available. Sidebar state, runtime hint state, Admin
+invalidation, and future workflow/tool progress should update from
+`session.*`, `chat.run.*`, `tool.run.updated`, `trace.updated`, and
+`admin.summary.invalidated` events instead of broad polling. Admin may still
+fetch a full summary when opened or invalidated, but low-level details should
+stay behind collapsible sections.
 
 ## Surfaces
 

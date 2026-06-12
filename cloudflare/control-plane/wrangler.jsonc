@@ -25,12 +25,20 @@
         "name": "WorkbenchThreadChatAgent",
         "class_name": "WorkbenchThreadChatAgent",
       },
+      {
+        "name": "WorkbenchSessionAgent",
+        "class_name": "WorkbenchSessionAgent",
+      },
     ],
   },
   "migrations": [
     {
       "tag": "v1-workbench-thread-chat-agent",
       "new_sqlite_classes": ["WorkbenchThreadChatAgent"],
+    },
+    {
+      "tag": "v2-workbench-session-agent",
+      "new_sqlite_classes": ["WorkbenchSessionAgent"],
     },
   ],
 }

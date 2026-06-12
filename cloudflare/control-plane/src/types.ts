@@ -32,9 +32,21 @@ export type D1Database = {
   batch(statements: D1PreparedStatement[]): Promise<D1Result[]>;
 };
 
+export type DurableObjectId = unknown;
+
+export type DurableObjectStub = {
+  fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
+};
+
+export type DurableObjectNamespace = {
+  idFromName(name: string): DurableObjectId;
+  get(id: DurableObjectId): DurableObjectStub;
+};
+
 export type Env = {
   DB: D1Database;
   WorkbenchThreadChatAgent?: unknown;
+  WorkbenchSessionAgent?: DurableObjectNamespace;
   CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN?: string;
   WORKBENCH_AGENT_CONNECTION_SECRET?: string;
   LANGGRAPH_UPSTREAM_URL?: string;

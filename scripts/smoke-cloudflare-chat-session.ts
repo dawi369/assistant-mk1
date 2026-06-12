@@ -9,6 +9,13 @@ type AgentSummary = {
 
 type ChatSessionResponse = {
   ok?: boolean;
+  revision?: number;
+  partial?: boolean;
+  threadsRefreshRecommended?: boolean;
+  transition?: {
+    type?: "initial" | "create" | "activate" | "token_refresh";
+    startedAt?: string;
+  };
   activeAgent?: AgentSummary | null;
   activeThread?: {
     threadId?: string;
@@ -29,6 +36,7 @@ type ChatSessionResponse = {
     sessionId?: string;
     workspaceId?: string;
     agentId?: string;
+    expiresAt?: string;
   };
   expiresAt?: string;
   error?: string;
@@ -64,6 +72,9 @@ const otherTenant: TenantIdentity = {
 const getSession = (identity: TenantIdentity) =>
   readJson<ChatSessionResponse>("/chat/session", identity);
 
+const refreshThreads = (identity: TenantIdentity) =>
+  readJson<ChatSessionResponse>("/chat/session?refresh=threads", identity);
+
 const createThread = (identity: TenantIdentity) =>
   readJson<ChatSessionResponse>("/chat/session/threads", identity, {
     method: "POST",
@@ -91,7 +102,9 @@ const assertSessionConnection = (session: ChatSessionResponse, label: string) =>
     !session.connection.instanceName ||
     !session.connection.token ||
     !session.connection.threadId ||
-    !session.connection.sessionId
+    !session.connection.sessionId ||
+    !session.connection.expiresAt ||
+    typeof session.revision !== "number"
   ) {
     throw new Error(`${label} did not include a complete Agent connection`);
   }
@@ -112,6 +125,13 @@ runSmoke("Cloudflare chat session smoke", async () => {
   assertSessionConnection(threadBSession, "new thread session");
   const threadB = threadBSession.activeThread?.threadId;
   if (!threadB || threadB === threadA) throw new Error("new thread did not become active");
+  if (
+    threadBSession.partial !== true ||
+    threadBSession.threadsRefreshRecommended !== true ||
+    threadBSession.transition?.type !== "create"
+  ) {
+    throw new Error("new thread response was not marked as a partial create transition");
+  }
 
   const analyst = await createAgent(owner, {
     name: "Session Analyst Agent",
@@ -132,9 +152,18 @@ runSmoke("Cloudflare chat session smoke", async () => {
   ) {
     throw new Error("analyst thread did not use the active analyst agent");
   }
+  if (
+    analystThreadSession.partial !== true ||
+    analystThreadSession.threadsRefreshRecommended !== true
+  ) {
+    throw new Error("agent-backed thread creation did not return a partial transition response");
+  }
+
+  const fullHistory = await refreshThreads(owner);
+  assertSessionConnection(fullHistory, "full history session");
 
   const historyThreadIds = new Set(
-    (analystThreadSession.threads ?? []).map((thread) => thread.threadId).filter(Boolean),
+    (fullHistory.threads ?? []).map((thread) => thread.threadId).filter(Boolean),
   );
   for (const expected of [threadA, threadB, analystThread]) {
     if (!historyThreadIds.has(expected)) {
@@ -146,6 +175,24 @@ runSmoke("Cloudflare chat session smoke", async () => {
   assertSessionConnection(restored, "restored session");
   if (restored.activeThread?.threadId !== threadA || restored.activeAgent?.id !== defaultAgentId) {
     throw new Error("activating the old default-agent thread did not restore its owning agent");
+  }
+  if (
+    restored.partial !== true ||
+    restored.threadsRefreshRecommended !== true ||
+    restored.transition?.type !== "activate"
+  ) {
+    throw new Error("thread activation response was not marked as a partial activate transition");
+  }
+
+  const refreshed = await getSession(owner);
+  assertSessionConnection(refreshed, "refreshed session");
+  if (
+    refreshed.activeThread?.threadId !== threadA ||
+    refreshed.connection?.threadId !== threadA ||
+    refreshed.connection.token === restored.connection?.token ||
+    refreshed.threadsRefreshRecommended === true
+  ) {
+    throw new Error("token refresh did not preserve the active thread and issue a fresh token");
   }
 
   await assertStatus(
@@ -162,7 +209,8 @@ runSmoke("Cloudflare chat session smoke", async () => {
         threadB,
         analystThread,
         restoredAgentId: restored.activeAgent?.id,
-        listedThreads: restored.threads?.length ?? 0,
+        refreshedRevision: refreshed.revision,
+        listedThreads: refreshed.threads?.length ?? 0,
       },
       null,
       2,

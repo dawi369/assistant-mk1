@@ -11,6 +11,7 @@ import {
   type IncomingRuntimeTrace,
   type RuntimeTraceContext,
 } from "./runtime-traces";
+import { dispatchWorkbenchSessionEvent } from "./session-coordinator";
 import {
   createId,
   toJson,
@@ -869,6 +870,39 @@ export const handleRunTool = async (
       },
     });
   }
+  await dispatchWorkbenchSessionEvent(env, identity, {
+    type: "tool.run.updated",
+    data: {
+      toolName: urlInspectToolName,
+      runId: runIdentity.runId,
+      workflowIntentId: runIdentity.workflowIntentId,
+      toolCallId: finished.toolCallId,
+      artifactId: finished.artifact?.id ?? null,
+      status: result.ok ? "completed" : "failed",
+      traceId: trace?.traceId,
+      errorCode: result.ok ? undefined : result.error.code,
+    },
+  });
+  if (trace) {
+    await dispatchWorkbenchSessionEvent(env, identity, {
+      type: "trace.updated",
+      data: {
+        traceId: trace.traceId,
+        kind: trace.kind,
+        status: result.ok ? "completed" : "failed",
+        runId: runIdentity.runId,
+      },
+    });
+  }
+  await dispatchWorkbenchSessionEvent(env, identity, {
+    type: "admin.summary.invalidated",
+    data: {
+      reason: "tool-run-updated",
+      toolName: urlInspectToolName,
+      runId: runIdentity.runId,
+      traceId: trace?.traceId,
+    },
+  });
   const [latestToolCalls, latestArtifacts] = await Promise.all([
     listLatestToolCalls(env, identity.scope),
     listLatestArtifacts(env, identity.scope),

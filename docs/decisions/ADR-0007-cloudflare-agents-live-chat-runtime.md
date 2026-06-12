@@ -30,10 +30,12 @@ The browser does not provide trusted tenant, workspace, agent, or thread scope.
 Instead:
 
 1. Vercel derives WorkOS/local identity server-side.
-2. Vercel calls Cloudflare to resolve or create the active chat session for the
-   active workspace, thread, and agent.
-3. Cloudflare mints a short-lived signed Agent connection token.
-4. The browser connects to the Cloudflare Agent with that token.
+2. Vercel calls Cloudflare to resolve authorization for the active workspace
+   and user.
+3. Cloudflare dispatches to a user/workspace session coordinator Durable
+   Object, which owns the hot active session/thread snapshot and mints a
+   short-lived signed Agent connection token.
+4. The browser connects to the per-thread Cloudflare Agent with that token.
 5. The Agent verifies token scope, resolves D1 agent runtime config and
    behavior, streams OpenRouter, persists hot messages in Durable Object
    SQLite, and mirrors compact run/trace metadata to D1.
@@ -61,6 +63,8 @@ best-effort background work when they are not required for correctness.
   not the intended normal chat path.
 - Thread history is workspace-scoped D1 control-plane state layered over
   per-thread Agent Durable Objects.
+- A user/workspace session coordinator keeps active-thread switching and token
+  refresh fast without making D1 any less authoritative.
 
 ## Deferred
 

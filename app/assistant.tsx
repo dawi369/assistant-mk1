@@ -7,15 +7,17 @@
  * active workspace/thread/agent session, mints the short-lived Agent token, and
  * the browser talks to the per-thread Durable Object through the Agents SDK.
  */
-import { useMemo, type ComponentProps, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ComponentProps, type ReactNode } from "react";
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import { useAISDKRuntime } from "@assistant-ui/react-ai-sdk";
 import { useAgentChat } from "@cloudflare/ai-chat/react";
 import { useAgent } from "agents/react";
 
 import { Thread } from "@/components/assistant-ui/thread";
-import { type WorkbenchAgentConnection } from "@/lib/workbench/agent-chat-events";
-import { useWorkbenchAgentConnection } from "@/lib/workbench/use-agent-connection";
+import {
+  type WorkbenchAgentConnection,
+  useWorkbenchAgentConnection,
+} from "@/lib/workbench/use-agent-connection";
 
 const toAgentHostOptions = (agentHost: string) => {
   const parsed = new URL(agentHost);
@@ -26,7 +28,7 @@ const toAgentHostOptions = (agentHost: string) => {
 };
 
 export function Assistant({ children }: { children?: ReactNode }) {
-  const { connection, error, retry } = useWorkbenchAgentConnection();
+  const { connection, error, retry, session } = useWorkbenchAgentConnection();
 
   if (error && !connection) {
     return (
@@ -49,7 +51,9 @@ export function Assistant({ children }: { children?: ReactNode }) {
   if (!connection) {
     return (
       <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">
-        Connecting to Cloudflare Agent...
+        {session?.isStale
+          ? "Refreshing Cloudflare chat session..."
+          : "Connecting to Cloudflare Agent..."}
       </div>
     );
   }
@@ -69,10 +73,18 @@ function AgentRuntime({
   connection: WorkbenchAgentConnection;
   children?: ReactNode;
 }) {
+  const [isOpeningThread, setIsOpeningThread] = useState(false);
   const hostOptions = useMemo(
     () => toAgentHostOptions(connection.agentHost!),
     [connection.agentHost],
   );
+
+  useEffect(() => {
+    setIsOpeningThread(true);
+    const timeout = window.setTimeout(() => setIsOpeningThread(false), 900);
+    return () => window.clearTimeout(timeout);
+  }, [connection.threadId, connection.instanceName]);
+
   const agent = useAgent({
     agent: "WorkbenchThreadChatAgent",
     name: connection.instanceName!,
@@ -94,5 +106,16 @@ function AgentRuntime({
     typeof AssistantRuntimeProvider
   >["runtime"];
 
-  return <AssistantRuntimeProvider runtime={providerRuntime}>{children}</AssistantRuntimeProvider>;
+  return (
+    <AssistantRuntimeProvider runtime={providerRuntime}>
+      <div className="relative h-full">
+        {children}
+        {isOpeningThread ? (
+          <div className="pointer-events-none absolute top-20 left-1/2 z-20 -translate-x-1/2 rounded-md border border-border bg-background/95 px-3 py-1.5 text-xs text-muted-foreground shadow-xs backdrop-blur">
+            Opening chat...
+          </div>
+        ) : null}
+      </div>
+    </AssistantRuntimeProvider>
+  );
 }

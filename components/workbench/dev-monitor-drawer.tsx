@@ -44,6 +44,7 @@ import {
   workbenchSummaryRefreshEvent,
 } from "@/lib/workbench/admin-summary-events";
 import { chatRuntimeStateLabel, chatRuntimeStateTone } from "@/lib/workbench/chat-runtime-display";
+import { useWorkbenchAgentConnection } from "@/lib/workbench/use-agent-connection";
 import type {
   AgentBehaviorTemplate,
   CloudflareAgentBehaviorTemplatesResponse,
@@ -337,6 +338,8 @@ export function AdminPanel({
   onOpenChange: (open: boolean) => void;
 }) {
   const { focusComposer } = useWorkbenchComposerFocus();
+  const { session, pending, isSessionStreamConnected, latestSessionEvent } =
+    useWorkbenchAgentConnection();
   const [summary, setSummary] = useState<CloudflareAdminSummaryResponse["summary"] | null>(null);
   const [behaviorTemplates, setBehaviorTemplates] = useState<AgentBehaviorTemplate[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -664,6 +667,31 @@ export function AdminPanel({
                 value={importantError?.message ?? "No current error"}
                 compact
                 tone={importantError ? "muted" : "ok"}
+              />
+              <StatusRow
+                label="Session display"
+                value={
+                  session?.isStale
+                    ? "Cached, refreshing"
+                    : pending
+                      ? "Transitioning"
+                      : session?.partial
+                        ? "Partial, refreshing history"
+                        : "Cloudflare current"
+                }
+                compact
+                tone={session?.isStale || session?.partial ? "muted" : "ok"}
+              />
+              <StatusRow
+                label="Session stream"
+                value={isSessionStreamConnected ? "Live" : "Disconnected"}
+                compact
+                tone={isSessionStreamConnected ? "ok" : "muted"}
+              />
+              <StatusRow
+                label="Latest live event"
+                value={latestSessionEvent?.type ?? "none yet"}
+                compact
               />
             </div>
             {importantError ? (

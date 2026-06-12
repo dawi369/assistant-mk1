@@ -352,6 +352,10 @@ export type ChatThreadResponse = {
 
 export type ChatSessionResponse = {
   ok?: boolean;
+  revision?: number;
+  isStale?: boolean;
+  partial?: boolean;
+  threadsRefreshRecommended?: boolean;
   workspace?: {
     id: Id;
     name: string;
@@ -370,9 +374,33 @@ export type ChatSessionResponse = {
     sessionId?: Id;
     workspaceId?: Id;
     agentId?: Id;
+    expiresAt?: string;
+  };
+  pending?: { type: "create" } | { type: "activate"; threadId: Id };
+  transition?: {
+    type: "initial" | "create" | "activate" | "token_refresh";
+    startedAt?: string;
   };
   expiresAt?: string;
   error?: string;
+};
+
+export type WorkbenchSessionEvent = {
+  id: Id;
+  type:
+    | "session.snapshot"
+    | "session.thread.created"
+    | "session.thread.activated"
+    | "session.threads.refreshed"
+    | "chat.run.started"
+    | "chat.run.completed"
+    | "chat.run.failed"
+    | "tool.run.updated"
+    | "trace.updated"
+    | "admin.summary.invalidated";
+  revision?: number;
+  createdAt: string;
+  data: Record<string, unknown>;
 };
 
 export type WorkspaceContextResponse = {

@@ -12,19 +12,33 @@ import {
 import { AuthButton } from "@/components/auth/auth-button";
 import { WorkbenchComposerFocusProvider } from "@/components/workbench/composer-focus-context";
 import { AdminPanel } from "@/components/workbench/dev-monitor-drawer";
-import { ThreadHistorySidebar } from "@/components/workbench/thread-history-sidebar";
+import {
+  AssistantThreadHistorySidebar,
+  ThreadHistorySidebar,
+} from "@/components/workbench/thread-history-sidebar";
 import { WorkbenchAssistantEvents } from "@/components/workbench/workbench-assistant-events";
 import { WorkbenchRuntimeHint } from "@/components/workbench/workbench-runtime-hint";
-import { requestWorkbenchAgentNewChat } from "@/lib/workbench/agent-chat-events";
-import { requestWorkbenchSummaryRefresh } from "@/lib/workbench/admin-summary-events";
+import {
+  ChatSessionProvider,
+  useWorkbenchAgentConnection,
+} from "@/lib/workbench/use-agent-connection";
 
 const adminAccessPath = "/api/workbench/admin-access";
 
 export function WorkbenchShell() {
+  return (
+    <ChatSessionProvider>
+      <WorkbenchShellContent />
+    </ChatSessionProvider>
+  );
+}
+
+function WorkbenchShellContent() {
   const [adminOpen, setAdminOpen] = useState(false);
   const [adminAccess, setAdminAccess] = useState<{ isAdmin: boolean } | null>(null);
   const [adminNotice, setAdminNotice] = useState<string | null>(null);
   const { user, loading } = useAuth();
+  const { connection, createThread, session } = useWorkbenchAgentConnection();
 
   useEffect(() => {
     if (loading) return;
@@ -70,11 +84,9 @@ export function WorkbenchShell() {
         return;
       }
 
-      requestWorkbenchSummaryRefresh();
-      requestWorkbenchAgentNewChat();
-      window.setTimeout(requestWorkbenchSummaryRefresh, 500);
+      await createThread();
     },
-    [],
+    [createThread],
   );
 
   const slashCommands = useMemo(
@@ -111,8 +123,9 @@ export function WorkbenchShell() {
               </div>
             ) : null}
           </div>
+          {!connection && session?.isStale ? <ThreadHistorySidebar disableNewChat /> : null}
           <Assistant>
-            <ThreadHistorySidebar />
+            <AssistantThreadHistorySidebar />
             <WorkbenchAssistantEvents />
             <div className="absolute top-14 right-3 z-20 flex max-w-[calc(100vw-1.5rem)] flex-col items-end gap-2">
               <WorkbenchRuntimeHint onOpenAdmin={openAdmin} />

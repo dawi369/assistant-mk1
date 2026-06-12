@@ -38,6 +38,7 @@
     "smoke:cloudflare-chat-runtime-summary": "tsx scripts/smoke-cloudflare-chat-runtime-summary.ts",
     "smoke:cloudflare-chat-reset": "tsx scripts/smoke-cloudflare-chat-reset.ts",
     "smoke:cloudflare-chat-session": "tsx scripts/smoke-cloudflare-chat-session.ts",
+    "smoke:cloudflare-session-events": "tsx scripts/smoke-cloudflare-session-events.ts",
     "smoke:cloudflare-chat-threads": "tsx scripts/smoke-cloudflare-chat-threads.ts",
     "smoke:cloudflare-workbench-run": "tsx scripts/smoke-cloudflare-workbench-run.ts",
     "smoke:cloudflare-langgraph-facade": "tsx scripts/smoke-cloudflare-langgraph-facade.ts",

@@ -18,6 +18,7 @@ import { handleChatRuntimeSummary } from "./chat-runtime-summary";
 import {
   handleActivateChatSessionThread,
   handleChatSession,
+  handleChatSessionStream,
   handleCreateChatSessionThread,
 } from "./chat-session";
 import { handleGetChatThread, handleListChatThreads } from "./chat-threads";
@@ -46,8 +47,10 @@ import { resolveAgentIdentity } from "./authz";
 import { internalErrorResponse, json, requireAuth } from "./http";
 import type { Env, WorkerExecutionContext } from "./types";
 import { WorkbenchThreadChatAgent } from "./thread-chat-agent";
+import { WorkbenchSessionAgent } from "./session-agent";
 
 export { WorkbenchThreadChatAgent };
+export { WorkbenchSessionAgent };
 
 const isCloudflareAgentSdkPath = (pathname: string) => {
   if (pathname === "/agents" || /^\/agents\/[^/]+\/activate$/.test(pathname)) return false;
@@ -131,6 +134,10 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
 
   if (request.method === "GET" && url.pathname === "/chat/session") {
     return handleChatSession(request, env, identity);
+  }
+
+  if (request.method === "GET" && url.pathname === "/chat/session/stream") {
+    return handleChatSessionStream(request, env, identity);
   }
 
   if (request.method === "POST" && url.pathname === "/chat/session/threads") {

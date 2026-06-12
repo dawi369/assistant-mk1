@@ -26,6 +26,7 @@ import {
   updateChatThreadUpstream,
 } from "./chat-boundary-store";
 import { finishTrace, recordSpan, type RuntimeTraceContext } from "./runtime-traces";
+import { dispatchWorkbenchSessionEvent } from "./session-coordinator";
 import type { AgentRow, Env, WorkerExecutionContext } from "./types";
 
 const getRequiredSecret = (env: Env) => {
@@ -216,6 +217,20 @@ export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
         behavior: toAgentBehaviorMetadata(behaviorConfig),
       });
       runId = runStart.runId;
+      this.waitUntil(
+        dispatchWorkbenchSessionEvent(this.getEnv(), identity, {
+          type: "chat.run.started",
+          data: {
+            runtime: "cloudflare-agent-chat",
+            status: "running",
+            threadId: claims.threadId,
+            sessionId: claims.sessionId,
+            runId,
+            traceId: trace.traceId,
+            model: runtimeConfig.model,
+          },
+        }),
+      );
       queueTraceWrite(
         recordSpan(this.getEnv(), identity, {
           traceId: trace.traceId,
@@ -353,6 +368,40 @@ export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
                 },
                 endedAtMs,
               });
+              await dispatchWorkbenchSessionEvent(this.getEnv(), identity, {
+                type: "chat.run.completed",
+                data: {
+                  runtime: "cloudflare-agent-chat",
+                  status: "completed",
+                  threadId: claims.threadId,
+                  sessionId: claims.sessionId,
+                  runId,
+                  traceId: trace.traceId,
+                  timings: {
+                    firstTokenMs: firstTokenAtMs ? firstTokenAtMs - providerStartedAtMs : undefined,
+                    totalMs: endedAtMs - requestStartedAtMs,
+                  },
+                },
+              });
+              await dispatchWorkbenchSessionEvent(this.getEnv(), identity, {
+                type: "trace.updated",
+                data: {
+                  traceId: trace.traceId,
+                  kind: trace.kind,
+                  status: "completed",
+                  threadId: claims.threadId,
+                  runId,
+                },
+              });
+              await dispatchWorkbenchSessionEvent(this.getEnv(), identity, {
+                type: "admin.summary.invalidated",
+                data: {
+                  reason: "chat-run-completed",
+                  threadId: claims.threadId,
+                  runId,
+                  traceId: trace.traceId,
+                },
+              });
             })(),
           );
         },
@@ -410,5 +459,34 @@ const failAgentRun = async (
     status: "failed",
     summary: message,
     data: { runtime: "cloudflare-agent-chat", errorCode: "runtime_failed", retryable: true },
+  });
+  await dispatchWorkbenchSessionEvent(env, identity, {
+    type: "chat.run.failed",
+    data: {
+      runtime: "cloudflare-agent-chat",
+      status: "failed",
+      runId: input.runId,
+      traceId: trace.traceId,
+      errorCode: "runtime_failed",
+      retryable: true,
+      message,
+    },
+  });
+  await dispatchWorkbenchSessionEvent(env, identity, {
+    type: "trace.updated",
+    data: {
+      traceId: trace.traceId,
+      kind: trace.kind,
+      status: "failed",
+      runId: input.runId,
+    },
+  });
+  await dispatchWorkbenchSessionEvent(env, identity, {
+    type: "admin.summary.invalidated",
+    data: {
+      reason: "chat-run-failed",
+      runId: input.runId,
+      traceId: trace.traceId,
+    },
   });
 };

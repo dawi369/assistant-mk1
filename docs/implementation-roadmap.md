@@ -225,16 +225,35 @@ Implemented:
   Durable Object SQLite owns hot per-thread message state; D1 owns workspace
   history, active thread/agent selection, and compact run/trace metadata for
   Admin.
-- Cloudflare Agents runtime lock-in v0 is in progress: the session layer
-  refreshes scoped tokens, each message gets its own trace, Agent runtime config
-  is cached per Durable Object instance, and the message critical path blocks
-  only on one minimal D1 run-start batch before OpenRouter starts.
+- Cloudflare Session Coordinator v0 is the active stabilization slice:
+  a user/workspace `WorkbenchSessionAgent` Durable Object owns hot session
+  snapshots, active-thread switching, recent thread summaries, and signed
+  per-thread Agent connection payloads. D1 remains canonical, but normal
+  `/new`, thread switching, and token refresh no longer require every UI
+  component to reload the full session/history surface independently.
+- Cloudflare Agents runtime lock-in v0 is implemented: the session layer
+  refreshes scoped tokens through Cloudflare, each message gets its own trace,
+  Agent runtime config is cached per Durable Object instance, and the message
+  critical path blocks only on one minimal D1 run-start batch before OpenRouter
+  starts.
+- Chat UX Cache + Minimal Session Transitions v0 is the active stabilization
+  slice: the browser caches display-safe recent-chat/session shell metadata,
+  `/new` and thread activation return minimal active connection payloads first,
+  full history refreshes in the background, and the app should not blank during
+  normal thread transitions.
+- Cloudflare Live Session Events v0 is the active stabilization slice:
+  `WorkbenchSessionAgent` exposes a scoped SSE stream for session snapshots,
+  thread create/switch/refresh, Agent chat run lifecycle, Admin tool updates,
+  trace updates, and Admin summary invalidation. The browser uses this stream
+  for sidebar/runtime/Admin freshness instead of broad polling, while D1 and
+  Durable Object state remain canonical.
 
 Next target:
 
-- Use the trace graph to stabilize the real chat/tool paths, then add the
-  policy layer for durable permissions, stronger exposure decisions, approvals,
-  kill switches, and eventual model-visible tools.
+- Finish live-session event polish, then use the trace graph to stabilize the
+  real chat/tool paths and add the policy layer for durable permissions, stronger
+  exposure decisions, approvals, kill switches, and eventual model-visible
+  tools.
 - Keep Fly/LangGraph state access mediated through Cloudflare APIs.
 - Strengthen the Vercel-to-Cloudflare trust boundary with a stricter signed or
   service-authenticated server contract after this observability slice.

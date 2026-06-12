@@ -5,9 +5,8 @@ import { useAuiState } from "@assistant-ui/react";
 import { Loader2Icon, MessageSquarePlusIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { requestWorkbenchAgentNewChat } from "@/lib/workbench/agent-chat-events";
-import { requestWorkbenchSummaryRefresh } from "@/lib/workbench/admin-summary-events";
 import { cn } from "@/lib/utils";
+import { useWorkbenchAgentConnection } from "@/lib/workbench/use-agent-connection";
 
 export function NewChatButton({
   className,
@@ -18,16 +17,19 @@ export function NewChatButton({
 }) {
   const isRunning = useAuiState((state) => state.thread.isRunning);
   const isLoadingThread = useAuiState((state) => state.threads.isLoading);
+  const { createThread, pending } = useWorkbenchAgentConnection();
   const [isResetting, setIsResetting] = useState(false);
-  const disabled = isRunning || isLoadingThread || isResetting;
+  const creatingThread = pending?.type === "create";
+  const disabled = isRunning || isLoadingThread || isResetting || creatingThread;
 
-  const startNewChat = () => {
+  const startNewChat = async () => {
     if (disabled) return;
     setIsResetting(true);
-    requestWorkbenchSummaryRefresh();
-    requestWorkbenchAgentNewChat();
-    window.setTimeout(requestWorkbenchSummaryRefresh, 500);
-    window.setTimeout(() => setIsResetting(false), 750);
+    try {
+      await createThread();
+    } finally {
+      setIsResetting(false);
+    }
   };
 
   return (
@@ -42,7 +44,7 @@ export function NewChatButton({
       }
       onClick={startNewChat}
     >
-      {isResetting ? (
+      {isResetting || creatingThread ? (
         <Loader2Icon className="size-4 animate-spin" />
       ) : (
         <MessageSquarePlusIcon className="size-4" />

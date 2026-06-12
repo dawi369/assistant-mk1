@@ -178,7 +178,25 @@ export const getChatThreads = (limit = 30) =>
 export const getChatThread = (threadId: Id) =>
   requestControlPlane<ChatThreadResponse>(`/chat/threads/${encodeURIComponent(threadId)}`);
 
-export const getChatSession = () => requestControlPlane<ChatSessionResponse>("/chat/session");
+export const getChatSession = (input?: { refresh?: "threads" }) =>
+  requestControlPlane<ChatSessionResponse>(
+    `/chat/session${input?.refresh ? `?refresh=${encodeURIComponent(input.refresh)}` : ""}`,
+  );
+
+export const streamChatSessionEvents = async () => {
+  const request = await controlPlaneRequest("/chat/session/stream", {
+    headers: {
+      accept: "text/event-stream",
+    },
+  });
+  const response = await fetch(request.url, request.init);
+
+  if (!response.ok) {
+    throw new ControlPlaneRequestError(await parseErrorBody(response), response.status);
+  }
+
+  return response;
+};
 
 export const createChatSessionThread = () =>
   requestControlPlane<ChatSessionResponse>("/chat/session/threads", { method: "POST" });

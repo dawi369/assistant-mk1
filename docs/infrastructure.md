@@ -14,6 +14,7 @@ browser
   -> WorkOS AuthKit session via the Next SDK
   -> Vercel server facade derives trusted user/account identity and external membership signals
   -> Cloudflare control plane over a server-to-server boundary for product/authz state
+  -> user/workspace Cloudflare session coordinator Durable Object
   -> short-lived Cloudflare Agent connection token for the active thread
   -> Cloudflare AIChatAgent Durable Object for normal live chat
   -> typed intent/router and run control records in D1
@@ -41,11 +42,15 @@ The current hosted dev baseline is intentionally split but not fully at the nort
   use.
 - Cloudflare owns the production-shaped workbench run-control path and normal
   hosted chat. Vercel forwards trusted WorkOS/local identity, Cloudflare
-  resolves the active chat session and mints the short-lived Agent token, then
-  the browser connects to a Cloudflare `AIChatAgent` Durable Object. Durable
-  Object SQLite owns hot per-thread messages; D1 owns tenant-scoped sessions,
-  thread ownership, active thread/agent selection, chat intents, policy
-  decisions, run envelopes, traces, and control-plane activity events.
+  resolves authorization, then a user/workspace session coordinator Durable
+  Object owns hot active-thread/session switching and mints short-lived Agent
+  tokens. The browser connects to a per-thread Cloudflare `AIChatAgent` Durable
+  Object. Durable Object SQLite owns hot per-thread messages; D1 owns
+  tenant-scoped sessions, thread ownership, active thread/agent selection, chat
+  intents, policy decisions, run envelopes, traces, and control-plane activity
+  events. The same user/workspace session coordinator exposes the live
+  `GET /chat/session/stream` event source for sidebar, runtime hint, Admin
+  invalidation, chat run state, and future workflow/tool progress hints.
 - Fly runs the LangGraph runtime gateway and signed executor endpoints for
   heavy workflow/tool execution and explicit escalation.
 
@@ -63,12 +68,25 @@ The current small-chat path is:
 
 ```txt
 assistant-ui runtime
+  -> cached browser display shell for instant sidebar/scope paint when present
   -> Vercel /api/workbench/chat-session
-  -> Cloudflare resolves active workspace/thread/agent
-  -> Cloudflare mints short-lived Agent token
+  -> Cloudflare resolves active workspace/member/agent
+  -> user/workspace session coordinator resolves active thread and mints token
   -> Browser connects to Cloudflare AIChatAgent Durable Object
   -> OpenRouter
 ```
+
+For `/new` and old-thread selection, Cloudflare returns a minimal active
+thread/agent/connection payload before forcing a full recent-thread refresh.
+The browser may optimistically show cached or pending thread summaries, but D1
+and the session coordinator remain authoritative for actual activation and
+Agent token scope.
+
+After the first session load, the browser should prefer Cloudflare session
+events over broad polling. `/new`, thread activation, Agent chat run
+start/end/failure, Admin tool updates, and trace changes invalidate or update
+the UI through the session stream. Admin summary reads still exist, but they
+are pulled when Admin is open or a live event says the summary is stale.
 
 The LangGraph-shaped contract is no longer the normal chat runtime. A normal
 chat run should have `runtime = cloudflare-agent-chat`; Fly/LangGraph is
@@ -151,9 +169,13 @@ Cloudflare owns the user-facing stream. The frontend should keep its WebSocket/S
 This keeps auth, tenant scope, UI state, and cross-user isolation in one place.
 
 The current implementation has the first pieces of this: a tenant-scoped
-control-plane event stream for runtime progress and a Cloudflare
-`AIChatAgent` stream for normal chat. Fly is reserved for graph-shaped workflow
-execution and heavy tools.
+session event stream for product/runtime progress and a Cloudflare
+`AIChatAgent` stream for normal chat. A user/workspace session coordinator
+Durable Object keeps `/new`, old-thread switching, token refresh, recent chat
+state, Admin invalidation, and future executor progress out of the D1-heavy
+polling path. The browser keeps only display-safe recent-chat metadata so the
+workbench shell does not blank during coordinator refreshes. Fly is reserved
+for graph-shaped workflow execution and heavy tools.
 
 ## Workflow Data Access
 

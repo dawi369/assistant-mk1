@@ -1,62 +1,23 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
 import { useAuiState } from "@assistant-ui/react";
-import { MessageSquareIcon, PlusIcon } from "lucide-react";
+import { Loader2Icon, MessageSquareIcon, PlusIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import {
-  requestWorkbenchSummaryRefresh,
-  workbenchSummaryRefreshEvent,
-} from "@/lib/workbench/admin-summary-events";
-import {
-  requestWorkbenchAgentNewChat,
-  requestWorkbenchAgentThread,
-  workbenchAgentNewChatEvent,
-  workbenchAgentSelectThreadEvent,
-} from "@/lib/workbench/agent-chat-events";
 import { cn } from "@/lib/utils";
-import type { ChatSessionResponse, ChatThreadSummary } from "@/lib/workbench/workbench-types";
+import { useWorkbenchAgentConnection } from "@/lib/workbench/use-agent-connection";
+import type { ChatThreadSummary } from "@/lib/workbench/workbench-types";
 
-export function ThreadHistorySidebar() {
+export function AssistantThreadHistorySidebar() {
   const isRunning = useAuiState((state) => state.thread.isRunning);
-  const [threads, setThreads] = useState<ChatThreadSummary[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  return <ThreadHistorySidebar disableNewChat={isRunning} />;
+}
 
-  const loadThreads = useCallback(async () => {
-    try {
-      setError(null);
-      const response = await fetch("/api/workbench/chat-session", {
-        cache: "no-store",
-      });
-      const body = (await response.json().catch(() => ({}))) as ChatSessionResponse & {
-        error?: string;
-      };
-      if (!response.ok || !body.ok) {
-        throw new Error(body.error ?? "Failed to load recent chats");
-      }
-      setThreads(body.threads ?? []);
-    } catch (nextError) {
-      const message = nextError instanceof Error ? nextError.message : "Failed to load chats";
-      setError(message);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadThreads();
-    const delayedLoad = () => window.setTimeout(() => void loadThreads(), 400);
-    window.addEventListener(workbenchSummaryRefreshEvent, delayedLoad);
-    window.addEventListener(workbenchAgentNewChatEvent, delayedLoad);
-    window.addEventListener(workbenchAgentSelectThreadEvent, delayedLoad);
-    return () => {
-      window.removeEventListener(workbenchSummaryRefreshEvent, delayedLoad);
-      window.removeEventListener(workbenchAgentNewChatEvent, delayedLoad);
-      window.removeEventListener(workbenchAgentSelectThreadEvent, delayedLoad);
-    };
-  }, [loadThreads]);
+export function ThreadHistorySidebar({ disableNewChat = false }: { disableNewChat?: boolean }) {
+  const { session, threads, pending, error, isInitialLoading, isTransitioning, createThread } =
+    useWorkbenchAgentConnection();
+  const creatingThread = pending?.type === "create";
+  const isCached = session?.isStale === true;
 
   return (
     <aside className="border-border bg-background/95 absolute inset-y-0 left-0 z-10 hidden w-64 flex-col border-r backdrop-blur md:flex">
@@ -70,28 +31,41 @@ export function ThreadHistorySidebar() {
             type="button"
             variant="ghost"
             size="icon-sm"
-            disabled={isRunning || isLoading}
+            disabled={disableNewChat || creatingThread}
             aria-label="New chat"
             title="New chat"
-            onClick={() => {
-              requestWorkbenchSummaryRefresh();
-              requestWorkbenchAgentNewChat();
-              window.setTimeout(requestWorkbenchSummaryRefresh, 500);
-            }}
+            onClick={() => void createThread()}
           >
-            <PlusIcon className="size-4" />
+            {creatingThread ? (
+              <Loader2Icon className="size-4 animate-spin" />
+            ) : (
+              <PlusIcon className="size-4" />
+            )}
           </Button>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
-          {error ? (
+          {error && threads.length === 0 ? (
             <div className="text-muted-foreground px-2 py-2 text-xs">{error}</div>
-          ) : isLoading ? (
+          ) : isInitialLoading ? (
             <div className="text-muted-foreground px-2 py-2 text-xs">Loading chats...</div>
           ) : threads.length === 0 ? (
             <div className="text-muted-foreground px-2 py-2 text-xs">No recent chats yet.</div>
           ) : (
-            threads.map((thread) => <ThreadHistoryItem key={thread.threadId} thread={thread} />)
+            <>
+              {isCached ? (
+                <div className="text-muted-foreground px-2 pb-2 text-[11px]">
+                  Showing cached chats...
+                </div>
+              ) : isTransitioning ? (
+                <div className="text-muted-foreground px-2 pb-2 text-[11px]">
+                  Switching thread...
+                </div>
+              ) : null}
+              {threads.map((thread) => (
+                <ThreadHistoryItem key={thread.threadId} thread={thread} />
+              ))}
+            </>
           )}
         </div>
       </div>
@@ -100,20 +74,24 @@ export function ThreadHistorySidebar() {
 }
 
 function ThreadHistoryItem({ thread }: { thread: ChatThreadSummary }) {
+  const { activateThread, pending } = useWorkbenchAgentConnection();
+  const pendingActivation = pending?.type === "activate" && pending.threadId === thread.threadId;
+
   return (
     <button
       type="button"
+      disabled={pendingActivation}
       className={cn(
-        "hover:bg-muted/70 mb-1 flex w-full min-w-0 items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors",
+        "hover:bg-muted/70 mb-1 flex w-full min-w-0 items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors disabled:cursor-wait",
         thread.isActive && "bg-muted",
       )}
-      onClick={() => {
-        requestWorkbenchSummaryRefresh();
-        requestWorkbenchAgentThread(thread.threadId);
-        window.setTimeout(requestWorkbenchSummaryRefresh, 500);
-      }}
+      onClick={() => void activateThread(thread.threadId)}
     >
-      <MessageSquareIcon className="text-muted-foreground size-3.5 shrink-0" />
+      {pendingActivation ? (
+        <Loader2Icon className="text-muted-foreground size-3.5 shrink-0 animate-spin" />
+      ) : (
+        <MessageSquareIcon className="text-muted-foreground size-3.5 shrink-0" />
+      )}
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="truncate">{thread.title || "New chat"}</span>
         {thread.agent ? (

@@ -154,6 +154,25 @@ for this activity feed, so browser-visible runtime progress can come from
 Cloudflare-owned state without exposing Cloudflare credentials or tenant scope
 to the browser.
 
+Live workbench state now converges on the user/workspace
+`WorkbenchSessionAgent` stream:
+
+- Cloudflare `GET /chat/session/stream`
+- Vercel `GET /api/workbench/chat-session/stream`
+
+On connect, the coordinator emits `session.snapshot`. It then broadcasts
+compact `session.thread.created`, `session.thread.activated`,
+`session.threads.refreshed`, `chat.run.started`, `chat.run.completed`,
+`chat.run.failed`, `tool.run.updated`, `trace.updated`, and
+`admin.summary.invalidated` events. These events are scoped hints over
+canonical D1 and Durable Object state; payloads must stay redacted and exclude
+tokens, prompts, secrets, raw provider payloads, and full tool output.
+
+Tool runners and future Fly/LangGraph workflows should publish progress by
+calling scoped Cloudflare callbacks that update D1 records first, then notify
+the matching `WorkbenchSessionAgent`. The browser should not subscribe to Fly
+directly for product/runtime state.
+
 The current implementation also exposes a scoped chat runtime summary:
 Cloudflare `GET /chat/runtime-summary` and Vercel
 `GET /api/workbench/chat-runtime-summary`. The summary is derived only after

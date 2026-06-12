@@ -37,6 +37,40 @@ selection, Admin summaries, traces, audit, tools, and future managed state.
 Long-running workflows should store their continuity in a thread rather than
 relying on browser state.
 
+A user/workspace session coordinator Durable Object sits in front of the
+per-thread chat Agents. It caches the current session snapshot, recent thread
+summaries, active thread, active agent, and signed Agent connection payload for
+one user in one workspace. D1 remains canonical and can rebuild the coordinator
+after hibernation, but `/new`, thread switching, and token refresh should not
+force the normal UI through the full Admin/session summary path.
+
+The session coordinator is also the first live product-state stream. The
+browser subscribes once to Cloudflare `GET /chat/session/stream` through the
+Vercel facade and receives compact `session.*`, `chat.run.*`, `tool.run.*`,
+`trace.updated`, and `admin.summary.invalidated` events. These events are
+delivery hints over canonical D1/Durable Object state; they never contain
+tokens, prompts, secrets, raw provider payloads, full tool output, or trusted
+tenant scope.
+
+The browser may keep a display-only session shell for UX: recent thread
+summaries, active thread id, active workspace label, active agent label/profile,
+model id, and last known coordinator revision. That cache must never contain
+signed Agent tokens, WorkOS data, secrets, behavior prompt text, or trusted
+tenant scope. Cloudflare still owns thread activation and token minting; cached
+browser data only prevents the shell/sidebar from blanking while Cloudflare
+refreshes the authoritative session.
+
+Thread create and switch should return a minimal active-thread response first:
+selected thread, restored agent, signed Agent connection, revision, and a flag
+that full thread history should refresh in the background. Explicit
+`refresh=threads` reloads the full workspace recent-thread list from D1.
+
+Future Fly/LangGraph progress should follow the same live path: the executor
+calls a scoped Cloudflare callback, Cloudflare updates D1 run/event/artifact
+state, the user/workspace coordinator broadcasts a compact session event, and
+the browser updates from that stream. Fly should not own browser-facing
+progress transport.
+
 Normal chat should optimize for first token. The current Cloudflare Agent send
 path trusts the short-lived scoped Agent token, uses per-Durable-Object cached
 runtime/behavior config when available, writes one minimal D1 run-start mirror,
