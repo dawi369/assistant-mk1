@@ -132,7 +132,9 @@ Current baseline: a runtime tool registry and exposure resolver path exist for
 the deterministic `demo.inspect` dry-run tool and the Admin-triggered
 `url.inspect` read-only adapter. `url.inspect` proves bounded tool execution,
 structured output, artifact metadata, and Cloudflare-owned run/tool records
-without adding mutation capability.
+without adding mutation capability. Tool Policy v0 adds D1-backed
+`tool_permissions` and `control_policy_decisions` so tool enablement, Admin
+visibility, and execution blocks are durable instead of hard-coded.
 
 Implemented:
 
@@ -144,11 +146,15 @@ Implemented:
 - Read-only `url.inspect` Admin tool with timeout, private-host blocking,
   structured report artifact, and D1-backed workflow/run/tool-call/audit/event
   records.
+- Tool Policy v0 for Admin tools: default permission rows for `url.inspect` and
+  `demo.inspect`, owner/admin enable-disable controls for `url.inspect`,
+  policy-derived tool visibility, and auditable allow/block decisions.
 
 Next target:
 
-- Policy checks for `ask`, `dry_run`, and `execute` modes at the tool-runner
-  boundary, backed by durable permission and exposure records.
+- Broader policy checks for `ask`, `dry_run`, and `execute` modes at the
+  tool-runner boundary, including approvals, limits, kill switches, and
+  model-visible exposure decisions.
 - First CLI/OSS-backed or external-system adapter after the policy layer can
   explain and gate it.
 
@@ -213,7 +219,8 @@ Implemented:
   Cloudflare exposes a code-backed tool registry summary, Admin can run the
   bounded `url.inspect` dry-run tool, and D1 records the resulting
   workflow intent, run, tool call, artifact, audit events, and control-plane
-  events. The tool is not model-visible yet.
+  events. Tool Policy v0 makes `url.inspect` enablement durable and
+  Admin-visible, but the tool is not model-visible yet.
 - Runtime trace graph and Admin redesign v0 is implemented:
   Cloudflare stores D1-backed runtime traces and spans for thread creation,
   Agent chat streams, legacy simple-chat streams, and Admin tool runs. Admin
@@ -251,9 +258,8 @@ Implemented:
 Next target:
 
 - Finish live-session event polish, then use the trace graph to stabilize the
-  real chat/tool paths and add the policy layer for durable permissions, stronger
-  exposure decisions, approvals, kill switches, and eventual model-visible
-  tools.
+  real chat/tool paths and expand Tool Policy v0 into stronger exposure
+  decisions, approvals, kill switches, and eventual model-visible tools.
 - Keep Fly/LangGraph state access mediated through Cloudflare APIs.
 - Strengthen the Vercel-to-Cloudflare trust boundary with a stricter signed or
   service-authenticated server contract after this observability slice.

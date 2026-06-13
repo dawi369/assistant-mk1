@@ -184,6 +184,12 @@ pnpm deploy:cloudflare
 The rebuild command is destructive for remote dev D1 state. That is intentional
 while this schema is still early-dev and disposable.
 
+During the current pre-production framework phase, destructive remote dev D1
+rebuilds are welcome when they keep the live schema aligned with the checked-in
+control-plane contract. Treat `assistant_mk1_dev` as disposable validation
+state until the project explicitly introduces a migration system and promotes
+remote data retention to a requirement.
+
 Only run `d1 create` when `assistant_mk1_dev` is missing. After creation, copy
 the returned `database_id` into `cloudflare/control-plane/wrangler.jsonc`.
 

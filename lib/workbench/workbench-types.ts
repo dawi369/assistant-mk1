@@ -85,6 +85,11 @@ export type ToolSummary = {
   reason: string;
   requiresSecrets: boolean;
   mutationRisk: "read_only" | "mutation_capable";
+  permissionStatus?: "enabled" | "disabled" | "pending_review";
+  policyReference?: string;
+  allowedExecutionModes?: string[];
+  approvalRequired?: boolean;
+  killSwitchReason?: string;
 };
 
 export type ToolCallSummary = {
@@ -135,6 +140,21 @@ export type CloudflareToolRunResponse = {
   toolCall?: ToolCallSummary | null;
   artifact?: ArtifactSummary | null;
   error?: {
+    code?: string;
+    message?: string;
+    retryable?: boolean;
+    redacted?: boolean;
+  };
+};
+
+export type CloudflareToolPolicyUpdateResponse = {
+  ok?: boolean;
+  toolName?: string;
+  status?: "enabled" | "disabled";
+  permissionId?: Id;
+  policyDecisionId?: Id;
+  error?: string;
+  details?: {
     code?: string;
     message?: string;
     retryable?: boolean;

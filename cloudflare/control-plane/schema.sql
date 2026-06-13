@@ -12,6 +12,8 @@ DROP TABLE IF EXISTS control_artifacts;
 DROP TABLE IF EXISTS control_tool_calls;
 DROP TABLE IF EXISTS control_runs;
 DROP TABLE IF EXISTS control_workflow_intents;
+DROP TABLE IF EXISTS control_policy_decisions;
+DROP TABLE IF EXISTS tool_permissions;
 DROP TABLE IF EXISTS active_agent_preferences;
 DROP TABLE IF EXISTS agents;
 DROP TABLE IF EXISTS memberships;
@@ -111,6 +113,41 @@ CREATE TABLE active_agent_preferences (
 
 CREATE INDEX idx_active_agent_preferences_agent
   ON active_agent_preferences (agent_id);
+
+CREATE TABLE tool_permissions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  workspace_id TEXT NOT NULL,
+  agent_id TEXT NOT NULL,
+  tool_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  execution_json TEXT NOT NULL,
+  data_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE (user_id, workspace_id, agent_id, tool_id)
+);
+
+CREATE INDEX idx_tool_permissions_scope
+  ON tool_permissions (user_id, workspace_id, agent_id, status);
+
+CREATE TABLE control_policy_decisions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  workspace_id TEXT NOT NULL,
+  agent_id TEXT NOT NULL,
+  tool_id TEXT NOT NULL,
+  surface TEXT NOT NULL,
+  decision TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  execution_mode TEXT NOT NULL,
+  policy_reference TEXT,
+  data_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX idx_control_policy_decisions_scope_latest
+  ON control_policy_decisions (user_id, workspace_id, created_at DESC);
 
 CREATE TABLE control_workflow_intents (
   id TEXT PRIMARY KEY,

@@ -50,6 +50,7 @@ import type {
   CloudflareAgentBehaviorTemplatesResponse,
   CloudflareAdminSummaryResponse,
   CloudflareOwnedDemoRunResponse,
+  CloudflareToolPolicyUpdateResponse,
   CloudflareToolRunResponse,
   RuntimeSpan,
   RuntimeTrace,
@@ -61,6 +62,7 @@ const workspacesPath = "/api/workbench/workspaces";
 const agentsPath = "/api/workbench/agents";
 const behaviorTemplatesPath = "/api/workbench/agent-behavior-templates";
 const toolRunsPath = "/api/workbench/tools/runs";
+const toolPolicyPath = "/api/workbench/tools/policy";
 const agentModelOptions = ["deepseek/deepseek-v4-flash", "openai/gpt-4.1-mini"] as const;
 const defaultBehaviorTemplateByProfile = {
   default: "assistant-general",
@@ -345,6 +347,7 @@ export function AdminPanel({
   const [isLoading, setIsLoading] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [isRunningTool, setIsRunningTool] = useState(false);
+  const [updatingToolPolicy, setUpdatingToolPolicy] = useState<string | null>(null);
   const [isCreatingWorkspace, setIsCreatingWorkspace] = useState(false);
   const [isCreatingAgent, setIsCreatingAgent] = useState(false);
   const [activatingWorkspaceId, setActivatingWorkspaceId] = useState<string | null>(null);
@@ -372,6 +375,7 @@ export function AdminPanel({
   const latestArtifact = demoSnapshot?.artifacts.at(-1);
   const latestAdminToolCall = summary?.latestToolCalls?.at(0) ?? null;
   const latestAdminArtifact = summary?.latestArtifacts?.at(0) ?? null;
+  const urlInspectTool = summary?.tools?.find((tool) => tool.name === "url.inspect") ?? null;
   const latestDecision = demoSnapshot?.decisions.at(-1);
   const latestChatEvent = useMemo(
     () =>
@@ -502,6 +506,31 @@ export function AdminPanel({
       setFetchError(toolError instanceof Error ? toolError.message : "Failed to run URL inspector");
     } finally {
       setIsRunningTool(false);
+    }
+  };
+
+  const updateUrlInspectPolicy = async (status: "enabled" | "disabled") => {
+    setUpdatingToolPolicy("url.inspect");
+    setFetchError(null);
+    try {
+      await readJsonResponse<CloudflareToolPolicyUpdateResponse>(
+        await fetch(toolPolicyPath, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            toolName: "url.inspect",
+            status,
+          }),
+        }),
+        "Failed to update URL inspector policy",
+      );
+      requestWorkbenchSummaryRefresh();
+    } catch (policyError) {
+      setFetchError(
+        policyError instanceof Error ? policyError.message : "Failed to update tool policy",
+      );
+    } finally {
+      setUpdatingToolPolicy(null);
     }
   };
 
@@ -1066,10 +1095,20 @@ export function AdminPanel({
                               {tool.family} / {tool.kind} / {tool.mutationRisk}
                             </span>
                             <span className="text-muted-foreground block text-xs">
-                              modes: {tool.supportedExecutionModes.join(", ")}
+                              modes:{" "}
+                              {(tool.allowedExecutionModes ?? tool.supportedExecutionModes).join(
+                                ", ",
+                              )}
+                            </span>
+                            <span className="text-muted-foreground block text-xs">
+                              policy: {tool.policyReference ?? "none"}
                             </span>
                           </span>
                           <span className="flex shrink-0 flex-col items-end gap-1">
+                            <StatusPill
+                              status={tool.permissionStatus ?? "unseeded"}
+                              tone={tool.permissionStatus === "enabled" ? "completed" : undefined}
+                            />
                             <StatusPill
                               status={tool.adminVisible ? "Admin" : "Hidden"}
                               tone={tool.adminVisible ? "completed" : undefined}
@@ -1081,6 +1120,31 @@ export function AdminPanel({
                           </span>
                         </div>
                         <p className="text-muted-foreground mt-2 text-xs">{tool.reason}</p>
+                        {tool.killSwitchReason ? (
+                          <p className="text-destructive mt-1 text-xs">{tool.killSwitchReason}</p>
+                        ) : null}
+                        {tool.name === "url.inspect" ? (
+                          <div className="mt-3 flex justify-end">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={updatingToolPolicy === tool.name || !canManageAgents}
+                              onClick={() =>
+                                updateUrlInspectPolicy(
+                                  tool.permissionStatus === "enabled" ? "disabled" : "enabled",
+                                )
+                              }
+                            >
+                              {updatingToolPolicy === tool.name ? (
+                                <Loader2Icon className="animate-spin" />
+                              ) : (
+                                <ShieldCheckIcon />
+                              )}
+                              {tool.permissionStatus === "enabled" ? "Disable" : "Enable"}
+                            </Button>
+                          </div>
+                        ) : null}
                       </li>
                     ))}
                   </ol>
@@ -1102,7 +1166,12 @@ export function AdminPanel({
                     <Button
                       type="submit"
                       size="sm"
-                      disabled={isRunningTool || !urlInspectTarget.trim() || !canManageAgents}
+                      disabled={
+                        isRunningTool ||
+                        !urlInspectTarget.trim() ||
+                        !canManageAgents ||
+                        urlInspectTool?.permissionStatus === "disabled"
+                      }
                     >
                       {isRunningTool ? <Loader2Icon className="animate-spin" /> : <LinkIcon />}
                       Inspect URL

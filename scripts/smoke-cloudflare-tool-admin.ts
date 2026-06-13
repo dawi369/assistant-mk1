@@ -9,6 +9,10 @@ type ToolSummary = {
   name?: string;
   adminVisible?: boolean;
   modelVisible?: boolean;
+  permissionStatus?: string;
+  policyReference?: string;
+  allowedExecutionModes?: string[];
+  killSwitchReason?: string;
   reason?: string;
 };
 
@@ -46,6 +50,14 @@ type ToolRunResponse = {
   error?: {
     code?: string;
   };
+};
+
+type ToolPolicyUpdateResponse = {
+  ok?: boolean;
+  toolName?: string;
+  status?: string;
+  permissionId?: string;
+  error?: string;
 };
 
 type AdminSummaryResponse = {
@@ -123,6 +135,12 @@ runSmoke("Cloudflare tool admin smoke", async () => {
   const urlInspect = requireTool(tools.tools, "url.inspect");
   if (!urlInspect.adminVisible) throw new Error("url.inspect should be Admin-visible for owner");
   if (urlInspect.modelVisible) throw new Error("url.inspect should not be model-visible in v0");
+  if (urlInspect.permissionStatus !== "enabled") {
+    throw new Error(`url.inspect should seed enabled, got ${urlInspect.permissionStatus}`);
+  }
+  if (urlInspect.policyReference !== "tool-admin-readonly-v0") {
+    throw new Error(`url.inspect policy reference missing: ${JSON.stringify(urlInspect)}`);
+  }
 
   const demoInspect = requireTool(tools.tools, "demo.inspect");
   if (demoInspect.modelVisible) throw new Error("demo.inspect should not be model-visible");
@@ -163,11 +181,73 @@ runSmoke("Cloudflare tool admin smoke", async () => {
   }
   if (!run.artifact?.id) throw new Error("url.inspect run did not return an artifact");
 
+  const disabled = await readJson<ToolPolicyUpdateResponse>("/tools/policy", owner, {
+    method: "POST",
+    body: JSON.stringify({
+      toolName: "url.inspect",
+      status: "disabled",
+    }),
+  });
+  if (!disabled.ok || disabled.status !== "disabled") {
+    throw new Error(`url.inspect policy did not disable: ${JSON.stringify(disabled)}`);
+  }
+
+  const disabledTools = await readJson<ToolsResponse>("/tools", owner);
+  const disabledUrlInspect = requireTool(disabledTools.tools, "url.inspect");
+  if (disabledUrlInspect.permissionStatus !== "disabled") {
+    throw new Error(`url.inspect should show disabled, got ${disabledUrlInspect.permissionStatus}`);
+  }
+  if (disabledUrlInspect.adminVisible) {
+    throw new Error("disabled url.inspect should not be Admin-visible");
+  }
+  if (!disabledUrlInspect.killSwitchReason) {
+    throw new Error("disabled url.inspect should include a kill-switch reason");
+  }
+
+  const disabledRun = await fetchRaw("/tools/runs", owner, {
+    method: "POST",
+    body: JSON.stringify({
+      toolName: "url.inspect",
+      executionMode: "dry_run",
+      input: { url: "https://example.com" },
+    }),
+  });
+  await expectErrorCode(disabledRun, 403, "tool_disabled");
+
+  const enabled = await readJson<ToolPolicyUpdateResponse>("/tools/policy", owner, {
+    method: "POST",
+    body: JSON.stringify({
+      toolName: "url.inspect",
+      status: "enabled",
+    }),
+  });
+  if (!enabled.ok || enabled.status !== "enabled") {
+    throw new Error(`url.inspect policy did not re-enable: ${JSON.stringify(enabled)}`);
+  }
+
+  const rerun = await readJson<ToolRunResponse>("/tools/runs", owner, {
+    method: "POST",
+    body: JSON.stringify({
+      toolName: "url.inspect",
+      executionMode: "dry_run",
+      input: { url: "https://example.com" },
+    }),
+  });
+  if (!rerun.ok || rerun.run?.status !== "completed") {
+    throw new Error(`url.inspect run did not recover after re-enable: ${JSON.stringify(rerun)}`);
+  }
+  if (rerun.toolCall?.toolId !== "url.inspect" || rerun.toolCall.status !== "completed") {
+    throw new Error("re-enabled url.inspect run did not return a completed tool call");
+  }
+  if (!rerun.artifact?.id) throw new Error("re-enabled url.inspect run did not return artifact");
+
   const adminSummary = await readJson<AdminSummaryResponse>("/admin/workspace-summary", owner);
-  if (!adminSummary.summary?.latestToolCalls?.some((call) => call.id === run.toolCall?.id)) {
+  if (!adminSummary.summary?.latestToolCalls?.some((call) => call.id === rerun.toolCall?.id)) {
     throw new Error("admin summary did not include the latest tool call");
   }
-  if (!adminSummary.summary.latestArtifacts?.some((artifact) => artifact.id === run.artifact?.id)) {
+  if (
+    !adminSummary.summary.latestArtifacts?.some((artifact) => artifact.id === rerun.artifact?.id)
+  ) {
     throw new Error("admin summary did not include the latest tool artifact");
   }
 
@@ -185,23 +265,24 @@ runSmoke("Cloudflare tool admin smoke", async () => {
   }
 
   const otherTools = await readJson<ToolsResponse>("/tools", otherTenant);
-  if (otherTools.latestToolCalls?.some((call) => call.id === run.toolCall?.id)) {
+  if (otherTools.latestToolCalls?.some((call) => call.id === rerun.toolCall?.id)) {
     throw new Error("cross-tenant /tools leaked owner tool call");
   }
   const otherSummary = await readJson<AdminSummaryResponse>(
     "/admin/workspace-summary",
     otherTenant,
   );
-  if (otherSummary.summary?.latestToolCalls?.some((call) => call.id === run.toolCall?.id)) {
+  if (otherSummary.summary?.latestToolCalls?.some((call) => call.id === rerun.toolCall?.id)) {
     throw new Error("cross-tenant admin summary leaked owner tool call");
   }
 
   console.log(
     JSON.stringify(
       {
-        runId: run.run.id,
-        toolCallId: run.toolCall.id,
-        artifactId: run.artifact.id,
+        runId: rerun.run.id,
+        toolCallId: rerun.toolCall.id,
+        artifactId: rerun.artifact.id,
+        disabledPermissionId: disabled.permissionId,
       },
       null,
       2,

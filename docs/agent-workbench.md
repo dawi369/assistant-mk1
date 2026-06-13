@@ -109,9 +109,11 @@ tools model-visible yet. Admin can run `url.inspect`, a bounded read-only URL
 inspection tool that records a workflow intent, run, tool call, artifact, audit
 events, and control-plane events in Cloudflare-owned state. The Admin Tools
 section shows registered tools, whether each is Admin-visible or model-visible,
-supported execution modes, and recent tool calls/artifacts. This proves the
-adapter and observability path before durable tool permissions, approvals, kill
-switches, secret custody, or mutation-capable tools are enabled.
+supported execution modes, durable permission status, policy reference, and
+recent tool calls/artifacts. Tool Policy v0 lets owner/admin users enable or
+disable `url.inspect` from Admin and records policy decisions for run attempts.
+This proves the adapter, policy, and observability path before approvals,
+secret custody, or mutation-capable tools are enabled.
 
 Runtime trace graph v0 makes Admin the main explanation surface for request
 path and latency. Cloudflare D1 stores one trace per thread creation, Agent
@@ -183,7 +185,8 @@ Implemented:
   behavior snapshot stored in D1.
 - Admin can inspect tool registry/exposure state and run the read-only
   `url.inspect` adapter. Tool results are stored as D1-backed tool call and
-  artifact records.
+  artifact records, and `url.inspect` enablement is controlled by a D1-backed
+  tool permission row.
 - The normal chat shell has a compact server-derived runtime hint for active
   workspace, active agent/profile, chat state, and error detail access.
 - WorkOS, workspace, membership, and active agent scope are server-derived.
@@ -200,8 +203,8 @@ Next milestones:
 4. Add interrupt display and resume actions when a workflow requires approval.
 5. Add artifact list and execution history beyond diagnostic snapshots.
 6. Add domain context configuration that can be swapped per downstream app.
-7. Add policy v0 for durable tool permissions, exposure decisions, approvals,
-   and kill switches.
+7. Expand Tool Policy v0 into approvals, kill switches, and model-visible
+   exposure decisions.
 8. Add a first CLI/OSS-backed tool with timeout, logs, structured output, and
    artifact metadata.
 9. Add generic managed-state and audit surfaces.

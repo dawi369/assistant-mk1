@@ -85,6 +85,11 @@ The repo lockfile is generated with pnpm 10. Keep `packageManager` pinned to
 `pnpm@10.33.0`; pnpm 11 can fail Vercel install because ignored dependency
 build scripts become install errors.
 
+When a deployed slice changes the remote D1 schema, rebuild the remote dev D1
+database before deploying Vercel. `assistant_mk1_dev` is intentionally
+disposable in the current pre-production phase; destructive rebuilds are
+expected until a migration system is explicitly introduced.
+
 ```bash
 vercel --prod --yes
 ```

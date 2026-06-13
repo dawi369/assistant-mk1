@@ -7,7 +7,7 @@ import {
   handleStartCloudflareDemoRun,
 } from "./demo-runs";
 import { handleAdminWorkspaceSummary } from "./admin-summary";
-import { handleListTools, handleRunTool } from "./admin-tools";
+import { handleListTools, handleRunTool, handleUpdateToolPolicy } from "./admin-tools";
 import {
   handleActivateAgent,
   handleCreateAgent,
@@ -117,6 +117,10 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
 
   if (request.method === "POST" && url.pathname === "/tools/runs") {
     return handleRunTool(request, env, identity, incomingTrace);
+  }
+
+  if (request.method === "POST" && url.pathname === "/tools/policy") {
+    return handleUpdateToolPolicy(request, env, identity);
   }
 
   if (request.method === "GET" && url.pathname === "/runtime/traces/latest") {

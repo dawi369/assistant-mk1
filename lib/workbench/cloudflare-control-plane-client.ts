@@ -8,6 +8,7 @@ import type {
   CloudflareAgentsResponse,
   CloudflareRuntimeTraceResponse,
   CloudflareRuntimeTracesResponse,
+  CloudflareToolPolicyUpdateResponse,
   CloudflareToolRunResponse,
   CloudflareToolsResponse,
   CloudflareOwnedDemoRunResponse,
@@ -28,6 +29,7 @@ export type {
   CloudflareAgentsResponse,
   CloudflareRuntimeTraceResponse,
   CloudflareRuntimeTracesResponse,
+  CloudflareToolPolicyUpdateResponse,
   CloudflareToolRunResponse,
   CloudflareToolsResponse,
   CloudflareOwnedDemoRunResponse,
@@ -165,6 +167,15 @@ export const runCloudflareTool = (input: {
   input: { url: string };
 }) =>
   requestControlPlane<CloudflareToolRunResponse>("/tools/runs", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+
+export const updateCloudflareToolPolicy = (input: {
+  toolName: "url.inspect";
+  status: "enabled" | "disabled";
+}) =>
+  requestControlPlane<CloudflareToolPolicyUpdateResponse>("/tools/policy", {
     method: "POST",
     body: JSON.stringify(input),
   });

@@ -198,6 +198,36 @@ export type ControlToolCallRow = {
   created_at: string;
 };
 
+export type ToolPermissionStatus = "enabled" | "disabled" | "pending_review";
+
+export type ToolPermissionRow = {
+  id: string;
+  user_id: string;
+  workspace_id: string;
+  agent_id: string;
+  tool_id: string;
+  status: ToolPermissionStatus;
+  execution_json: string;
+  data_json: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ControlPolicyDecisionRow = {
+  id: string;
+  user_id: string;
+  workspace_id: string;
+  agent_id: string;
+  tool_id: string;
+  surface: string;
+  decision: string;
+  reason: string;
+  execution_mode: ExecutionMode;
+  policy_reference: string | null;
+  data_json: string;
+  created_at: string;
+};
+
 export type ControlArtifactRow = {
   id: string;
   user_id: string;

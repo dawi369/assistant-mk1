@@ -235,7 +235,16 @@ starting a tool run.
 the `tool-admin-readonly-v0` policy reference, rejects local/private/metadata
 targets, performs a bounded public HTTP inspection, and stores the result as
 Cloudflare-owned workflow/run/tool-call/artifact/audit/event state. It is not
-model-visible yet; model-visible tools wait for the policy layer.
+model-visible yet; model-visible tools wait for a later exposure slice.
+
+Tool Policy v0 makes this first policy boundary durable. Cloudflare stores
+workspace/user/agent-scoped `tool_permissions` rows for `url.inspect` and
+`demo.inspect`, records `control_policy_decisions` for Admin tool run attempts,
+and exposes a small Admin-only `POST /tools/policy` control to enable or disable
+`url.inspect`. Disabled tools fail before input validation or execution and
+record policy/audit/control-plane events. This is still a read-only tool slice:
+approvals, secrets, mutation-capable tools, and model-visible exposure remain
+blocked.
 
 This is still not complete production authorization. WorkOS is the hosted web
 auth provider, and Cloudflare now owns the first D1-backed membership and agent

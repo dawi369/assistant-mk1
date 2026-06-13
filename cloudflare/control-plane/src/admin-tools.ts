@@ -13,6 +13,16 @@ import {
 } from "./runtime-traces";
 import { dispatchWorkbenchSessionEvent } from "./session-coordinator";
 import {
+  demoInspectToolName,
+  evaluateToolPolicy,
+  isKnownTool,
+  recordToolPolicyDecision,
+  toolPolicyError,
+  updateToolPermissionStatus,
+  urlInspectPolicy,
+  urlInspectToolName,
+} from "./tool-policy";
+import {
   createId,
   toJson,
   type AgentIdentity,
@@ -21,11 +31,10 @@ import {
   type Env,
   type ExecutionMode,
   type TenantScope,
+  type ToolPermissionStatus,
 } from "./types";
 
-const urlInspectToolName = "url.inspect";
 const urlInspectWorkflowType = "tool.url.inspect";
-const urlInspectPolicy = "tool-admin-readonly-v0";
 const urlInspectTimeoutMs = 5_000;
 const urlInspectMaxBytes = 128 * 1024;
 
@@ -58,7 +67,7 @@ type UrlInspectOutput = {
 
 const toolSummaries = [
   {
-    name: "demo.inspect",
+    name: demoInspectToolName,
     description: "Run the deterministic workspace diagnostic.",
     kind: "native",
     family: "diagnostic",
@@ -146,22 +155,45 @@ export const listLatestArtifacts = async (env: Env, scope: TenantScope, limit = 
 
 export const resolveToolSummaries = async (env: Env, identity: AgentIdentity) => {
   const membership = await selectMembership(env, identity.scope.userId, identity.scope.workspaceId);
-  const canAdminRun = isAdminMembership(membership);
+  return Promise.all(
+    toolSummaries.map(async (tool) => {
+      const adminPolicy = await evaluateToolPolicy(env, identity, {
+        membership,
+        toolName: tool.name,
+        executionMode: "dry_run",
+        surface: "admin_list",
+      });
+      const modelPolicy = await evaluateToolPolicy(env, identity, {
+        membership,
+        toolName: tool.name,
+        executionMode: "dry_run",
+        surface: "model_exposure",
+      });
+      const permission = adminPolicy.permission ?? modelPolicy.permission;
+      const permissionData = parseDataJson(permission?.data_json ?? "{}");
+      const killSwitchReason =
+        typeof permissionData.killSwitchReason === "string"
+          ? permissionData.killSwitchReason
+          : undefined;
 
-  return toolSummaries.map((tool) => {
-    const isUrlInspect = tool.name === urlInspectToolName;
-    const adminVisible = canAdminRun && isUrlInspect;
-    return {
-      ...tool,
-      adminVisible,
-      modelVisible: false,
-      reason: isUrlInspect
-        ? adminVisible
-          ? "Available in Admin as a read-only dry-run tool. It is not model-visible until policy v0."
-          : "Workspace owner/admin membership is required to run this Admin tool."
-        : "Diagnostic workflow tool is exposed through the existing diagnostic run path.",
-    };
-  });
+      const reason =
+        adminPolicy.decision === "allow"
+          ? `${adminPolicy.reason} ${modelPolicy.reason}`
+          : adminPolicy.reason;
+
+      return {
+        ...tool,
+        adminVisible: adminPolicy.decision === "allow" && adminPolicy.adminVisible,
+        modelVisible: false,
+        reason,
+        permissionStatus: permission?.status,
+        policyReference: adminPolicy.policyReference,
+        allowedExecutionModes: adminPolicy.allowedExecutionModes,
+        approvalRequired: adminPolicy.approvalRequired,
+        killSwitchReason,
+      };
+    }),
+  );
 };
 
 const toolError = (code: string, message: string, retryable = false): ToolError => ({
@@ -381,7 +413,7 @@ const inspectUrl = async (
 const insertToolRunRecords = async (
   env: Env,
   identity: AgentIdentity,
-  input: { url: URL; executionMode: ExecutionMode },
+  input: { url: URL; executionMode: ExecutionMode; policyDecisionId: string },
 ): Promise<ToolRunIdentity> => {
   const timestamp = new Date().toISOString();
   const workflowIntentId = createId("cf-intent");
@@ -434,6 +466,7 @@ const insertToolRunRecords = async (
         displayName: "URL inspect",
         toolName: urlInspectToolName,
         policy: urlInspectPolicy,
+        policyDecisionId: input.policyDecisionId,
       }),
       timestamp,
       timestamp,
@@ -462,6 +495,7 @@ const insertToolRunRecords = async (
         input: { url: input.url.toString() },
         execution,
         source: "admin",
+        policyDecisionId: input.policyDecisionId,
       }),
       timestamp,
       timestamp,
@@ -677,6 +711,100 @@ export const handleListTools = async (env: Env, identity: AgentIdentity) => {
   });
 };
 
+const policyUpdateStatuses = new Set<ToolPermissionStatus>(["enabled", "disabled"]);
+
+export const handleUpdateToolPolicy = async (
+  request: Request,
+  env: Env,
+  identity: AgentIdentity,
+) => {
+  const body = parseJson(await request.text());
+  const toolName = isRecord(body) && typeof body.toolName === "string" ? body.toolName : "";
+  const status = isRecord(body) && typeof body.status === "string" ? body.status : "";
+
+  if (!isKnownTool(toolName) || toolName !== urlInspectToolName) {
+    return json(
+      {
+        ok: false,
+        error: "Unsupported tool",
+        details: toolError(
+          "unsupported_tool",
+          "Only url.inspect policy can be updated through this v0 endpoint.",
+          false,
+        ),
+      },
+      { status: 400 },
+    );
+  }
+
+  if (!policyUpdateStatuses.has(status as ToolPermissionStatus)) {
+    return json(
+      {
+        ok: false,
+        error: "Unsupported policy status",
+        details: toolError(
+          "unsupported_policy_status",
+          "Policy status must be enabled or disabled.",
+          false,
+        ),
+      },
+      { status: 400 },
+    );
+  }
+
+  const membership = await selectMembership(env, identity.scope.userId, identity.scope.workspaceId);
+  if (!membership || membership.status !== "active" || !isAdminMembership(membership)) {
+    const policy = await evaluateToolPolicy(env, identity, {
+      membership,
+      toolName,
+      executionMode: "dry_run",
+      surface: "admin_list",
+    });
+    const decisionId = await recordToolPolicyDecision(env, identity, {
+      toolName,
+      surface: "admin_list",
+      result: policy,
+      data: { action: "tool.policy.update", requestedStatus: status },
+    });
+    return json(
+      {
+        ok: false,
+        error: policy.reason,
+        details: toolPolicyError(policy),
+        policyDecisionId: decisionId,
+      },
+      { status: policy.status },
+    );
+  }
+
+  const permission = await updateToolPermissionStatus(env, identity, {
+    toolName,
+    status: status as ToolPermissionStatus,
+  });
+  await appendControlPlaneEvent(env, identity, {
+    type: "tool.policy.updated",
+    summary: `${toolName} policy ${status}.`,
+    targetType: "toolPermission",
+    targetId: permission?.id,
+    data: { toolName, status },
+  });
+  await dispatchWorkbenchSessionEvent(env, identity, {
+    type: "admin.summary.invalidated",
+    data: {
+      reason: "tool-policy-updated",
+      toolName,
+      status,
+    },
+  });
+
+  return json({
+    ok: true,
+    toolName,
+    status,
+    permissionId: permission?.id,
+  });
+};
+
 const finishToolTrace = async (
   env: Env,
   identity: AgentIdentity,
@@ -709,65 +837,54 @@ export const handleRunTool = async (
       : null;
   if (trace) await recordIncomingRequestSpans(env, identity, trace, incomingTrace);
 
-  const adminCheckStartedAtMs = Date.now();
+  const executionMode =
+    isRecord(body) && typeof body.executionMode === "string" ? body.executionMode : "dry_run";
+  const policyStartedAtMs = Date.now();
   const membership = await selectMembership(env, identity.scope.userId, identity.scope.workspaceId);
-  if (!isAdminMembership(membership)) {
-    if (trace) {
-      await recordSpan(env, identity, {
-        traceId: trace.traceId,
-        name: "Policy/admin check",
-        layer: "cloudflare",
-        startedAtMs: adminCheckStartedAtMs,
-        status: "blocked",
-        data: { reason: "Workspace admin role is required" },
-      });
-      await finishToolTrace(env, identity, trace, {
-        status: "blocked",
-        summary: "Workspace admin role is required.",
-        data: { errorCode: "admin_required" },
-      });
-    }
-    return json({ ok: false, error: "Workspace admin role is required" }, { status: 403 });
-  }
+  const policy = await evaluateToolPolicy(env, identity, {
+    membership,
+    toolName,
+    executionMode,
+    surface: "admin_run",
+  });
+  const policyDecisionId = await recordToolPolicyDecision(env, identity, {
+    toolName,
+    surface: "admin_run",
+    result: policy,
+    data: { requestedToolName: toolName },
+  });
   if (trace) {
     await recordSpan(env, identity, {
       traceId: trace.traceId,
-      name: "Policy/admin check",
+      name: "Tool policy check",
       layer: "cloudflare",
-      startedAtMs: adminCheckStartedAtMs,
-      data: { role: membership?.role ?? null },
+      startedAtMs: policyStartedAtMs,
+      status: policy.decision === "allow" ? "completed" : "blocked",
+      data: {
+        role: membership?.role ?? null,
+        toolName,
+        code: policy.code,
+        policyDecisionId,
+      },
     });
   }
 
-  if (toolName !== urlInspectToolName) {
+  if (policy.decision === "block") {
+    if (trace) {
+      await finishToolTrace(env, identity, trace, {
+        status: "blocked",
+        summary: policy.reason,
+        data: { errorCode: policy.code, policyDecisionId },
+      });
+    }
     return json(
       {
         ok: false,
-        error: "Unsupported tool",
-        details: toolError(
-          "unsupported_tool",
-          "Only url.inspect can run through this v0 endpoint.",
-          false,
-        ),
+        error: policy.reason,
+        details: toolPolicyError(policy),
+        policyDecisionId,
       },
-      { status: 400 },
-    );
-  }
-
-  const executionMode =
-    isRecord(body) && typeof body.executionMode === "string" ? body.executionMode : "dry_run";
-  if (executionMode !== "dry_run") {
-    return json(
-      {
-        ok: false,
-        error: "Unsupported execution mode",
-        details: toolError(
-          "unsupported_execution_mode",
-          "url.inspect only supports dry_run.",
-          false,
-        ),
-      },
-      { status: 400 },
+      { status: policy.status },
     );
   }
 
@@ -802,7 +919,8 @@ export const handleRunTool = async (
   const recordsStartedAtMs = Date.now();
   const runIdentity = await insertToolRunRecords(env, identity, {
     url: validated.url,
-    executionMode,
+    executionMode: policy.executionMode,
+    policyDecisionId,
   });
   if (trace) {
     await recordSpan(env, identity, {
@@ -920,7 +1038,8 @@ export const handleRunTool = async (
         id: runIdentity.runId,
         workflowIntentId: runIdentity.workflowIntentId,
         status: result.ok ? "completed" : "failed",
-        execution: { mode: executionMode, policy: urlInspectPolicy },
+        execution: { mode: policy.executionMode, policy: urlInspectPolicy },
+        policyDecisionId,
       },
       toolCall,
       artifact,
