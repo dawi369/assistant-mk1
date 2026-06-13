@@ -107,7 +107,9 @@ agent from D1 preferences, falling back to defaults when no user preference
 exists.
 
 Local development can still fall back to server-derived `WORKBENCH_DEV_*`
-identity values when WorkOS is not configured. The durable rule is that Worker
+identity values when WorkOS is not configured, but only with
+`WORKBENCH_ALLOW_LOCAL_DEV_IDENTITY=true` and a non-production runtime. Hosted
+production fails closed if WorkOS is incomplete. The durable rule is that Worker
 storage operations take trusted scope explicitly and executor callbacks resolve
 scope from the stored run record.
 
