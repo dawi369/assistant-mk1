@@ -118,8 +118,10 @@ agent are the committed authorization boundaries.
   operator. Customer-facing agent creation and configuration remain out of
   scope.
 - Local development may fall back to `WORKBENCH_DEV_USER_ID` and
-  `WORKBENCH_DEV_WORKSPACE_ID` plus `WORKBENCH_DEV_AGENT_ID` when WorkOS is not
-  configured.
+  `WORKBENCH_DEV_WORKSPACE_ID` plus `WORKBENCH_DEV_AGENT_ID` only when WorkOS is
+  not configured, `WORKBENCH_ALLOW_LOCAL_DEV_IDENTITY=true`, and the app is not
+  running in production. Hosted production fails closed when WorkOS is
+  incomplete.
 
 WorkOS sign-in is implemented, but production authorization is not complete.
 Richer role policy, explicit workspace administration, tool permissions, and

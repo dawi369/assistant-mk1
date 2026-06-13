@@ -40,6 +40,12 @@ const isWorkOsConfigured = () =>
     process.env.NEXT_PUBLIC_WORKOS_REDIRECT_URI?.trim(),
   );
 
+const isProductionRuntime = () =>
+  process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
+
+const isLocalDevIdentityAllowed = () =>
+  process.env.WORKBENCH_ALLOW_LOCAL_DEV_IDENTITY === "true" && !isProductionRuntime();
+
 const getDevAgentId = () => requiredEnv("WORKBENCH_DEV_AGENT_ID");
 
 const getDevAgentIdentity = (): WorkbenchAgentIdentity => ({
@@ -59,7 +65,15 @@ const getPersonalAccountId = (userId: Id): Id => `workos-personal:${userId}`;
 const getDefaultWorkspaceId = (accountId: Id): Id => `workspace:${accountId}:default`;
 
 export const getWorkbenchAgentIdentity = async (): Promise<WorkbenchAgentIdentity> => {
-  if (!isWorkOsConfigured()) return getDevAgentIdentity();
+  if (!isWorkOsConfigured()) {
+    if (!isLocalDevIdentityAllowed()) {
+      throw new WorkbenchAuthError(
+        "WorkOS is not configured and local-dev workbench identity fallback is disabled",
+        500,
+      );
+    }
+    return getDevAgentIdentity();
+  }
 
   const auth = await withAuth();
   if (!auth.user) throw new WorkbenchAuthError("Authentication required", 401);

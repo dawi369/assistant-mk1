@@ -184,6 +184,7 @@ export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
     let runId: string | null = null;
     let firstTokenAtMs: number | null = null;
     let providerStartedAtMs = 0;
+    let terminalState: "open" | "completed" | "failed" = "open";
     const traceWritePromises: Promise<unknown>[] = [];
     const queueTraceWrite = (promise: Promise<unknown>) => {
       const guarded = promise.catch((error) => {
@@ -192,6 +193,11 @@ export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
       traceWritePromises.push(guarded);
       this.waitUntil(guarded);
       return guarded;
+    };
+    const markTerminal = (state: "completed" | "failed") => {
+      if (terminalState !== "open") return false;
+      terminalState = state;
+      return true;
     };
 
     try {
@@ -296,7 +302,19 @@ export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
         },
         onFinish: async (event) => {
           const endedAtMs = Date.now();
-          await onFinish(event);
+          try {
+            await onFinish(event);
+          } catch (error) {
+            if (markTerminal("failed")) {
+              await failAgentRun(this.getEnv(), identity, trace, {
+                runId,
+                error,
+                startedAtMs: requestStartedAtMs,
+              });
+            }
+            throw error;
+          }
+          if (!markTerminal("completed")) return;
           this.waitUntil(
             (async () => {
               const completionMirrorStartedAtMs = Date.now();
@@ -406,21 +424,25 @@ export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
           );
         },
         onError: async ({ error }) => {
-          await failAgentRun(this.getEnv(), identity, trace, {
-            runId,
-            error,
-            startedAtMs: requestStartedAtMs,
-          });
+          if (markTerminal("failed")) {
+            await failAgentRun(this.getEnv(), identity, trace, {
+              runId,
+              error,
+              startedAtMs: requestStartedAtMs,
+            });
+          }
         },
       });
 
       return result.toUIMessageStreamResponse();
     } catch (error) {
-      await failAgentRun(this.getEnv(), identity, trace, {
-        runId,
-        error,
-        startedAtMs: requestStartedAtMs,
-      });
+      if (markTerminal("failed")) {
+        await failAgentRun(this.getEnv(), identity, trace, {
+          runId,
+          error,
+          startedAtMs: requestStartedAtMs,
+        });
+      }
       throw error;
     }
   }
