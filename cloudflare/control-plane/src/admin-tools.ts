@@ -42,6 +42,7 @@ const urlInspectMaxBytes = 128 * 1024;
 type ToolRunIdentity = AgentIdentity & {
   runId: string;
   workflowIntentId: string;
+  source?: "admin" | "approval" | "model";
 };
 
 type ToolError = {
@@ -65,6 +66,8 @@ type UrlInspectOutput = {
   summary: string;
   retryable: boolean;
 };
+
+type UrlInspectRunSource = "admin" | "approval" | "model";
 
 const toolSummaries = [
   {
@@ -220,7 +223,7 @@ export const resolveToolSummaries = async (env: Env, identity: AgentIdentity) =>
       return {
         ...tool,
         adminVisible: adminPolicy.decision === "allow" && adminPolicy.adminVisible,
-        modelVisible: false,
+        modelVisible: modelPolicy.decision === "allow" && modelPolicy.modelVisible,
         reason,
         permissionStatus: permission?.status,
         policyReference: adminPolicy.policyReference,
@@ -284,7 +287,7 @@ const isBlockedHostname = (hostname: string) => {
   );
 };
 
-const validateUrlInspectInput = (
+export const validateUrlInspectInput = (
   input: unknown,
 ): { ok: true; url: URL } | { ok: false; status: 400 | 403; error: ToolError } => {
   const rawUrl = isRecord(input) && typeof input.url === "string" ? input.url.trim() : "";
@@ -392,7 +395,7 @@ const concatChunks = (chunks: Uint8Array[], totalBytes: number) => {
   return merged;
 };
 
-const inspectUrl = async (
+export const inspectUrl = async (
   url: URL,
 ): Promise<{ ok: true; output: UrlInspectOutput } | { ok: false; error: ToolError }> => {
   const controller = new AbortController();
@@ -451,10 +454,17 @@ const inspectUrl = async (
   }
 };
 
-const insertToolRunRecords = async (
+export const insertToolRunRecords = async (
   env: Env,
   identity: AgentIdentity,
-  input: { url: URL; executionMode: ExecutionMode; policyDecisionId: string },
+  input: {
+    url: URL;
+    executionMode: ExecutionMode;
+    policyDecisionId: string;
+    source?: UrlInspectRunSource;
+    parentRunId?: string | null;
+    traceId?: string | null;
+  },
 ): Promise<ToolRunIdentity> => {
   const timestamp = new Date().toISOString();
   const workflowIntentId = createId("cf-intent");
@@ -508,6 +518,9 @@ const insertToolRunRecords = async (
         toolName: urlInspectToolName,
         policy: urlInspectPolicy,
         policyDecisionId: input.policyDecisionId,
+        source: input.source ?? "admin",
+        parentRunId: input.parentRunId ?? undefined,
+        traceId: input.traceId ?? undefined,
       }),
       timestamp,
       timestamp,
@@ -535,15 +548,17 @@ const insertToolRunRecords = async (
       toJson({
         input: { url: input.url.toString() },
         execution,
-        source: "admin",
+        source: input.source ?? "admin",
         policyDecisionId: input.policyDecisionId,
+        parentRunId: input.parentRunId ?? undefined,
+        traceId: input.traceId ?? undefined,
       }),
       timestamp,
       timestamp,
     )
     .run();
 
-  const runIdentity = { ...identity, runId, workflowIntentId };
+  const runIdentity = { ...identity, runId, workflowIntentId, source: input.source ?? "admin" };
   await appendControlAudit(env, {
     ...runIdentity,
     action: "intent.created",
@@ -560,10 +575,17 @@ const insertToolRunRecords = async (
   });
   await appendControlPlaneEvent(env, identity, {
     type: "tool.started",
-    summary: "Started url.inspect from Admin.",
+    summary: "Started url.inspect tool call.",
     targetType: "toolCall",
     targetId: toolCallId,
-    data: { runId, workflowIntentId, toolName: urlInspectToolName },
+    data: {
+      runId,
+      workflowIntentId,
+      toolName: urlInspectToolName,
+      source: input.source ?? "admin",
+      parentRunId: input.parentRunId ?? undefined,
+      traceId: input.traceId ?? undefined,
+    },
   });
 
   return runIdentity;
@@ -703,7 +725,7 @@ const insertApprovalInterruptedRun = async (
   return { runId, workflowIntentId, approvalRequestId };
 };
 
-const finishToolRun = async (
+export const finishToolRun = async (
   env: Env,
   identity: ToolRunIdentity,
   result: { ok: true; output: UrlInspectOutput } | { ok: false; error: ToolError },
@@ -752,7 +774,7 @@ const finishToolRun = async (
       summary: "url.inspect failed.",
       targetType: "toolCall",
       targetId: toolCallId,
-      data: { runId: identity.runId, error: result.error },
+      data: { runId: identity.runId, error: result.error, source: identity.source ?? "admin" },
     });
     return { toolCallId, artifact: null };
   }
@@ -815,10 +837,15 @@ const finishToolRun = async (
   });
   await appendControlPlaneEvent(env, identity, {
     type: "tool.finished",
-    summary: "Finished url.inspect from Admin.",
+    summary: "Finished url.inspect tool call.",
     targetType: "toolCall",
     targetId: toolCallId,
-    data: { runId: identity.runId, artifactId, toolName: urlInspectToolName },
+    data: {
+      runId: identity.runId,
+      artifactId,
+      toolName: urlInspectToolName,
+      source: identity.source ?? "admin",
+    },
   });
 
   return { toolCallId, artifact: artifactRef };
@@ -871,6 +898,235 @@ const updateToolRunStatus = async (
     .run();
 };
 
+const readApprovalRequest = async (env: Env, identity: AgentIdentity, approvalRequestId: string) =>
+  env.DB.prepare(
+    `SELECT id, user_id, workspace_id, agent_id, workflow_intent_id, run_id, tool_id, status,
+            reason, data_json, created_at, updated_at
+     FROM control_approval_requests
+     WHERE id = ? AND user_id = ? AND workspace_id = ? AND agent_id = ?
+     LIMIT 1`,
+  )
+    .bind(approvalRequestId, identity.scope.userId, identity.scope.workspaceId, identity.agentId)
+    .first<ControlApprovalRequestRow>();
+
+const updateApprovalStatus = async (
+  env: Env,
+  approval: ControlApprovalRequestRow,
+  status: "approved" | "denied" | "failed",
+  data: Record<string, unknown>,
+) => {
+  const timestamp = new Date().toISOString();
+  const existing = parseDataJson(approval.data_json);
+  await env.DB.prepare(
+    `UPDATE control_approval_requests
+     SET status = ?, data_json = ?, updated_at = ?
+     WHERE id = ? AND user_id = ? AND workspace_id = ?`,
+  )
+    .bind(
+      status,
+      toJson({
+        ...existing,
+        ...data,
+        decidedAt: timestamp,
+      }),
+      timestamp,
+      approval.id,
+      approval.user_id,
+      approval.workspace_id,
+    )
+    .run();
+};
+
+const markInterruptedRunRunning = async (
+  env: Env,
+  identity: AgentIdentity,
+  approval: ControlApprovalRequestRow,
+) => {
+  const timestamp = new Date().toISOString();
+  await env.DB.prepare(
+    `UPDATE control_runs
+     SET status = ?, heartbeat_at = ?, last_event_at = ?, data_json = ?, updated_at = ?
+     WHERE id = ? AND user_id = ? AND workspace_id = ? AND agent_id = ?`,
+  )
+    .bind(
+      "running",
+      timestamp,
+      timestamp,
+      toJson({
+        displayName: "URL inspect",
+        summary: "Approval granted; URL inspection resumed.",
+        toolName: urlInspectToolName,
+        approvalRequestId: approval.id,
+      }),
+      timestamp,
+      approval.run_id,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.agentId,
+    )
+    .run();
+
+  await env.DB.prepare(
+    `UPDATE control_workflow_intents
+     SET status = ?, updated_at = ?
+     WHERE id = ? AND user_id = ? AND workspace_id = ? AND agent_id = ?`,
+  )
+    .bind(
+      "running",
+      timestamp,
+      approval.workflow_intent_id,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.agentId,
+    )
+    .run();
+};
+
+const markInterruptedRunCancelled = async (
+  env: Env,
+  identity: AgentIdentity,
+  approval: ControlApprovalRequestRow,
+  summary: string,
+) => {
+  const timestamp = new Date().toISOString();
+  await env.DB.prepare(
+    `UPDATE control_runs
+     SET status = ?, heartbeat_at = ?, last_event_at = ?, completed_at = ?, data_json = ?,
+         updated_at = ?
+     WHERE id = ? AND user_id = ? AND workspace_id = ? AND agent_id = ?`,
+  )
+    .bind(
+      "cancelled",
+      timestamp,
+      timestamp,
+      timestamp,
+      toJson({
+        displayName: "URL inspect",
+        summary,
+        toolName: urlInspectToolName,
+        approvalRequestId: approval.id,
+      }),
+      timestamp,
+      approval.run_id,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.agentId,
+    )
+    .run();
+
+  await env.DB.prepare(
+    `UPDATE control_workflow_intents
+     SET status = ?, updated_at = ?
+     WHERE id = ? AND user_id = ? AND workspace_id = ? AND agent_id = ?`,
+  )
+    .bind(
+      "cancelled",
+      timestamp,
+      approval.workflow_intent_id,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.agentId,
+    )
+    .run();
+};
+
+const insertApprovedToolCallRecord = async (
+  env: Env,
+  identity: AgentIdentity,
+  approval: ControlApprovalRequestRow,
+  input: { url: URL; executionMode: ExecutionMode; policyDecisionId: string },
+): Promise<ToolRunIdentity> => {
+  const timestamp = new Date().toISOString();
+  const toolCallId = `${approval.run_id}-tool-url-inspect`;
+  const execution = { mode: input.executionMode, policy: urlInspectPolicy };
+
+  await env.DB.prepare(
+    `INSERT INTO control_tool_calls (
+       id, user_id, workspace_id, agent_id, workflow_intent_id, run_id, tool_id, status,
+       input_summary, artifact_refs_json, data_json, started_at, created_at
+     )
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      toolCallId,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.agentId,
+      approval.workflow_intent_id,
+      approval.run_id,
+      urlInspectToolName,
+      "running",
+      `Inspect ${input.url.toString()}`,
+      "[]",
+      toJson({
+        input: { url: input.url.toString() },
+        execution,
+        source: "approval",
+        approvalRequestId: approval.id,
+        policyDecisionId: input.policyDecisionId,
+      }),
+      timestamp,
+      timestamp,
+    )
+    .run();
+
+  const runIdentity = {
+    ...identity,
+    runId: approval.run_id,
+    workflowIntentId: approval.workflow_intent_id,
+    source: "approval" as const,
+  };
+  await appendControlAudit(env, {
+    ...runIdentity,
+    action: "run.resumed",
+    summary: "Resumed URL inspection after approval.",
+    targetType: "run",
+    targetId: approval.run_id,
+    data: { toolName: urlInspectToolName, approvalRequestId: approval.id },
+  });
+  await appendControlAudit(env, {
+    ...runIdentity,
+    action: "tool.started",
+    summary: "Started approved url.inspect tool call.",
+    targetType: "toolCall",
+    targetId: toolCallId,
+  });
+  await appendControlPlaneEvent(env, identity, {
+    type: "run.resumed",
+    summary: "Resumed URL inspection after approval.",
+    targetType: "run",
+    targetId: approval.run_id,
+    data: {
+      runId: approval.run_id,
+      workflowIntentId: approval.workflow_intent_id,
+      toolName: urlInspectToolName,
+      approvalRequestId: approval.id,
+    },
+  });
+  await appendControlPlaneEvent(env, identity, {
+    type: "tool.started",
+    summary: "Started approved url.inspect tool call.",
+    targetType: "toolCall",
+    targetId: toolCallId,
+    data: {
+      runId: approval.run_id,
+      workflowIntentId: approval.workflow_intent_id,
+      toolName: urlInspectToolName,
+      approvalRequestId: approval.id,
+    },
+  });
+
+  return runIdentity;
+};
+
+const approvalRequestBody = (approval: ControlApprovalRequestRow, status?: string) => ({
+  id: approval.id,
+  status: status ?? approval.status,
+  reason: approval.reason,
+  createdAt: approval.created_at,
+  updatedAt: approval.updated_at,
+});
+
 export const handleListTools = async (env: Env, identity: AgentIdentity) => {
   const [tools, latestToolCalls, latestArtifacts] = await Promise.all([
     resolveToolSummaries(env, identity),
@@ -900,6 +1156,8 @@ export const handleUpdateToolPolicy = async (
     isRecord(body) && typeof body.requiresApproval === "boolean"
       ? body.requiresApproval
       : undefined;
+  const modelVisible =
+    isRecord(body) && typeof body.modelVisible === "boolean" ? body.modelVisible : undefined;
   const killSwitchReason =
     isRecord(body) && typeof body.killSwitchReason === "string"
       ? body.killSwitchReason.trim().slice(0, 240)
@@ -935,14 +1193,19 @@ export const handleUpdateToolPolicy = async (
     );
   }
 
-  if (status === undefined && requiresApproval === undefined && killSwitchReason === undefined) {
+  if (
+    status === undefined &&
+    requiresApproval === undefined &&
+    modelVisible === undefined &&
+    killSwitchReason === undefined
+  ) {
     return json(
       {
         ok: false,
         error: "No policy changes requested",
         details: toolError(
           "invalid_policy_update",
-          "Provide status, requiresApproval, or killSwitchReason.",
+          "Provide status, requiresApproval, modelVisible, or killSwitchReason.",
           false,
         ),
       },
@@ -966,6 +1229,7 @@ export const handleUpdateToolPolicy = async (
         action: "tool.policy.update",
         requestedStatus: status,
         requestedRequiresApproval: requiresApproval,
+        requestedModelVisible: modelVisible,
       },
     });
     return json(
@@ -984,6 +1248,7 @@ export const handleUpdateToolPolicy = async (
     status: status as ToolPermissionStatus | undefined,
     requiresApproval,
     killSwitchReason,
+    modelVisible,
   });
   const tools = await resolveToolSummaries(env, identity);
   const tool = tools.find((item) => item.name === toolName);
@@ -992,7 +1257,13 @@ export const handleUpdateToolPolicy = async (
     summary: `${toolName} policy updated.`,
     targetType: "toolPermission",
     targetId: permission?.id,
-    data: { toolName, status: permission?.status, requiresApproval, killSwitchReason },
+    data: {
+      toolName,
+      status: permission?.status,
+      requiresApproval,
+      modelVisible,
+      killSwitchReason,
+    },
   });
   await dispatchWorkbenchSessionEvent(env, identity, {
     type: "admin.summary.invalidated",
@@ -1008,6 +1279,7 @@ export const handleUpdateToolPolicy = async (
     toolName,
     status: permission?.status,
     requiresApproval: tool?.approvalRequired,
+    modelVisible: tool?.modelVisible,
     permissionId: permission?.id,
     tool,
   });
@@ -1021,6 +1293,364 @@ const finishToolTrace = async (
 ) => {
   if (!trace) return;
   await finishTrace(env, identity, trace, input);
+};
+
+const requireAdminToolPolicy = async (env: Env, identity: AgentIdentity) => {
+  const membership = await selectMembership(env, identity.scope.userId, identity.scope.workspaceId);
+  if (membership && membership.status === "active" && isAdminMembership(membership)) {
+    return { ok: true as const, membership };
+  }
+  const policy = await evaluateToolPolicy(env, identity, {
+    membership,
+    toolName: urlInspectToolName,
+    executionMode: "dry_run",
+    surface: "admin_list",
+  });
+  const decisionId = await recordToolPolicyDecision(env, identity, {
+    toolName: urlInspectToolName,
+    surface: "admin_list",
+    result: policy,
+    data: { action: "tool.approval.manage" },
+  });
+  return { ok: false as const, policy, decisionId };
+};
+
+export const handleApproveToolApproval = async (
+  env: Env,
+  identity: AgentIdentity,
+  approvalRequestId: string,
+) => {
+  if (!approvalRequestId) {
+    return json(
+      {
+        ok: false,
+        error: "Approval request id is required",
+        details: toolError("invalid_approval_request", "Approval request id is required.", false),
+      },
+      { status: 400 },
+    );
+  }
+
+  const admin = await requireAdminToolPolicy(env, identity);
+  if (!admin.ok) {
+    return json(
+      {
+        ok: false,
+        error: admin.policy.reason,
+        details: toolPolicyError(admin.policy),
+        policyDecisionId: admin.decisionId,
+      },
+      { status: admin.policy.status },
+    );
+  }
+
+  const approval = await readApprovalRequest(env, identity, approvalRequestId);
+  if (!approval) {
+    return json(
+      {
+        ok: false,
+        error: "Approval request not found",
+        details: toolError(
+          "approval_not_found",
+          "Approval request was not found in this workspace scope.",
+          false,
+        ),
+      },
+      { status: 404 },
+    );
+  }
+  if (approval.status !== "requested") {
+    return json(
+      {
+        ok: false,
+        error: "Approval request is already decided",
+        approvalRequest: approvalRequestBody(approval),
+        details: toolError(
+          "approval_already_decided",
+          "Only requested approvals can be approved.",
+          false,
+        ),
+      },
+      { status: 409 },
+    );
+  }
+
+  const approvalData = parseDataJson(approval.data_json);
+  const originalInput = isRecord(approvalData.input) ? approvalData.input : undefined;
+  const validated = validateUrlInspectInput(originalInput);
+  if (!validated.ok) {
+    await updateApprovalStatus(env, approval, "failed", {
+      decidedByUserId: identity.scope.userId,
+      error: validated.error,
+    });
+    await markInterruptedRunCancelled(env, identity, approval, validated.error.message);
+    return json(
+      {
+        ok: false,
+        error: validated.error.message,
+        approvalRequest: approvalRequestBody(approval, "failed"),
+        details: validated.error,
+      },
+      { status: validated.status },
+    );
+  }
+
+  const policy = await evaluateToolPolicy(env, identity, {
+    membership: admin.membership,
+    toolName: approval.tool_id,
+    executionMode: "dry_run",
+    surface: "admin_resume",
+  });
+  const policyDecisionId = await recordToolPolicyDecision(env, identity, {
+    toolName: approval.tool_id,
+    surface: "admin_resume",
+    result: policy,
+    data: { action: "approval.approve", approvalRequestId: approval.id },
+  });
+  if (policy.decision === "block") {
+    return json(
+      {
+        ok: false,
+        error: policy.reason,
+        approvalRequest: approvalRequestBody(approval),
+        details: toolPolicyError(policy),
+        policyDecisionId,
+      },
+      { status: policy.status },
+    );
+  }
+
+  await updateApprovalStatus(env, approval, "approved", {
+    decidedByUserId: identity.scope.userId,
+    policyDecisionId,
+  });
+  await markInterruptedRunRunning(env, identity, approval);
+  await appendControlAudit(env, {
+    ...identity,
+    runId: approval.run_id,
+    workflowIntentId: approval.workflow_intent_id,
+    action: "approval.approved",
+    summary: "Approved url.inspect execution.",
+    targetType: "approvalRequest",
+    targetId: approval.id,
+    data: { toolName: urlInspectToolName, policyDecisionId },
+  });
+  await appendControlPlaneEvent(env, identity, {
+    type: "approval.approved",
+    summary: "Approved url.inspect execution.",
+    targetType: "approvalRequest",
+    targetId: approval.id,
+    data: {
+      runId: approval.run_id,
+      workflowIntentId: approval.workflow_intent_id,
+      toolName: urlInspectToolName,
+      policyDecisionId,
+    },
+  });
+
+  const runIdentity = await insertApprovedToolCallRecord(env, identity, approval, {
+    url: validated.url,
+    executionMode: policy.executionMode,
+    policyDecisionId,
+  });
+  const result = await inspectUrl(validated.url);
+  const finished = await finishToolRun(env, runIdentity, result);
+  await dispatchWorkbenchSessionEvent(env, identity, {
+    type: "tool.run.updated",
+    data: {
+      toolName: urlInspectToolName,
+      runId: approval.run_id,
+      workflowIntentId: approval.workflow_intent_id,
+      toolCallId: finished.toolCallId,
+      artifactId: finished.artifact?.id ?? null,
+      approvalRequestId: approval.id,
+      status: result.ok ? "completed" : "failed",
+      errorCode: result.ok ? undefined : result.error.code,
+    },
+  });
+  await dispatchWorkbenchSessionEvent(env, identity, {
+    type: "admin.summary.invalidated",
+    data: {
+      reason: "approval-approved",
+      toolName: urlInspectToolName,
+      runId: approval.run_id,
+    },
+  });
+
+  const [latestToolCalls, latestArtifacts] = await Promise.all([
+    listLatestToolCalls(env, identity.scope),
+    listLatestArtifacts(env, identity.scope),
+  ]);
+  const toolCall = latestToolCalls.find((call) => call.id === finished.toolCallId) ?? null;
+  const artifact = finished.artifact
+    ? (latestArtifacts.find((item) => item.id === finished.artifact?.id) ?? finished.artifact)
+    : null;
+
+  return json(
+    {
+      ok: result.ok,
+      run: {
+        id: approval.run_id,
+        workflowIntentId: approval.workflow_intent_id,
+        status: result.ok ? "completed" : "failed",
+        execution: { mode: policy.executionMode, policy: urlInspectPolicy },
+        policyDecisionId,
+      },
+      approvalRequest: approvalRequestBody(approval, "approved"),
+      toolCall,
+      artifact,
+      error: result.ok ? undefined : result.error,
+      policyDecisionId,
+    },
+    { status: result.ok ? 200 : 502 },
+  );
+};
+
+export const handleDenyToolApproval = async (
+  request: Request,
+  env: Env,
+  identity: AgentIdentity,
+  approvalRequestId: string,
+) => {
+  if (!approvalRequestId) {
+    return json(
+      {
+        ok: false,
+        error: "Approval request id is required",
+        details: toolError("invalid_approval_request", "Approval request id is required.", false),
+      },
+      { status: 400 },
+    );
+  }
+
+  const admin = await requireAdminToolPolicy(env, identity);
+  if (!admin.ok) {
+    return json(
+      {
+        ok: false,
+        error: admin.policy.reason,
+        details: toolPolicyError(admin.policy),
+        policyDecisionId: admin.decisionId,
+      },
+      { status: admin.policy.status },
+    );
+  }
+
+  const approval = await readApprovalRequest(env, identity, approvalRequestId);
+  if (!approval) {
+    return json(
+      {
+        ok: false,
+        error: "Approval request not found",
+        details: toolError(
+          "approval_not_found",
+          "Approval request was not found in this workspace scope.",
+          false,
+        ),
+      },
+      { status: 404 },
+    );
+  }
+  if (approval.status !== "requested") {
+    return json(
+      {
+        ok: false,
+        error: "Approval request is already decided",
+        approvalRequest: approvalRequestBody(approval),
+        details: toolError(
+          "approval_already_decided",
+          "Only requested approvals can be denied.",
+          false,
+        ),
+      },
+      { status: 409 },
+    );
+  }
+
+  const body = parseJson(await request.text());
+  const denyReason =
+    isRecord(body) && typeof body.reason === "string" && body.reason.trim()
+      ? body.reason.trim().slice(0, 240)
+      : "Approval denied by workspace admin.";
+  await updateApprovalStatus(env, approval, "denied", {
+    decidedByUserId: identity.scope.userId,
+    denyReason,
+  });
+  await markInterruptedRunCancelled(env, identity, approval, denyReason);
+  await appendControlAudit(env, {
+    ...identity,
+    runId: approval.run_id,
+    workflowIntentId: approval.workflow_intent_id,
+    action: "approval.denied",
+    summary: denyReason,
+    targetType: "approvalRequest",
+    targetId: approval.id,
+    data: { toolName: urlInspectToolName },
+  });
+  await appendControlAudit(env, {
+    ...identity,
+    runId: approval.run_id,
+    workflowIntentId: approval.workflow_intent_id,
+    action: "run.cancelled",
+    summary: denyReason,
+    targetType: "run",
+    targetId: approval.run_id,
+    data: { toolName: urlInspectToolName, approvalRequestId: approval.id },
+  });
+  await appendControlPlaneEvent(env, identity, {
+    type: "approval.denied",
+    summary: denyReason,
+    targetType: "approvalRequest",
+    targetId: approval.id,
+    data: {
+      runId: approval.run_id,
+      workflowIntentId: approval.workflow_intent_id,
+      toolName: urlInspectToolName,
+    },
+  });
+  await appendControlPlaneEvent(env, identity, {
+    type: "run.cancelled",
+    summary: denyReason,
+    targetType: "run",
+    targetId: approval.run_id,
+    data: {
+      runId: approval.run_id,
+      workflowIntentId: approval.workflow_intent_id,
+      toolName: urlInspectToolName,
+      approvalRequestId: approval.id,
+    },
+  });
+  await dispatchWorkbenchSessionEvent(env, identity, {
+    type: "tool.run.updated",
+    data: {
+      toolName: urlInspectToolName,
+      runId: approval.run_id,
+      workflowIntentId: approval.workflow_intent_id,
+      approvalRequestId: approval.id,
+      status: "cancelled",
+    },
+  });
+  await dispatchWorkbenchSessionEvent(env, identity, {
+    type: "admin.summary.invalidated",
+    data: {
+      reason: "approval-denied",
+      toolName: urlInspectToolName,
+      runId: approval.run_id,
+    },
+  });
+
+  return json({
+    ok: true,
+    run: {
+      id: approval.run_id,
+      workflowIntentId: approval.workflow_intent_id,
+      status: "cancelled",
+      execution: { mode: "dry_run", policy: urlInspectPolicy },
+    },
+    approvalRequest: approvalRequestBody(approval, "denied"),
+    toolCall: null,
+    artifact: null,
+  });
 };
 
 export const handleRunTool = async (

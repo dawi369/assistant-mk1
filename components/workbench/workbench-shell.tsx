@@ -12,10 +12,7 @@ import {
 import { AuthButton } from "@/components/auth/auth-button";
 import { WorkbenchComposerFocusProvider } from "@/components/workbench/composer-focus-context";
 import { AdminPanel } from "@/components/workbench/dev-monitor-drawer";
-import {
-  AssistantThreadHistorySidebar,
-  ThreadHistorySidebar,
-} from "@/components/workbench/thread-history-sidebar";
+import { ThreadHistorySidebar } from "@/components/workbench/thread-history-sidebar";
 import { WorkbenchAssistantEvents } from "@/components/workbench/workbench-assistant-events";
 import { WorkbenchRuntimeHint } from "@/components/workbench/workbench-runtime-hint";
 import {
@@ -38,7 +35,7 @@ function WorkbenchShellContent() {
   const [adminAccess, setAdminAccess] = useState<{ isAdmin: boolean } | null>(null);
   const [adminNotice, setAdminNotice] = useState<string | null>(null);
   const { user, loading } = useAuth();
-  const { connection, createThread, session } = useWorkbenchAgentConnection();
+  const { connection, createThread, isInitialLoading } = useWorkbenchAgentConnection();
 
   useEffect(() => {
     if (loading) return;
@@ -123,13 +120,15 @@ function WorkbenchShellContent() {
               </div>
             ) : null}
           </div>
-          {!connection && session?.isStale ? <ThreadHistorySidebar disableNewChat /> : null}
+          <ThreadHistorySidebar
+            disableNewChat={!connection}
+            disableThreadActions={!connection || isInitialLoading}
+          />
+          <div className="absolute top-14 right-3 z-20 flex max-w-[calc(100vw-1.5rem)] flex-col items-end gap-2">
+            <WorkbenchRuntimeHint onOpenAdmin={openAdmin} />
+          </div>
           <Assistant>
-            <AssistantThreadHistorySidebar />
             <WorkbenchAssistantEvents />
-            <div className="absolute top-14 right-3 z-20 flex max-w-[calc(100vw-1.5rem)] flex-col items-end gap-2">
-              <WorkbenchRuntimeHint onOpenAdmin={openAdmin} />
-            </div>
             <AdminPanel open={adminOpen} onOpenChange={setAdminOpen} />
           </Assistant>
         </AssistantSlashCommandProvider>

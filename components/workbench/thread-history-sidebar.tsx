@@ -13,11 +13,26 @@ export function AssistantThreadHistorySidebar() {
   return <ThreadHistorySidebar disableNewChat={isRunning} />;
 }
 
-export function ThreadHistorySidebar({ disableNewChat = false }: { disableNewChat?: boolean }) {
-  const { session, threads, pending, error, isInitialLoading, isTransitioning, createThread } =
-    useWorkbenchAgentConnection();
+export function ThreadHistorySidebar({
+  disableNewChat = false,
+  disableThreadActions = false,
+}: {
+  disableNewChat?: boolean;
+  disableThreadActions?: boolean;
+}) {
+  const {
+    connection,
+    session,
+    threads,
+    pending,
+    error,
+    isInitialLoading,
+    isTransitioning,
+    createThread,
+  } = useWorkbenchAgentConnection();
   const creatingThread = pending?.type === "create";
   const isCached = session?.isStale === true;
+  const actionsDisabled = disableThreadActions || !connection || isCached;
 
   return (
     <aside className="border-border bg-background/95 absolute inset-y-0 left-0 z-10 hidden w-64 flex-col border-r backdrop-blur md:flex">
@@ -31,9 +46,9 @@ export function ThreadHistorySidebar({ disableNewChat = false }: { disableNewCha
             type="button"
             variant="ghost"
             size="icon-sm"
-            disabled={disableNewChat || creatingThread}
+            disabled={disableNewChat || creatingThread || actionsDisabled}
             aria-label="New chat"
-            title="New chat"
+            title={actionsDisabled ? "Connect to Cloudflare before starting a chat" : "New chat"}
             onClick={() => void createThread()}
           >
             {creatingThread ? (
@@ -55,7 +70,7 @@ export function ThreadHistorySidebar({ disableNewChat = false }: { disableNewCha
             <>
               {isCached ? (
                 <div className="text-muted-foreground px-2 pb-2 text-[11px]">
-                  Showing cached chats...
+                  Showing cached chats while Cloudflare connects...
                 </div>
               ) : isTransitioning ? (
                 <div className="text-muted-foreground px-2 pb-2 text-[11px]">
@@ -63,7 +78,11 @@ export function ThreadHistorySidebar({ disableNewChat = false }: { disableNewCha
                 </div>
               ) : null}
               {threads.map((thread) => (
-                <ThreadHistoryItem key={thread.threadId} thread={thread} />
+                <ThreadHistoryItem
+                  key={thread.threadId}
+                  thread={thread}
+                  disabled={actionsDisabled}
+                />
               ))}
             </>
           )}
@@ -73,16 +92,24 @@ export function ThreadHistorySidebar({ disableNewChat = false }: { disableNewCha
   );
 }
 
-function ThreadHistoryItem({ thread }: { thread: ChatThreadSummary }) {
+function ThreadHistoryItem({
+  thread,
+  disabled = false,
+}: {
+  thread: ChatThreadSummary;
+  disabled?: boolean;
+}) {
   const { activateThread, pending } = useWorkbenchAgentConnection();
   const pendingActivation = pending?.type === "activate" && pending.threadId === thread.threadId;
+  const isDisabled = disabled || pendingActivation;
 
   return (
     <button
       type="button"
-      disabled={pendingActivation}
+      disabled={isDisabled}
       className={cn(
-        "hover:bg-muted/70 mb-1 flex w-full min-w-0 items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors disabled:cursor-wait",
+        "hover:bg-muted/70 mb-1 flex w-full min-w-0 items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-70",
+        pendingActivation && "disabled:cursor-wait",
         thread.isActive && "bg-muted",
       )}
       onClick={() => void activateThread(thread.threadId)}

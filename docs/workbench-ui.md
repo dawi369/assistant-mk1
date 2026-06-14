@@ -72,6 +72,13 @@ and selecting an old thread may highlight the cached row immediately, but
 Cloudflare must still confirm the active thread/agent and mint the signed Agent
 token before the runtime actually switches.
 
+The workbench shell should paint before the Cloudflare Agent token is ready.
+Cached workspace/thread chrome can render immediately, the right-side runtime
+hint should show Cloudflare connection state, and sidebar chat actions should
+remain disabled until Cloudflare returns a live connection for the active
+workspace/thread. This keeps first paint fast without inventing browser-owned
+session state.
+
 The shell subscribes to one Cloudflare-owned session event stream after a
 trusted session is available. Sidebar state, runtime hint state, Admin
 invalidation, and future workflow/tool progress should update from

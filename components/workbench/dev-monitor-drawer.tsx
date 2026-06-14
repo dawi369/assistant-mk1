@@ -50,6 +50,7 @@ import type {
   CloudflareAgentBehaviorTemplatesResponse,
   CloudflareAdminSummaryResponse,
   CloudflareOwnedDemoRunResponse,
+  CloudflareToolApprovalActionResponse,
   CloudflareToolPolicyUpdateResponse,
   CloudflareToolRunResponse,
   RuntimeSpan,
@@ -63,6 +64,7 @@ const agentsPath = "/api/workbench/agents";
 const behaviorTemplatesPath = "/api/workbench/agent-behavior-templates";
 const toolRunsPath = "/api/workbench/tools/runs";
 const toolPolicyPath = "/api/workbench/tools/policy";
+const toolApprovalsPath = "/api/workbench/tools/approvals";
 const agentModelOptions = ["deepseek/deepseek-v4-flash", "openai/gpt-4.1-mini"] as const;
 const defaultBehaviorTemplateByProfile = {
   default: "assistant-general",
@@ -348,6 +350,7 @@ export function AdminPanel({
   const [isStarting, setIsStarting] = useState(false);
   const [isRunningTool, setIsRunningTool] = useState(false);
   const [updatingToolPolicy, setUpdatingToolPolicy] = useState<string | null>(null);
+  const [updatingApprovalId, setUpdatingApprovalId] = useState<string | null>(null);
   const [isCreatingWorkspace, setIsCreatingWorkspace] = useState(false);
   const [isCreatingAgent, setIsCreatingAgent] = useState(false);
   const [activatingWorkspaceId, setActivatingWorkspaceId] = useState<string | null>(null);
@@ -514,6 +517,7 @@ export function AdminPanel({
     status?: "enabled" | "disabled";
     requiresApproval?: boolean;
     killSwitchReason?: string;
+    modelVisible?: boolean;
   }) => {
     setUpdatingToolPolicy("url.inspect");
     setFetchError(null);
@@ -536,6 +540,30 @@ export function AdminPanel({
       );
     } finally {
       setUpdatingToolPolicy(null);
+    }
+  };
+
+  const decideToolApproval = async (approvalRequestId: string, action: "approve" | "deny") => {
+    setUpdatingApprovalId(approvalRequestId);
+    setFetchError(null);
+    try {
+      await readJsonResponse<CloudflareToolApprovalActionResponse>(
+        await fetch(`${toolApprovalsPath}/${encodeURIComponent(approvalRequestId)}/${action}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body:
+            action === "deny" ? JSON.stringify({ reason: "Denied from Admin Tools." }) : undefined,
+        }),
+        action === "approve" ? "Failed to approve tool run" : "Failed to deny tool run",
+      );
+      requestWorkbenchSummaryRefresh();
+    } catch (approvalError) {
+      setFetchError(
+        approvalError instanceof Error ? approvalError.message : "Failed to update approval",
+      );
+      requestWorkbenchSummaryRefresh();
+    } finally {
+      setUpdatingApprovalId(null);
     }
   };
 
@@ -1150,7 +1178,12 @@ export function AdminPanel({
                               <span className="font-medium">Latest approval request</span>
                               <StatusPill
                                 status={tool.latestApprovalRequest.status ?? "requested"}
-                                tone="running"
+                                tone={
+                                  tool.latestApprovalRequest.status === "approved" ||
+                                  tool.latestApprovalRequest.status === "denied"
+                                    ? "completed"
+                                    : "running"
+                                }
                               />
                             </div>
                             <p className="text-muted-foreground mt-1">
@@ -1160,10 +1193,80 @@ export function AdminPanel({
                               label="Approval id"
                               value={tool.latestApprovalRequest.id ?? ""}
                             />
+                            {tool.latestApprovalRequest.status === "requested" &&
+                            tool.latestApprovalRequest.id ? (
+                              <div className="mt-2 flex justify-end gap-2">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={
+                                    updatingApprovalId === tool.latestApprovalRequest.id ||
+                                    !canManageAgents
+                                  }
+                                  onClick={() =>
+                                    void decideToolApproval(
+                                      tool.latestApprovalRequest?.id ?? "",
+                                      "deny",
+                                    )
+                                  }
+                                >
+                                  {updatingApprovalId === tool.latestApprovalRequest.id ? (
+                                    <Loader2Icon className="animate-spin" />
+                                  ) : (
+                                    <ShieldCheckIcon />
+                                  )}
+                                  Deny
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  disabled={
+                                    updatingApprovalId === tool.latestApprovalRequest.id ||
+                                    !canManageAgents
+                                  }
+                                  onClick={() =>
+                                    void decideToolApproval(
+                                      tool.latestApprovalRequest?.id ?? "",
+                                      "approve",
+                                    )
+                                  }
+                                >
+                                  {updatingApprovalId === tool.latestApprovalRequest.id ? (
+                                    <Loader2Icon className="animate-spin" />
+                                  ) : (
+                                    <PlayIcon />
+                                  )}
+                                  Approve
+                                </Button>
+                              </div>
+                            ) : null}
                           </div>
                         ) : null}
                         {tool.name === "url.inspect" ? (
                           <div className="mt-3 flex flex-wrap justify-end gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={
+                                updatingToolPolicy === tool.name ||
+                                !canManageAgents ||
+                                tool.approvalRequired
+                              }
+                              onClick={() =>
+                                updateUrlInspectPolicy({
+                                  modelVisible: !tool.modelVisible,
+                                })
+                              }
+                            >
+                              {updatingToolPolicy === tool.name ? (
+                                <Loader2Icon className="animate-spin" />
+                              ) : (
+                                <MessageSquareIcon />
+                              )}
+                              {tool.modelVisible ? "Hide from model" : "Expose to model"}
+                            </Button>
                             <Button
                               type="button"
                               size="sm"

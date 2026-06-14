@@ -9,6 +9,7 @@ import type {
   CloudflareRuntimeTraceResponse,
   CloudflareRuntimeTracesResponse,
   CloudflareToolPolicyUpdateResponse,
+  CloudflareToolApprovalActionResponse,
   CloudflareToolRunResponse,
   CloudflareToolsResponse,
   CloudflareOwnedDemoRunResponse,
@@ -30,6 +31,7 @@ export type {
   CloudflareRuntimeTraceResponse,
   CloudflareRuntimeTracesResponse,
   CloudflareToolPolicyUpdateResponse,
+  CloudflareToolApprovalActionResponse,
   CloudflareToolRunResponse,
   CloudflareToolsResponse,
   CloudflareOwnedDemoRunResponse,
@@ -176,11 +178,29 @@ export const updateCloudflareToolPolicy = (input: {
   status?: "enabled" | "disabled";
   requiresApproval?: boolean;
   killSwitchReason?: string;
+  modelVisible?: boolean;
 }) =>
   requestControlPlane<CloudflareToolPolicyUpdateResponse>("/tools/policy", {
     method: "POST",
     body: JSON.stringify(input),
   });
+
+export const approveCloudflareToolApproval = (approvalRequestId: Id) =>
+  requestControlPlane<CloudflareToolApprovalActionResponse>(
+    `/tools/approvals/${encodeURIComponent(approvalRequestId)}/approve`,
+    {
+      method: "POST",
+    },
+  );
+
+export const denyCloudflareToolApproval = (approvalRequestId: Id, input?: { reason?: string }) =>
+  requestControlPlane<CloudflareToolApprovalActionResponse>(
+    `/tools/approvals/${encodeURIComponent(approvalRequestId)}/deny`,
+    {
+      method: "POST",
+      body: JSON.stringify(input ?? {}),
+    },
+  );
 
 export const getChatRuntimeSummary = () =>
   requestControlPlane<ChatRuntimeSummaryResponse>("/chat/runtime-summary");

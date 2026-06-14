@@ -2,6 +2,7 @@ import { AIChatAgent } from "@cloudflare/ai-chat";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import {
   convertToModelMessages,
+  stepCountIs,
   streamText,
   type StreamTextOnFinishCallback,
   type ToolSet,
@@ -27,6 +28,7 @@ import {
 } from "./chat-boundary-store";
 import { finishTrace, recordSpan, type RuntimeTraceContext } from "./runtime-traces";
 import { dispatchWorkbenchSessionEvent } from "./session-coordinator";
+import { resolveModelVisibleTools } from "./model-tools";
 import type { AgentRow, Env, WorkerExecutionContext } from "./types";
 
 const getRequiredSecret = (env: Env) => {
@@ -254,6 +256,28 @@ export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
         }),
       );
 
+      const toolResolveStartedAtMs = Date.now();
+      const modelTools = await resolveModelVisibleTools(this.getEnv(), identity, {
+        chatRunId: runId,
+        threadId: claims.threadId,
+        traceId: trace.traceId,
+      });
+      queueTraceWrite(
+        recordSpan(this.getEnv(), identity, {
+          traceId: trace.traceId,
+          name: "Model tool exposure resolver",
+          layer: "cloudflare",
+          startedAtMs: toolResolveStartedAtMs,
+          endedAtMs: Date.now(),
+          status: modelTools.exposure.decision === "allow" ? "completed" : "blocked",
+          data: {
+            code: modelTools.exposure.code,
+            reason: modelTools.exposure.reason,
+            visibleToolCount: Object.keys(modelTools.tools).length,
+          },
+        }),
+      );
+
       providerStartedAtMs = Date.now();
       queueTraceWrite(
         recordSpan(this.getEnv(), identity, {
@@ -283,6 +307,8 @@ export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
         model: openrouter.chat(runtimeConfig.model),
         system: behaviorInstruction,
         messages: await convertToModelMessages(this.messages),
+        tools: modelTools.tools,
+        stopWhen: stepCountIs(3),
         temperature: runtimeConfig.temperature,
         maxOutputTokens: runtimeConfig.maxTokens,
         abortSignal: options?.abortSignal,

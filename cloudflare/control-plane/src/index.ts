@@ -7,7 +7,13 @@ import {
   handleStartCloudflareDemoRun,
 } from "./demo-runs";
 import { handleAdminWorkspaceSummary } from "./admin-summary";
-import { handleListTools, handleRunTool, handleUpdateToolPolicy } from "./admin-tools";
+import {
+  handleApproveToolApproval,
+  handleDenyToolApproval,
+  handleListTools,
+  handleRunTool,
+  handleUpdateToolPolicy,
+} from "./admin-tools";
 import {
   handleActivateAgent,
   handleCreateAgent,
@@ -121,6 +127,25 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
 
   if (request.method === "POST" && url.pathname === "/tools/policy") {
     return handleUpdateToolPolicy(request, env, identity);
+  }
+
+  const approveToolApprovalMatch = url.pathname.match(/^\/tools\/approvals\/([^/]+)\/approve$/);
+  if (request.method === "POST" && approveToolApprovalMatch?.[1]) {
+    return handleApproveToolApproval(
+      env,
+      identity,
+      decodeURIComponent(approveToolApprovalMatch[1]),
+    );
+  }
+
+  const denyToolApprovalMatch = url.pathname.match(/^\/tools\/approvals\/([^/]+)\/deny$/);
+  if (request.method === "POST" && denyToolApprovalMatch?.[1]) {
+    return handleDenyToolApproval(
+      request,
+      env,
+      identity,
+      decodeURIComponent(denyToolApprovalMatch[1]),
+    );
   }
 
   if (request.method === "GET" && url.pathname === "/runtime/traces/latest") {

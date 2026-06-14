@@ -74,11 +74,14 @@ type ToolRunResponse = {
   };
 };
 
+type ToolApprovalActionResponse = ToolRunResponse;
+
 type ToolPolicyUpdateResponse = {
   ok?: boolean;
   toolName?: string;
   status?: string;
   requiresApproval?: boolean;
+  modelVisible?: boolean;
   permissionId?: string;
   tool?: ToolSummary;
   error?: string;
@@ -316,6 +319,79 @@ runSmoke("Cloudflare tool admin smoke", async () => {
     throw new Error("latest approval request was not attached to /tools summary");
   }
 
+  const approved = await readJson<ToolApprovalActionResponse>(
+    `/tools/approvals/${encodeURIComponent(approvalRun.approvalRequest.id)}/approve`,
+    owner,
+    { method: "POST" },
+  );
+  if (!approved.ok || approved.run?.status !== "completed") {
+    throw new Error(`approved run should execute original request: ${JSON.stringify(approved)}`);
+  }
+  if (approved.toolCall?.toolId !== "url.inspect" || approved.toolCall.status !== "completed") {
+    throw new Error("approved run did not return a completed tool call");
+  }
+  if (!approved.artifact?.id) throw new Error("approved run did not create an artifact");
+
+  const approvedSummary = await readJson<AdminSummaryResponse>("/admin/workspace-summary", owner);
+  if (!approvedSummary.summary?.events?.some((event) => event.type === "approval.approved")) {
+    throw new Error("approval.approved control-plane event missing");
+  }
+  if (!approvedSummary.summary?.events?.some((event) => event.type === "run.resumed")) {
+    throw new Error("run.resumed control-plane event missing");
+  }
+
+  const denyRunResponse = await fetchRaw("/tools/runs", owner, {
+    method: "POST",
+    body: JSON.stringify({
+      toolName: "url.inspect",
+      executionMode: "dry_run",
+      input: { url: "https://example.com" },
+    }),
+  });
+  const denyRun = await readErrorBody(denyRunResponse, 403, "approval_required");
+  if (denyRun.approvalRequest?.status !== "requested" || !denyRun.approvalRequest.id) {
+    throw new Error(`deny approval request missing: ${JSON.stringify(denyRun)}`);
+  }
+  const denied = await readJson<ToolApprovalActionResponse>(
+    `/tools/approvals/${encodeURIComponent(denyRun.approvalRequest.id)}/deny`,
+    owner,
+    {
+      method: "POST",
+      body: JSON.stringify({ reason: "Smoke test denial." }),
+    },
+  );
+  if (!denied.ok || denied.run?.status !== "cancelled") {
+    throw new Error(`denied run should cancel: ${JSON.stringify(denied)}`);
+  }
+  if (denied.toolCall || denied.artifact) {
+    throw new Error(`denied run should not execute tool: ${JSON.stringify(denied)}`);
+  }
+
+  const deniedSummary = await readJson<AdminSummaryResponse>("/admin/workspace-summary", owner);
+  if (!deniedSummary.summary?.events?.some((event) => event.type === "approval.denied")) {
+    throw new Error("approval.denied control-plane event missing");
+  }
+  if (!deniedSummary.summary?.events?.some((event) => event.type === "run.cancelled")) {
+    throw new Error("run.cancelled control-plane event missing");
+  }
+
+  const pendingBeforeDisableResponse = await fetchRaw("/tools/runs", owner, {
+    method: "POST",
+    body: JSON.stringify({
+      toolName: "url.inspect",
+      executionMode: "dry_run",
+      input: { url: "https://example.com" },
+    }),
+  });
+  const pendingBeforeDisable = await readErrorBody(
+    pendingBeforeDisableResponse,
+    403,
+    "approval_required",
+  );
+  if (!pendingBeforeDisable.approvalRequest?.id) {
+    throw new Error("pending approval before disable was not created");
+  }
+
   const disabled = await readJson<ToolPolicyUpdateResponse>("/tools/policy", owner, {
     method: "POST",
     body: JSON.stringify({
@@ -339,6 +415,13 @@ runSmoke("Cloudflare tool admin smoke", async () => {
     throw new Error("disabled url.inspect should include a kill-switch reason");
   }
 
+  const disabledApproval = await fetchRaw(
+    `/tools/approvals/${encodeURIComponent(pendingBeforeDisable.approvalRequest.id)}/approve`,
+    owner,
+    { method: "POST" },
+  );
+  await expectErrorCode(disabledApproval, 403, "tool_disabled");
+
   const disabledRun = await fetchRaw("/tools/runs", owner, {
     method: "POST",
     body: JSON.stringify({
@@ -350,7 +433,7 @@ runSmoke("Cloudflare tool admin smoke", async () => {
   await expectErrorCode(disabledRun, 403, "tool_disabled");
 
   const disabledSummary = await readJson<AdminSummaryResponse>("/admin/workspace-summary", owner);
-  if (disabledSummary.summary?.demo?.latestRun?.run?.id !== approvalRun.run.id) {
+  if (disabledSummary.summary?.demo?.latestRun?.run?.id !== pendingBeforeDisable.run?.id) {
     throw new Error("disabled tool run should not create a new interrupted run");
   }
 
@@ -365,6 +448,35 @@ runSmoke("Cloudflare tool admin smoke", async () => {
   if (!enabled.ok || enabled.status !== "enabled" || enabled.requiresApproval) {
     throw new Error(`url.inspect policy did not re-enable: ${JSON.stringify(enabled)}`);
   }
+
+  const exposed = await readJson<ToolPolicyUpdateResponse>("/tools/policy", owner, {
+    method: "POST",
+    body: JSON.stringify({
+      toolName: "url.inspect",
+      modelVisible: true,
+    }),
+  });
+  if (!exposed.ok || !exposed.tool?.modelVisible) {
+    throw new Error(`url.inspect model exposure did not enable: ${JSON.stringify(exposed)}`);
+  }
+  if (exposed.tool.modelExposurePolicy?.decision !== "allow") {
+    throw new Error(`url.inspect model exposure should be allowed: ${JSON.stringify(exposed)}`);
+  }
+
+  const memberTools = await readJson<ToolsResponse>("/tools", member);
+  const memberUrlInspect = requireTool(memberTools.tools, "url.inspect");
+  if (memberUrlInspect.modelVisible) {
+    throw new Error("member should not inherit owner model-visible policy");
+  }
+
+  const memberPolicyUpdate = await fetchRaw("/tools/policy", member, {
+    method: "POST",
+    body: JSON.stringify({
+      toolName: "url.inspect",
+      modelVisible: true,
+    }),
+  });
+  await expectErrorCode(memberPolicyUpdate, 403, "admin_required");
 
   const rerun = await readJson<ToolRunResponse>("/tools/runs", owner, {
     method: "POST",
@@ -392,7 +504,6 @@ runSmoke("Cloudflare tool admin smoke", async () => {
     throw new Error("admin summary did not include the latest tool artifact");
   }
 
-  await readJson<ToolsResponse>("/tools", member);
   const memberRun = await fetchRaw("/tools/runs", member, {
     method: "POST",
     body: JSON.stringify({

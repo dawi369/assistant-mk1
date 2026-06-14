@@ -1,9 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useAuiState } from "@assistant-ui/react";
 import { useAuth } from "@workos-inc/authkit-nextjs/components";
-import { AlertCircleIcon, BotIcon, Building2Icon, CpuIcon } from "lucide-react";
+import {
+  AlertCircleIcon,
+  BotIcon,
+  Building2Icon,
+  CloudIcon,
+  CpuIcon,
+  MessageSquareIcon,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { workbenchSummaryRefreshEvent } from "@/lib/workbench/admin-summary-events";
@@ -24,10 +30,15 @@ const readSummary = async () => {
 export function WorkbenchRuntimeHint({ onOpenAdmin }: { onOpenAdmin: () => void }) {
   const [summary, setSummary] = useState<CloudflareAdminSummaryResponse["summary"] | null>(null);
   const { user, loading } = useAuth();
-  const { session, pending, latestSessionEvent, isSessionStreamConnected } =
-    useWorkbenchAgentConnection();
-  const isThreadRunning = useAuiState((state) => state.thread.isRunning);
-  const isLoadingThread = useAuiState((state) => state.threads.isLoading);
+  const {
+    connection,
+    error,
+    session,
+    pending,
+    latestSessionEvent,
+    isInitialLoading,
+    isSessionStreamConnected,
+  } = useWorkbenchAgentConnection();
 
   const loadSummary = async () => {
     try {
@@ -52,7 +63,7 @@ export function WorkbenchRuntimeHint({ onOpenAdmin }: { onOpenAdmin: () => void 
   }, [loading, user]);
 
   const chatRuntime = summary?.chatRuntime ?? null;
-  const hasError = Boolean(chatRuntime?.failure ?? summary?.lastError);
+  const hasError = Boolean(error ?? chatRuntime?.failure ?? summary?.lastError);
   const liveChatState =
     latestSessionEvent?.type === "chat.run.started"
       ? "running"
@@ -61,15 +72,13 @@ export function WorkbenchRuntimeHint({ onOpenAdmin }: { onOpenAdmin: () => void 
         : latestSessionEvent?.type === "chat.run.failed"
           ? "failed"
           : null;
-  const transientChatState = isThreadRunning ? "running" : liveChatState;
+  const transientChatState = liveChatState;
   const chatLabel =
     pending?.type === "create" || pending?.type === "activate"
       ? "Opening"
-      : isLoadingThread
-        ? "Loading"
-        : transientChatState
-          ? chatRuntimeStateLabel(transientChatState)
-          : chatRuntimeStateLabel(chatRuntime?.state);
+      : transientChatState
+        ? chatRuntimeStateLabel(transientChatState)
+        : chatRuntimeStateLabel(chatRuntime?.state);
   const chatTone = transientChatState
     ? chatRuntimeStateTone(transientChatState)
     : chatRuntimeStateTone(chatRuntime?.state);
@@ -77,6 +86,28 @@ export function WorkbenchRuntimeHint({ onOpenAdmin }: { onOpenAdmin: () => void 
   const workspaceName = session?.workspace?.name ?? summary?.workspace?.name ?? "Workspace";
   const agentLabel = activeAgent ? `${activeAgent.name} / ${activeAgent.profile}` : null;
   const modelLabel = activeAgent?.runtime.model ?? null;
+  const activeThreadTitle = session?.activeThread?.title;
+  const activeThreadId = session?.activeThread?.threadId ?? summary?.chat.latestThread?.threadId;
+
+  const cloudflareStatus = error
+    ? "Connection failed"
+    : connection && isSessionStreamConnected
+      ? "Live"
+      : connection
+        ? "Agent token ready"
+        : session?.isStale
+          ? "Cached, refreshing"
+          : isInitialLoading || loading
+            ? "Connecting"
+            : "Not connected";
+
+  const cloudflareTone = error
+    ? "failed"
+    : connection && isSessionStreamConnected
+      ? "completed"
+      : connection || session?.isStale || isInitialLoading || loading
+        ? "running"
+        : undefined;
 
   const statusClassName = useMemo(() => {
     switch (chatTone) {
@@ -91,7 +122,7 @@ export function WorkbenchRuntimeHint({ onOpenAdmin }: { onOpenAdmin: () => void 
     }
   }, [chatTone]);
 
-  if (!summary && !session) return null;
+  if (!loading && !user && !summary && !session && !error) return null;
 
   return (
     <div className="border-border bg-background/95 text-muted-foreground hidden w-[min(22rem,calc(100vw-1.5rem))] flex-col gap-1.5 rounded-md border px-2.5 py-2 text-xs shadow-xs backdrop-blur md:flex">
@@ -111,15 +142,32 @@ export function WorkbenchRuntimeHint({ onOpenAdmin }: { onOpenAdmin: () => void 
           </Button>
         ) : null}
       </div>
+      <RuntimeHintRow
+        icon={CloudIcon}
+        label="Cloudflare"
+        value={cloudflareStatus}
+        tone={cloudflareTone}
+      />
       <RuntimeHintRow icon={Building2Icon} label="Workspace" value={workspaceName} />
       <RuntimeHintRow icon={BotIcon} label="Agent" value={agentLabel ?? "Agent"} />
       <RuntimeHintRow icon={CpuIcon} label="Model" value={modelLabel ?? "System default"} />
+      <RuntimeHintRow
+        icon={MessageSquareIcon}
+        label="Thread"
+        value={activeThreadTitle || activeThreadId || "Waiting for Worker"}
+      />
       {session?.isStale ? (
         <div className="text-muted-foreground/80 text-[11px]">
-          Using cached display while Cloudflare refreshes.
+          Cached shell is visible; chat actions unlock after Cloudflare returns a live token.
         </div>
       ) : isSessionStreamConnected ? (
         <div className="text-muted-foreground/80 text-[11px]">Live session updates connected.</div>
+      ) : connection ? (
+        <div className="text-muted-foreground/80 text-[11px]">
+          Agent token is ready; opening the session event stream.
+        </div>
+      ) : error ? (
+        <div className="text-destructive text-[11px]">{error}</div>
       ) : null}
     </div>
   );
@@ -129,14 +177,23 @@ function RuntimeHintRow({
   icon: Icon,
   label,
   value,
+  tone,
 }: {
   icon: typeof Building2Icon;
   label: string;
   value: string;
+  tone?: "completed" | "running" | "failed";
 }) {
   return (
     <div className="flex min-w-0 items-center gap-1.5">
-      <Icon className="size-3.5 shrink-0" />
+      <Icon
+        className={cn(
+          "size-3.5 shrink-0",
+          tone === "completed" && "text-emerald-600",
+          tone === "running" && "text-sky-600",
+          tone === "failed" && "text-destructive",
+        )}
+      />
       <span className="text-muted-foreground/80 shrink-0">{label}</span>
       <span className="min-w-0 flex-1 truncate text-right">{value}</span>
     </div>

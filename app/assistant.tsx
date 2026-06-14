@@ -32,7 +32,7 @@ export function Assistant({ children }: { children?: ReactNode }) {
 
   if (error && !connection) {
     return (
-      <div className="flex h-full items-center justify-center p-6">
+      <div className="flex h-full items-center justify-center p-6 md:pl-72">
         <div className="border-border bg-background max-w-md rounded-md border p-4 text-sm shadow-xs">
           <div className="font-medium">Cloudflare Agent connection failed</div>
           <p className="text-muted-foreground mt-1">{error}</p>
@@ -50,10 +50,20 @@ export function Assistant({ children }: { children?: ReactNode }) {
 
   if (!connection) {
     return (
-      <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">
-        {session?.isStale
-          ? "Refreshing Cloudflare chat session..."
-          : "Connecting to Cloudflare Agent..."}
+      <div className="flex h-full items-center justify-center p-6 md:pl-72">
+        <div className="border-border bg-background/95 max-w-md rounded-md border p-4 text-sm shadow-xs backdrop-blur">
+          <div className="font-medium">Connecting to Cloudflare Agent</div>
+          <p className="text-muted-foreground mt-1">
+            {session?.isStale
+              ? "The cached workspace shell is visible while Cloudflare refreshes the live thread token."
+              : "The workbench shell is ready. Chat unlocks as soon as Cloudflare returns the active thread token."}
+          </p>
+          {session?.activeThread ? (
+            <p className="text-muted-foreground/80 mt-3 text-xs">
+              Last active thread: {session.activeThread.title || session.activeThread.threadId}
+            </p>
+          ) : null}
+        </div>
       </div>
     );
   }

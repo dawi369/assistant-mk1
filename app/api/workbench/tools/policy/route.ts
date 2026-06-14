@@ -12,6 +12,7 @@ export async function POST(request: NextRequest) {
       status?: unknown;
       requiresApproval?: unknown;
       killSwitchReason?: unknown;
+      modelVisible?: unknown;
     };
     if (body.toolName !== "url.inspect") {
       return NextResponse.json(
@@ -58,6 +59,21 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
+    if (body.modelVisible !== undefined && typeof body.modelVisible !== "boolean") {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Unsupported model exposure flag",
+          details: {
+            code: "unsupported_model_visible",
+            message: "modelVisible must be a boolean when provided.",
+            retryable: false,
+            redacted: true,
+          },
+        },
+        { status: 400 },
+      );
+    }
     if (body.killSwitchReason !== undefined && typeof body.killSwitchReason !== "string") {
       return NextResponse.json(
         {
@@ -80,6 +96,7 @@ export async function POST(request: NextRequest) {
         status: body.status,
         requiresApproval: body.requiresApproval,
         killSwitchReason: body.killSwitchReason,
+        modelVisible: body.modelVisible,
       }),
     );
   } catch (error) {

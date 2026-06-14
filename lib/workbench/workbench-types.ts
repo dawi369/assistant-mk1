@@ -109,6 +109,8 @@ export type ToolSummary = {
     status?: string;
     reason?: string;
     createdAt?: string;
+    updatedAt?: string;
+    data?: Record<string, unknown>;
   };
 };
 
@@ -187,6 +189,7 @@ export type CloudflareToolPolicyUpdateResponse = {
   toolName?: string;
   status?: "enabled" | "disabled";
   requiresApproval?: boolean;
+  modelVisible?: boolean;
   permissionId?: Id;
   policyDecisionId?: Id;
   tool?: ToolSummary;
@@ -198,6 +201,8 @@ export type CloudflareToolPolicyUpdateResponse = {
     redacted?: boolean;
   };
 };
+
+export type CloudflareToolApprovalActionResponse = CloudflareToolRunResponse;
 
 export type RuntimeTraceStatus = "running" | "completed" | "failed" | "blocked";
 

@@ -17,7 +17,12 @@ export const urlInspectPolicy = "tool-admin-readonly-v0";
 export const demoInspectToolName = "demo.inspect";
 export const demoInspectPolicy = "dev-demo";
 
-export type ToolPolicySurface = "admin_list" | "admin_run" | "model_exposure";
+export type ToolPolicySurface =
+  | "admin_list"
+  | "admin_run"
+  | "admin_resume"
+  | "model_exposure"
+  | "model_tool_call";
 
 export type ToolPolicyResult = {
   decision: "allow" | "block";
@@ -152,6 +157,7 @@ export const updateToolPermissionStatus = async (
     status?: ToolPermissionStatus;
     requiresApproval?: boolean;
     killSwitchReason?: string | null;
+    modelVisible?: boolean;
   },
 ) => {
   const permission = await ensureToolPermission(env, identity, input.toolName);
@@ -163,7 +169,10 @@ export const updateToolPermissionStatus = async (
   const nextData: Record<string, unknown> = {
     ...data,
     adminVisible: readDataFlag(data, "adminVisible", toolDefaults[input.toolName].adminVisible),
-    modelVisible: false,
+    modelVisible:
+      typeof input.modelVisible === "boolean"
+        ? input.modelVisible
+        : readDataFlag(data, "modelVisible", toolDefaults[input.toolName].modelVisible),
     requiresApproval:
       typeof input.requiresApproval === "boolean"
         ? input.requiresApproval
@@ -289,15 +298,37 @@ export const evaluateToolPolicy = async (
     };
   }
 
-  if (input.surface === "model_exposure") {
+  if (input.surface === "model_exposure" || input.surface === "model_tool_call") {
+    if (approvalRequired) {
+      return {
+        ...base,
+        decision: "block",
+        status: 403,
+        code: "approval_required",
+        reason: "Tool is hidden from model exposure while approval is required.",
+        modelVisible: false,
+      };
+    }
+    if (modelVisibleFlag) {
+      return {
+        ...base,
+        decision: "allow",
+        status: 200,
+        code: "allowed",
+        reason:
+          input.surface === "model_tool_call"
+            ? `${input.toolName} is enabled for model dry-run execution.`
+            : `${input.toolName} is exposed to the model by workspace policy.`,
+        adminVisible: adminVisibleFlag,
+        modelVisible: true,
+      };
+    }
     return {
       ...base,
       decision: "block",
       status: 403,
       code: "model_exposure_blocked",
-      reason: modelVisibleFlag
-        ? "Model-visible tool exposure is blocked until approval and exposure policy are promoted."
-        : "Tool is hidden from model exposure by workspace policy.",
+      reason: "Tool is hidden from model exposure by workspace policy.",
       modelVisible: false,
     };
   }
@@ -322,7 +353,7 @@ export const evaluateToolPolicy = async (
     };
   }
 
-  if (approvalRequired) {
+  if (approvalRequired && input.surface !== "admin_resume") {
     return {
       ...base,
       decision: "block",
@@ -342,11 +373,11 @@ export const evaluateToolPolicy = async (
     status: 200,
     code: "allowed",
     reason:
-      input.surface === "admin_run"
+      input.surface === "admin_run" || input.surface === "admin_resume"
         ? `${input.toolName} is enabled for Admin dry-run execution.`
         : `${input.toolName} is enabled by workspace policy.`,
     adminVisible: adminVisibleFlag,
-    modelVisible: false,
+    modelVisible: modelVisibleFlag,
   };
 };
 
