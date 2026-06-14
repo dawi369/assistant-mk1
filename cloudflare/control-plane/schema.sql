@@ -10,6 +10,7 @@ DROP TABLE IF EXISTS control_audit_events;
 DROP TABLE IF EXISTS control_decisions;
 DROP TABLE IF EXISTS control_artifacts;
 DROP TABLE IF EXISTS control_tool_calls;
+DROP TABLE IF EXISTS control_approval_requests;
 DROP TABLE IF EXISTS control_runs;
 DROP TABLE IF EXISTS control_workflow_intents;
 DROP TABLE IF EXISTS control_policy_decisions;
@@ -184,6 +185,27 @@ CREATE TABLE control_runs (
 
 CREATE INDEX idx_control_runs_scope_latest
   ON control_runs (user_id, workspace_id, updated_at DESC, created_at DESC);
+
+CREATE TABLE control_approval_requests (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  workspace_id TEXT NOT NULL,
+  agent_id TEXT NOT NULL,
+  workflow_intent_id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  tool_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  data_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX idx_control_approval_requests_scope_latest
+  ON control_approval_requests (user_id, workspace_id, updated_at DESC, created_at DESC);
+
+CREATE INDEX idx_control_approval_requests_run
+  ON control_approval_requests (user_id, workspace_id, run_id, created_at ASC);
 
 CREATE TABLE control_tool_calls (
   id TEXT PRIMARY KEY,

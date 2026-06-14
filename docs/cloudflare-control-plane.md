@@ -241,10 +241,16 @@ Tool Policy v0 makes this first policy boundary durable. Cloudflare stores
 workspace/user/agent-scoped `tool_permissions` rows for `url.inspect` and
 `demo.inspect`, records `control_policy_decisions` for Admin tool run attempts,
 and exposes a small Admin-only `POST /tools/policy` control to enable or disable
-`url.inspect`. Disabled tools fail before input validation or execution and
-record policy/audit/control-plane events. This is still a read-only tool slice:
-approvals, secrets, mutation-capable tools, and model-visible exposure remain
-blocked.
+`url.inspect`. Policy Expansion v0.1 adds approval-required and kill-switch
+state to those permission rows, plus `control_approval_requests` for
+approval-shaped interrupts. Disabled tools fail before input validation or
+execution and record policy/audit/control-plane events. Approval-required
+`url.inspect` requests validate safe input, then persist an interrupted
+workflow intent/run and requested approval without creating a tool call or
+artifact. `/tools` also returns separate Admin and model-exposure policy
+explanations; every model-exposure decision remains blocked for now. This is
+still a read-only tool slice: approval resume, secrets, mutation-capable tools,
+and model-visible execution remain blocked.
 
 This is still not complete production authorization. WorkOS is the hosted web
 auth provider, and Cloudflare now owns the first D1-backed membership and agent

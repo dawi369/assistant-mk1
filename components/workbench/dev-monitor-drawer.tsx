@@ -504,12 +504,17 @@ export function AdminPanel({
       requestWorkbenchSummaryRefresh();
     } catch (toolError) {
       setFetchError(toolError instanceof Error ? toolError.message : "Failed to run URL inspector");
+      requestWorkbenchSummaryRefresh();
     } finally {
       setIsRunningTool(false);
     }
   };
 
-  const updateUrlInspectPolicy = async (status: "enabled" | "disabled") => {
+  const updateUrlInspectPolicy = async (input: {
+    status?: "enabled" | "disabled";
+    requiresApproval?: boolean;
+    killSwitchReason?: string;
+  }) => {
     setUpdatingToolPolicy("url.inspect");
     setFetchError(null);
     try {
@@ -519,7 +524,7 @@ export function AdminPanel({
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             toolName: "url.inspect",
-            status,
+            ...input,
           }),
         }),
         "Failed to update URL inspector policy",
@@ -1114,26 +1119,83 @@ export function AdminPanel({
                               tone={tool.adminVisible ? "completed" : undefined}
                             />
                             <StatusPill
+                              status={tool.approvalRequired ? "Approval required" : "No approval"}
+                              tone={tool.approvalRequired ? "running" : "completed"}
+                            />
+                            <StatusPill
                               status={tool.modelVisible ? "Model" : "Not model-visible"}
                               tone={tool.modelVisible ? "completed" : undefined}
                             />
                           </span>
                         </div>
                         <p className="text-muted-foreground mt-2 text-xs">{tool.reason}</p>
+                        {tool.adminPolicy?.reason ? (
+                          <p className="text-muted-foreground mt-1 text-xs">
+                            Admin policy: {tool.adminPolicy.code ?? "unknown"} -{" "}
+                            {tool.adminPolicy.reason}
+                          </p>
+                        ) : null}
+                        {tool.modelExposurePolicy?.reason ? (
+                          <p className="text-muted-foreground mt-1 text-xs">
+                            Model exposure: {tool.modelExposurePolicy.code ?? "unknown"} -{" "}
+                            {tool.modelExposurePolicy.reason}
+                          </p>
+                        ) : null}
                         {tool.killSwitchReason ? (
                           <p className="text-destructive mt-1 text-xs">{tool.killSwitchReason}</p>
                         ) : null}
+                        {tool.latestApprovalRequest ? (
+                          <div className="border-border bg-muted/30 mt-2 rounded-md border p-2 text-xs">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-medium">Latest approval request</span>
+                              <StatusPill
+                                status={tool.latestApprovalRequest.status ?? "requested"}
+                                tone="running"
+                              />
+                            </div>
+                            <p className="text-muted-foreground mt-1">
+                              {tool.latestApprovalRequest.reason ?? "Approval requested."}
+                            </p>
+                            <CopyId
+                              label="Approval id"
+                              value={tool.latestApprovalRequest.id ?? ""}
+                            />
+                          </div>
+                        ) : null}
                         {tool.name === "url.inspect" ? (
-                          <div className="mt-3 flex justify-end">
+                          <div className="mt-3 flex flex-wrap justify-end gap-2">
                             <Button
                               type="button"
                               size="sm"
                               variant="outline"
                               disabled={updatingToolPolicy === tool.name || !canManageAgents}
                               onClick={() =>
-                                updateUrlInspectPolicy(
-                                  tool.permissionStatus === "enabled" ? "disabled" : "enabled",
-                                )
+                                updateUrlInspectPolicy({
+                                  requiresApproval: !tool.approvalRequired,
+                                })
+                              }
+                            >
+                              {updatingToolPolicy === tool.name ? (
+                                <Loader2Icon className="animate-spin" />
+                              ) : (
+                                <ShieldCheckIcon />
+                              )}
+                              {tool.approvalRequired ? "Clear approval" : "Require approval"}
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={updatingToolPolicy === tool.name || !canManageAgents}
+                              onClick={() =>
+                                updateUrlInspectPolicy({
+                                  status:
+                                    tool.permissionStatus === "enabled" ? "disabled" : "enabled",
+                                  killSwitchReason:
+                                    tool.permissionStatus === "enabled"
+                                      ? "Disabled by workspace admin policy."
+                                      : undefined,
+                                })
                               }
                             >
                               {updatingToolPolicy === tool.name ? (

@@ -134,7 +134,11 @@ the deterministic `demo.inspect` dry-run tool and the Admin-triggered
 structured output, artifact metadata, and Cloudflare-owned run/tool records
 without adding mutation capability. Tool Policy v0 adds D1-backed
 `tool_permissions` and `control_policy_decisions` so tool enablement, Admin
-visibility, and execution blocks are durable instead of hard-coded.
+visibility, and execution blocks are durable instead of hard-coded. Policy
+Expansion v0.1 adds approval-required and kill-switch state, durable
+`control_approval_requests`, interrupted run records for approval-required safe
+requests, and deterministic model-exposure explanations while keeping the
+model-visible tool set empty.
 
 Implemented:
 
@@ -149,12 +153,15 @@ Implemented:
 - Tool Policy v0 for Admin tools: default permission rows for `url.inspect` and
   `demo.inspect`, owner/admin enable-disable controls for `url.inspect`,
   policy-derived tool visibility, and auditable allow/block decisions.
+- Policy Expansion v0.1 for Admin tools: approval-required state, kill-switch
+  reason display, approval-request records, interrupted run/audit/event writes,
+  and explicit model-exposure hidden reasons.
 
 Next target:
 
-- Broader policy checks for `ask`, `dry_run`, and `execute` modes at the
-  tool-runner boundary, including approvals, limits, kill switches, and
-  model-visible exposure decisions.
+- Approval resume/deny actions and broader policy checks for `ask`, `dry_run`,
+  and `execute` modes at the tool-runner boundary, including limits and
+  eventually model-visible exposure decisions.
 - First CLI/OSS-backed or external-system adapter after the policy layer can
   explain and gate it.
 
@@ -257,9 +264,8 @@ Implemented:
 
 Next target:
 
-- Finish live-session event polish, then use the trace graph to stabilize the
-  real chat/tool paths and expand Tool Policy v0 into stronger exposure
-  decisions, approvals, kill switches, and eventual model-visible tools.
+- Finish approval resume/deny UX and use the trace graph to stabilize the real
+  chat/tool paths before promoting any model-visible tools.
 - Keep Fly/LangGraph state access mediated through Cloudflare APIs.
 - Strengthen the Vercel-to-Cloudflare trust boundary with a stricter signed or
   service-authenticated server contract after this observability slice.

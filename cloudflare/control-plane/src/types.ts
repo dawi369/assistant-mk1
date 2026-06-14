@@ -228,6 +228,21 @@ export type ControlPolicyDecisionRow = {
   created_at: string;
 };
 
+export type ControlApprovalRequestRow = {
+  id: string;
+  user_id: string;
+  workspace_id: string;
+  agent_id: string;
+  workflow_intent_id: string;
+  run_id: string;
+  tool_id: string;
+  status: string;
+  reason: string;
+  data_json: string;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ControlArtifactRow = {
   id: string;
   user_id: string;

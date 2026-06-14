@@ -173,7 +173,9 @@ export const runCloudflareTool = (input: {
 
 export const updateCloudflareToolPolicy = (input: {
   toolName: "url.inspect";
-  status: "enabled" | "disabled";
+  status?: "enabled" | "disabled";
+  requiresApproval?: boolean;
+  killSwitchReason?: string;
 }) =>
   requestControlPlane<CloudflareToolPolicyUpdateResponse>("/tools/policy", {
     method: "POST",

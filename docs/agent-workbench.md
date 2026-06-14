@@ -191,6 +191,8 @@ Implemented:
   workspace, active agent/profile, chat state, and error detail access.
 - WorkOS, workspace, membership, and active agent scope are server-derived.
 - The first typed diagnostic tool path exists through `demo.inspect`.
+- Admin Tools can explain permission status, approval requirement,
+  kill-switch reason, and model-exposure blocking for the current workspace.
 
 Next milestones:
 
@@ -200,11 +202,10 @@ Next milestones:
    assistant-ui thread-list primitives, with Cloudflare-owned authorization.
 3. Expand agent behavior from template import/preview into full editing,
    version history, approvals, and tool-specific configuration.
-4. Add interrupt display and resume actions when a workflow requires approval.
+4. Add approval resume actions for interrupted tool runs.
 5. Add artifact list and execution history beyond diagnostic snapshots.
 6. Add domain context configuration that can be swapped per downstream app.
-7. Expand Tool Policy v0 into approvals, kill switches, and model-visible
-   exposure decisions.
+7. Promote model-visible exposure decisions after approval state is proven.
 8. Add a first CLI/OSS-backed tool with timeout, logs, structured output, and
    artifact metadata.
 9. Add generic managed-state and audit surfaces.

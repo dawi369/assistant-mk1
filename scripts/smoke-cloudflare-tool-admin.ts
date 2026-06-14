@@ -12,8 +12,24 @@ type ToolSummary = {
   permissionStatus?: string;
   policyReference?: string;
   allowedExecutionModes?: string[];
+  approvalRequired?: boolean;
   killSwitchReason?: string;
   reason?: string;
+  adminPolicy?: {
+    decision?: string;
+    code?: string;
+    reason?: string;
+  };
+  modelExposurePolicy?: {
+    decision?: string;
+    code?: string;
+    reason?: string;
+  };
+  latestApprovalRequest?: {
+    id?: string;
+    status?: string;
+    reason?: string;
+  };
 };
 
 type ToolsResponse = {
@@ -38,6 +54,12 @@ type ToolRunResponse = {
   run?: {
     id?: string;
     status?: string;
+    workflowIntentId?: string;
+  };
+  approvalRequest?: {
+    id?: string;
+    status?: string;
+    reason?: string;
   };
   toolCall?: {
     id?: string;
@@ -56,13 +78,26 @@ type ToolPolicyUpdateResponse = {
   ok?: boolean;
   toolName?: string;
   status?: string;
+  requiresApproval?: boolean;
   permissionId?: string;
+  tool?: ToolSummary;
   error?: string;
 };
 
 type AdminSummaryResponse = {
   ok?: boolean;
   summary?: {
+    demo?: {
+      latestRun?: {
+        run?: {
+          id?: string;
+          status?: string;
+        } | null;
+        toolCalls?: Array<{ id?: string; runId?: string }>;
+        artifacts?: Array<{ id?: string }>;
+        auditEvents?: Array<{ action?: string; targetId?: string }>;
+      } | null;
+    };
     latestToolCalls?: Array<{
       id?: string;
       runId?: string;
@@ -71,6 +106,10 @@ type AdminSummaryResponse = {
     }>;
     latestArtifacts?: Array<{
       id?: string;
+    }>;
+    events?: Array<{
+      type?: string;
+      targetId?: string;
     }>;
   };
   error?: string;
@@ -128,6 +167,19 @@ const expectErrorCode = async (response: Response, status: number, code: string)
   }
 };
 
+const readErrorBody = async (response: Response, status: number, code: string) => {
+  if (response.status !== status) {
+    throw new Error(`expected ${status}, got ${response.status}: ${await response.text()}`);
+  }
+  const body = (await response.json()) as ToolRunResponse & {
+    details?: { code?: string };
+  };
+  if (body.details?.code !== code) {
+    throw new Error(`expected error code ${code}, got ${JSON.stringify(body)}`);
+  }
+  return body;
+};
+
 runSmoke("Cloudflare tool admin smoke", async () => {
   console.log(`Smoking Cloudflare tool admin at ${baseUrl}`);
 
@@ -135,6 +187,9 @@ runSmoke("Cloudflare tool admin smoke", async () => {
   const urlInspect = requireTool(tools.tools, "url.inspect");
   if (!urlInspect.adminVisible) throw new Error("url.inspect should be Admin-visible for owner");
   if (urlInspect.modelVisible) throw new Error("url.inspect should not be model-visible in v0");
+  if (urlInspect.modelExposurePolicy?.code !== "model_exposure_blocked") {
+    throw new Error(`url.inspect should explain model exposure: ${JSON.stringify(urlInspect)}`);
+  }
   if (urlInspect.permissionStatus !== "enabled") {
     throw new Error(`url.inspect should seed enabled, got ${urlInspect.permissionStatus}`);
   }
@@ -144,6 +199,9 @@ runSmoke("Cloudflare tool admin smoke", async () => {
 
   const demoInspect = requireTool(tools.tools, "demo.inspect");
   if (demoInspect.modelVisible) throw new Error("demo.inspect should not be model-visible");
+  if (demoInspect.modelExposurePolicy?.code !== "model_exposure_blocked") {
+    throw new Error(`demo.inspect should explain model exposure: ${JSON.stringify(demoInspect)}`);
+  }
 
   const invalid = await fetchRaw("/tools/runs", owner, {
     method: "POST",
@@ -181,6 +239,83 @@ runSmoke("Cloudflare tool admin smoke", async () => {
   }
   if (!run.artifact?.id) throw new Error("url.inspect run did not return an artifact");
 
+  const approvalPolicy = await readJson<ToolPolicyUpdateResponse>("/tools/policy", owner, {
+    method: "POST",
+    body: JSON.stringify({
+      toolName: "url.inspect",
+      requiresApproval: true,
+    }),
+  });
+  if (
+    !approvalPolicy.ok ||
+    !approvalPolicy.requiresApproval ||
+    !approvalPolicy.tool?.approvalRequired
+  ) {
+    throw new Error(
+      `url.inspect approval policy did not update: ${JSON.stringify(approvalPolicy)}`,
+    );
+  }
+
+  const approvalTools = await readJson<ToolsResponse>("/tools", owner);
+  const approvalUrlInspect = requireTool(approvalTools.tools, "url.inspect");
+  if (!approvalUrlInspect.approvalRequired) {
+    throw new Error("url.inspect should show approval required");
+  }
+
+  const approvalRunResponse = await fetchRaw("/tools/runs", owner, {
+    method: "POST",
+    body: JSON.stringify({
+      toolName: "url.inspect",
+      executionMode: "dry_run",
+      input: { url: "https://example.com" },
+    }),
+  });
+  const approvalRun = await readErrorBody(approvalRunResponse, 403, "approval_required");
+  if (approvalRun.run?.status !== "interrupted" || !approvalRun.run.id) {
+    throw new Error(`approval-required run should be interrupted: ${JSON.stringify(approvalRun)}`);
+  }
+  if (approvalRun.toolCall || approvalRun.artifact) {
+    throw new Error(
+      `approval-required run should not execute tool: ${JSON.stringify(approvalRun)}`,
+    );
+  }
+  if (approvalRun.approvalRequest?.status !== "requested" || !approvalRun.approvalRequest.id) {
+    throw new Error(`approval request missing: ${JSON.stringify(approvalRun)}`);
+  }
+
+  const approvalSummary = await readJson<AdminSummaryResponse>("/admin/workspace-summary", owner);
+  const interruptedSnapshot = approvalSummary.summary?.demo?.latestRun;
+  if (interruptedSnapshot?.run?.id !== approvalRun.run.id) {
+    throw new Error("admin summary did not surface the interrupted approval run");
+  }
+  if (interruptedSnapshot.run?.status !== "interrupted") {
+    throw new Error(`interrupted run status missing: ${JSON.stringify(interruptedSnapshot)}`);
+  }
+  if (interruptedSnapshot.toolCalls?.length) {
+    throw new Error("approval-required run should not create a tool call");
+  }
+  if (interruptedSnapshot.artifacts?.length) {
+    throw new Error("approval-required run should not create an artifact");
+  }
+  if (!interruptedSnapshot.auditEvents?.some((event) => event.action === "run.interrupted")) {
+    throw new Error("run.interrupted audit event missing");
+  }
+  if (!interruptedSnapshot.auditEvents?.some((event) => event.action === "approval.requested")) {
+    throw new Error("approval.requested audit event missing");
+  }
+  if (!approvalSummary.summary?.events?.some((event) => event.type === "run.interrupted")) {
+    throw new Error("run.interrupted control-plane event missing");
+  }
+  if (!approvalSummary.summary?.events?.some((event) => event.type === "approval.requested")) {
+    throw new Error("approval.requested control-plane event missing");
+  }
+
+  const approvalToolsAfterRun = await readJson<ToolsResponse>("/tools", owner);
+  const approvalToolAfterRun = requireTool(approvalToolsAfterRun.tools, "url.inspect");
+  if (approvalToolAfterRun.latestApprovalRequest?.id !== approvalRun.approvalRequest.id) {
+    throw new Error("latest approval request was not attached to /tools summary");
+  }
+
   const disabled = await readJson<ToolPolicyUpdateResponse>("/tools/policy", owner, {
     method: "POST",
     body: JSON.stringify({
@@ -214,14 +349,20 @@ runSmoke("Cloudflare tool admin smoke", async () => {
   });
   await expectErrorCode(disabledRun, 403, "tool_disabled");
 
+  const disabledSummary = await readJson<AdminSummaryResponse>("/admin/workspace-summary", owner);
+  if (disabledSummary.summary?.demo?.latestRun?.run?.id !== approvalRun.run.id) {
+    throw new Error("disabled tool run should not create a new interrupted run");
+  }
+
   const enabled = await readJson<ToolPolicyUpdateResponse>("/tools/policy", owner, {
     method: "POST",
     body: JSON.stringify({
       toolName: "url.inspect",
       status: "enabled",
+      requiresApproval: false,
     }),
   });
-  if (!enabled.ok || enabled.status !== "enabled") {
+  if (!enabled.ok || enabled.status !== "enabled" || enabled.requiresApproval) {
     throw new Error(`url.inspect policy did not re-enable: ${JSON.stringify(enabled)}`);
   }
 

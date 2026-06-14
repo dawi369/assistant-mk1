@@ -90,6 +90,26 @@ export type ToolSummary = {
   allowedExecutionModes?: string[];
   approvalRequired?: boolean;
   killSwitchReason?: string;
+  adminPolicy?: {
+    decision?: "allow" | "block";
+    code?: string;
+    reason?: string;
+    executionMode?: string;
+    policyReference?: string;
+  };
+  modelExposurePolicy?: {
+    decision?: "allow" | "block";
+    code?: string;
+    reason?: string;
+    executionMode?: string;
+    policyReference?: string;
+  };
+  latestApprovalRequest?: {
+    id?: Id;
+    status?: string;
+    reason?: string;
+    createdAt?: string;
+  };
 };
 
 export type ToolCallSummary = {
@@ -136,23 +156,40 @@ export type CloudflareToolRunResponse = {
     workflowIntentId?: Id;
     status?: string;
     execution?: Partial<ExecutionPolicy>;
+    policyDecisionId?: Id;
+  };
+  approvalRequest?: {
+    id?: Id;
+    status?: string;
+    reason?: string;
   };
   toolCall?: ToolCallSummary | null;
   artifact?: ArtifactSummary | null;
-  error?: {
+  error?:
+    | string
+    | {
+        code?: string;
+        message?: string;
+        retryable?: boolean;
+        redacted?: boolean;
+      };
+  details?: {
     code?: string;
     message?: string;
     retryable?: boolean;
     redacted?: boolean;
   };
+  policyDecisionId?: Id;
 };
 
 export type CloudflareToolPolicyUpdateResponse = {
   ok?: boolean;
   toolName?: string;
   status?: "enabled" | "disabled";
+  requiresApproval?: boolean;
   permissionId?: Id;
   policyDecisionId?: Id;
+  tool?: ToolSummary;
   error?: string;
   details?: {
     code?: string;

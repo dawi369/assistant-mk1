@@ -147,23 +147,37 @@ export const ensureToolPermission = async (env: Env, identity: AgentIdentity, to
 export const updateToolPermissionStatus = async (
   env: Env,
   identity: AgentIdentity,
-  input: { toolName: string; status: ToolPermissionStatus },
+  input: {
+    toolName: string;
+    status?: ToolPermissionStatus;
+    requiresApproval?: boolean;
+    killSwitchReason?: string | null;
+  },
 ) => {
   const permission = await ensureToolPermission(env, identity, input.toolName);
   if (!permission) return null;
 
   const timestamp = new Date().toISOString();
   const data = parseDataJson(permission.data_json);
-  const nextData = {
+  const nextStatus = input.status ?? permission.status;
+  const nextData: Record<string, unknown> = {
     ...data,
-    killSwitchReason:
-      input.status === "disabled"
-        ? "Disabled by workspace admin policy."
-        : isRecord(data) && typeof data.killSwitchReason === "string"
-          ? undefined
-          : undefined,
+    adminVisible: readDataFlag(data, "adminVisible", toolDefaults[input.toolName].adminVisible),
+    modelVisible: false,
+    requiresApproval:
+      typeof input.requiresApproval === "boolean"
+        ? input.requiresApproval
+        : readDataFlag(data, "requiresApproval", toolDefaults[input.toolName].requiresApproval),
   };
-  if (input.status !== "disabled") delete nextData.killSwitchReason;
+  if (nextStatus === "disabled") {
+    nextData.killSwitchReason =
+      input.killSwitchReason?.trim() ||
+      (isRecord(data) && typeof data.killSwitchReason === "string"
+        ? data.killSwitchReason
+        : "Disabled by workspace admin policy.");
+  } else {
+    delete nextData.killSwitchReason;
+  }
 
   await env.DB.prepare(
     `UPDATE tool_permissions
@@ -171,7 +185,7 @@ export const updateToolPermissionStatus = async (
      WHERE user_id = ? AND workspace_id = ? AND agent_id = ? AND tool_id = ?`,
   )
     .bind(
-      input.status,
+      nextStatus,
       toJson(nextData),
       timestamp,
       identity.scope.userId,
@@ -217,6 +231,7 @@ export const evaluateToolPolicy = async (
   const approvalRequired = readDataFlag(data, "requiresApproval", defaults.requiresApproval);
   const killSwitchReason =
     typeof data.killSwitchReason === "string" ? data.killSwitchReason : undefined;
+  const approvalReason = typeof data.approvalReason === "string" ? data.approvalReason : undefined;
   const execution = parseDataJson(permission?.execution_json ?? "{}");
   const policyReference =
     isRecord(execution) && typeof execution.policy === "string"
@@ -280,7 +295,9 @@ export const evaluateToolPolicy = async (
       decision: "block",
       status: 403,
       code: "model_exposure_blocked",
-      reason: "Model-visible tool exposure is blocked until policy v0 is promoted.",
+      reason: modelVisibleFlag
+        ? "Model-visible tool exposure is blocked until approval and exposure policy are promoted."
+        : "Tool is hidden from model exposure by workspace policy.",
       modelVisible: false,
     };
   }
@@ -311,7 +328,9 @@ export const evaluateToolPolicy = async (
       decision: "block",
       status: 403,
       code: "approval_required",
-      reason: "Tool requires approval, but approval flow is not enabled in v0.",
+      reason:
+        approvalReason ??
+        "Tool requires approval before execution; this slice records the interrupted request.",
       adminVisible: adminVisibleFlag,
       modelVisible: modelVisibleFlag,
     };

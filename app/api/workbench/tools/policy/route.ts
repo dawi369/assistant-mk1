@@ -10,6 +10,8 @@ export async function POST(request: NextRequest) {
     const body = (await request.json().catch(() => ({}))) as {
       toolName?: unknown;
       status?: unknown;
+      requiresApproval?: unknown;
+      killSwitchReason?: unknown;
     };
     if (body.toolName !== "url.inspect") {
       return NextResponse.json(
@@ -26,7 +28,7 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
-    if (body.status !== "enabled" && body.status !== "disabled") {
+    if (body.status !== undefined && body.status !== "enabled" && body.status !== "disabled") {
       return NextResponse.json(
         {
           ok: false,
@@ -41,11 +43,43 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
+    if (body.requiresApproval !== undefined && typeof body.requiresApproval !== "boolean") {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Unsupported approval flag",
+          details: {
+            code: "unsupported_requires_approval",
+            message: "requiresApproval must be a boolean when provided.",
+            retryable: false,
+            redacted: true,
+          },
+        },
+        { status: 400 },
+      );
+    }
+    if (body.killSwitchReason !== undefined && typeof body.killSwitchReason !== "string") {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Unsupported kill-switch reason",
+          details: {
+            code: "unsupported_kill_switch_reason",
+            message: "killSwitchReason must be a string when provided.",
+            retryable: false,
+            redacted: true,
+          },
+        },
+        { status: 400 },
+      );
+    }
 
     return NextResponse.json(
       await updateCloudflareToolPolicy({
         toolName: "url.inspect",
         status: body.status,
+        requiresApproval: body.requiresApproval,
+        killSwitchReason: body.killSwitchReason,
       }),
     );
   } catch (error) {
