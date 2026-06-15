@@ -234,8 +234,10 @@ starting a tool run.
 `url.inspect` is the first non-demo adapter. It runs in `dry_run` mode under
 the `tool-admin-readonly-v0` policy reference, rejects local/private/metadata
 targets, performs a bounded public HTTP inspection, and stores the result as
-Cloudflare-owned workflow/run/tool-call/artifact/audit/event state. It is not
-model-visible yet; model-visible tools wait for a later exposure slice.
+Cloudflare-owned workflow/run/tool-call/artifact/audit/event state. It can be
+made model-visible only by explicit owner/admin policy opt-in for the current
+user/workspace/agent permission row, and exposure stays blocked when approval
+is required or the tool is disabled.
 
 Tool Policy v0 makes this first policy boundary durable. Cloudflare stores
 workspace/user/agent-scoped `tool_permissions` rows for `url.inspect` and
@@ -247,10 +249,13 @@ approval-shaped interrupts. Disabled tools fail before input validation or
 execution and record policy/audit/control-plane events. Approval-required
 `url.inspect` requests validate safe input, then persist an interrupted
 workflow intent/run and requested approval without creating a tool call or
-artifact. `/tools` also returns separate Admin and model-exposure policy
-explanations; every model-exposure decision remains blocked for now. This is
-still a read-only tool slice: approval resume, secrets, mutation-capable tools,
-and model-visible execution remain blocked.
+artifact. Admin can list scoped approvals, approve the original validated
+request into dry-run execution, or deny it into cancellation; `approval.updated`
+events refresh the UI. `/tools` also returns separate Admin and model-exposure
+policy explanations, and the Cloudflare Agent exposes `url.inspect` to the
+model only when the same policy boundary allows it. This is still a read-only
+tool slice: secrets, mutation-capable tools, model-side approval UI, and
+approval resume for mutation remain blocked.
 
 This is still not complete production authorization. WorkOS is the hosted web
 auth provider, and Cloudflare now owns the first D1-backed membership and agent

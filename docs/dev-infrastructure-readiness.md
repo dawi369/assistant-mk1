@@ -272,6 +272,18 @@ CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
 pnpm smoke:cloudflare-event-stream
 ```
 
+Remote deploy readiness smoke:
+
+```bash
+CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
+CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
+pnpm smoke:cloudflare-deploy-readiness
+```
+
+This composed smoke is the minimum approval/tool-policy deploy gate. It runs
+workspace context, Admin tool policy/approval lifecycle, policy boundary,
+session boundary, and live event-stream coverage against the same Worker URL.
+
 Remote Worker smoke:
 
 ```bash

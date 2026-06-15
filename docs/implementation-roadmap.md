@@ -137,8 +137,10 @@ without adding mutation capability. Tool Policy v0 adds D1-backed
 visibility, and execution blocks are durable instead of hard-coded. Policy
 Expansion v0.1 adds approval-required and kill-switch state, durable
 `control_approval_requests`, interrupted run records for approval-required safe
-requests, and deterministic model-exposure explanations while keeping the
-model-visible tool set empty.
+requests, and deterministic model-exposure explanations. Approval resume/deny
+and model-visible `url.inspect` are implemented for the read-only path: owner
+and admin users can explicitly expose `url.inspect` to the model, and exposure
+stays blocked when approval is required.
 
 Implemented:
 
@@ -156,14 +158,21 @@ Implemented:
 - Policy Expansion v0.1 for Admin tools: approval-required state, kill-switch
   reason display, approval-request records, interrupted run/audit/event writes,
   and explicit model-exposure hidden reasons.
+- Approval lifecycle completion for `url.inspect`: requested approvals can be
+  approved to execute the original validated dry-run request or denied to
+  cancel without a tool call/artifact; Admin shows a scoped approval queue and
+  `approval.updated` events trigger live refresh.
+- Policy-gated model exposure for the read-only `url.inspect` adapter:
+  `modelVisible` defaults false, owner/admin users can opt in per current
+  user/workspace/agent permission row, and approval-required or disabled policy
+  states keep model exposure blocked.
 
 Next target:
 
-- Approval resume/deny actions and broader policy checks for `ask`, `dry_run`,
-  and `execute` modes at the tool-runner boundary, including limits and
-  eventually model-visible exposure decisions.
-- First CLI/OSS-backed or external-system adapter after the policy layer can
-  explain and gate it.
+- Broader policy checks for `ask`, `dry_run`, and `execute` modes at the
+  tool-runner boundary, including limits before any mutation-capable adapter.
+- First CLI/OSS-backed or external-system adapter after the read-only policy,
+  approval, and model-exposure path is proven in hosted dev.
 
 Exit criteria:
 
@@ -227,7 +236,8 @@ Implemented:
   bounded `url.inspect` dry-run tool, and D1 records the resulting
   workflow intent, run, tool call, artifact, audit events, and control-plane
   events. Tool Policy v0 makes `url.inspect` enablement durable and
-  Admin-visible, but the tool is not model-visible yet.
+  Admin-visible. Approval hardening adds scoped approve/deny and an Admin
+  approval queue, while model exposure is explicitly gated and read-only.
 - Runtime trace graph and Admin redesign v0 is implemented:
   Cloudflare stores D1-backed runtime traces and spans for thread creation,
   Agent chat streams, legacy simple-chat streams, and Admin tool runs. Admin
@@ -264,8 +274,8 @@ Implemented:
 
 Next target:
 
-- Finish approval resume/deny UX and use the trace graph to stabilize the real
-  chat/tool paths before promoting any model-visible tools.
+- Use the trace graph and approval queue to stabilize the real chat/tool paths
+  before adding mutation-capable tools or model-side approval UI.
 - Keep Fly/LangGraph state access mediated through Cloudflare APIs.
 - Strengthen the Vercel-to-Cloudflare trust boundary with a stricter signed or
   service-authenticated server contract after this observability slice.

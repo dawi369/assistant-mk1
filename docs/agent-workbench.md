@@ -104,16 +104,17 @@ provisioning. Admin can import a template into a new agent and preview
 the active XML prompt, but full editing, version history, approvals, and a
 customer-facing agent builder remain future slices.
 
-Tool adapter/Admin visibility v0 adds the first non-demo tool without making
-tools model-visible yet. Admin can run `url.inspect`, a bounded read-only URL
-inspection tool that records a workflow intent, run, tool call, artifact, audit
-events, and control-plane events in Cloudflare-owned state. The Admin Tools
-section shows registered tools, whether each is Admin-visible or model-visible,
-supported execution modes, durable permission status, policy reference, and
-recent tool calls/artifacts. Tool Policy v0 lets owner/admin users enable or
-disable `url.inspect` from Admin and records policy decisions for run attempts.
-This proves the adapter, policy, and observability path before approvals,
-secret custody, or mutation-capable tools are enabled.
+Tool adapter/Admin visibility v0 adds the first non-demo tool while keeping the
+path read-only. Admin can run `url.inspect`, a bounded URL inspection tool that
+records a workflow intent, run, tool call, artifact, audit events, and
+control-plane events in Cloudflare-owned state. The Admin Tools section shows
+registered tools, whether each is Admin-visible or model-visible, supported
+execution modes, durable permission status, policy reference, recent tool
+calls/artifacts, and a scoped approval queue. Tool Policy v0 lets owner/admin
+users enable/disable `url.inspect`, require approval, approve or deny pending
+requests, and opt into model exposure only when policy allows it. This proves
+the adapter, policy, approval, and observability path before secret custody or
+mutation-capable tools are enabled.
 
 Runtime trace graph v0 makes Admin the main explanation surface for request
 path and latency. Cloudflare D1 stores one trace per thread creation, Agent
@@ -192,7 +193,8 @@ Implemented:
 - WorkOS, workspace, membership, and active agent scope are server-derived.
 - The first typed diagnostic tool path exists through `demo.inspect`.
 - Admin Tools can explain permission status, approval requirement,
-  kill-switch reason, and model-exposure blocking for the current workspace.
+  kill-switch reason, approval queue state, and model-exposure blocking or
+  allow reasons for the current workspace.
 
 Next milestones:
 
@@ -202,10 +204,12 @@ Next milestones:
    assistant-ui thread-list primitives, with Cloudflare-owned authorization.
 3. Expand agent behavior from template import/preview into full editing,
    version history, approvals, and tool-specific configuration.
-4. Add approval resume actions for interrupted tool runs.
+4. Harden model-side tool rendering and approval explanation for future chat
+   approval UI without changing assistant-ui message primitives yet.
 5. Add artifact list and execution history beyond diagnostic snapshots.
 6. Add domain context configuration that can be swapped per downstream app.
-7. Promote model-visible exposure decisions after approval state is proven.
+7. Add richer model-visible exposure decisions beyond the read-only
+   `url.inspect` adapter.
 8. Add a first CLI/OSS-backed tool with timeout, logs, structured output, and
    artifact metadata.
 9. Add generic managed-state and audit surfaces.

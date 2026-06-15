@@ -132,6 +132,7 @@ Shows:
 Source:
 
 - active run interrupt state
+- scoped Admin approval queue
 - workflow engine interrupt
 - audit/lifecycle events
 
@@ -287,6 +288,12 @@ Implemented:
 - Workspace/agent management, tool registry/run controls, diagnostic runs, raw
   ids, external WorkOS signals, recent Cloudflare events, and diagnostic
   internals stay available in collapsible Manage or Advanced details.
+- Admin Tools includes a scoped approval queue for `url.inspect`, confirmation
+  dialogs for approve/deny, policy-state warnings, and compact latest-approval
+  cross-references on tool summaries.
+- `url.inspect` can be explicitly exposed to the model only through
+  owner/admin policy controls, and the UI explains disabled,
+  approval-required, and kill-switch blocks inline.
 - `demo.inspect` remains a dev diagnostic action, not a product-level workflow.
 - The empty chat state stays default assistant-ui but includes practical
   starter prompts for readiness, project planning, agent behavior, and failure
@@ -297,9 +304,10 @@ Next UI targets:
 - Customer-facing run/status strip only when a real workflow produces state
   richer than the compact chat hint.
 - Artifact/history surfaces beyond the diagnostic run snapshot.
-- Interrupt display only when a workflow needs approve/deny/resume.
-- Policy visibility for durable tool permissions, approvals, kill switches, and
-  model-visible exposure decisions.
+- Chat-side approval display through assistant-ui tool rendering when a
+  model-side workflow needs approve/deny/resume.
+- Broader policy visibility for durable limits, cooldowns, richer approvals,
+  kill switches, and model-visible exposure decisions beyond `url.inspect`.
 
 Avoid building every panel before one vertical slice produces real data.
 

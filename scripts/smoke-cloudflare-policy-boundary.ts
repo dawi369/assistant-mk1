@@ -169,7 +169,8 @@ runSmoke("Cloudflare policy boundary smoke", async () => {
     const firstConcurrent = await startAcceptedStreamOnNewThread(
       tenant,
       streamBody({
-        content: "Reply with three short sentences to keep this run briefly open.",
+        content:
+          "Write 80 numbered short sentences about keeping a single chat run open for a concurrency smoke test.",
       }),
       "first concurrent stream",
     );

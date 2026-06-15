@@ -118,14 +118,46 @@ The unauthenticated workbench context check should return `401`. Hosted Vercel
 workbench routes require a signed-in WorkOS browser session, so deploy-time
 runtime smokes call the Worker directly with trusted WorkOS-shaped headers. The
 workbench run smoke may need `SMOKE_TIMEOUT_MS=30000` when Fly is cold-starting.
-Run `pnpm smoke:cloudflare-session-boundary` and
-`pnpm smoke:cloudflare-chat-boundary` against the Worker after rebuilding the
-current D1 schema to prove tenant-scoped session and thread ownership. Run
-`pnpm smoke:cloudflare-policy-boundary` to prove Cloudflare gates chat
-execution before any model call or heavy escalation. Run `pnpm smoke:cloudflare-event-feed` to
-prove the browser-visible activity source is backed by Cloudflare events, and
-`pnpm smoke:cloudflare-event-stream` to prove those events can stream live from
-Cloudflare.
+Run `pnpm smoke:cloudflare-deploy-readiness` against the Worker after
+rebuilding the current D1 schema. It composes the minimum remote deploy suite:
+workspace context, Admin tool policy/approvals, policy boundary, session
+boundary, and live event stream coverage. Run broader chat or workbench smokes
+when the touched slice changes those paths.
+
+## Approval/tool policy deploy validation
+
+For approval or model-exposure changes, use this destructive remote-dev order:
+
+```bash
+PATH=/opt/homebrew/bin:$PATH pnpm typecheck
+PATH=/opt/homebrew/bin:$PATH pnpm test:unit
+PATH=/opt/homebrew/bin:$PATH pnpm lint
+PATH=/opt/homebrew/bin:$PATH SENTRY_AUTH_TOKEN= pnpm build
+PATH=/opt/homebrew/bin:$PATH pnpm db:cloudflare:rebuild:remote
+PATH=/opt/homebrew/bin:$PATH pnpm deploy:cloudflare
+CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
+CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
+PATH=/opt/homebrew/bin:$PATH pnpm smoke:cloudflare-deploy-readiness
+vercel --prod --yes
+curl https://assistant-mk1.vercel.app/api/health
+node -e "fetch('https://assistant-mk1.vercel.app/sign-in',{redirect:'manual'}).then(r=>console.log(r.status,r.headers.get('location')))"
+```
+
+`pnpm db:cloudflare:rebuild:remote` drops and recreates the remote
+`assistant_mk1_dev` D1 database. That data loss is intentional during the
+current pre-production phase.
+
+Hosted Admin manual QA after sign-in:
+
+- Owner/admin sees Tools and the Approval queue.
+- Approval-required `url.inspect` creates a pending request.
+- Approve executes the original URL and records a tool call/artifact.
+- Deny cancels without creating a tool call/artifact.
+- Disabled policy blocks approve while deny still works.
+- Member users cannot list or act on approvals.
+- Another tenant sees no cross-tenant approvals, runs, artifacts, or policy.
+- `modelVisible=true` exposes only read-only `url.inspect` when approval is not
+  required.
 
 ## Runtime Dependency
 
