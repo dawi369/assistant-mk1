@@ -5,6 +5,7 @@ import {
   json,
   parseJson,
   readRequiredHeader,
+  type ControlPlaneAuthContext,
   userIdHeader,
   workspaceIdHeader,
 } from "./http";
@@ -421,7 +422,11 @@ const selectActiveAgent = async (env: Env, input: { userId: string; workspaceId:
   return { ok: true as const, agent: defaultAgent };
 };
 
-export const resolveAgentIdentity = async (request: Request, env: Env): Promise<ResolveResult> => {
+export const resolveAgentIdentity = async (
+  request: Request,
+  env: Env,
+  auth: ControlPlaneAuthContext,
+): Promise<ResolveResult> => {
   const authzSpans: RuntimeTraceInputSpan[] = [];
   const headerStartedAtMs = Date.now();
   const userId = readRequiredHeader(request, userIdHeader);
@@ -471,6 +476,7 @@ export const resolveAgentIdentity = async (request: Request, env: Env): Promise<
         agentId: explicitAgentId,
         accountId: accountId ?? undefined,
         accountSource: accountSource ?? undefined,
+        authMode: auth.mode,
       },
       authzSpans,
     };
@@ -610,6 +616,7 @@ export const resolveAgentIdentity = async (request: Request, env: Env): Promise<
       agentId: agentResult.agent.id,
       accountId,
       accountSource,
+      authMode: auth.mode,
     },
     authzSpans,
   };

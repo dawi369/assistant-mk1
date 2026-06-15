@@ -9,6 +9,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { toWorkbenchApiError } from "@/lib/workbench/api-errors";
 import { getWorkbenchIdentityHeaders } from "@/lib/workbench/agent-identity";
+import { signFacadeRequest } from "@/lib/workbench/control-plane-signing";
 
 export const runtime = "nodejs";
 
@@ -46,6 +47,9 @@ const proxyHeaders = async (trace: {
   traceId: string;
   startedAtMs: number;
   durationMs: number;
+  method: string;
+  pathWithQuery: string;
+  body?: string;
 }) => {
   const headers: Record<string, string> = {};
   headers["x-assistant-mk1-trace-id"] = trace.traceId;
@@ -55,6 +59,19 @@ const proxyHeaders = async (trace: {
   if (process.env.CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN) {
     headers.authorization = `Bearer ${requiredEnv("CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN")}`;
     Object.assign(headers, await getWorkbenchIdentityHeaders());
+    const signingSecret = process.env.CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET?.trim();
+    if (signingSecret) {
+      Object.assign(
+        headers,
+        await signFacadeRequest({
+          secret: signingSecret,
+          method: trace.method,
+          pathWithQuery: trace.pathWithQuery,
+          body: trace.body ?? "",
+          headers,
+        }),
+      );
+    }
     return headers;
   }
 
@@ -94,6 +111,9 @@ async function handleRequest(req: NextRequest, method: string) {
         traceId,
         startedAtMs: proxyStartedAtMs,
         durationMs: Date.now() - proxyStartedAtMs,
+        method,
+        pathWithQuery: `/${path}${queryString}`,
+        body,
       }),
     );
     const options: RequestInit = {

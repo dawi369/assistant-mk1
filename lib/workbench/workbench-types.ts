@@ -90,12 +90,25 @@ export type ToolSummary = {
   allowedExecutionModes?: string[];
   approvalRequired?: boolean;
   killSwitchReason?: string;
+  policyEditable?: boolean;
+  policyConstraints?: {
+    limits?: {
+      perUserPerHour?: number;
+      perWorkspacePerHour?: number;
+    };
+    cooldownSeconds?: number;
+    allowlist?: string[];
+    denylist?: string[];
+    maxRuntimeMs?: number;
+    maxArtifactBytes?: number;
+  };
   adminPolicy?: {
     decision?: "allow" | "block";
     code?: string;
     reason?: string;
     executionMode?: string;
     policyReference?: string;
+    constraints?: ToolSummary["policyConstraints"];
   };
   modelExposurePolicy?: {
     decision?: "allow" | "block";
@@ -103,6 +116,7 @@ export type ToolSummary = {
     reason?: string;
     executionMode?: string;
     policyReference?: string;
+    constraints?: ToolSummary["policyConstraints"];
   };
   latestApprovalRequest?: {
     id?: Id;
@@ -235,6 +249,7 @@ export type CloudflareToolPolicyUpdateResponse = {
   status?: "enabled" | "disabled";
   requiresApproval?: boolean;
   modelVisible?: boolean;
+  policyConstraints?: ToolSummary["policyConstraints"];
   permissionId?: Id;
   policyDecisionId?: Id;
   tool?: ToolSummary;

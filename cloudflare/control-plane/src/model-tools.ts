@@ -105,6 +105,36 @@ export const resolveModelVisibleTools = async (
             };
           }
 
+          const resourcePolicy = await evaluateToolPolicy(env, identity, {
+            membership,
+            toolName: urlInspectToolName,
+            executionMode: "dry_run",
+            surface: "model_tool_call",
+            resource: {
+              kind: "url",
+              value: validated.url.toString(),
+              host: validated.url.hostname.toLowerCase(),
+            },
+          });
+          if (resourcePolicy.decision === "block") {
+            const resourcePolicyDecisionId = await recordToolPolicyDecision(env, identity, {
+              toolName: urlInspectToolName,
+              surface: "model_tool_call",
+              result: resourcePolicy,
+              data: {
+                action: "model.tool.call.resource",
+                chatRunId: input.chatRunId,
+                threadId: input.threadId,
+                traceId: input.traceId,
+              },
+            });
+            return {
+              ok: false,
+              error: toolPolicyError(resourcePolicy),
+              policyDecisionId: resourcePolicyDecisionId,
+            };
+          }
+
           const runIdentity = await insertToolRunRecords(env, identity, {
             url: validated.url,
             executionMode: callPolicy.executionMode,

@@ -1,5 +1,6 @@
 import type { Id } from "@/lib/agent-framework/contracts";
 import { getWorkbenchIdentityHeaders } from "@/lib/workbench/agent-identity";
+import { signFacadeRequest } from "@/lib/workbench/control-plane-signing";
 import type {
   AgentSummary,
   CloudflareAgentBehaviorTemplatesResponse,
@@ -67,7 +68,8 @@ const requestTimeoutMs = 10_000;
 const getControlPlaneConfig = () => {
   const baseUrl = process.env.CLOUDFLARE_CONTROL_PLANE_URL?.replace(/\/$/, "");
   const token = process.env.CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN;
-  return baseUrl && token ? { baseUrl, token } : null;
+  const signingSecret = process.env.CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET;
+  return baseUrl && token ? { baseUrl, token, signingSecret } : null;
 };
 
 const fetchWithTimeout = async (url: string, init: RequestInit) => {
@@ -97,17 +99,32 @@ const controlPlaneRequest = async (path: string, init?: RequestInit) => {
     );
   }
   const identityHeaders = await getWorkbenchIdentityHeaders();
+  const method = init?.method ?? "GET";
+  const body = typeof init?.body === "string" ? init.body : "";
+  const headers: Record<string, string> = {
+    authorization: `Bearer ${config.token}`,
+    "content-type": "application/json",
+    ...identityHeaders,
+    ...(init?.headers as Record<string, string> | undefined),
+  };
+  if (config.signingSecret?.trim()) {
+    Object.assign(
+      headers,
+      await signFacadeRequest({
+        secret: config.signingSecret,
+        method,
+        pathWithQuery: path,
+        body,
+        headers,
+      }),
+    );
+  }
 
   return {
     url: `${config.baseUrl}${path}`,
     init: {
       ...init,
-      headers: {
-        authorization: `Bearer ${config.token}`,
-        "content-type": "application/json",
-        ...identityHeaders,
-        ...init?.headers,
-      },
+      headers,
     } satisfies RequestInit,
   };
 };
@@ -195,6 +212,17 @@ export const updateCloudflareToolPolicy = (input: {
   requiresApproval?: boolean;
   killSwitchReason?: string;
   modelVisible?: boolean;
+  approvalReason?: string;
+  allowedExecutionModes?: Array<"ask" | "dry_run" | "execute">;
+  limits?: {
+    perUserPerHour?: number;
+    perWorkspacePerHour?: number;
+  };
+  cooldownSeconds?: number | null;
+  allowlist?: string[];
+  denylist?: string[];
+  maxRuntimeMs?: number | null;
+  maxArtifactBytes?: number | null;
 }) =>
   requestControlPlane<CloudflareToolPolicyUpdateResponse>("/tools/policy", {
     method: "POST",

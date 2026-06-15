@@ -35,7 +35,14 @@ export type ToolPolicyResult = {
     | "tool_disabled"
     | "approval_required"
     | "unsupported_execution_mode"
-    | "model_exposure_blocked";
+    | "model_exposure_blocked"
+    | "tool_policy_not_editable"
+    | "resource_denied"
+    | "resource_not_allowed"
+    | "cooldown_active"
+    | "rate_limit_exceeded"
+    | "runtime_limit_exceeded"
+    | "artifact_limit_exceeded";
   reason: string;
   executionMode: ExecutionMode;
   policyReference?: string;
@@ -45,20 +52,51 @@ export type ToolPolicyResult = {
   approvalRequired: boolean;
   killSwitchReason?: string;
   allowedExecutionModes: ExecutionMode[];
+  policyEditable: boolean;
+  constraints: ToolPolicyConstraints;
 };
 
-type ToolPolicyDefaults = {
+export type ToolPolicyLimits = {
+  perUserPerHour?: number;
+  perWorkspacePerHour?: number;
+};
+
+export type ToolPolicyConstraints = {
+  limits: ToolPolicyLimits;
+  cooldownSeconds?: number;
+  allowlist: string[];
+  denylist: string[];
+  maxRuntimeMs?: number;
+  maxArtifactBytes?: number;
+};
+
+export type ToolPolicyResource = {
+  kind: "url" | "generic";
+  value?: string;
+  host?: string;
+};
+
+type ToolPolicyCatalogEntry = {
   policyReference: string;
   allowedExecutionModes: ExecutionMode[];
   adminVisible: boolean;
   modelVisible: boolean;
   requiresApproval: boolean;
   status: ToolPermissionStatus;
+  policyEditable: boolean;
+  mutationRisk: "read_only" | "mutation_capable";
+  constraints: ToolPolicyConstraints;
 };
 
 const executionModes = new Set<ExecutionMode>(["ask", "dry_run", "execute"]);
 
-const toolDefaults: Record<string, ToolPolicyDefaults> = {
+const emptyConstraints = (): ToolPolicyConstraints => ({
+  limits: {},
+  allowlist: [],
+  denylist: [],
+});
+
+export const toolPolicyCatalog: Record<string, ToolPolicyCatalogEntry> = {
   [urlInspectToolName]: {
     policyReference: urlInspectPolicy,
     allowedExecutionModes: ["dry_run"],
@@ -66,6 +104,9 @@ const toolDefaults: Record<string, ToolPolicyDefaults> = {
     modelVisible: false,
     requiresApproval: false,
     status: "enabled",
+    policyEditable: true,
+    mutationRisk: "read_only",
+    constraints: emptyConstraints(),
   },
   [demoInspectToolName]: {
     policyReference: demoInspectPolicy,
@@ -74,30 +115,231 @@ const toolDefaults: Record<string, ToolPolicyDefaults> = {
     modelVisible: false,
     requiresApproval: false,
     status: "enabled",
+    policyEditable: false,
+    mutationRisk: "read_only",
+    constraints: emptyConstraints(),
   },
 };
 
 const readDataFlag = (data: Record<string, unknown>, name: string, fallback: boolean) =>
   typeof data[name] === "boolean" ? data[name] : fallback;
 
+const readNumber = (value: unknown, fallback?: number) =>
+  typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : fallback;
+
+const readStringList = (value: unknown) =>
+  Array.isArray(value)
+    ? value
+        .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+        .map((item) => item.trim().toLowerCase())
+    : [];
+
+const readAllowedExecutionModes = (value: unknown, fallback: ExecutionMode[]) => {
+  if (!Array.isArray(value)) return fallback;
+  const modes = value.filter(
+    (item): item is ExecutionMode =>
+      typeof item === "string" && executionModes.has(item as ExecutionMode),
+  );
+  return modes.length > 0 ? Array.from(new Set(modes)) : fallback;
+};
+
+const readLimits = (value: unknown, fallback: ToolPolicyLimits): ToolPolicyLimits => {
+  const source = isRecord(value) ? value : {};
+  return {
+    perUserPerHour: readNumber(source.perUserPerHour, fallback.perUserPerHour),
+    perWorkspacePerHour: readNumber(source.perWorkspacePerHour, fallback.perWorkspacePerHour),
+  };
+};
+
+const readConstraints = (
+  execution: Record<string, unknown>,
+  data: Record<string, unknown>,
+  defaults: ToolPolicyCatalogEntry,
+): ToolPolicyConstraints => ({
+  limits: readLimits(execution.limits, defaults.constraints.limits),
+  cooldownSeconds: readNumber(execution.cooldownSeconds, defaults.constraints.cooldownSeconds),
+  allowlist: readStringList(data.allowlist).length
+    ? readStringList(data.allowlist)
+    : defaults.constraints.allowlist,
+  denylist: readStringList(data.denylist).length
+    ? readStringList(data.denylist)
+    : defaults.constraints.denylist,
+  maxRuntimeMs: readNumber(execution.maxRuntimeMs, defaults.constraints.maxRuntimeMs),
+  maxArtifactBytes: readNumber(execution.maxArtifactBytes, defaults.constraints.maxArtifactBytes),
+});
+
 const readExecutionMode = (raw: string): ExecutionMode =>
   executionModes.has(raw as ExecutionMode) ? (raw as ExecutionMode) : "ask";
 
-export const isKnownTool = (toolName: string) => Boolean(toolDefaults[toolName]);
+const matchesPolicyPattern = (value: string, pattern: string) => {
+  const normalizedValue = value.toLowerCase();
+  const normalizedPattern = pattern.toLowerCase();
+  if (normalizedValue === normalizedPattern) return true;
+  if (normalizedPattern.startsWith("*.")) {
+    const suffix = normalizedPattern.slice(1);
+    return normalizedValue.endsWith(suffix);
+  }
+  if (normalizedPattern.startsWith(".")) return normalizedValue.endsWith(normalizedPattern);
+  return false;
+};
 
-const defaultExecution = (defaults: ToolPolicyDefaults) => ({
+const countAllowedPolicyDecisions = async (
+  env: Env,
+  identity: AgentIdentity,
+  input: { toolName: string; since: string; scope: "user" | "workspace" },
+) => {
+  const query =
+    input.scope === "user"
+      ? `SELECT COUNT(*) AS count
+         FROM control_policy_decisions
+         WHERE user_id = ? AND workspace_id = ? AND tool_id = ?
+           AND decision = 'allow' AND created_at >= ?`
+      : `SELECT COUNT(*) AS count
+         FROM control_policy_decisions
+         WHERE workspace_id = ? AND tool_id = ? AND decision = 'allow' AND created_at >= ?`;
+  const row =
+    input.scope === "user"
+      ? await env.DB.prepare(query)
+          .bind(identity.scope.userId, identity.scope.workspaceId, input.toolName, input.since)
+          .first<{ count?: number }>()
+      : await env.DB.prepare(query)
+          .bind(identity.scope.workspaceId, input.toolName, input.since)
+          .first<{ count?: number }>();
+  return typeof row?.count === "number" ? row.count : 0;
+};
+
+const latestAllowedPolicyDecision = async (env: Env, identity: AgentIdentity, toolName: string) =>
+  env.DB.prepare(
+    `SELECT created_at
+     FROM control_policy_decisions
+     WHERE user_id = ? AND workspace_id = ? AND tool_id = ? AND decision = 'allow'
+     ORDER BY created_at DESC
+     LIMIT 1`,
+  )
+    .bind(identity.scope.userId, identity.scope.workspaceId, toolName)
+    .first<{ created_at?: string }>();
+
+const evaluateResourceAndLimitPolicy = async (
+  env: Env,
+  identity: AgentIdentity,
+  toolName: string,
+  input: {
+    constraints: ToolPolicyConstraints;
+    resource?: ToolPolicyResource;
+    requestedRuntimeMs?: number;
+    requestedArtifactBytes?: number;
+  },
+): Promise<null | { code: ToolPolicyResult["code"]; reason: string }> => {
+  const resourceValue = input.resource?.host ?? input.resource?.value;
+  if (resourceValue) {
+    if (
+      input.constraints.denylist.some((pattern) => matchesPolicyPattern(resourceValue, pattern))
+    ) {
+      return { code: "resource_denied", reason: `${resourceValue} is denied by tool policy.` };
+    }
+    if (
+      input.constraints.allowlist.length > 0 &&
+      !input.constraints.allowlist.some((pattern) => matchesPolicyPattern(resourceValue, pattern))
+    ) {
+      return {
+        code: "resource_not_allowed",
+        reason: `${resourceValue} is not in the tool policy allowlist.`,
+      };
+    }
+  }
+
+  if (
+    input.constraints.maxRuntimeMs !== undefined &&
+    input.requestedRuntimeMs !== undefined &&
+    input.requestedRuntimeMs > input.constraints.maxRuntimeMs
+  ) {
+    return {
+      code: "runtime_limit_exceeded",
+      reason: `Requested runtime exceeds the ${input.constraints.maxRuntimeMs}ms policy limit.`,
+    };
+  }
+
+  if (
+    input.constraints.maxArtifactBytes !== undefined &&
+    input.requestedArtifactBytes !== undefined &&
+    input.requestedArtifactBytes > input.constraints.maxArtifactBytes
+  ) {
+    return {
+      code: "artifact_limit_exceeded",
+      reason: `Requested artifact size exceeds the ${input.constraints.maxArtifactBytes} byte policy limit.`,
+    };
+  }
+
+  if (input.constraints.cooldownSeconds && input.constraints.cooldownSeconds > 0) {
+    const latest = await latestAllowedPolicyDecision(env, identity, toolName);
+    const latestMs = latest?.created_at ? Date.parse(latest.created_at) : Number.NaN;
+    if (Number.isFinite(latestMs)) {
+      const availableAtMs = latestMs + input.constraints.cooldownSeconds * 1000;
+      if (Date.now() < availableAtMs) {
+        return {
+          code: "cooldown_active",
+          reason: `Tool policy cooldown is active until ${new Date(availableAtMs).toISOString()}.`,
+        };
+      }
+    }
+  }
+
+  const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  if (input.constraints.limits.perUserPerHour !== undefined) {
+    const count = await countAllowedPolicyDecisions(env, identity, {
+      toolName,
+      since,
+      scope: "user",
+    });
+    if (count >= input.constraints.limits.perUserPerHour) {
+      return {
+        code: "rate_limit_exceeded",
+        reason: `Per-user hourly policy limit of ${input.constraints.limits.perUserPerHour} was reached.`,
+      };
+    }
+  }
+  if (input.constraints.limits.perWorkspacePerHour !== undefined) {
+    const count = await countAllowedPolicyDecisions(env, identity, {
+      toolName,
+      since,
+      scope: "workspace",
+    });
+    if (count >= input.constraints.limits.perWorkspacePerHour) {
+      return {
+        code: "rate_limit_exceeded",
+        reason: `Per-workspace hourly policy limit of ${input.constraints.limits.perWorkspacePerHour} was reached.`,
+      };
+    }
+  }
+
+  return null;
+};
+
+export const isKnownTool = (toolName: string) => Boolean(toolPolicyCatalog[toolName]);
+
+export const isPolicyEditableTool = (toolName: string) =>
+  Boolean(toolPolicyCatalog[toolName]?.policyEditable);
+
+const defaultExecution = (defaults: ToolPolicyCatalogEntry) => ({
   mode: defaults.allowedExecutionModes[0],
   policy: defaults.policyReference,
+  allowedExecutionModes: defaults.allowedExecutionModes,
+  limits: defaults.constraints.limits,
+  cooldownSeconds: defaults.constraints.cooldownSeconds,
+  maxRuntimeMs: defaults.constraints.maxRuntimeMs,
+  maxArtifactBytes: defaults.constraints.maxArtifactBytes,
 });
 
-const defaultData = (defaults: ToolPolicyDefaults) => ({
+const defaultData = (defaults: ToolPolicyCatalogEntry) => ({
   adminVisible: defaults.adminVisible,
   modelVisible: defaults.modelVisible,
   requiresApproval: defaults.requiresApproval,
+  allowlist: defaults.constraints.allowlist,
+  denylist: defaults.constraints.denylist,
 });
 
 export const ensureToolPermission = async (env: Env, identity: AgentIdentity, toolName: string) => {
-  const defaults = toolDefaults[toolName];
+  const defaults = toolPolicyCatalog[toolName];
   if (!defaults) return null;
 
   const timestamp = new Date().toISOString();
@@ -158,6 +400,14 @@ export const updateToolPermissionStatus = async (
     requiresApproval?: boolean;
     killSwitchReason?: string | null;
     modelVisible?: boolean;
+    approvalReason?: string;
+    allowedExecutionModes?: ExecutionMode[];
+    limits?: ToolPolicyLimits;
+    cooldownSeconds?: number | null;
+    allowlist?: string[];
+    denylist?: string[];
+    maxRuntimeMs?: number | null;
+    maxArtifactBytes?: number | null;
   },
 ) => {
   const permission = await ensureToolPermission(env, identity, input.toolName);
@@ -165,19 +415,58 @@ export const updateToolPermissionStatus = async (
 
   const timestamp = new Date().toISOString();
   const data = parseDataJson(permission.data_json);
+  const execution = parseDataJson(permission.execution_json);
+  const defaults = toolPolicyCatalog[input.toolName];
   const nextStatus = input.status ?? permission.status;
+  const nextExecution: Record<string, unknown> = {
+    ...execution,
+    policy:
+      typeof execution.policy === "string" && execution.policy
+        ? execution.policy
+        : defaults.policyReference,
+    mode:
+      typeof execution.mode === "string" && executionModes.has(execution.mode as ExecutionMode)
+        ? execution.mode
+        : defaults.allowedExecutionModes[0],
+    allowedExecutionModes:
+      input.allowedExecutionModes ??
+      readAllowedExecutionModes(execution.allowedExecutionModes, defaults.allowedExecutionModes),
+    limits: input.limits ?? readLimits(execution.limits, defaults.constraints.limits),
+  };
+  const cooldownSeconds =
+    input.cooldownSeconds === null
+      ? undefined
+      : (input.cooldownSeconds ?? readNumber(execution.cooldownSeconds));
+  const maxRuntimeMs =
+    input.maxRuntimeMs === null
+      ? undefined
+      : (input.maxRuntimeMs ?? readNumber(execution.maxRuntimeMs));
+  const maxArtifactBytes =
+    input.maxArtifactBytes === null
+      ? undefined
+      : (input.maxArtifactBytes ?? readNumber(execution.maxArtifactBytes));
+  if (cooldownSeconds === undefined) delete nextExecution.cooldownSeconds;
+  else nextExecution.cooldownSeconds = cooldownSeconds;
+  if (maxRuntimeMs === undefined) delete nextExecution.maxRuntimeMs;
+  else nextExecution.maxRuntimeMs = maxRuntimeMs;
+  if (maxArtifactBytes === undefined) delete nextExecution.maxArtifactBytes;
+  else nextExecution.maxArtifactBytes = maxArtifactBytes;
+
   const nextData: Record<string, unknown> = {
     ...data,
-    adminVisible: readDataFlag(data, "adminVisible", toolDefaults[input.toolName].adminVisible),
+    adminVisible: readDataFlag(data, "adminVisible", defaults.adminVisible),
     modelVisible:
       typeof input.modelVisible === "boolean"
         ? input.modelVisible
-        : readDataFlag(data, "modelVisible", toolDefaults[input.toolName].modelVisible),
+        : readDataFlag(data, "modelVisible", defaults.modelVisible),
     requiresApproval:
       typeof input.requiresApproval === "boolean"
         ? input.requiresApproval
-        : readDataFlag(data, "requiresApproval", toolDefaults[input.toolName].requiresApproval),
+        : readDataFlag(data, "requiresApproval", defaults.requiresApproval),
+    allowlist: input.allowlist ?? readStringList(data.allowlist),
+    denylist: input.denylist ?? readStringList(data.denylist),
   };
+  if (input.approvalReason !== undefined) nextData.approvalReason = input.approvalReason;
   if (nextStatus === "disabled") {
     nextData.killSwitchReason =
       input.killSwitchReason?.trim() ||
@@ -190,11 +479,12 @@ export const updateToolPermissionStatus = async (
 
   await env.DB.prepare(
     `UPDATE tool_permissions
-     SET status = ?, data_json = ?, updated_at = ?
+     SET status = ?, execution_json = ?, data_json = ?, updated_at = ?
      WHERE user_id = ? AND workspace_id = ? AND agent_id = ? AND tool_id = ?`,
   )
     .bind(
       nextStatus,
+      toJson(nextExecution),
       toJson(nextData),
       timestamp,
       identity.scope.userId,
@@ -215,9 +505,12 @@ export const evaluateToolPolicy = async (
     toolName: string;
     executionMode: string;
     surface: ToolPolicySurface;
+    resource?: ToolPolicyResource;
+    requestedRuntimeMs?: number;
+    requestedArtifactBytes?: number;
   },
 ): Promise<ToolPolicyResult> => {
-  const defaults = toolDefaults[input.toolName];
+  const defaults = toolPolicyCatalog[input.toolName];
   const executionMode = readExecutionMode(input.executionMode);
   if (!defaults) {
     return {
@@ -230,6 +523,8 @@ export const evaluateToolPolicy = async (
       modelVisible: false,
       approvalRequired: false,
       allowedExecutionModes: [],
+      policyEditable: false,
+      constraints: emptyConstraints(),
     };
   }
 
@@ -246,6 +541,11 @@ export const evaluateToolPolicy = async (
     isRecord(execution) && typeof execution.policy === "string"
       ? String(execution.policy)
       : defaults.policyReference;
+  const allowedExecutionModes = readAllowedExecutionModes(
+    execution.allowedExecutionModes,
+    defaults.allowedExecutionModes,
+  );
+  const constraints = readConstraints(execution, data, defaults);
 
   const base = {
     executionMode,
@@ -255,7 +555,9 @@ export const evaluateToolPolicy = async (
     modelVisible: false,
     approvalRequired,
     killSwitchReason,
-    allowedExecutionModes: defaults.allowedExecutionModes,
+    allowedExecutionModes,
+    policyEditable: defaults.policyEditable,
+    constraints,
   };
 
   if (!input.membership || input.membership.status !== "active") {
@@ -288,13 +590,13 @@ export const evaluateToolPolicy = async (
     };
   }
 
-  if (!defaults.allowedExecutionModes.includes(executionMode)) {
+  if (!allowedExecutionModes.includes(executionMode)) {
     return {
       ...base,
       decision: "block",
       status: 403,
       code: "unsupported_execution_mode",
-      reason: `${input.toolName} only supports ${defaults.allowedExecutionModes.join(", ")}.`,
+      reason: `${input.toolName} only supports ${allowedExecutionModes.join(", ")}.`,
     };
   }
 
@@ -367,6 +669,23 @@ export const evaluateToolPolicy = async (
     };
   }
 
+  const resourceBlock = await evaluateResourceAndLimitPolicy(env, identity, input.toolName, {
+    constraints,
+    resource: input.resource,
+    requestedRuntimeMs: input.requestedRuntimeMs,
+    requestedArtifactBytes: input.requestedArtifactBytes,
+  });
+  if (resourceBlock) {
+    return {
+      ...base,
+      decision: "block",
+      status: 403,
+      ...resourceBlock,
+      adminVisible: adminVisibleFlag,
+      modelVisible: modelVisibleFlag,
+    };
+  }
+
   return {
     ...base,
     decision: "allow",
@@ -415,6 +734,9 @@ export const recordToolPolicyDecision = async (
         code: input.result.code,
         permissionId: input.result.permission?.id,
         status: input.result.permission?.status,
+        authMode: identity.authMode,
+        allowedExecutionModes: input.result.allowedExecutionModes,
+        constraints: input.result.constraints,
         ...input.data,
       }),
       timestamp,
@@ -443,6 +765,7 @@ export const recordToolPolicyDecision = async (
         surface: input.surface,
         code: input.result.code,
         policyReference: input.result.policyReference,
+        authMode: identity.authMode,
       }),
       timestamp,
     )
@@ -459,6 +782,7 @@ export const recordToolPolicyDecision = async (
       code: input.result.code,
       decision: input.result.decision,
       policyReference: input.result.policyReference,
+      authMode: identity.authMode,
     },
   });
 

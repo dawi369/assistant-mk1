@@ -197,6 +197,7 @@ Remote Worker secrets and vars:
 
 ```bash
 pnpm wrangler secret put CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN --config cloudflare/control-plane/wrangler.jsonc
+pnpm wrangler secret put CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET --config cloudflare/control-plane/wrangler.jsonc
 pnpm wrangler secret put LANGGRAPH_UPSTREAM_TOKEN --config cloudflare/control-plane/wrangler.jsonc
 pnpm wrangler secret put WORKBENCH_EXECUTOR_TOKEN --config cloudflare/control-plane/wrangler.jsonc
 pnpm wrangler secret put WORKBENCH_EXECUTOR_URL --config cloudflare/control-plane/wrangler.jsonc
@@ -210,6 +211,12 @@ as the remote executor URL. Do not commit token values.
 `LANGGRAPH_UPSTREAM_URL` is committed in `wrangler.jsonc` and points at
 `https://assistant-mk1-langgraph-dev.fly.dev`. `LANGGRAPH_UPSTREAM_TOKEN` must
 match the Fly `LANGGRAPH_PROXY_TOKEN`.
+
+`CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET` must match the Vercel
+Production environment variable with the same name. When this secret is present,
+normal control-plane facade routes require fresh signed requests and reject
+stale or replayed nonces. Local `wrangler dev` can keep using the dev token only
+when this signing secret is absent or `CLOUDFLARE_CONTROL_PLANE_REQUIRE_FACADE_SIGNATURE=false`.
 
 `SENTRY_ENVIRONMENT=production` is committed for the deployed Worker. Keep
 `SENTRY_DSN` out of source and configure it as a Worker secret.
@@ -277,6 +284,7 @@ Remote deploy readiness smoke:
 ```bash
 CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
 CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
+CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET=<same-secret-as-worker> \
 pnpm smoke:cloudflare-deploy-readiness
 ```
 

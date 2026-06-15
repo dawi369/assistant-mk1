@@ -6,6 +6,8 @@
  * main/catch wrapper, etc.  This module extracts those into a single place.
  */
 
+import { signFacadeRequest } from "../lib/workbench/control-plane-signing";
+
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
@@ -79,6 +81,7 @@ export function createSmokeContext(options?: {
     process.env[options?.tokenEnv ?? "CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN"] ??
     options?.tokenDefault ??
     "local-dev-token";
+  const signingSecret = process.env.CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET?.trim();
 
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const pollTimeoutMs = Number(
@@ -120,6 +123,30 @@ export function createSmokeContext(options?: {
     return headers;
   };
 
+  const signedHeadersFor = async (
+    identity: TenantIdentity,
+    path: string,
+    init?: RequestInit,
+  ): Promise<Record<string, string>> => {
+    const headers = {
+      ...headersFor(identity),
+      ...(init?.headers as Record<string, string> | undefined),
+    };
+    if (!signingSecret) return headers;
+
+    Object.assign(
+      headers,
+      await signFacadeRequest({
+        secret: signingSecret,
+        method: init?.method ?? "GET",
+        pathWithQuery: path,
+        body: typeof init?.body === "string" ? init.body : "",
+        headers,
+      }),
+    );
+    return headers;
+  };
+
   /* ---- request helpers ---- */
 
   const readJson = async <T>(
@@ -129,10 +156,7 @@ export function createSmokeContext(options?: {
   ): Promise<T> => {
     const response = await fetch(`${baseUrl}${path}`, {
       ...init,
-      headers: {
-        ...headersFor(identity),
-        ...init?.headers,
-      },
+      headers: await signedHeadersFor(identity, path, init),
     });
     if (!response.ok) {
       const body = await response.text();
@@ -148,10 +172,7 @@ export function createSmokeContext(options?: {
   ): Promise<Response> =>
     fetch(`${baseUrl}${path}`, {
       ...init,
-      headers: {
-        ...headersFor(identity),
-        ...init?.headers,
-      },
+      headers: await signedHeadersFor(identity, path, init),
     });
 
   const assertStatus = async (
@@ -188,12 +209,14 @@ export function createSmokeContext(options?: {
       stream_mode: ["messages"],
     });
 
-  const startStream = (identity: TenantIdentity, threadId: string, body: string) =>
-    fetch(`${baseUrl}/langgraph/threads/${encodeURIComponent(threadId)}/runs/stream`, {
+  const startStream = async (identity: TenantIdentity, threadId: string, body: string) => {
+    const path = `/langgraph/threads/${encodeURIComponent(threadId)}/runs/stream`;
+    return fetch(`${baseUrl}${path}`, {
       method: "POST",
-      headers: headersFor(identity),
+      headers: await signedHeadersFor(identity, path, { method: "POST", body }),
       body,
     });
+  };
 
   const startAcceptedStreamOnNewThread = async (
     identity: TenantIdentity,
@@ -226,6 +249,7 @@ export function createSmokeContext(options?: {
     pollTimeoutMs,
     pollIntervalMs,
     headersFor,
+    signedHeadersFor,
     readJson,
     fetchRaw,
     assertStatus,

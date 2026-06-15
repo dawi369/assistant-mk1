@@ -166,13 +166,20 @@ Implemented:
   `modelVisible` defaults false, owner/admin users can opt in per current
   user/workspace/agent permission row, and approval-required or disabled policy
   states keep model exposure blocked.
+- Signed Facade v0.4: Vercel signs normal Cloudflare facade requests, Cloudflare
+  rejects stale/replayed/tampered signatures before identity resolution, and
+  direct dev-token header trust is limited to local/dev-token paths.
+- Generic Tool Policy v0.4: the same evaluator gates Admin runs, approval
+  resume, model exposure, and model tool calls with generic execution-mode,
+  approval, exposure, kill-switch, resource, cooldown, hourly-limit, runtime,
+  and artifact-size constraints.
 
 Next target:
 
-- Broader policy checks for `ask`, `dry_run`, and `execute` modes at the
-  tool-runner boundary, including limits before any mutation-capable adapter.
-- First CLI/OSS-backed or external-system adapter after the read-only policy,
-  approval, and model-exposure path is proven in hosted dev.
+- Generic tool-runner boundary for all tool execution, starting with
+  `url.inspect`, then the first read-only CLI/OSS-backed adapter.
+- Secret custody before any private external integration or mutation-capable
+  adapter.
 
 Exit criteria:
 

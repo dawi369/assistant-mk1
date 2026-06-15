@@ -43,6 +43,7 @@ NEXT_PUBLIC_LANGGRAPH_ASSISTANT_ID=agent
 LANGGRAPH_API_URL=https://assistant-mk1-dev-control-plane.david-erwin-cz68.workers.dev/langgraph
 CLOUDFLARE_CONTROL_PLANE_URL=https://assistant-mk1-dev-control-plane.david-erwin-cz68.workers.dev
 CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<secret>
+CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET=<same-secret-as-worker>
 WORKOS_CLIENT_ID=<secret>
 WORKOS_API_KEY=<secret>
 WORKOS_COOKIE_PASSWORD=<secret>
@@ -65,11 +66,13 @@ Do not mirror local `.env.local` into Vercel Production blindly:
 - Local redirect URI: `http://localhost:3000/auth/callback`
 - Production redirect URI: `https://assistant-mk1.vercel.app/auth/callback`
 
-The Vercel `/api` proxy authenticates to Cloudflare with
-`CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN` and trusted identity headers derived from
-the WorkOS AuthKit server session. WorkOS `user.id` becomes the internal
-`userId`. WorkOS `organizationId` becomes `workos-org:<organizationId>` when
-available; otherwise the pre-user dev fallback account id is
+The Vercel `/api` proxy authenticates to Cloudflare with a signed facade
+request. `CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN` remains the shared transport
+token for current dev operations, but Cloudflare trusts WorkOS-derived identity
+headers only when the request signature is fresh and non-replayed. WorkOS
+`user.id` becomes the internal `userId`. WorkOS `organizationId` becomes
+`workos-org:<organizationId>` when available; otherwise the pre-user dev
+fallback account id is
 `workos-personal:<user-id>`. Cloudflare auto-bootstraps D1-backed user, default
 workspace, initial membership, and default agent rows for the current pre-user
 dev environment, then resolves the active workspace and active agent before
@@ -108,9 +111,11 @@ node -e "fetch('https://assistant-mk1.vercel.app/sign-in',{redirect:'manual'}).t
 node -e "fetch('https://assistant-mk1.vercel.app/api/workbench/context').then(async r=>console.log(r.status, await r.text()))"
 CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
 CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
+CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET=<same-secret-as-worker> \
 pnpm smoke:cloudflare-workspace-context
 CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
 CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
+CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET=<same-secret-as-worker> \
 pnpm smoke:cloudflare-workbench-run
 ```
 
@@ -137,6 +142,7 @@ PATH=/opt/homebrew/bin:$PATH pnpm db:cloudflare:rebuild:remote
 PATH=/opt/homebrew/bin:$PATH pnpm deploy:cloudflare
 CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
 CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
+CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET=<same-secret-as-worker> \
 PATH=/opt/homebrew/bin:$PATH pnpm smoke:cloudflare-deploy-readiness
 vercel --prod --yes
 curl https://assistant-mk1.vercel.app/api/health

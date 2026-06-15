@@ -14,6 +14,7 @@ DROP TABLE IF EXISTS control_approval_requests;
 DROP TABLE IF EXISTS control_runs;
 DROP TABLE IF EXISTS control_workflow_intents;
 DROP TABLE IF EXISTS control_policy_decisions;
+DROP TABLE IF EXISTS control_request_nonces;
 DROP TABLE IF EXISTS tool_permissions;
 DROP TABLE IF EXISTS active_agent_preferences;
 DROP TABLE IF EXISTS agents;
@@ -149,6 +150,17 @@ CREATE TABLE control_policy_decisions (
 
 CREATE INDEX idx_control_policy_decisions_scope_latest
   ON control_policy_decisions (user_id, workspace_id, created_at DESC);
+
+CREATE TABLE control_request_nonces (
+  nonce TEXT PRIMARY KEY,
+  signature_hash TEXT NOT NULL,
+  source TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+);
+
+CREATE INDEX idx_control_request_nonces_expires
+  ON control_request_nonces (expires_at);
 
 CREATE TABLE control_workflow_intents (
   id TEXT PRIMARY KEY,

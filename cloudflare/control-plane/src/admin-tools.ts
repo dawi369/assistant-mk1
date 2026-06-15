@@ -16,6 +16,7 @@ import {
   demoInspectToolName,
   evaluateToolPolicy,
   isKnownTool,
+  isPolicyEditableTool,
   recordToolPolicyDecision,
   toolPolicyError,
   updateToolPermissionStatus,
@@ -146,6 +147,7 @@ const toPolicySummary = (policy: Awaited<ReturnType<typeof evaluateToolPolicy>>)
   reason: policy.reason,
   executionMode: policy.executionMode,
   policyReference: policy.policyReference,
+  constraints: policy.constraints,
 });
 
 const readLatestApprovalRequest = async (env: Env, identity: AgentIdentity, toolName: string) =>
@@ -230,6 +232,8 @@ export const resolveToolSummaries = async (env: Env, identity: AgentIdentity) =>
         allowedExecutionModes: adminPolicy.allowedExecutionModes,
         approvalRequired: adminPolicy.approvalRequired,
         killSwitchReason,
+        policyEditable: adminPolicy.policyEditable,
+        policyConstraints: adminPolicy.constraints,
         adminPolicy: toPolicySummary(adminPolicy),
         modelExposurePolicy: toPolicySummary(modelPolicy),
         latestApprovalRequest: latestApprovalRequest
@@ -350,6 +354,12 @@ const extractTitle = (text: string) => {
   if (!match?.[1]) return null;
   return match[1].replace(/\s+/g, " ").trim().slice(0, 180) || null;
 };
+
+const urlPolicyResource = (url: URL) => ({
+  kind: "url" as const,
+  value: url.toString(),
+  host: url.hostname.toLowerCase(),
+});
 
 const readBoundedText = async (response: Response) => {
   if (!response.body) return { text: "", downloadedBytes: 0, truncated: false };
@@ -1353,8 +1363,40 @@ export const handleUpdateToolPolicy = async (
     isRecord(body) && typeof body.killSwitchReason === "string"
       ? body.killSwitchReason.trim().slice(0, 240)
       : undefined;
+  const approvalReason =
+    isRecord(body) && typeof body.approvalReason === "string"
+      ? body.approvalReason.trim().slice(0, 240)
+      : undefined;
+  const allowedExecutionModes =
+    isRecord(body) && Array.isArray(body.allowedExecutionModes)
+      ? body.allowedExecutionModes.filter(
+          (mode): mode is "ask" | "dry_run" | "execute" =>
+            mode === "ask" || mode === "dry_run" || mode === "execute",
+        )
+      : undefined;
+  const limits = isRecord(body) && isRecord(body.limits) ? body.limits : undefined;
+  const cooldownSeconds =
+    isRecord(body) && (typeof body.cooldownSeconds === "number" || body.cooldownSeconds === null)
+      ? body.cooldownSeconds
+      : undefined;
+  const maxRuntimeMs =
+    isRecord(body) && (typeof body.maxRuntimeMs === "number" || body.maxRuntimeMs === null)
+      ? body.maxRuntimeMs
+      : undefined;
+  const maxArtifactBytes =
+    isRecord(body) && (typeof body.maxArtifactBytes === "number" || body.maxArtifactBytes === null)
+      ? body.maxArtifactBytes
+      : undefined;
+  const allowlist =
+    isRecord(body) && Array.isArray(body.allowlist)
+      ? body.allowlist.filter((item): item is string => typeof item === "string")
+      : undefined;
+  const denylist =
+    isRecord(body) && Array.isArray(body.denylist)
+      ? body.denylist.filter((item): item is string => typeof item === "string")
+      : undefined;
 
-  if (!isKnownTool(toolName) || toolName !== urlInspectToolName) {
+  if (!isKnownTool(toolName)) {
     return json(
       {
         ok: false,
@@ -1366,6 +1408,21 @@ export const handleUpdateToolPolicy = async (
         ),
       },
       { status: 400 },
+    );
+  }
+
+  if (!isPolicyEditableTool(toolName)) {
+    return json(
+      {
+        ok: false,
+        error: "Tool policy is not editable",
+        details: toolError(
+          "tool_policy_not_editable",
+          `${toolName} policy is not editable through this endpoint.`,
+          false,
+        ),
+      },
+      { status: 403 },
     );
   }
 
@@ -1388,7 +1445,15 @@ export const handleUpdateToolPolicy = async (
     status === undefined &&
     requiresApproval === undefined &&
     modelVisible === undefined &&
-    killSwitchReason === undefined
+    killSwitchReason === undefined &&
+    approvalReason === undefined &&
+    allowedExecutionModes === undefined &&
+    limits === undefined &&
+    cooldownSeconds === undefined &&
+    maxRuntimeMs === undefined &&
+    maxArtifactBytes === undefined &&
+    allowlist === undefined &&
+    denylist === undefined
   ) {
     return json(
       {
@@ -1396,7 +1461,7 @@ export const handleUpdateToolPolicy = async (
         error: "No policy changes requested",
         details: toolError(
           "invalid_policy_update",
-          "Provide status, requiresApproval, modelVisible, or killSwitchReason.",
+          "Provide at least one supported policy field.",
           false,
         ),
       },
@@ -1421,6 +1486,7 @@ export const handleUpdateToolPolicy = async (
         requestedStatus: status,
         requestedRequiresApproval: requiresApproval,
         requestedModelVisible: modelVisible,
+        requestedLimits: limits,
       },
     });
     return json(
@@ -1440,6 +1506,14 @@ export const handleUpdateToolPolicy = async (
     requiresApproval,
     killSwitchReason,
     modelVisible,
+    approvalReason,
+    allowedExecutionModes,
+    limits,
+    cooldownSeconds,
+    maxRuntimeMs,
+    maxArtifactBytes,
+    allowlist,
+    denylist,
   });
   const tools = await resolveToolSummaries(env, identity);
   const tool = tools.find((item) => item.name === toolName);
@@ -1454,6 +1528,11 @@ export const handleUpdateToolPolicy = async (
       requiresApproval,
       modelVisible,
       killSwitchReason,
+      approvalReason,
+      limits,
+      cooldownSeconds,
+      maxRuntimeMs,
+      maxArtifactBytes,
     },
   });
   await dispatchWorkbenchSessionEvent(env, identity, {
@@ -1471,6 +1550,7 @@ export const handleUpdateToolPolicy = async (
     status: permission?.status,
     requiresApproval: tool?.approvalRequired,
     modelVisible: tool?.modelVisible,
+    policyConstraints: tool?.policyConstraints,
     permissionId: permission?.id,
     tool,
   });
@@ -1605,6 +1685,7 @@ export const handleApproveToolApproval = async (
     toolName: approval.tool_id,
     executionMode: "dry_run",
     surface: "admin_resume",
+    resource: urlPolicyResource(validated.url),
   });
   const policyDecisionId = await recordToolPolicyDecision(env, identity, {
     toolName: approval.tool_id,
@@ -1984,6 +2065,41 @@ export const handleRunTool = async (
         details: validated.error,
       },
       { status: validated.status },
+    );
+  }
+
+  const resourcePolicy = await evaluateToolPolicy(env, identity, {
+    membership,
+    toolName,
+    executionMode,
+    surface: "admin_run",
+    resource: urlPolicyResource(validated.url),
+  });
+  if (resourcePolicy.decision === "block" && resourcePolicy.code !== "approval_required") {
+    const resourcePolicyDecisionId = await recordToolPolicyDecision(env, identity, {
+      toolName,
+      surface: "admin_run",
+      result: resourcePolicy,
+      data: {
+        requestedToolName: toolName,
+        resource: urlPolicyResource(validated.url),
+      },
+    });
+    if (trace) {
+      await finishToolTrace(env, identity, trace, {
+        status: "blocked",
+        summary: resourcePolicy.reason,
+        data: { errorCode: resourcePolicy.code, policyDecisionId: resourcePolicyDecisionId },
+      });
+    }
+    return json(
+      {
+        ok: false,
+        error: resourcePolicy.reason,
+        details: toolPolicyError(resourcePolicy),
+        policyDecisionId: resourcePolicyDecisionId,
+      },
+      { status: resourcePolicy.status },
     );
   }
 

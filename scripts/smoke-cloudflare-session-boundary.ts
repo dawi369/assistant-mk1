@@ -34,7 +34,7 @@ type BoundarySnapshot = {
   error?: string;
 };
 
-const { baseUrl, suffix, pollTimeoutMs, pollIntervalMs, headersFor, readJson, createThread } =
+const { baseUrl, suffix, pollTimeoutMs, pollIntervalMs, signedHeadersFor, readJson, createThread } =
   createSmokeContext();
 
 const tenants = {
@@ -80,7 +80,7 @@ const assertSessionScope = (
 
 const assertHidden = async (path: string, identity: TenantIdentity, label: string) => {
   const response = await fetch(`${baseUrl}${path}`, {
-    headers: headersFor(identity),
+    headers: await signedHeadersFor(identity, path),
   });
   if (response.status !== 404) {
     throw new Error(`${label} expected 404, got ${response.status}`);
@@ -98,25 +98,24 @@ const runStreamOnNewThread = async (identity: TenantIdentity, label: string) => 
 
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     const threadId = await createThread(identity);
-    const response = await fetch(
-      `${baseUrl}/langgraph/threads/${encodeURIComponent(threadId)}/runs/stream`,
-      {
-        method: "POST",
-        headers: headersFor(identity),
-        body: JSON.stringify({
-          assistant_id: "agent",
-          input: {
-            messages: [
-              {
-                role: "user",
-                content: "Say one short sentence confirming the session boundary is live.",
-              },
-            ],
+    const path = `/langgraph/threads/${encodeURIComponent(threadId)}/runs/stream`;
+    const body = JSON.stringify({
+      assistant_id: "agent",
+      input: {
+        messages: [
+          {
+            role: "user",
+            content: "Say one short sentence confirming the session boundary is live.",
           },
-          stream_mode: ["messages"],
-        }),
+        ],
       },
-    );
+      stream_mode: ["messages"],
+    });
+    const response = await fetch(`${baseUrl}${path}`, {
+      method: "POST",
+      headers: await signedHeadersFor(identity, path, { method: "POST", body }),
+      body,
+    });
 
     if (response.ok) {
       await response.text();

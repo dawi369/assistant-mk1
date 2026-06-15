@@ -49,7 +49,7 @@ type WorkspaceContextResponse = {
   error?: string;
 };
 
-const { baseUrl, suffix, headersFor, readJson } = createSmokeContext();
+const { baseUrl, suffix, signedHeadersFor, readJson } = createSmokeContext();
 
 const tenantA: TenantIdentity = {
   userId: `context-user-a-${suffix}`,
@@ -136,7 +136,7 @@ const requireContext = (
 
 const assertDisabledMembership = async () => {
   const response = await fetch(`${baseUrl}/workspace-context`, {
-    headers: headersFor(disabledTenant),
+    headers: await signedHeadersFor(disabledTenant, "/workspace-context"),
   });
   if (response.status !== 403) {
     throw new Error(`disabled membership context expected 403, got ${response.status}`);
@@ -144,8 +144,9 @@ const assertDisabledMembership = async () => {
 };
 
 const assertSessionHidden = async (identity: TenantIdentity, sessionId: string, label: string) => {
-  const response = await fetch(`${baseUrl}/sessions/${encodeURIComponent(sessionId)}`, {
-    headers: headersFor(identity),
+  const path = `/sessions/${encodeURIComponent(sessionId)}`;
+  const response = await fetch(`${baseUrl}${path}`, {
+    headers: await signedHeadersFor(identity, path),
   });
   if (response.status !== 404) {
     throw new Error(

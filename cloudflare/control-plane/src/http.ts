@@ -1,4 +1,14 @@
 import type { Env } from "./types";
+import {
+  canonicalFacadeRequest,
+  facadeContentSha256Header,
+  facadeSignatureHeader,
+  facadeSignatureNonceHeader,
+  facadeSignatureTimestampHeader,
+  hmacSha256Base64Url,
+  sha256Base64Url,
+  sha256Hex,
+} from "../../../lib/workbench/control-plane-signing";
 
 export const userIdHeader = "x-assistant-mk1-user-id";
 export const accountIdHeader = "x-assistant-mk1-account-id";
@@ -35,6 +45,12 @@ const constantTimeEqual = async (a: string, b: string) => {
   return diff === 0;
 };
 
+export type ControlPlaneAuthContext = {
+  mode: "facade_signature" | "dev_token";
+  nonce?: string;
+  signatureHash?: string;
+};
+
 export const internalErrorResponse = (label: string, error: unknown) => {
   const errorId = crypto.randomUUID();
   const message = error instanceof Error ? error.message : String(error);
@@ -46,7 +62,7 @@ export const internalErrorResponse = (label: string, error: unknown) => {
   return json({ ok: false, error: "Internal control-plane error", errorId }, { status: 500 });
 };
 
-export const requireAuth = async (request: Request, env: Env) => {
+const requireDevTokenAuth = async (request: Request, env: Env) => {
   const token = env.CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN;
   if (!token) {
     return internalErrorResponse(
@@ -69,6 +85,118 @@ export const requireAuth = async (request: Request, env: Env) => {
   }
 
   return null;
+};
+
+const signatureWindowMs = 5 * 60 * 1000;
+
+const readAuthHeader = (request: Request, name: string) => request.headers.get(name)?.trim() ?? "";
+
+const isFacadeSignatureRequired = (env: Env) =>
+  Boolean(env.CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET?.trim()) &&
+  env.CLOUDFLARE_CONTROL_PLANE_REQUIRE_FACADE_SIGNATURE !== "false";
+
+const authError = (code: string, message: string, status = 401) =>
+  json(
+    {
+      ok: false,
+      error: message,
+      details: { code, message, retryable: false, redacted: true },
+    },
+    { status },
+  );
+
+const verifyFacadeSignature = async (
+  request: Request,
+  env: Env,
+): Promise<{ ok: true; context: ControlPlaneAuthContext } | { ok: false; response: Response }> => {
+  const secret = env.CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET?.trim();
+  if (!secret) {
+    return {
+      ok: false,
+      response: authError("signature_not_configured", "Facade signing is not configured.", 500),
+    };
+  }
+
+  const signature = readAuthHeader(request, facadeSignatureHeader);
+  const timestamp = readAuthHeader(request, facadeSignatureTimestampHeader);
+  const nonce = readAuthHeader(request, facadeSignatureNonceHeader);
+  const declaredBodyHash = readAuthHeader(request, facadeContentSha256Header);
+  if (!signature || !timestamp || !nonce || !declaredBodyHash) {
+    return {
+      ok: false,
+      response: authError("signature_required", "Signed facade request is required."),
+    };
+  }
+
+  const timestampMs = Number(timestamp);
+  if (!Number.isFinite(timestampMs) || Math.abs(Date.now() - timestampMs) > signatureWindowMs) {
+    return { ok: false, response: authError("signature_stale", "Signed facade request is stale.") };
+  }
+
+  const bodyText = await request.clone().text();
+  const actualBodyHash = await sha256Base64Url(bodyText);
+  if (!(await constantTimeEqual(actualBodyHash, declaredBodyHash))) {
+    return {
+      ok: false,
+      response: authError("body_hash_mismatch", "Signed facade body hash is invalid."),
+    };
+  }
+
+  const url = new URL(request.url);
+  const canonical = canonicalFacadeRequest({
+    method: request.method,
+    pathWithQuery: `${url.pathname}${url.search}`,
+    timestamp,
+    nonce,
+    bodyHash: declaredBodyHash,
+    headers: request.headers,
+  });
+  const expectedSignature = await hmacSha256Base64Url(secret, canonical);
+  if (!(await constantTimeEqual(expectedSignature, signature))) {
+    return {
+      ok: false,
+      response: authError("signature_invalid", "Signed facade request is invalid."),
+    };
+  }
+
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + signatureWindowMs).toISOString();
+  const signatureHash = await sha256Hex(signature);
+  await env.DB.prepare(`DELETE FROM control_request_nonces WHERE expires_at <= ?`)
+    .bind(now.toISOString())
+    .run();
+  try {
+    await env.DB.prepare(
+      `INSERT INTO control_request_nonces (nonce, signature_hash, source, created_at, expires_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    )
+      .bind(nonce, signatureHash, "vercel_facade", now.toISOString(), expiresAt)
+      .run();
+  } catch {
+    return {
+      ok: false,
+      response: authError("signature_replay", "Signed facade nonce was already used."),
+    };
+  }
+
+  return { ok: true, context: { mode: "facade_signature", nonce, signatureHash } };
+};
+
+export const requireDevToken = async (request: Request, env: Env) =>
+  requireDevTokenAuth(request, env);
+
+export const requireControlPlaneAuth = async (
+  request: Request,
+  env: Env,
+): Promise<{ ok: true; context: ControlPlaneAuthContext } | { ok: false; response: Response }> => {
+  const hasFacadeSignature = Boolean(readAuthHeader(request, facadeSignatureHeader));
+  if (hasFacadeSignature || isFacadeSignatureRequired(env)) {
+    return verifyFacadeSignature(request, env);
+  }
+
+  const devTokenResponse = await requireDevTokenAuth(request, env);
+  if (devTokenResponse) return { ok: false, response: devTokenResponse };
+  return { ok: true, context: { mode: "dev_token" } };
 };
 
 export const readRequiredHeader = (request: Request, name: string) => {

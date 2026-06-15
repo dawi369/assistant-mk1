@@ -257,6 +257,21 @@ model only when the same policy boundary allows it. This is still a read-only
 tool slice: secrets, mutation-capable tools, model-side approval UI, and
 approval resume for mutation remain blocked.
 
+Signed Facade v0.4 hardens the Vercel-to-Cloudflare boundary. Vercel still owns
+WorkOS session resolution, but normal facade requests are signed with a shared
+server-side secret. Cloudflare verifies the signature, timestamp, nonce, body
+hash, method, path/query, and forwarded `x-assistant-mk1-*` headers before
+trusting identity headers. Used nonces are stored in `control_request_nonces`
+until expiry so stale and replayed facade requests are rejected before identity
+resolution.
+
+Generic Tool Policy v0.4 keeps `url.inspect` as the only editable executable
+tool, but policy state is no longer `url.inspect`-shaped. The evaluator now
+understands generic allowed execution modes, approval state, model exposure,
+kill switches, allowlists, denylists, cooldowns, hourly limits, max runtime,
+and max artifact bytes. `demo.inspect` remains registered but not editable
+through Admin.
+
 This is still not complete production authorization. WorkOS is the hosted web
 auth provider, and Cloudflare now owns the first D1-backed membership and agent
 routing slices, but explicit invites/admin flows, tool authorization, secret

@@ -51,7 +51,7 @@ import {
 import { handleWorkspaceContext } from "./workspace-context";
 import { handleActivateWorkspace, handleCreateWorkspace, handleListWorkspaces } from "./workspaces";
 import { resolveAgentIdentity } from "./authz";
-import { internalErrorResponse, json, requireAuth } from "./http";
+import { internalErrorResponse, json, requireControlPlaneAuth, requireDevToken } from "./http";
 import type { Env, WorkerExecutionContext } from "./types";
 import { WorkbenchThreadChatAgent } from "./thread-chat-agent";
 import { WorkbenchSessionAgent } from "./session-agent";
@@ -88,15 +88,17 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
     );
   }
 
-  const authResponse = await requireAuth(request, env);
-  if (authResponse) return authResponse;
-
   if (request.method === "POST" && url.pathname === "/internal/workbench/run-callbacks") {
+    const authResponse = await requireDevToken(request, env);
+    if (authResponse) return authResponse;
     return handleRunCallback(request, env);
   }
 
+  const authResult = await requireControlPlaneAuth(request, env);
+  if (!authResult.ok) return authResult.response;
+
   const authzStartedAtMs = Date.now();
-  const identityResult = await resolveAgentIdentity(request, env);
+  const identityResult = await resolveAgentIdentity(request, env, authResult.context);
   const authzEndedAtMs = Date.now();
   if (!identityResult.ok) return identityResult.response;
   const { identity } = identityResult;

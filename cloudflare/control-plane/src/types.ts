@@ -48,6 +48,8 @@ export type Env = {
   WorkbenchThreadChatAgent?: unknown;
   WorkbenchSessionAgent?: DurableObjectNamespace;
   CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN?: string;
+  CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET?: string;
+  CLOUDFLARE_CONTROL_PLANE_REQUIRE_FACADE_SIGNATURE?: string;
   WORKBENCH_AGENT_CONNECTION_SECRET?: string;
   LANGGRAPH_UPSTREAM_URL?: string;
   LANGGRAPH_UPSTREAM_TOKEN?: string;
@@ -78,6 +80,15 @@ export type AgentIdentity = {
   agentId: string;
   accountId?: string;
   accountSource?: string;
+  authMode?: "facade_signature" | "dev_token";
+};
+
+export type ControlRequestNonceRow = {
+  nonce: string;
+  signature_hash: string;
+  source: string;
+  created_at: string;
+  expires_at: string;
 };
 
 export type UserRow = {

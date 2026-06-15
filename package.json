@@ -34,6 +34,7 @@
     "smoke:cloudflare-agent-chat": "tsx scripts/smoke-cloudflare-agent-chat.ts",
     "smoke:cloudflare-agent-chat-auth": "tsx scripts/smoke-cloudflare-agent-chat-auth.ts",
     "smoke:cloudflare-admin-summary": "tsx scripts/smoke-cloudflare-admin-summary.ts",
+    "smoke:cloudflare-signed-facade": "tsx scripts/smoke-cloudflare-signed-facade.ts",
     "smoke:cloudflare-tool-admin": "tsx scripts/smoke-cloudflare-tool-admin.ts",
     "smoke:cloudflare-runtime-traces": "tsx scripts/smoke-cloudflare-runtime-traces.ts",
     "smoke:cloudflare-chat-runtime-summary": "tsx scripts/smoke-cloudflare-chat-runtime-summary.ts",
@@ -48,7 +49,7 @@
     "smoke:cloudflare-policy-boundary": "tsx scripts/smoke-cloudflare-policy-boundary.ts",
     "smoke:cloudflare-event-feed": "tsx scripts/smoke-cloudflare-event-feed.ts",
     "smoke:cloudflare-event-stream": "tsx scripts/smoke-cloudflare-event-stream.ts",
-    "smoke:cloudflare-deploy-readiness": "pnpm smoke:cloudflare-workspace-context && pnpm smoke:cloudflare-tool-admin && pnpm smoke:cloudflare-policy-boundary && pnpm smoke:cloudflare-session-boundary && pnpm smoke:cloudflare-event-stream",
+    "smoke:cloudflare-deploy-readiness": "pnpm smoke:cloudflare-signed-facade && pnpm smoke:cloudflare-workspace-context && pnpm smoke:cloudflare-tool-admin && pnpm smoke:cloudflare-policy-boundary && pnpm smoke:cloudflare-session-boundary && pnpm smoke:cloudflare-event-stream",
     "smoke:tenant-isolation": "tsx scripts/smoke-tenant-isolation.ts",
     "smoke:tool-registry": "tsx scripts/smoke-tool-registry.ts",
     "smoke:workbench": "tsx scripts/smoke-cloudflare-owned-run.ts"

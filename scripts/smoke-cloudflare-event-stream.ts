@@ -7,7 +7,7 @@ type EventSnapshot = {
   type?: string;
 };
 
-const { baseUrl, headersFor, createThread } = createSmokeContext({
+const { baseUrl, signedHeadersFor, createThread } = createSmokeContext({
   pollTimeoutDefault: 45_000,
 });
 
@@ -20,23 +20,26 @@ const tenantA: TenantIdentity = {
   agentId: `stream-tenant-a-agent-${suffix}`,
 };
 
-const startRunStream = (identity: TenantIdentity, threadId: string) =>
-  fetch(`${baseUrl}/langgraph/threads/${encodeURIComponent(threadId)}/runs/stream`, {
-    method: "POST",
-    headers: headersFor(identity),
-    body: JSON.stringify({
-      assistant_id: "agent",
-      input: {
-        messages: [
-          {
-            role: "user",
-            content: "Say one short sentence confirming the event stream is live.",
-          },
-        ],
-      },
-      stream_mode: ["messages"],
-    }),
+const startRunStream = async (identity: TenantIdentity, threadId: string) => {
+  const path = `/langgraph/threads/${encodeURIComponent(threadId)}/runs/stream`;
+  const body = JSON.stringify({
+    assistant_id: "agent",
+    input: {
+      messages: [
+        {
+          role: "user",
+          content: "Say one short sentence confirming the event stream is live.",
+        },
+      ],
+    },
+    stream_mode: ["messages"],
   });
+  return fetch(`${baseUrl}${path}`, {
+    method: "POST",
+    headers: await signedHeadersFor(identity, path, { method: "POST", body }),
+    body,
+  });
+};
 
 const parseSseBlocks = (raw: string) =>
   raw
@@ -67,11 +70,13 @@ const collectStreamEvents = async (identity: TenantIdentity, expectedTypes: stri
     const controller = new AbortController();
     const streamUrl = new URL(`${baseUrl}/events/stream`);
     if (afterEventId) streamUrl.searchParams.set("after", afterEventId);
+    const path = `${streamUrl.pathname}${streamUrl.search}`;
     const response = await fetch(streamUrl, {
-      headers: {
-        ...headersFor(identity),
-        accept: "text/event-stream",
-      },
+      headers: await signedHeadersFor(identity, path, {
+        headers: {
+          accept: "text/event-stream",
+        },
+      }),
       signal: controller.signal,
     });
     if (!response.ok || !response.body) {

@@ -14,6 +14,18 @@ type ToolSummary = {
   allowedExecutionModes?: string[];
   approvalRequired?: boolean;
   killSwitchReason?: string;
+  policyEditable?: boolean;
+  policyConstraints?: {
+    limits?: {
+      perUserPerHour?: number;
+      perWorkspacePerHour?: number;
+    };
+    cooldownSeconds?: number;
+    allowlist?: string[];
+    denylist?: string[];
+    maxRuntimeMs?: number;
+    maxArtifactBytes?: number;
+  };
   reason?: string;
   adminPolicy?: {
     decision?: string;
@@ -108,6 +120,7 @@ type ToolPolicyUpdateResponse = {
   status?: string;
   requiresApproval?: boolean;
   modelVisible?: boolean;
+  policyConstraints?: ToolSummary["policyConstraints"];
   permissionId?: string;
   tool?: ToolSummary;
   error?: string;
@@ -583,6 +596,92 @@ runSmoke("Cloudflare tool admin smoke", async () => {
   if (exposed.tool.modelExposurePolicy?.decision !== "allow") {
     throw new Error(`url.inspect model exposure should be allowed: ${JSON.stringify(exposed)}`);
   }
+
+  const nonEditablePolicyUpdate = await fetchRaw("/tools/policy", owner, {
+    method: "POST",
+    body: JSON.stringify({
+      toolName: "demo.inspect",
+      modelVisible: true,
+    }),
+  });
+  await expectErrorCode(nonEditablePolicyUpdate, 403, "tool_policy_not_editable");
+
+  const cooldownPolicy = await readJson<ToolPolicyUpdateResponse>("/tools/policy", owner, {
+    method: "POST",
+    body: JSON.stringify({
+      toolName: "url.inspect",
+      cooldownSeconds: 60,
+    }),
+  });
+  if (!cooldownPolicy.ok || cooldownPolicy.tool?.policyConstraints?.cooldownSeconds !== 60) {
+    throw new Error(
+      `url.inspect cooldown policy did not update: ${JSON.stringify(cooldownPolicy)}`,
+    );
+  }
+  const cooldownRun = await fetchRaw("/tools/runs", owner, {
+    method: "POST",
+    body: JSON.stringify({
+      toolName: "url.inspect",
+      executionMode: "dry_run",
+      input: { url: "https://example.com" },
+    }),
+  });
+  await expectErrorCode(cooldownRun, 403, "cooldown_active");
+  await readJson<ToolPolicyUpdateResponse>("/tools/policy", owner, {
+    method: "POST",
+    body: JSON.stringify({
+      toolName: "url.inspect",
+      cooldownSeconds: null,
+    }),
+  });
+
+  await readJson<ToolPolicyUpdateResponse>("/tools/policy", owner, {
+    method: "POST",
+    body: JSON.stringify({
+      toolName: "url.inspect",
+      limits: { perUserPerHour: 0 },
+    }),
+  });
+  const rateLimitedRun = await fetchRaw("/tools/runs", owner, {
+    method: "POST",
+    body: JSON.stringify({
+      toolName: "url.inspect",
+      executionMode: "dry_run",
+      input: { url: "https://example.com" },
+    }),
+  });
+  await expectErrorCode(rateLimitedRun, 403, "rate_limit_exceeded");
+  await readJson<ToolPolicyUpdateResponse>("/tools/policy", owner, {
+    method: "POST",
+    body: JSON.stringify({
+      toolName: "url.inspect",
+      limits: {},
+    }),
+  });
+
+  await readJson<ToolPolicyUpdateResponse>("/tools/policy", owner, {
+    method: "POST",
+    body: JSON.stringify({
+      toolName: "url.inspect",
+      denylist: ["example.com"],
+    }),
+  });
+  const deniedResourceRun = await fetchRaw("/tools/runs", owner, {
+    method: "POST",
+    body: JSON.stringify({
+      toolName: "url.inspect",
+      executionMode: "dry_run",
+      input: { url: "https://example.com" },
+    }),
+  });
+  await expectErrorCode(deniedResourceRun, 403, "resource_denied");
+  await readJson<ToolPolicyUpdateResponse>("/tools/policy", owner, {
+    method: "POST",
+    body: JSON.stringify({
+      toolName: "url.inspect",
+      denylist: [],
+    }),
+  });
 
   const memberTools = await readJson<ToolsResponse>("/tools", member);
   const memberUrlInspect = requireTool(memberTools.tools, "url.inspect");
