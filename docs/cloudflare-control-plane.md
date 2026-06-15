@@ -272,6 +272,13 @@ kill switches, allowlists, denylists, cooldowns, hourly limits, max runtime,
 and max artifact bytes. `demo.inspect` remains registered but not editable
 through Admin.
 
+Generic Tool Runner Boundary v0.5 adds the first execution boundary inside
+Cloudflare before Fly transport is introduced. `url.inspect` Admin runs,
+approval resumes, and model tool calls use the same Cloudflare-inline runner
+metadata and durable run/tool/artifact finish path. `demo.inspect` is represented
+in the runner catalog for compatibility, but the existing signed executor route
+remains intact until a later Fly transport slice deliberately migrates it.
+
 This is still not complete production authorization. WorkOS is the hosted web
 auth provider, and Cloudflare now owns the first D1-backed membership and agent
 routing slices, but explicit invites/admin flows, tool authorization, secret

@@ -171,8 +171,9 @@ Do not start with a mutation-capable external integration.
 
 ## Current Read-Only URL Tool
 
-`url.inspect` is the first non-demo adapter. It is Admin-triggered only in v0;
-it is not exposed to the model-visible tool list yet.
+`url.inspect` is the first non-demo adapter. It is read-only, dry-run only, and
+can be exposed to the model only by explicit policy opt-in for the current
+user/workspace/agent permission row.
 
 Behavior:
 
@@ -186,7 +187,8 @@ Behavior:
   retryability.
 - Records workflow intent, run, tool call, artifact, audit events, and
   control-plane events in Cloudflare-owned state.
+- Executes through the Cloudflare-inline runner boundary, which stamps durable
+  runner metadata on run, tool-call, artifact, and event data.
 
-This slice proves tool adapter execution and Admin visibility. Durable
-permission records, approvals, kill switches, secret custody, and
-model-visible tool exposure remain policy-layer work.
+This still does not add Fly runner transport, secret custody, mutation-capable
+execution, or model-side approval UI.

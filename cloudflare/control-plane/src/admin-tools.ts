@@ -24,6 +24,12 @@ import {
   urlInspectToolName,
 } from "./tool-policy";
 import {
+  cloudflareInlineRunnerTransport,
+  runnerMetadataFor,
+  type ToolAdapterMetadata,
+  type ToolRunnerMetadata,
+} from "./tool-runner";
+import {
   createId,
   toJson,
   type AgentIdentity,
@@ -39,6 +45,7 @@ import {
 const urlInspectWorkflowType = "tool.url.inspect";
 const urlInspectTimeoutMs = 5_000;
 const urlInspectMaxBytes = 128 * 1024;
+const urlInspectAdapterVersion = "url-inspect-v1";
 
 type ToolRunIdentity = AgentIdentity & {
   runId: string;
@@ -70,6 +77,20 @@ type UrlInspectOutput = {
 
 type UrlInspectRunSource = "admin" | "approval" | "model";
 
+const urlInspectAdapter: ToolAdapterMetadata = {
+  toolName: urlInspectToolName,
+  adapterVersion: urlInspectAdapterVersion,
+  supportedExecutionModes: ["dry_run"],
+  transport: cloudflareInlineRunnerTransport,
+};
+
+const demoInspectAdapter: ToolAdapterMetadata = {
+  toolName: demoInspectToolName,
+  adapterVersion: "demo-inspect-compat-v1",
+  supportedExecutionModes: ["dry_run"],
+  transport: cloudflareInlineRunnerTransport,
+};
+
 const toolSummaries = [
   {
     name: demoInspectToolName,
@@ -80,6 +101,7 @@ const toolSummaries = [
     supportedExecutionModes: ["dry_run"],
     requiresSecrets: false,
     mutationRisk: "read_only",
+    runner: runnerMetadataFor(demoInspectAdapter, "demo-compat"),
   },
   {
     name: urlInspectToolName,
@@ -90,6 +112,7 @@ const toolSummaries = [
     supportedExecutionModes: ["dry_run"],
     requiresSecrets: false,
     mutationRisk: "read_only",
+    runner: runnerMetadataFor(urlInspectAdapter, "admin"),
   },
 ] as const;
 
@@ -361,6 +384,9 @@ const urlPolicyResource = (url: URL) => ({
   host: url.hostname.toLowerCase(),
 });
 
+const urlInspectRunnerMetadata = (source: UrlInspectRunSource): ToolRunnerMetadata =>
+  runnerMetadataFor(urlInspectAdapter, source);
+
 const readBoundedText = async (response: Response) => {
   if (!response.body) return { text: "", downloadedBytes: 0, truncated: false };
 
@@ -481,6 +507,9 @@ export const insertToolRunRecords = async (
   const runId = createId("cf-run");
   const toolCallId = `${runId}-tool-url-inspect`;
   const execution = { mode: input.executionMode, policy: urlInspectPolicy };
+  const source = input.source ?? "admin";
+  const runner = urlInspectRunnerMetadata(source);
+  const normalizedInput = { url: input.url.toString() };
 
   await env.DB.prepare(
     `INSERT INTO control_workflow_intents (
@@ -497,7 +526,7 @@ export const insertToolRunRecords = async (
       "observe",
       urlInspectWorkflowType,
       toJson(execution),
-      toJson({ toolName: urlInspectToolName, input: { url: input.url.toString() } }),
+      toJson({ toolName: urlInspectToolName, input: normalizedInput, runner }),
       "running",
       timestamp,
       timestamp,
@@ -528,7 +557,8 @@ export const insertToolRunRecords = async (
         toolName: urlInspectToolName,
         policy: urlInspectPolicy,
         policyDecisionId: input.policyDecisionId,
-        source: input.source ?? "admin",
+        source,
+        runner,
         parentRunId: input.parentRunId ?? undefined,
         traceId: input.traceId ?? undefined,
       }),
@@ -556,9 +586,11 @@ export const insertToolRunRecords = async (
       `Inspect ${input.url.toString()}`,
       "[]",
       toJson({
-        input: { url: input.url.toString() },
+        input: normalizedInput,
         execution,
-        source: input.source ?? "admin",
+        source,
+        runner,
+        resource: urlPolicyResource(input.url),
         policyDecisionId: input.policyDecisionId,
         parentRunId: input.parentRunId ?? undefined,
         traceId: input.traceId ?? undefined,
@@ -568,7 +600,7 @@ export const insertToolRunRecords = async (
     )
     .run();
 
-  const runIdentity = { ...identity, runId, workflowIntentId, source: input.source ?? "admin" };
+  const runIdentity = { ...identity, runId, workflowIntentId, source };
   await appendControlAudit(env, {
     ...runIdentity,
     action: "intent.created",
@@ -592,7 +624,8 @@ export const insertToolRunRecords = async (
       runId,
       workflowIntentId,
       toolName: urlInspectToolName,
-      source: input.source ?? "admin",
+      source,
+      runner,
       parentRunId: input.parentRunId ?? undefined,
       traceId: input.traceId ?? undefined,
     },
@@ -616,7 +649,9 @@ const insertApprovalInterruptedRun = async (
   const runId = createId("cf-run");
   const approvalRequestId = createId("cf-approval");
   const execution = { mode: input.executionMode, policy: urlInspectPolicy };
-  const payload = { toolName: urlInspectToolName, input: { url: input.url.toString() } };
+  const runner = urlInspectRunnerMetadata("approval");
+  const normalizedInput = { url: input.url.toString() };
+  const payload = { toolName: urlInspectToolName, input: normalizedInput, runner };
 
   await env.DB.prepare(
     `INSERT INTO control_workflow_intents (
@@ -666,6 +701,7 @@ const insertApprovalInterruptedRun = async (
         policy: urlInspectPolicy,
         policyDecisionId: input.policyDecisionId,
         approvalRequestId,
+        runner,
       }),
       timestamp,
       timestamp,
@@ -690,9 +726,11 @@ const insertApprovalInterruptedRun = async (
       "requested",
       input.reason,
       toJson({
-        input: { url: input.url.toString() },
+        input: normalizedInput,
         execution,
         source: "admin",
+        runner,
+        resource: urlPolicyResource(input.url),
         policyDecisionId: input.policyDecisionId,
       }),
       timestamp,
@@ -707,7 +745,7 @@ const insertApprovalInterruptedRun = async (
     summary: input.reason,
     targetType: "run",
     targetId: runId,
-    data: { toolName: urlInspectToolName, approvalRequestId },
+    data: { toolName: urlInspectToolName, approvalRequestId, runner },
   });
   await appendControlAudit(env, {
     ...runIdentity,
@@ -715,21 +753,21 @@ const insertApprovalInterruptedRun = async (
     summary: input.reason,
     targetType: "approvalRequest",
     targetId: approvalRequestId,
-    data: { toolName: urlInspectToolName },
+    data: { toolName: urlInspectToolName, runner },
   });
   await appendControlPlaneEvent(env, identity, {
     type: "run.interrupted",
     summary: input.reason,
     targetType: "run",
     targetId: runId,
-    data: { runId, workflowIntentId, toolName: urlInspectToolName, approvalRequestId },
+    data: { runId, workflowIntentId, toolName: urlInspectToolName, approvalRequestId, runner },
   });
   await appendControlPlaneEvent(env, identity, {
     type: "approval.requested",
     summary: input.reason,
     targetType: "approvalRequest",
     targetId: approvalRequestId,
-    data: { runId, workflowIntentId, toolName: urlInspectToolName },
+    data: { runId, workflowIntentId, toolName: urlInspectToolName, runner },
   });
 
   return { runId, workflowIntentId, approvalRequestId };
@@ -743,6 +781,7 @@ export const finishToolRun = async (
   const timestamp = new Date().toISOString();
   const toolCallId = `${identity.runId}-tool-url-inspect`;
   const artifactId = `${identity.runId}-artifact-url-inspect`;
+  const runner = urlInspectRunnerMetadata(identity.source ?? "admin");
   const artifactRef = {
     id: artifactId,
     kind: "report",
@@ -760,7 +799,7 @@ export const finishToolRun = async (
       .bind(
         "failed",
         result.error.message,
-        toJson({ error: result.error }),
+        toJson({ error: result.error, runner }),
         timestamp,
         toolCallId,
         identity.scope.userId,
@@ -770,6 +809,7 @@ export const finishToolRun = async (
     await updateToolRunStatus(env, identity, "failed", result.error.message, {
       error: result.error,
       toolName: urlInspectToolName,
+      runner,
     });
     await appendControlAudit(env, {
       ...identity,
@@ -784,7 +824,12 @@ export const finishToolRun = async (
       summary: "url.inspect failed.",
       targetType: "toolCall",
       targetId: toolCallId,
-      data: { runId: identity.runId, error: result.error, source: identity.source ?? "admin" },
+      data: {
+        runId: identity.runId,
+        error: result.error,
+        source: identity.source ?? "admin",
+        runner,
+      },
     });
     return { toolCallId, artifact: null };
   }
@@ -804,7 +849,7 @@ export const finishToolRun = async (
       artifactRef.title,
       artifactRef.mimeType,
       JSON.stringify(result.output).length,
-      toJson({ output: result.output }),
+      toJson({ output: result.output, runner }),
       timestamp,
     )
     .run();
@@ -818,7 +863,7 @@ export const finishToolRun = async (
       "completed",
       result.output.summary,
       toJson([artifactRef]),
-      toJson({ output: result.output }),
+      toJson({ output: result.output, runner }),
       timestamp,
       toolCallId,
       identity.scope.userId,
@@ -830,6 +875,7 @@ export const finishToolRun = async (
     artifactIds: [artifactId],
     toolName: urlInspectToolName,
     timingMs: result.output.timingMs,
+    runner,
   });
   await appendControlAudit(env, {
     ...identity,
@@ -855,10 +901,17 @@ export const finishToolRun = async (
       artifactId,
       toolName: urlInspectToolName,
       source: identity.source ?? "admin",
+      runner,
     },
   });
 
   return { toolCallId, artifact: artifactRef };
+};
+
+export const executeUrlInspectRunner = async (env: Env, runIdentity: ToolRunIdentity, url: URL) => {
+  const result = await inspectUrl(url);
+  const finished = await finishToolRun(env, runIdentity, result);
+  return { result, finished };
 };
 
 const updateToolRunStatus = async (
@@ -953,6 +1006,10 @@ const markInterruptedRunRunning = async (
   approval: ControlApprovalRequestRow,
 ) => {
   const timestamp = new Date().toISOString();
+  const approvalData = parseDataJson(approval.data_json);
+  const runner = isRecord(approvalData.runner)
+    ? approvalData.runner
+    : urlInspectRunnerMetadata("approval");
   await env.DB.prepare(
     `UPDATE control_runs
      SET status = ?, heartbeat_at = ?, last_event_at = ?, data_json = ?, updated_at = ?
@@ -967,6 +1024,7 @@ const markInterruptedRunRunning = async (
         summary: "Approval granted; URL inspection resumed.",
         toolName: urlInspectToolName,
         approvalRequestId: approval.id,
+        runner,
       }),
       timestamp,
       approval.run_id,
@@ -999,6 +1057,10 @@ const markInterruptedRunCancelled = async (
   summary: string,
 ) => {
   const timestamp = new Date().toISOString();
+  const approvalData = parseDataJson(approval.data_json);
+  const runner = isRecord(approvalData.runner)
+    ? approvalData.runner
+    : urlInspectRunnerMetadata("approval");
   await env.DB.prepare(
     `UPDATE control_runs
      SET status = ?, heartbeat_at = ?, last_event_at = ?, completed_at = ?, data_json = ?,
@@ -1015,6 +1077,7 @@ const markInterruptedRunCancelled = async (
         summary,
         toolName: urlInspectToolName,
         approvalRequestId: approval.id,
+        runner,
       }),
       timestamp,
       approval.run_id,
@@ -1049,6 +1112,8 @@ const insertApprovedToolCallRecord = async (
   const timestamp = new Date().toISOString();
   const toolCallId = `${approval.run_id}-tool-url-inspect`;
   const execution = { mode: input.executionMode, policy: urlInspectPolicy };
+  const runner = urlInspectRunnerMetadata("approval");
+  const normalizedInput = { url: input.url.toString() };
 
   await env.DB.prepare(
     `INSERT INTO control_tool_calls (
@@ -1069,9 +1134,11 @@ const insertApprovedToolCallRecord = async (
       `Inspect ${input.url.toString()}`,
       "[]",
       toJson({
-        input: { url: input.url.toString() },
+        input: normalizedInput,
         execution,
         source: "approval",
+        runner,
+        resource: urlPolicyResource(input.url),
         approvalRequestId: approval.id,
         policyDecisionId: input.policyDecisionId,
       }),
@@ -1092,7 +1159,7 @@ const insertApprovedToolCallRecord = async (
     summary: "Resumed URL inspection after approval.",
     targetType: "run",
     targetId: approval.run_id,
-    data: { toolName: urlInspectToolName, approvalRequestId: approval.id },
+    data: { toolName: urlInspectToolName, approvalRequestId: approval.id, runner },
   });
   await appendControlAudit(env, {
     ...runIdentity,
@@ -1100,6 +1167,7 @@ const insertApprovedToolCallRecord = async (
     summary: "Started approved url.inspect tool call.",
     targetType: "toolCall",
     targetId: toolCallId,
+    data: { toolName: urlInspectToolName, approvalRequestId: approval.id, runner },
   });
   await appendControlPlaneEvent(env, identity, {
     type: "run.resumed",
@@ -1111,6 +1179,7 @@ const insertApprovedToolCallRecord = async (
       workflowIntentId: approval.workflow_intent_id,
       toolName: urlInspectToolName,
       approvalRequestId: approval.id,
+      runner,
     },
   });
   await appendControlPlaneEvent(env, identity, {
@@ -1123,6 +1192,7 @@ const insertApprovedToolCallRecord = async (
       workflowIntentId: approval.workflow_intent_id,
       toolName: urlInspectToolName,
       approvalRequestId: approval.id,
+      runner,
     },
   });
 
@@ -1747,8 +1817,7 @@ export const handleApproveToolApproval = async (
     executionMode: policy.executionMode,
     policyDecisionId,
   });
-  const result = await inspectUrl(validated.url);
-  const finished = await finishToolRun(env, runIdentity, result);
+  const { result, finished } = await executeUrlInspectRunner(env, runIdentity, validated.url);
   await dispatchWorkbenchSessionEvent(env, identity, {
     type: "tool.run.updated",
     data: {
@@ -2226,7 +2295,8 @@ export const handleRunTool = async (
     });
   }
   const fetchStartedAtMs = Date.now();
-  const result = await inspectUrl(validated.url);
+  const executionStartedAtMs = Date.now();
+  const { result, finished } = await executeUrlInspectRunner(env, runIdentity, validated.url);
   if (trace) {
     await recordSpan(env, identity, {
       traceId: trace.traceId,
@@ -2243,8 +2313,7 @@ export const handleRunTool = async (
         : { error: result.error },
     });
   }
-  const finishStartedAtMs = Date.now();
-  const finished = await finishToolRun(env, runIdentity, result);
+  const finishStartedAtMs = executionStartedAtMs;
   if (trace) {
     await recordSpan(env, identity, {
       traceId: trace.traceId,

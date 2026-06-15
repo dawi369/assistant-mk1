@@ -3,9 +3,8 @@ import { jsonSchema, tool, type ToolSet } from "ai";
 import { selectMembership } from "./authz-store";
 import { dispatchWorkbenchSessionEvent } from "./session-coordinator";
 import {
-  finishToolRun,
+  executeUrlInspectRunner,
   insertToolRunRecords,
-  inspectUrl,
   listLatestArtifacts,
   listLatestToolCalls,
   validateUrlInspectInput,
@@ -143,8 +142,11 @@ export const resolveModelVisibleTools = async (
             parentRunId: input.chatRunId,
             traceId: input.traceId,
           });
-          const result = await inspectUrl(validated.url);
-          const finished = await finishToolRun(env, runIdentity, result);
+          const { result, finished } = await executeUrlInspectRunner(
+            env,
+            runIdentity,
+            validated.url,
+          );
           await dispatchWorkbenchSessionEvent(env, identity, {
             type: "tool.run.updated",
             data: {

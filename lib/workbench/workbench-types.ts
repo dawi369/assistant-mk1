@@ -85,6 +85,11 @@ export type ToolSummary = {
   reason: string;
   requiresSecrets: boolean;
   mutationRisk: "read_only" | "mutation_capable";
+  runner?: {
+    transport?: "cloudflare_inline";
+    adapterVersion?: string;
+    source?: "admin" | "approval" | "model" | "demo-compat";
+  };
   permissionStatus?: "enabled" | "disabled" | "pending_review";
   policyReference?: string;
   allowedExecutionModes?: string[];

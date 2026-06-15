@@ -15,6 +15,11 @@ type ToolSummary = {
   approvalRequired?: boolean;
   killSwitchReason?: string;
   policyEditable?: boolean;
+  runner?: {
+    transport?: string;
+    adapterVersion?: string;
+    source?: string;
+  };
   policyConstraints?: {
     limits?: {
       perUserPerHour?: number;
@@ -77,6 +82,13 @@ type ToolRunResponse = {
     id?: string;
     toolId?: string;
     status?: string;
+    data?: {
+      runner?: {
+        transport?: string;
+        adapterVersion?: string;
+        source?: string;
+      };
+    };
   } | null;
   artifact?: {
     id?: string;
@@ -247,11 +259,23 @@ runSmoke("Cloudflare tool admin smoke", async () => {
   if (urlInspect.policyReference !== "tool-admin-readonly-v0") {
     throw new Error(`url.inspect policy reference missing: ${JSON.stringify(urlInspect)}`);
   }
+  if (
+    urlInspect.runner?.transport !== "cloudflare_inline" ||
+    urlInspect.runner.adapterVersion !== "url-inspect-v1"
+  ) {
+    throw new Error(`url.inspect runner metadata missing: ${JSON.stringify(urlInspect)}`);
+  }
 
   const demoInspect = requireTool(tools.tools, "demo.inspect");
   if (demoInspect.modelVisible) throw new Error("demo.inspect should not be model-visible");
   if (demoInspect.modelExposurePolicy?.code !== "model_exposure_blocked") {
     throw new Error(`demo.inspect should explain model exposure: ${JSON.stringify(demoInspect)}`);
+  }
+  if (
+    demoInspect.runner?.transport !== "cloudflare_inline" ||
+    demoInspect.runner.adapterVersion !== "demo-inspect-compat-v1"
+  ) {
+    throw new Error(`demo.inspect runner metadata missing: ${JSON.stringify(demoInspect)}`);
   }
 
   const invalid = await fetchRaw("/tools/runs", owner, {
@@ -287,6 +311,13 @@ runSmoke("Cloudflare tool admin smoke", async () => {
   }
   if (run.toolCall?.toolId !== "url.inspect" || run.toolCall.status !== "completed") {
     throw new Error("url.inspect run did not return a completed tool call");
+  }
+  if (
+    run.toolCall.data?.runner?.transport !== "cloudflare_inline" ||
+    run.toolCall.data.runner.adapterVersion !== "url-inspect-v1" ||
+    run.toolCall.data.runner.source !== "admin"
+  ) {
+    throw new Error(`url.inspect run did not include runner metadata: ${JSON.stringify(run)}`);
   }
   if (!run.artifact?.id) throw new Error("url.inspect run did not return an artifact");
 

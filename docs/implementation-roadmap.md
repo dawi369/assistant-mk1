@@ -173,11 +173,16 @@ Implemented:
   resume, model exposure, and model tool calls with generic execution-mode,
   approval, exposure, kill-switch, resource, cooldown, hourly-limit, runtime,
   and artifact-size constraints.
+- Generic Tool Runner Boundary v0.5: `url.inspect` execution now passes
+  through a typed Cloudflare-inline runner boundary that stamps durable runner
+  metadata on run/tool/artifact records; `demo.inspect` is represented as
+  registered runner metadata while the legacy signed executor route remains
+  intact.
 
 Next target:
 
-- Generic tool-runner boundary for all tool execution, starting with
-  `url.inspect`, then the first read-only CLI/OSS-backed adapter.
+- Fly runner transport for the existing runner boundary, then the first
+  read-only CLI/OSS-backed adapter.
 - Secret custody before any private external integration or mutation-capable
   adapter.
 
