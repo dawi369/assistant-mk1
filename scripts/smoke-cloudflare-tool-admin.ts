@@ -76,6 +76,32 @@ type ToolRunResponse = {
 
 type ToolApprovalActionResponse = ToolRunResponse;
 
+type ToolApprovalSummary = {
+  id?: string;
+  status?: string;
+  toolId?: string;
+  runId?: string;
+  workflowIntentId?: string;
+  input?: { url?: string };
+  decision?: {
+    denyReason?: string;
+    decidedAt?: string;
+    policyDecisionId?: string;
+  };
+  currentPolicy?: {
+    decision?: string;
+    code?: string;
+    reason?: string;
+  };
+};
+
+type ToolApprovalsResponse = {
+  ok?: boolean;
+  approvals?: ToolApprovalSummary[];
+  details?: { code?: string };
+  error?: string;
+};
+
 type ToolPolicyUpdateResponse = {
   ok?: boolean;
   toolName?: string;
@@ -158,6 +184,15 @@ const requireTool = (tools: ToolSummary[] | undefined, name: string) => {
   const tool = tools?.find((item) => item.name === name);
   if (!tool) throw new Error(`${name} was not returned by /tools`);
   return tool;
+};
+
+const requireApproval = (
+  approvals: ToolApprovalSummary[] | undefined,
+  approvalId: string | undefined,
+) => {
+  const approval = approvals?.find((item) => item.id === approvalId);
+  if (!approval) throw new Error(`approval ${approvalId ?? "unknown"} was not returned`);
+  return approval;
 };
 
 const expectErrorCode = async (response: Response, status: number, code: string) => {
@@ -286,6 +321,26 @@ runSmoke("Cloudflare tool admin smoke", async () => {
     throw new Error(`approval request missing: ${JSON.stringify(approvalRun)}`);
   }
 
+  const requestedApprovals = await readJson<ToolApprovalsResponse>(
+    "/tools/approvals?status=requested",
+    owner,
+  );
+  const requestedApproval = requireApproval(
+    requestedApprovals.approvals,
+    approvalRun.approvalRequest.id,
+  );
+  if (requestedApproval.status !== "requested" || requestedApproval.toolId !== "url.inspect") {
+    throw new Error(`requested approval queue entry invalid: ${JSON.stringify(requestedApproval)}`);
+  }
+  if (requestedApproval.input?.url !== "https://example.com/") {
+    throw new Error(`requested approval input URL missing: ${JSON.stringify(requestedApproval)}`);
+  }
+  if (requestedApproval.currentPolicy?.decision !== "allow") {
+    throw new Error(
+      `requested approval should be currently approvable: ${JSON.stringify(requestedApproval)}`,
+    );
+  }
+
   const approvalSummary = await readJson<AdminSummaryResponse>("/admin/workspace-summary", owner);
   const interruptedSnapshot = approvalSummary.summary?.demo?.latestRun;
   if (interruptedSnapshot?.run?.id !== approvalRun.run.id) {
@@ -312,6 +367,9 @@ runSmoke("Cloudflare tool admin smoke", async () => {
   if (!approvalSummary.summary?.events?.some((event) => event.type === "approval.requested")) {
     throw new Error("approval.requested control-plane event missing");
   }
+  if (!approvalSummary.summary?.events?.some((event) => event.type === "approval.updated")) {
+    throw new Error("approval.updated control-plane event missing for requested approval");
+  }
 
   const approvalToolsAfterRun = await readJson<ToolsResponse>("/tools", owner);
   const approvalToolAfterRun = requireTool(approvalToolsAfterRun.tools, "url.inspect");
@@ -331,6 +389,23 @@ runSmoke("Cloudflare tool admin smoke", async () => {
     throw new Error("approved run did not return a completed tool call");
   }
   if (!approved.artifact?.id) throw new Error("approved run did not create an artifact");
+  if (approved.approvalRequest?.status !== "approved") {
+    throw new Error(
+      `approved response should include updated approval: ${JSON.stringify(approved)}`,
+    );
+  }
+
+  const decidedAfterApprove = await readJson<ToolApprovalsResponse>(
+    "/tools/approvals?status=decided",
+    owner,
+  );
+  const approvedApproval = requireApproval(
+    decidedAfterApprove.approvals,
+    approvalRun.approvalRequest.id,
+  );
+  if (approvedApproval.status !== "approved" || !approvedApproval.decision?.decidedAt) {
+    throw new Error(`approved approval queue entry invalid: ${JSON.stringify(approvedApproval)}`);
+  }
 
   const approvedSummary = await readJson<AdminSummaryResponse>("/admin/workspace-summary", owner);
   if (!approvedSummary.summary?.events?.some((event) => event.type === "approval.approved")) {
@@ -338,6 +413,9 @@ runSmoke("Cloudflare tool admin smoke", async () => {
   }
   if (!approvedSummary.summary?.events?.some((event) => event.type === "run.resumed")) {
     throw new Error("run.resumed control-plane event missing");
+  }
+  if (!approvedSummary.summary?.events?.some((event) => event.type === "approval.updated")) {
+    throw new Error("approval.updated control-plane event missing for approved approval");
   }
 
   const denyRunResponse = await fetchRaw("/tools/runs", owner, {
@@ -365,6 +443,21 @@ runSmoke("Cloudflare tool admin smoke", async () => {
   }
   if (denied.toolCall || denied.artifact) {
     throw new Error(`denied run should not execute tool: ${JSON.stringify(denied)}`);
+  }
+  if (denied.approvalRequest?.status !== "denied") {
+    throw new Error(`denied response should include updated approval: ${JSON.stringify(denied)}`);
+  }
+
+  const decidedAfterDeny = await readJson<ToolApprovalsResponse>(
+    "/tools/approvals?status=decided",
+    owner,
+  );
+  const deniedApproval = requireApproval(decidedAfterDeny.approvals, denyRun.approvalRequest.id);
+  if (
+    deniedApproval.status !== "denied" ||
+    deniedApproval.decision?.denyReason !== "Smoke test denial."
+  ) {
+    throw new Error(`denied approval queue entry invalid: ${JSON.stringify(deniedApproval)}`);
   }
 
   const deniedSummary = await readJson<AdminSummaryResponse>("/admin/workspace-summary", owner);
@@ -422,6 +515,34 @@ runSmoke("Cloudflare tool admin smoke", async () => {
   );
   await expectErrorCode(disabledApproval, 403, "tool_disabled");
 
+  const disabledApprovalQueue = await readJson<ToolApprovalsResponse>(
+    "/tools/approvals?status=requested",
+    owner,
+  );
+  const blockedApproval = requireApproval(
+    disabledApprovalQueue.approvals,
+    pendingBeforeDisable.approvalRequest.id,
+  );
+  if (blockedApproval.currentPolicy?.code !== "tool_disabled") {
+    throw new Error(
+      `disabled pending approval should show tool_disabled: ${JSON.stringify(blockedApproval)}`,
+    );
+  }
+
+  const deniedAfterDisable = await readJson<ToolApprovalActionResponse>(
+    `/tools/approvals/${encodeURIComponent(pendingBeforeDisable.approvalRequest.id)}/deny`,
+    owner,
+    {
+      method: "POST",
+      body: JSON.stringify({ reason: "Disabled before approval." }),
+    },
+  );
+  if (!deniedAfterDisable.ok || deniedAfterDisable.run?.status !== "cancelled") {
+    throw new Error(
+      `disabled pending approval should still deny: ${JSON.stringify(deniedAfterDisable)}`,
+    );
+  }
+
   const disabledRun = await fetchRaw("/tools/runs", owner, {
     method: "POST",
     body: JSON.stringify({
@@ -478,6 +599,21 @@ runSmoke("Cloudflare tool admin smoke", async () => {
   });
   await expectErrorCode(memberPolicyUpdate, 403, "admin_required");
 
+  const memberApprovals = await fetchRaw("/tools/approvals?status=all", member);
+  await expectErrorCode(memberApprovals, 403, "admin_required");
+  const memberApprove = await fetchRaw(
+    `/tools/approvals/${encodeURIComponent(approvalRun.approvalRequest.id)}/approve`,
+    member,
+    { method: "POST" },
+  );
+  await expectErrorCode(memberApprove, 403, "admin_required");
+  const memberDeny = await fetchRaw(
+    `/tools/approvals/${encodeURIComponent(approvalRun.approvalRequest.id)}/deny`,
+    member,
+    { method: "POST", body: JSON.stringify({ reason: "member blocked" }) },
+  );
+  await expectErrorCode(memberDeny, 403, "admin_required");
+
   const rerun = await readJson<ToolRunResponse>("/tools/runs", owner, {
     method: "POST",
     body: JSON.stringify({
@@ -520,6 +656,21 @@ runSmoke("Cloudflare tool admin smoke", async () => {
   if (otherTools.latestToolCalls?.some((call) => call.id === rerun.toolCall?.id)) {
     throw new Error("cross-tenant /tools leaked owner tool call");
   }
+  const otherApprovals = await readJson<ToolApprovalsResponse>(
+    "/tools/approvals?status=all",
+    otherTenant,
+  );
+  if (
+    otherApprovals.approvals?.some((approval) => approval.id === approvalRun.approvalRequest?.id)
+  ) {
+    throw new Error("cross-tenant /tools/approvals leaked owner approval");
+  }
+  const otherApprove = await fetchRaw(
+    `/tools/approvals/${encodeURIComponent(approvalRun.approvalRequest.id)}/approve`,
+    otherTenant,
+    { method: "POST" },
+  );
+  await expectErrorCode(otherApprove, 404, "approval_not_found");
   const otherSummary = await readJson<AdminSummaryResponse>(
     "/admin/workspace-summary",
     otherTenant,

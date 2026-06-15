@@ -10,6 +10,7 @@ import type {
   CloudflareRuntimeTracesResponse,
   CloudflareToolPolicyUpdateResponse,
   CloudflareToolApprovalActionResponse,
+  CloudflareToolApprovalsResponse,
   CloudflareToolRunResponse,
   CloudflareToolsResponse,
   CloudflareOwnedDemoRunResponse,
@@ -32,6 +33,7 @@ export type {
   CloudflareRuntimeTracesResponse,
   CloudflareToolPolicyUpdateResponse,
   CloudflareToolApprovalActionResponse,
+  CloudflareToolApprovalsResponse,
   CloudflareToolRunResponse,
   CloudflareToolsResponse,
   CloudflareOwnedDemoRunResponse,
@@ -46,6 +48,7 @@ export type {
   ChatThreadSummary,
   ControlPlaneEvent,
   ControlPlaneEventsResponse,
+  ToolApprovalRequestSummary,
   WorkspaceContextResponse,
 } from "@/lib/workbench/workbench-types";
 
@@ -152,6 +155,19 @@ export const getCloudflareAdminSummary = () =>
   requestControlPlane<CloudflareAdminSummaryResponse>("/admin/workspace-summary");
 
 export const getCloudflareTools = () => requestControlPlane<CloudflareToolsResponse>("/tools");
+
+export const getCloudflareToolApprovals = (input?: {
+  status?: "requested" | "decided" | "all";
+  limit?: number;
+}) => {
+  const params = new URLSearchParams();
+  if (input?.status) params.set("status", input.status);
+  if (input?.limit) params.set("limit", String(input.limit));
+  const query = params.toString();
+  return requestControlPlane<CloudflareToolApprovalsResponse>(
+    `/tools/approvals${query ? `?${query}` : ""}`,
+  );
+};
 
 export const getLatestRuntimeTraces = (limit = 10) =>
   requestControlPlane<CloudflareRuntimeTracesResponse>(

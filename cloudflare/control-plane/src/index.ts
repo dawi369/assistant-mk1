@@ -10,6 +10,7 @@ import { handleAdminWorkspaceSummary } from "./admin-summary";
 import {
   handleApproveToolApproval,
   handleDenyToolApproval,
+  handleListToolApprovals,
   handleListTools,
   handleRunTool,
   handleUpdateToolPolicy,
@@ -127,6 +128,10 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
 
   if (request.method === "POST" && url.pathname === "/tools/policy") {
     return handleUpdateToolPolicy(request, env, identity);
+  }
+
+  if (request.method === "GET" && url.pathname === "/tools/approvals") {
+    return handleListToolApprovals(request, env, identity);
   }
 
   const approveToolApprovalMatch = url.pathname.match(/^\/tools\/approvals\/([^/]+)\/approve$/);

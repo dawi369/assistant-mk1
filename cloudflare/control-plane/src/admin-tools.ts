@@ -1127,6 +1127,197 @@ const approvalRequestBody = (approval: ControlApprovalRequestRow, status?: strin
   updatedAt: approval.updated_at,
 });
 
+const approvalListStatuses = new Set(["requested", "decided", "all"]);
+
+const toApprovalDecisionSummary = (data: Record<string, unknown>) => {
+  const error = isRecord(data.error) ? data.error : undefined;
+  return {
+    decidedAt: typeof data.decidedAt === "string" ? data.decidedAt : undefined,
+    decidedByUserId: typeof data.decidedByUserId === "string" ? data.decidedByUserId : undefined,
+    denyReason: typeof data.denyReason === "string" ? data.denyReason : undefined,
+    policyDecisionId: typeof data.policyDecisionId === "string" ? data.policyDecisionId : undefined,
+    error:
+      error && (typeof error.code === "string" || typeof error.message === "string")
+        ? {
+            code: typeof error.code === "string" ? error.code : undefined,
+            message: typeof error.message === "string" ? error.message : undefined,
+          }
+        : undefined,
+  };
+};
+
+const summarizeApprovalRequest = async (
+  env: Env,
+  identity: AgentIdentity,
+  membership: Awaited<ReturnType<typeof selectMembership>>,
+  row: ControlApprovalRequestRow,
+) => {
+  const data = parseDataJson(row.data_json);
+  const input = isRecord(data.input) ? data.input : {};
+  const execution = isRecord(data.execution) ? data.execution : {};
+  const currentPolicy =
+    row.status === "requested"
+      ? await evaluateToolPolicy(env, identity, {
+          membership,
+          toolName: row.tool_id,
+          executionMode: "dry_run",
+          surface: "admin_resume",
+        })
+      : null;
+
+  return {
+    id: row.id,
+    scope: scopeFromRow(row),
+    agentId: row.agent_id,
+    workflowIntentId: row.workflow_intent_id,
+    runId: row.run_id,
+    toolId: row.tool_id,
+    status: row.status,
+    reason: row.reason,
+    input:
+      typeof input.url === "string"
+        ? {
+            url: input.url,
+          }
+        : undefined,
+    source: typeof data.source === "string" ? data.source : undefined,
+    executionMode: typeof execution.mode === "string" ? execution.mode : undefined,
+    policyDecisionId: typeof data.policyDecisionId === "string" ? data.policyDecisionId : undefined,
+    decision: toApprovalDecisionSummary(data),
+    currentPolicy: currentPolicy ? toPolicySummary(currentPolicy) : undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+};
+
+const readApprovalRequestSummary = async (
+  env: Env,
+  identity: AgentIdentity,
+  membership: Awaited<ReturnType<typeof selectMembership>>,
+  approvalRequestId: string,
+) => {
+  const row = await readApprovalRequest(env, identity, approvalRequestId);
+  return row ? summarizeApprovalRequest(env, identity, membership, row) : null;
+};
+
+const requireActiveAdminMembership = async (env: Env, identity: AgentIdentity) => {
+  const membership = await selectMembership(env, identity.scope.userId, identity.scope.workspaceId);
+  if (membership && membership.status === "active" && isAdminMembership(membership)) {
+    return { ok: true as const, membership };
+  }
+  const policy = await evaluateToolPolicy(env, identity, {
+    membership,
+    toolName: urlInspectToolName,
+    executionMode: "dry_run",
+    surface: "admin_list",
+  });
+  return {
+    ok: false as const,
+    membership,
+    error: toolError(
+      policy.code === "inactive_membership" ? "inactive_membership" : "admin_required",
+      policy.code === "inactive_membership"
+        ? "Workspace membership is not active."
+        : "Workspace owner/admin membership is required to manage tool approvals.",
+      false,
+    ),
+  };
+};
+
+const dispatchApprovalUpdated = async (
+  env: Env,
+  identity: AgentIdentity,
+  input: {
+    approvalRequestId: string;
+    status: string;
+    runId?: string;
+    workflowIntentId?: string;
+    toolName?: string;
+    reason?: string;
+  },
+) => {
+  await appendControlPlaneEvent(env, identity, {
+    type: "approval.updated",
+    summary: input.reason ?? `Approval ${input.status}.`,
+    targetType: "approvalRequest",
+    targetId: input.approvalRequestId,
+    data: {
+      approvalRequestId: input.approvalRequestId,
+      status: input.status,
+      runId: input.runId,
+      workflowIntentId: input.workflowIntentId,
+      toolName: input.toolName ?? urlInspectToolName,
+    },
+  });
+  await dispatchWorkbenchSessionEvent(env, identity, {
+    type: "approval.updated",
+    data: {
+      approvalRequestId: input.approvalRequestId,
+      status: input.status,
+      runId: input.runId,
+      workflowIntentId: input.workflowIntentId,
+      toolName: input.toolName ?? urlInspectToolName,
+    },
+  });
+};
+
+export const handleListToolApprovals = async (
+  request: Request,
+  env: Env,
+  identity: AgentIdentity,
+) => {
+  const admin = await requireActiveAdminMembership(env, identity);
+  if (!admin.ok) {
+    return json(
+      {
+        ok: false,
+        error: admin.error.message,
+        details: admin.error,
+      },
+      { status: 403 },
+    );
+  }
+
+  const url = new URL(request.url);
+  const requestedStatus = url.searchParams.get("status") ?? "all";
+  const status = approvalListStatuses.has(requestedStatus) ? requestedStatus : "all";
+  const requestedLimit = Number(url.searchParams.get("limit") ?? "20");
+  const limit = Math.max(1, Math.min(50, Number.isFinite(requestedLimit) ? requestedLimit : 20));
+  const rows = await env.DB.prepare(
+    `SELECT id, user_id, workspace_id, agent_id, workflow_intent_id, run_id, tool_id, status,
+            reason, data_json, created_at, updated_at
+     FROM control_approval_requests
+     WHERE user_id = ? AND workspace_id = ? AND agent_id = ?
+       AND (
+         ? = 'all'
+         OR (? = 'requested' AND status = 'requested')
+         OR (? = 'decided' AND status <> 'requested')
+       )
+     ORDER BY CASE WHEN status = 'requested' THEN 0 ELSE 1 END, updated_at DESC, created_at DESC
+     LIMIT ?`,
+  )
+    .bind(
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.agentId,
+      status,
+      status,
+      status,
+      limit,
+    )
+    .all<ControlApprovalRequestRow>();
+
+  const approvals = await Promise.all(
+    rows.results.map((row) => summarizeApprovalRequest(env, identity, admin.membership, row)),
+  );
+
+  return json({
+    ok: true,
+    status,
+    approvals,
+  });
+};
+
 export const handleListTools = async (env: Env, identity: AgentIdentity) => {
   const [tools, latestToolCalls, latestArtifacts] = await Promise.all([
     resolveToolSummaries(env, identity),
@@ -1384,11 +1575,25 @@ export const handleApproveToolApproval = async (
       error: validated.error,
     });
     await markInterruptedRunCancelled(env, identity, approval, validated.error.message);
+    await dispatchApprovalUpdated(env, identity, {
+      approvalRequestId: approval.id,
+      status: "failed",
+      runId: approval.run_id,
+      workflowIntentId: approval.workflow_intent_id,
+      toolName: approval.tool_id,
+      reason: validated.error.message,
+    });
+    const failedApproval = await readApprovalRequestSummary(
+      env,
+      identity,
+      admin.membership,
+      approval.id,
+    );
     return json(
       {
         ok: false,
         error: validated.error.message,
-        approvalRequest: approvalRequestBody(approval, "failed"),
+        approvalRequest: failedApproval ?? approvalRequestBody(approval, "failed"),
         details: validated.error,
       },
       { status: validated.status },
@@ -1447,6 +1652,14 @@ export const handleApproveToolApproval = async (
       policyDecisionId,
     },
   });
+  await dispatchApprovalUpdated(env, identity, {
+    approvalRequestId: approval.id,
+    status: "approved",
+    runId: approval.run_id,
+    workflowIntentId: approval.workflow_intent_id,
+    toolName: approval.tool_id,
+    reason: "Approved url.inspect execution.",
+  });
 
   const runIdentity = await insertApprovedToolCallRecord(env, identity, approval, {
     url: validated.url,
@@ -1485,6 +1698,12 @@ export const handleApproveToolApproval = async (
   const artifact = finished.artifact
     ? (latestArtifacts.find((item) => item.id === finished.artifact?.id) ?? finished.artifact)
     : null;
+  const approvedApproval = await readApprovalRequestSummary(
+    env,
+    identity,
+    admin.membership,
+    approval.id,
+  );
 
   return json(
     {
@@ -1496,7 +1715,7 @@ export const handleApproveToolApproval = async (
         execution: { mode: policy.executionMode, policy: urlInspectPolicy },
         policyDecisionId,
       },
-      approvalRequest: approvalRequestBody(approval, "approved"),
+      approvalRequest: approvedApproval ?? approvalRequestBody(approval, "approved"),
       toolCall,
       artifact,
       error: result.ok ? undefined : result.error,
@@ -1620,6 +1839,14 @@ export const handleDenyToolApproval = async (
       approvalRequestId: approval.id,
     },
   });
+  await dispatchApprovalUpdated(env, identity, {
+    approvalRequestId: approval.id,
+    status: "denied",
+    runId: approval.run_id,
+    workflowIntentId: approval.workflow_intent_id,
+    toolName: approval.tool_id,
+    reason: denyReason,
+  });
   await dispatchWorkbenchSessionEvent(env, identity, {
     type: "tool.run.updated",
     data: {
@@ -1638,6 +1865,12 @@ export const handleDenyToolApproval = async (
       runId: approval.run_id,
     },
   });
+  const deniedApproval = await readApprovalRequestSummary(
+    env,
+    identity,
+    admin.membership,
+    approval.id,
+  );
 
   return json({
     ok: true,
@@ -1647,7 +1880,7 @@ export const handleDenyToolApproval = async (
       status: "cancelled",
       execution: { mode: "dry_run", policy: urlInspectPolicy },
     },
-    approvalRequest: approvalRequestBody(approval, "denied"),
+    approvalRequest: deniedApproval ?? approvalRequestBody(approval, "denied"),
     toolCall: null,
     artifact: null,
   });
@@ -1798,6 +2031,14 @@ export const handleRunTool = async (
         traceId: trace?.traceId,
         errorCode: policy.code,
       },
+    });
+    await dispatchApprovalUpdated(env, identity, {
+      approvalRequestId: interrupted.approvalRequestId,
+      status: "requested",
+      runId: interrupted.runId,
+      workflowIntentId: interrupted.workflowIntentId,
+      toolName: urlInspectToolName,
+      reason: policy.reason,
     });
     if (trace) {
       await dispatchWorkbenchSessionEvent(env, identity, {

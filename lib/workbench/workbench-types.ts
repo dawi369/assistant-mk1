@@ -143,12 +143,61 @@ export type ArtifactSummary = {
   createdAt?: string;
 };
 
+export type ToolApprovalRequestSummary = {
+  id?: Id;
+  scope?: TenantScope;
+  agentId?: Id;
+  workflowIntentId?: Id;
+  runId?: Id;
+  toolId?: string;
+  status?: string;
+  reason?: string;
+  input?: {
+    url?: string;
+  };
+  source?: string;
+  executionMode?: string;
+  policyDecisionId?: Id;
+  decision?: {
+    decidedAt?: string;
+    decidedByUserId?: Id;
+    denyReason?: string;
+    policyDecisionId?: Id;
+    error?: {
+      code?: string;
+      message?: string;
+    };
+  };
+  currentPolicy?: {
+    decision?: "allow" | "block";
+    code?: string;
+    reason?: string;
+    executionMode?: string;
+    policyReference?: string;
+  };
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 export type CloudflareToolsResponse = {
   ok?: boolean;
   tools?: ToolSummary[];
   latestToolCalls?: ToolCallSummary[];
   latestArtifacts?: ArtifactSummary[];
   error?: string;
+};
+
+export type CloudflareToolApprovalsResponse = {
+  ok?: boolean;
+  status?: "requested" | "decided" | "all" | string;
+  approvals?: ToolApprovalRequestSummary[];
+  error?: string;
+  details?: {
+    code?: string;
+    message?: string;
+    retryable?: boolean;
+    redacted?: boolean;
+  };
 };
 
 export type CloudflareToolRunResponse = {
@@ -160,11 +209,7 @@ export type CloudflareToolRunResponse = {
     execution?: Partial<ExecutionPolicy>;
     policyDecisionId?: Id;
   };
-  approvalRequest?: {
-    id?: Id;
-    status?: string;
-    reason?: string;
-  };
+  approvalRequest?: ToolApprovalRequestSummary;
   toolCall?: ToolCallSummary | null;
   artifact?: ArtifactSummary | null;
   error?:
@@ -457,6 +502,7 @@ export type WorkbenchSessionEvent = {
     | "chat.run.started"
     | "chat.run.completed"
     | "chat.run.failed"
+    | "approval.updated"
     | "tool.run.updated"
     | "trace.updated"
     | "admin.summary.invalidated";
