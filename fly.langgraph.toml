@@ -23,7 +23,7 @@ interval = "15s"
 timeout = "2s"
 grace_period = "20s"
 method = "GET"
-path = "/health"
+path = "/health/live"
 
 [vm]
 cpu_kind = "shared"

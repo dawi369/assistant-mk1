@@ -279,6 +279,14 @@ metadata and durable run/tool/artifact finish path. `demo.inspect` is represente
 in the runner catalog for compatibility, but the existing signed executor route
 remains intact until a later Fly transport slice deliberately migrates it.
 
+Fly Runner Transport v0.6 keeps the same `url.inspect` API behavior while
+adding an optional signed Cloudflare-to-Fly execution path. Cloudflare still
+creates and finalizes canonical run/tool/artifact/audit/event state; Fly only
+validates the signed invocation, executes the read-only adapter, and returns a
+structured result. The transport is gated by `WORKBENCH_RUNNER_TRANSPORT=fly`
+plus a runner URL and matching signing secret, and inline execution remains the
+default fallback.
+
 This is still not complete production authorization. WorkOS is the hosted web
 auth provider, and Cloudflare now owns the first D1-backed membership and agent
 routing slices, but explicit invites/admin flows, tool authorization, secret

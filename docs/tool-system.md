@@ -187,8 +187,9 @@ Behavior:
   retryability.
 - Records workflow intent, run, tool call, artifact, audit events, and
   control-plane events in Cloudflare-owned state.
-- Executes through the Cloudflare-inline runner boundary, which stamps durable
-  runner metadata on run, tool-call, artifact, and event data.
+- Executes through the runner boundary, which can use Cloudflare-inline or the
+  signed Fly transport and stamps durable runner metadata on run, tool-call,
+  artifact, and event data.
 
-This still does not add Fly runner transport, secret custody, mutation-capable
-execution, or model-side approval UI.
+This still does not add secret custody, mutation-capable execution, or
+model-side approval UI.

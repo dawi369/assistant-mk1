@@ -201,12 +201,35 @@ pnpm wrangler secret put CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET --config
 pnpm wrangler secret put LANGGRAPH_UPSTREAM_TOKEN --config cloudflare/control-plane/wrangler.jsonc
 pnpm wrangler secret put WORKBENCH_EXECUTOR_TOKEN --config cloudflare/control-plane/wrangler.jsonc
 pnpm wrangler secret put WORKBENCH_EXECUTOR_URL --config cloudflare/control-plane/wrangler.jsonc
+pnpm wrangler secret put WORKBENCH_RUNNER_TRANSPORT --config cloudflare/control-plane/wrangler.jsonc
+pnpm wrangler secret put WORKBENCH_RUNNER_URL --config cloudflare/control-plane/wrangler.jsonc
+pnpm wrangler secret put WORKBENCH_RUNNER_SIGNING_SECRET --config cloudflare/control-plane/wrangler.jsonc
 pnpm wrangler secret put SENTRY_DSN --config cloudflare/control-plane/wrangler.jsonc
 ```
 
 Use
 `https://assistant-mk1-langgraph-dev.fly.dev/workbench/executors/demo-inspect`
 as the remote executor URL. Do not commit token values.
+
+Use
+`https://assistant-mk1-langgraph-dev.fly.dev/workbench/tool-runners/invocations`
+as the remote runner URL when enabling `WORKBENCH_RUNNER_TRANSPORT=fly`.
+`WORKBENCH_RUNNER_SIGNING_SECRET` must match the Fly secret with the same name.
+When the transport, URL, or secret is absent, the Worker keeps `url.inspect` on
+the Cloudflare-inline runner.
+
+Verify runner transport without printing secrets by setting the secret only in
+the command environment:
+
+```bash
+LANGGRAPH_RUNTIME_BASE_URL=https://assistant-mk1-langgraph-dev.fly.dev \
+WORKBENCH_RUNNER_SIGNING_SECRET=<runner-secret> \
+pnpm smoke:fly-tool-runner
+```
+
+Fly machine health uses the shallow `GET /health/live` endpoint. The deeper
+`GET /health` endpoint still checks LangGraph readiness and is the right manual
+check when debugging runtime boot or proxy behavior.
 
 `LANGGRAPH_UPSTREAM_URL` is committed in `wrangler.jsonc` and points at
 `https://assistant-mk1-langgraph-dev.fly.dev`. `LANGGRAPH_UPSTREAM_TOKEN` must

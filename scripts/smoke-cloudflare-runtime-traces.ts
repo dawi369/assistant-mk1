@@ -25,6 +25,7 @@ type RuntimeSpan = {
   bottleneckCandidate?: boolean;
   offsetMs?: number;
   durationMs?: number;
+  data?: Record<string, unknown>;
 };
 
 type RuntimeTracesResponse = {
@@ -229,6 +230,23 @@ runSmoke("Cloudflare runtime traces smoke", async () => {
   const toolTrace = await requireRecentTrace("tool.url.inspect");
   const toolDetail = await getTrace(owner, toolTrace.traceId);
   requireSpan(toolDetail.spans, (span) => span.name === "HTTP fetch" && span.layer === "tool");
+  const runnerDispatchSpan = requireSpan(
+    toolDetail.spans,
+    (span) => span.name === "Runner dispatch" && span.layer === "executor",
+  );
+  const runnerData = runnerDispatchSpan.data?.runner;
+  if (
+    !runnerData ||
+    typeof runnerData !== "object" ||
+    Array.isArray(runnerData) ||
+    typeof (runnerData as { transport?: unknown }).transport !== "string" ||
+    typeof (runnerData as { adapterVersion?: unknown }).adapterVersion !== "string" ||
+    typeof (runnerData as { source?: unknown }).source !== "string" ||
+    typeof (runnerData as { durationMs?: unknown }).durationMs !== "number" ||
+    (runnerData as { status?: unknown }).status !== "completed"
+  ) {
+    throw new Error(`runner dispatch metadata missing: ${JSON.stringify(runnerDispatchSpan)}`);
+  }
   requireSpan(toolDetail.spans, (span) => span.name === "Artifact/write completion");
 
   const blocked = await fetchRaw("/tools/runs", owner, {

@@ -178,11 +178,18 @@ Implemented:
   metadata on run/tool/artifact records; `demo.inspect` is represented as
   registered runner metadata while the legacy signed executor route remains
   intact.
+- Fly Runner Transport v0.6: `url.inspect` can run through a signed
+  Cloudflare-to-Fly transport behind an explicit rollout flag while preserving
+  the same synchronous Admin/model response shape and Cloudflare-owned durable
+  state.
+- Runtime Stabilization v0.7: Fly runner machine health uses a shallow gateway
+  liveness endpoint, deep LangGraph health remains available for manual/smoke
+  checks, and `tool.url.inspect` traces now include redacted runner dispatch
+  metadata for transport, duration, status, and failure codes.
 
 Next target:
 
-- Fly runner transport for the existing runner boundary, then the first
-  read-only CLI/OSS-backed adapter.
+- First read-only CLI/OSS-backed adapter on the runner boundary.
 - Secret custody before any private external integration or mutation-capable
   adapter.
 

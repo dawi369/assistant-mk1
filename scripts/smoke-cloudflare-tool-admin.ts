@@ -170,6 +170,7 @@ type AdminSummaryResponse = {
 };
 
 const { baseUrl, suffix, readJson, fetchRaw } = createSmokeContext();
+const expectedRunnerTransport = process.env.SMOKE_EXPECT_RUNNER_TRANSPORT ?? "cloudflare_inline";
 
 const accountId = `workos-org:tool-admin-org-${suffix}`;
 const workspaceId = defaultWorkspaceId(accountId);
@@ -260,7 +261,7 @@ runSmoke("Cloudflare tool admin smoke", async () => {
     throw new Error(`url.inspect policy reference missing: ${JSON.stringify(urlInspect)}`);
   }
   if (
-    urlInspect.runner?.transport !== "cloudflare_inline" ||
+    urlInspect.runner?.transport !== expectedRunnerTransport ||
     urlInspect.runner.adapterVersion !== "url-inspect-v1"
   ) {
     throw new Error(`url.inspect runner metadata missing: ${JSON.stringify(urlInspect)}`);
@@ -313,7 +314,7 @@ runSmoke("Cloudflare tool admin smoke", async () => {
     throw new Error("url.inspect run did not return a completed tool call");
   }
   if (
-    run.toolCall.data?.runner?.transport !== "cloudflare_inline" ||
+    run.toolCall.data?.runner?.transport !== expectedRunnerTransport ||
     run.toolCall.data.runner.adapterVersion !== "url-inspect-v1" ||
     run.toolCall.data.runner.source !== "admin"
   ) {

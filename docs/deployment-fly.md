@@ -28,6 +28,7 @@ For the dedicated LangGraph runtime, set:
 ```bash
 fly secrets set OPENROUTER_API_KEY=...
 fly secrets set WORKBENCH_EXECUTOR_TOKEN=...
+fly secrets set WORKBENCH_RUNNER_SIGNING_SECRET=...
 fly secrets set LANGGRAPH_PROXY_TOKEN=...
 ```
 
@@ -104,6 +105,30 @@ remote Cloudflare Worker -> remote D1
                          -> signed Fly runtime executor
                          -> Worker callbacks -> remote D1 snapshot
 ```
+
+Tool runner transport:
+
+```bash
+LANGGRAPH_RUNTIME_BASE_URL=https://assistant-mk1-langgraph-dev.fly.dev \
+WORKBENCH_RUNNER_SIGNING_SECRET=<runner-secret> \
+pnpm smoke:fly-tool-runner
+```
+
+Cloudflare uses this path only when the Worker is configured with
+`WORKBENCH_RUNNER_TRANSPORT=fly`, `WORKBENCH_RUNNER_URL`, and the matching
+`WORKBENCH_RUNNER_SIGNING_SECRET`. Without those settings, `url.inspect`
+continues to use the Cloudflare-inline runner.
+
+Fly machine health uses `GET /health/live`, a shallow gateway liveness check
+that does not call LangGraph. Use `GET /health` for deep manual or smoke checks
+that should prove the gateway can reach the LangGraph `/ok` endpoint. A healthy
+steady-state Fly log should show startup plus Fly health state changes, not
+recurring LangGraph `/ok` lines every 15 seconds from machine checks.
+
+The Fly runtime currently pins `@langchain/langgraph-cli@1.2.3` intentionally.
+Patch `1.2.5` pulls a LangGraph API build that imports an export missing from
+the current `@langchain/langgraph@1.3.2`, which prevents the Fly LangGraph side
+from booting.
 
 Hosted Vercel workbench routes require a signed-in WorkOS browser session.
 `pnpm smoke:workbench` remains a local same-origin smoke, not the hosted deploy

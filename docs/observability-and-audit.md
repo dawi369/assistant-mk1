@@ -155,7 +155,9 @@ Current traced operations:
 - `chat.thread.create`
 - `chat.agent.stream`
 - `chat.run.stream`
-- `tool.url.inspect`
+- `tool.url.inspect`, including redacted runner dispatch metadata for
+  transport, adapter version, source, duration, status, response status, and
+  failure code
 - `diagnostic.demo.inspect` when it can be attached without broad executor
   refactors
 

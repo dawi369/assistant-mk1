@@ -63,6 +63,9 @@ export type Env = {
   SENTRY_TRACES_SAMPLE_RATE?: string;
   WORKBENCH_EXECUTOR_URL?: string;
   WORKBENCH_EXECUTOR_TOKEN?: string;
+  WORKBENCH_RUNNER_TRANSPORT?: "inline" | "fly";
+  WORKBENCH_RUNNER_URL?: string;
+  WORKBENCH_RUNNER_SIGNING_SECRET?: string;
   ALLOWED_ORIGINS?: string;
 };
 

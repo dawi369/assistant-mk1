@@ -4,6 +4,12 @@ import { appendControlAudit } from "./demo-run-store";
 import { isRecord, json, parseDataJson, parseJson } from "./http";
 import { isAdminMembership } from "./membership-policy";
 import {
+  inspectUrl,
+  urlInspectError,
+  validateUrlInspectInput,
+  type UrlInspectResult,
+} from "../../../lib/workbench/url-inspect";
+import {
   finishTrace,
   recordIncomingRequestSpans,
   recordSpan,
@@ -25,7 +31,9 @@ import {
 } from "./tool-policy";
 import {
   cloudflareInlineRunnerTransport,
+  invokeFlyToolRunner,
   runnerMetadataFor,
+  resolveConfiguredRunnerTransport,
   type ToolAdapterMetadata,
   type ToolRunnerMetadata,
 } from "./tool-runner";
@@ -43,36 +51,12 @@ import {
 } from "./types";
 
 const urlInspectWorkflowType = "tool.url.inspect";
-const urlInspectTimeoutMs = 5_000;
-const urlInspectMaxBytes = 128 * 1024;
 const urlInspectAdapterVersion = "url-inspect-v1";
 
 type ToolRunIdentity = AgentIdentity & {
   runId: string;
   workflowIntentId: string;
   source?: "admin" | "approval" | "model";
-};
-
-type ToolError = {
-  code: string;
-  message: string;
-  retryable: boolean;
-  redacted: true;
-};
-
-type UrlInspectOutput = {
-  url: string;
-  finalUrl: string;
-  status: number;
-  ok: boolean;
-  contentType: string | null;
-  contentLength: number | null;
-  downloadedBytes: number;
-  truncated: boolean;
-  title: string | null;
-  timingMs: number;
-  summary: string;
-  retryable: boolean;
 };
 
 type UrlInspectRunSource = "admin" | "approval" | "model";
@@ -247,6 +231,8 @@ export const resolveToolSummaries = async (env: Env, identity: AgentIdentity) =>
 
       return {
         ...tool,
+        runner:
+          tool.name === urlInspectToolName ? urlInspectRunnerMetadata(env, "admin") : tool.runner,
         adminVisible: adminPolicy.decision === "allow" && adminPolicy.adminVisible,
         modelVisible: modelPolicy.decision === "allow" && modelPolicy.modelVisible,
         reason,
@@ -267,116 +253,7 @@ export const resolveToolSummaries = async (env: Env, identity: AgentIdentity) =>
   );
 };
 
-const toolError = (code: string, message: string, retryable = false): ToolError => ({
-  code,
-  message,
-  retryable,
-  redacted: true,
-});
-
-const isPrivateIpv4 = (hostname: string) => {
-  const parts = hostname.split(".");
-  if (parts.length !== 4) return false;
-  const octets = parts.map((part) => Number(part));
-  if (octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) {
-    return false;
-  }
-  const [a, b] = octets;
-  return (
-    a === 0 ||
-    a === 10 ||
-    a === 127 ||
-    (a === 100 && b >= 64 && b <= 127) ||
-    (a === 169 && b === 254) ||
-    (a === 172 && b >= 16 && b <= 31) ||
-    (a === 192 && b === 168) ||
-    (a === 198 && (b === 18 || b === 19)) ||
-    a >= 224
-  );
-};
-
-const isBlockedHostname = (hostname: string) => {
-  const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, "");
-  const isIpv6 = normalized.includes(":");
-  return (
-    normalized === "localhost" ||
-    normalized === "metadata" ||
-    normalized === "metadata.google.internal" ||
-    normalized.endsWith(".localhost") ||
-    normalized.endsWith(".local") ||
-    normalized.endsWith(".internal") ||
-    (isIpv6 &&
-      (normalized === "::1" ||
-        normalized.startsWith("fc") ||
-        normalized.startsWith("fd") ||
-        normalized.startsWith("fe80:"))) ||
-    isPrivateIpv4(normalized)
-  );
-};
-
-export const validateUrlInspectInput = (
-  input: unknown,
-): { ok: true; url: URL } | { ok: false; status: 400 | 403; error: ToolError } => {
-  const rawUrl = isRecord(input) && typeof input.url === "string" ? input.url.trim() : "";
-  if (!rawUrl) {
-    return {
-      ok: false,
-      status: 400,
-      error: toolError("invalid_input", "input.url is required.", false),
-    };
-  }
-
-  let url: URL;
-  try {
-    url = new URL(rawUrl);
-  } catch {
-    return {
-      ok: false,
-      status: 400,
-      error: toolError("invalid_url", "URL must be an absolute http or https URL.", false),
-    };
-  }
-
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    return {
-      ok: false,
-      status: 400,
-      error: toolError("unsupported_protocol", "Only http and https URLs can be inspected.", false),
-    };
-  }
-
-  if (url.username || url.password) {
-    return {
-      ok: false,
-      status: 400,
-      error: toolError(
-        "url_credentials_rejected",
-        "URLs with embedded credentials are rejected.",
-        false,
-      ),
-    };
-  }
-
-  if (isBlockedHostname(url.hostname)) {
-    return {
-      ok: false,
-      status: 403,
-      error: toolError(
-        "url_blocked",
-        "Local, private, and metadata hosts cannot be inspected.",
-        false,
-      ),
-    };
-  }
-
-  return { ok: true, url };
-};
-
-const extractTitle = (text: string) => {
-  const match = text.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-  if (!match?.[1]) return null;
-  return match[1].replace(/\s+/g, " ").trim().slice(0, 180) || null;
-};
+const toolError = urlInspectError;
 
 const urlPolicyResource = (url: URL) => ({
   kind: "url" as const,
@@ -384,110 +261,39 @@ const urlPolicyResource = (url: URL) => ({
   host: url.hostname.toLowerCase(),
 });
 
-const urlInspectRunnerMetadata = (source: UrlInspectRunSource): ToolRunnerMetadata =>
-  runnerMetadataFor(urlInspectAdapter, source);
+const urlInspectRunnerMetadata = (env: Env, source: UrlInspectRunSource): ToolRunnerMetadata =>
+  runnerMetadataFor(urlInspectAdapter, source, resolveConfiguredRunnerTransport(env));
 
-const readBoundedText = async (response: Response) => {
-  if (!response.body) return { text: "", downloadedBytes: 0, truncated: false };
-
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let downloadedBytes = 0;
-  let truncated = false;
-
-  try {
-    while (downloadedBytes < urlInspectMaxBytes) {
-      const { done, value } = await reader.read();
-      if (done || !value) break;
-      const remaining = urlInspectMaxBytes - downloadedBytes;
-      if (value.byteLength > remaining) {
-        chunks.push(value.slice(0, remaining));
-        downloadedBytes += remaining;
-        truncated = true;
-        break;
-      }
-      chunks.push(value);
-      downloadedBytes += value.byteLength;
-    }
-  } finally {
-    reader.releaseLock();
-    if (truncated) await response.body.cancel().catch(() => undefined);
-  }
+const runnerDispatchTraceData = (
+  runner: ToolRunnerMetadata,
+  result: UrlInspectResult & { metrics?: Record<string, unknown> },
+  durationMs: number,
+) => {
+  const metrics = isRecord(result.metrics) ? result.metrics : {};
+  const runnerStatus = result.ok ? "completed" : "failed";
+  const responseStatus =
+    typeof metrics.status === "number" || typeof metrics.status === "string"
+      ? metrics.status
+      : result.ok
+        ? result.output.status
+        : undefined;
+  const remoteDurationMs =
+    typeof metrics.durationMs === "number" && Number.isFinite(metrics.durationMs)
+      ? Math.max(0, Math.round(metrics.durationMs))
+      : undefined;
 
   return {
-    text: new TextDecoder().decode(concatChunks(chunks, downloadedBytes)),
-    downloadedBytes,
-    truncated,
+    runner: {
+      transport: runner.transport,
+      adapterVersion: runner.adapterVersion,
+      source: runner.source,
+      durationMs,
+      status: runnerStatus,
+      errorCode: result.ok ? undefined : result.error.code,
+      responseStatus,
+      remoteDurationMs,
+    },
   };
-};
-
-const concatChunks = (chunks: Uint8Array[], totalBytes: number) => {
-  const merged = new Uint8Array(totalBytes);
-  let offset = 0;
-  for (const chunk of chunks) {
-    merged.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return merged;
-};
-
-export const inspectUrl = async (
-  url: URL,
-): Promise<{ ok: true; output: UrlInspectOutput } | { ok: false; error: ToolError }> => {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), urlInspectTimeoutMs);
-  const startedAt = Date.now();
-
-  try {
-    const response = await fetch(url.toString(), {
-      redirect: "follow",
-      signal: controller.signal,
-      headers: {
-        accept: "text/html,application/xhtml+xml,application/json,text/plain;q=0.8,*/*;q=0.5",
-      },
-    });
-    const contentType = response.headers.get("content-type");
-    const contentLengthHeader = response.headers.get("content-length");
-    const contentLength = contentLengthHeader ? Number(contentLengthHeader) : null;
-    const readableLength = Number.isFinite(contentLength) ? contentLength : null;
-    const body = await readBoundedText(response);
-    const isHtml = contentType?.toLowerCase().includes("html") ?? false;
-    const title = isHtml ? extractTitle(body.text) : null;
-    const timingMs = Date.now() - startedAt;
-    const summary = `${response.status} ${response.statusText || ""}`.trim();
-
-    return {
-      ok: true,
-      output: {
-        url: url.toString(),
-        finalUrl: response.url,
-        status: response.status,
-        ok: response.ok,
-        contentType,
-        contentLength: readableLength,
-        downloadedBytes: body.downloadedBytes,
-        truncated: body.truncated,
-        title,
-        timingMs,
-        summary: title ? `${summary}: ${title}` : summary,
-        retryable: response.status >= 500 || response.status === 429,
-      },
-    };
-  } catch (error) {
-    const aborted = error instanceof Error && error.name === "AbortError";
-    return {
-      ok: false,
-      error: toolError(
-        aborted ? "url_inspect_timeout" : "url_inspect_failed",
-        aborted
-          ? `URL inspection timed out after ${urlInspectTimeoutMs}ms.`
-          : "URL inspection failed before a response was available.",
-        true,
-      ),
-    };
-  } finally {
-    clearTimeout(timeout);
-  }
 };
 
 export const insertToolRunRecords = async (
@@ -508,7 +314,7 @@ export const insertToolRunRecords = async (
   const toolCallId = `${runId}-tool-url-inspect`;
   const execution = { mode: input.executionMode, policy: urlInspectPolicy };
   const source = input.source ?? "admin";
-  const runner = urlInspectRunnerMetadata(source);
+  const runner = urlInspectRunnerMetadata(env, source);
   const normalizedInput = { url: input.url.toString() };
 
   await env.DB.prepare(
@@ -649,7 +455,7 @@ const insertApprovalInterruptedRun = async (
   const runId = createId("cf-run");
   const approvalRequestId = createId("cf-approval");
   const execution = { mode: input.executionMode, policy: urlInspectPolicy };
-  const runner = urlInspectRunnerMetadata("approval");
+  const runner = urlInspectRunnerMetadata(env, "approval");
   const normalizedInput = { url: input.url.toString() };
   const payload = { toolName: urlInspectToolName, input: normalizedInput, runner };
 
@@ -776,12 +582,12 @@ const insertApprovalInterruptedRun = async (
 export const finishToolRun = async (
   env: Env,
   identity: ToolRunIdentity,
-  result: { ok: true; output: UrlInspectOutput } | { ok: false; error: ToolError },
+  result: UrlInspectResult,
 ) => {
   const timestamp = new Date().toISOString();
   const toolCallId = `${identity.runId}-tool-url-inspect`;
   const artifactId = `${identity.runId}-artifact-url-inspect`;
-  const runner = urlInspectRunnerMetadata(identity.source ?? "admin");
+  const runner = urlInspectRunnerMetadata(env, identity.source ?? "admin");
   const artifactRef = {
     id: artifactId,
     kind: "report",
@@ -908,8 +714,47 @@ export const finishToolRun = async (
   return { toolCallId, artifact: artifactRef };
 };
 
-export const executeUrlInspectRunner = async (env: Env, runIdentity: ToolRunIdentity, url: URL) => {
-  const result = await inspectUrl(url);
+export const executeUrlInspectRunner = async (
+  env: Env,
+  runIdentity: ToolRunIdentity,
+  url: URL,
+  input: {
+    executionMode: ExecutionMode;
+    policyDecisionId?: string;
+    traceId?: string | null;
+  },
+) => {
+  const runner = urlInspectRunnerMetadata(env, runIdentity.source ?? "admin");
+  const runnerStartedAtMs = Date.now();
+  const result =
+    runner.transport === "fly"
+      ? await invokeFlyToolRunner(env, runIdentity, {
+          scope: runIdentity.scope,
+          agentId: runIdentity.agentId,
+          runId: runIdentity.runId,
+          workflowIntentId: runIdentity.workflowIntentId,
+          toolName: urlInspectToolName,
+          execution: { mode: input.executionMode, policy: urlInspectPolicy },
+          input: { url: url.toString() },
+          runner,
+          policyDecisionId: input.policyDecisionId,
+          source: runIdentity.source ?? "admin",
+          traceId: input.traceId,
+        })
+      : await inspectUrl(url);
+  const runnerEndedAtMs = Date.now();
+  const runnerDurationMs = Math.max(0, Math.round(runnerEndedAtMs - runnerStartedAtMs));
+  if (input.traceId) {
+    await recordSpan(env, runIdentity, {
+      traceId: input.traceId,
+      name: "Runner dispatch",
+      layer: "executor",
+      startedAtMs: runnerStartedAtMs,
+      endedAtMs: runnerEndedAtMs,
+      status: result.ok ? "completed" : "failed",
+      data: runnerDispatchTraceData(runner, result, runnerDurationMs),
+    });
+  }
   const finished = await finishToolRun(env, runIdentity, result);
   return { result, finished };
 };
@@ -1009,7 +854,7 @@ const markInterruptedRunRunning = async (
   const approvalData = parseDataJson(approval.data_json);
   const runner = isRecord(approvalData.runner)
     ? approvalData.runner
-    : urlInspectRunnerMetadata("approval");
+    : urlInspectRunnerMetadata(env, "approval");
   await env.DB.prepare(
     `UPDATE control_runs
      SET status = ?, heartbeat_at = ?, last_event_at = ?, data_json = ?, updated_at = ?
@@ -1060,7 +905,7 @@ const markInterruptedRunCancelled = async (
   const approvalData = parseDataJson(approval.data_json);
   const runner = isRecord(approvalData.runner)
     ? approvalData.runner
-    : urlInspectRunnerMetadata("approval");
+    : urlInspectRunnerMetadata(env, "approval");
   await env.DB.prepare(
     `UPDATE control_runs
      SET status = ?, heartbeat_at = ?, last_event_at = ?, completed_at = ?, data_json = ?,
@@ -1112,7 +957,7 @@ const insertApprovedToolCallRecord = async (
   const timestamp = new Date().toISOString();
   const toolCallId = `${approval.run_id}-tool-url-inspect`;
   const execution = { mode: input.executionMode, policy: urlInspectPolicy };
-  const runner = urlInspectRunnerMetadata("approval");
+  const runner = urlInspectRunnerMetadata(env, "approval");
   const normalizedInput = { url: input.url.toString() };
 
   await env.DB.prepare(
@@ -1817,7 +1662,10 @@ export const handleApproveToolApproval = async (
     executionMode: policy.executionMode,
     policyDecisionId,
   });
-  const { result, finished } = await executeUrlInspectRunner(env, runIdentity, validated.url);
+  const { result, finished } = await executeUrlInspectRunner(env, runIdentity, validated.url, {
+    executionMode: policy.executionMode,
+    policyDecisionId,
+  });
   await dispatchWorkbenchSessionEvent(env, identity, {
     type: "tool.run.updated",
     data: {
@@ -2296,7 +2144,11 @@ export const handleRunTool = async (
   }
   const fetchStartedAtMs = Date.now();
   const executionStartedAtMs = Date.now();
-  const { result, finished } = await executeUrlInspectRunner(env, runIdentity, validated.url);
+  const { result, finished } = await executeUrlInspectRunner(env, runIdentity, validated.url, {
+    executionMode: policy.executionMode,
+    policyDecisionId,
+    traceId: trace?.traceId,
+  });
   if (trace) {
     await recordSpan(env, identity, {
       traceId: trace.traceId,

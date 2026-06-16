@@ -1,8 +1,16 @@
-import type { ExecutionMode } from "./types";
+import {
+  facadeSignatureHeader,
+  signFacadeRequest,
+} from "../../../lib/workbench/control-plane-signing";
+import type { UrlInspectResult } from "../../../lib/workbench/url-inspect";
+import type { AgentIdentity, Env, ExecutionMode, TenantScope } from "./types";
 
 export const cloudflareInlineRunnerTransport = "cloudflare_inline";
+export const flyRunnerTransport = "fly";
 
-export type ToolRunnerTransport = typeof cloudflareInlineRunnerTransport;
+export type ToolRunnerTransport =
+  | typeof cloudflareInlineRunnerTransport
+  | typeof flyRunnerTransport;
 
 export type ToolRunnerSource = "admin" | "approval" | "model" | "demo-compat";
 
@@ -22,8 +30,153 @@ export type ToolAdapterMetadata = {
 export const runnerMetadataFor = (
   adapter: ToolAdapterMetadata,
   source: ToolRunnerSource,
+  transport: ToolRunnerTransport = adapter.transport,
 ): ToolRunnerMetadata => ({
-  transport: adapter.transport,
+  transport,
   adapterVersion: adapter.adapterVersion,
   source,
 });
+
+export type ToolRunnerExecution = {
+  mode: ExecutionMode;
+  policy: string;
+};
+
+export type ToolRunnerInvocation = {
+  scope: TenantScope;
+  agentId: string;
+  runId: string;
+  workflowIntentId: string;
+  toolName: string;
+  execution: ToolRunnerExecution;
+  input: Record<string, unknown>;
+  runner: ToolRunnerMetadata;
+  policyDecisionId?: string;
+  source?: ToolRunnerSource;
+  traceId?: string | null;
+};
+
+export type ToolRunnerInvocationResponse = UrlInspectResult & {
+  runner?: ToolRunnerMetadata;
+  metrics?: Record<string, unknown>;
+};
+
+const runnerInvocationPath = "/workbench/tool-runners/invocations";
+
+export const isFlyRunnerConfigured = (env: Env) =>
+  env.WORKBENCH_RUNNER_TRANSPORT === flyRunnerTransport &&
+  Boolean(env.WORKBENCH_RUNNER_URL?.trim()) &&
+  Boolean(env.WORKBENCH_RUNNER_SIGNING_SECRET?.trim());
+
+export const resolveConfiguredRunnerTransport = (env: Env): ToolRunnerTransport =>
+  isFlyRunnerConfigured(env) ? flyRunnerTransport : cloudflareInlineRunnerTransport;
+
+export const invokeFlyToolRunner = async (
+  env: Env,
+  identity: AgentIdentity,
+  invocation: ToolRunnerInvocation,
+): Promise<ToolRunnerInvocationResponse> => {
+  const endpoint = env.WORKBENCH_RUNNER_URL?.trim();
+  const secret = env.WORKBENCH_RUNNER_SIGNING_SECRET?.trim();
+  if (!endpoint || !secret) {
+    return {
+      ok: false,
+      error: {
+        code: "runner_not_configured",
+        message: "Fly runner transport is not configured.",
+        retryable: false,
+        redacted: true,
+      },
+      runner: invocation.runner,
+    };
+  }
+
+  const body = JSON.stringify(invocation);
+  const url = new URL(endpoint);
+  const pathWithQuery = `${url.pathname}${url.search}`;
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    "x-assistant-mk1-user-id": identity.scope.userId,
+    "x-assistant-mk1-workspace-id": identity.scope.workspaceId,
+    "x-assistant-mk1-agent-id": identity.agentId,
+    "x-assistant-mk1-run-id": invocation.runId,
+    "x-assistant-mk1-workflow-intent-id": invocation.workflowIntentId,
+    "x-assistant-mk1-tool-name": invocation.toolName,
+  };
+
+  Object.assign(
+    headers,
+    await signFacadeRequest({
+      secret,
+      method: "POST",
+      pathWithQuery,
+      body,
+      headers,
+    }),
+  );
+
+  let response: Response;
+  try {
+    response = await fetch(url.toString(), {
+      method: "POST",
+      headers,
+      body,
+    });
+  } catch {
+    return {
+      ok: false,
+      error: {
+        code: "runner_request_failed",
+        message: "Fly runner request failed before a response was available.",
+        retryable: true,
+        redacted: true,
+      },
+      runner: invocation.runner,
+      metrics: { status: "network_error" },
+    };
+  }
+
+  const parsed = await response.json().catch(() => null);
+  if (!response.ok) {
+    return {
+      ok: false,
+      error: {
+        code: "runner_request_failed",
+        message: `Fly runner request failed with ${response.status}.`,
+        retryable: response.status >= 500,
+        redacted: true,
+      },
+      runner: invocation.runner,
+      metrics:
+        parsed && typeof parsed === "object" && !Array.isArray(parsed)
+          ? {
+              status: response.status,
+              code: (parsed as { details?: { code?: string } }).details?.code,
+            }
+          : { status: response.status },
+    };
+  }
+
+  if (
+    !parsed ||
+    typeof parsed !== "object" ||
+    Array.isArray(parsed) ||
+    typeof (parsed as { ok?: unknown }).ok !== "boolean"
+  ) {
+    return {
+      ok: false,
+      error: {
+        code: "runner_invalid_response",
+        message: "Fly runner returned an invalid response.",
+        retryable: true,
+        redacted: true,
+      },
+      runner: invocation.runner,
+    };
+  }
+
+  return parsed as ToolRunnerInvocationResponse;
+};
+
+export const runnerSignatureHeader = facadeSignatureHeader;
+export const runnerInvocationEndpointPath = runnerInvocationPath;

@@ -50,6 +50,7 @@
     "smoke:cloudflare-event-feed": "tsx scripts/smoke-cloudflare-event-feed.ts",
     "smoke:cloudflare-event-stream": "tsx scripts/smoke-cloudflare-event-stream.ts",
     "smoke:cloudflare-deploy-readiness": "pnpm smoke:cloudflare-signed-facade && pnpm smoke:cloudflare-workspace-context && pnpm smoke:cloudflare-tool-admin && pnpm smoke:cloudflare-policy-boundary && pnpm smoke:cloudflare-session-boundary && pnpm smoke:cloudflare-event-stream",
+    "smoke:fly-tool-runner": "tsx scripts/smoke-fly-tool-runner.ts",
     "smoke:tenant-isolation": "tsx scripts/smoke-tenant-isolation.ts",
     "smoke:tool-registry": "tsx scripts/smoke-tool-registry.ts",
     "smoke:workbench": "tsx scripts/smoke-cloudflare-owned-run.ts"
@@ -89,7 +90,7 @@
   },
   "devDependencies": {
     "@langchain/core": "^1.1.48",
-    "@langchain/langgraph-cli": "^1.2.5",
+    "@langchain/langgraph-cli": "^1.2.3",
     "@tailwindcss/postcss": "^4.3.0",
     "@types/node": "^25.9.1",
     "@types/react": "^19.2.15",

@@ -4,6 +4,16 @@ import { Readable } from "node:stream";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 
 import {
+  canonicalFacadeRequest,
+  facadeContentSha256Header,
+  facadeSignatureHeader,
+  facadeSignatureNonceHeader,
+  facadeSignatureTimestampHeader,
+  hmacSha256Base64Url,
+  sha256Base64Url,
+} from "../lib/workbench/control-plane-signing";
+import { inspectUrl, validateUrlInspectInput } from "../lib/workbench/url-inspect";
+import {
   executeDemoInspectExecutorRequest,
   type DemoInspectExecutorRequest,
   validateDemoInspectExecutorRequest,
@@ -13,6 +23,9 @@ const port = Number(process.env.PORT ?? 3000);
 const langGraphUpstreamUrl = (
   process.env.LANGGRAPH_UPSTREAM_URL ?? "http://127.0.0.1:2024"
 ).replace(/\/$/, "");
+const runnerInvocationPath = "/workbench/tool-runners/invocations";
+const signatureWindowMs = 5 * 60 * 1000;
+const runnerNonces = new Map<string, number>();
 
 const json = (response: ServerResponse, status: number, body: unknown) => {
   response.writeHead(status, { "content-type": "application/json; charset=utf-8" });
@@ -31,6 +44,10 @@ const readJsonBody = async <T>(request: IncomingMessage): Promise<T | null> => {
   const body = await readBody(request);
   if (body.length === 0) return null;
 
+  return parseJsonBuffer<T>(body);
+};
+
+const parseJsonBuffer = <T>(body: Buffer): T | null => {
   try {
     return JSON.parse(body.toString("utf8")) as T;
   } catch {
@@ -46,6 +63,23 @@ const constantTimeEqual = (a: string, b: string) => {
 };
 
 const bearerToken = (value: string) => `Bearer ${value}`;
+
+const firstHeader = (value: string | string[] | undefined) =>
+  Array.isArray(value) ? value[0] : value;
+
+const headerValue = (request: IncomingMessage, name: string) =>
+  firstHeader(request.headers[name.toLowerCase()])?.trim() ?? "";
+
+const assistantHeaders = (request: IncomingMessage) => {
+  const headers: Record<string, string> = {};
+  for (const [key, value] of Object.entries(request.headers)) {
+    const item = firstHeader(value);
+    if (item && key.toLowerCase().startsWith("x-assistant-mk1-")) {
+      headers[key.toLowerCase()] = item;
+    }
+  }
+  return headers;
+};
 
 const isAuthorized = (request: IncomingMessage, token: string) => {
   const apiKey = Array.isArray(request.headers["x-api-key"])
@@ -88,6 +122,80 @@ const requireExecutorAuth = (request: IncomingMessage, response: ServerResponse)
   return true;
 };
 
+const authError = (response: ServerResponse, code: string, message: string, status = 401) => {
+  json(response, status, {
+    ok: false,
+    error: message,
+    details: { code, message, retryable: false, redacted: true },
+  });
+};
+
+const verifyRunnerSignature = async (
+  request: IncomingMessage,
+  response: ServerResponse,
+  url: URL,
+  body: Buffer,
+) => {
+  const secret = process.env.WORKBENCH_RUNNER_SIGNING_SECRET?.trim();
+  if (!secret) {
+    authError(
+      response,
+      "runner_signature_not_configured",
+      "Runner signing is not configured.",
+      500,
+    );
+    return false;
+  }
+
+  const signature = headerValue(request, facadeSignatureHeader);
+  const timestamp = headerValue(request, facadeSignatureTimestampHeader);
+  const nonce = headerValue(request, facadeSignatureNonceHeader);
+  const declaredBodyHash = headerValue(request, facadeContentSha256Header);
+  if (!signature || !timestamp || !nonce || !declaredBodyHash) {
+    authError(response, "signature_required", "Signed runner request is required.");
+    return false;
+  }
+
+  const timestampMs = Number(timestamp);
+  if (!Number.isFinite(timestampMs) || Math.abs(Date.now() - timestampMs) > signatureWindowMs) {
+    authError(response, "signature_stale", "Signed runner request is stale.");
+    return false;
+  }
+
+  const bodyText = body.toString("utf8");
+  const actualBodyHash = await sha256Base64Url(bodyText);
+  if (!constantTimeEqual(actualBodyHash, declaredBodyHash)) {
+    authError(response, "body_hash_mismatch", "Signed runner body hash is invalid.");
+    return false;
+  }
+
+  const now = Date.now();
+  for (const [storedNonce, expiresAt] of runnerNonces) {
+    if (expiresAt <= now) runnerNonces.delete(storedNonce);
+  }
+  if (runnerNonces.has(nonce)) {
+    authError(response, "signature_replay", "Signed runner nonce was already used.");
+    return false;
+  }
+
+  const canonical = canonicalFacadeRequest({
+    method: request.method ?? "GET",
+    pathWithQuery: `${url.pathname}${url.search}`,
+    timestamp,
+    nonce,
+    bodyHash: declaredBodyHash,
+    headers: assistantHeaders(request),
+  });
+  const expectedSignature = await hmacSha256Base64Url(secret, canonical);
+  if (!constantTimeEqual(expectedSignature, signature)) {
+    authError(response, "signature_invalid", "Signed runner request is invalid.");
+    return false;
+  }
+
+  runnerNonces.set(nonce, now + signatureWindowMs);
+  return true;
+};
+
 const isLangGraphReady = async () => {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 750);
@@ -124,6 +232,66 @@ const handleDemoInspectExecutor = async (request: IncomingMessage, response: Ser
   }
 
   json(response, 200, await executeDemoInspectExecutorRequest(parsed.request));
+};
+
+type ToolRunnerInvocation = {
+  toolName?: string;
+  input?: unknown;
+  runner?: unknown;
+};
+
+const handleToolRunnerInvocation = async (
+  request: IncomingMessage,
+  response: ServerResponse,
+  url: URL,
+) => {
+  if (request.method !== "POST") {
+    json(response, 405, { ok: false, error: "method not allowed" });
+    return;
+  }
+
+  const body = await readBody(request);
+  if (!(await verifyRunnerSignature(request, response, url, body))) return;
+
+  const parsed = parseJsonBuffer<ToolRunnerInvocation>(body);
+  if (!parsed || typeof parsed !== "object") {
+    json(response, 400, { ok: false, error: "request body must be JSON" });
+    return;
+  }
+  if (parsed.toolName !== "url.inspect") {
+    json(response, 400, {
+      ok: false,
+      error: "unsupported tool",
+      details: {
+        code: "unsupported_tool",
+        message: "Only url.inspect is supported by this runner endpoint.",
+        retryable: false,
+        redacted: true,
+      },
+    });
+    return;
+  }
+
+  const validated = validateUrlInspectInput(parsed.input);
+  if (!validated.ok) {
+    json(response, validated.status, {
+      ok: false,
+      error: validated.error,
+      runner: parsed.runner,
+    });
+    return;
+  }
+
+  const startedAt = Date.now();
+  const result = await inspectUrl(validated.url);
+  json(response, result.ok ? 200 : 502, {
+    ...result,
+    runner: parsed.runner,
+    metrics: {
+      transport: "fly",
+      durationMs: Date.now() - startedAt,
+    },
+  });
 };
 
 const headersToForward = (request: IncomingMessage) => {
@@ -169,6 +337,15 @@ const server = createServer((request, response) => {
   void (async () => {
     const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
 
+    if (request.method === "GET" && url.pathname === "/health/live") {
+      json(response, 200, {
+        ok: true,
+        service: "assistant-mk1-langgraph-runtime",
+        gatewayReady: true,
+      });
+      return;
+    }
+
     if (request.method === "GET" && url.pathname === "/health") {
       const langGraphReady = await isLangGraphReady();
       json(response, langGraphReady ? 200 : 503, {
@@ -181,6 +358,11 @@ const server = createServer((request, response) => {
 
     if (url.pathname === "/workbench/executors/demo-inspect") {
       await handleDemoInspectExecutor(request, response);
+      return;
+    }
+
+    if (url.pathname === runnerInvocationPath) {
+      await handleToolRunnerInvocation(request, response, url);
       return;
     }
 

@@ -12,6 +12,9 @@ SENTRY_ENVIRONMENT=development
 SENTRY_TRACES_SAMPLE_RATE=1.0
 WORKBENCH_EXECUTOR_URL=http://localhost:3000/api/workbench/executors/demo-inspect
 WORKBENCH_EXECUTOR_TOKEN=replace-with-local-executor-token
+WORKBENCH_RUNNER_TRANSPORT=inline
+WORKBENCH_RUNNER_URL=http://localhost:3000/workbench/tool-runners/invocations
+WORKBENCH_RUNNER_SIGNING_SECRET=replace-with-local-runner-signing-secret
 
 # Local parity requirement:
 # - CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN must match .env.local

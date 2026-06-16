@@ -7,8 +7,8 @@ import {
   insertToolRunRecords,
   listLatestArtifacts,
   listLatestToolCalls,
-  validateUrlInspectInput,
 } from "./admin-tools";
+import { validateUrlInspectInput } from "../../../lib/workbench/url-inspect";
 import {
   evaluateToolPolicy,
   recordToolPolicyDecision,
@@ -146,6 +146,11 @@ export const resolveModelVisibleTools = async (
             env,
             runIdentity,
             validated.url,
+            {
+              executionMode: callPolicy.executionMode,
+              policyDecisionId,
+              traceId: input.traceId,
+            },
           );
           await dispatchWorkbenchSessionEvent(env, identity, {
             type: "tool.run.updated",

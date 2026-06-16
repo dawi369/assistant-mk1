@@ -86,7 +86,7 @@ export type ToolSummary = {
   requiresSecrets: boolean;
   mutationRisk: "read_only" | "mutation_capable";
   runner?: {
-    transport?: "cloudflare_inline";
+    transport?: "cloudflare_inline" | "fly";
     adapterVersion?: string;
     source?: "admin" | "approval" | "model" | "demo-compat";
   };
