@@ -1,298 +1,162 @@
 # Cloudflare Control Plane
 
-Cloudflare is the preferred future live multi-user control plane for assistant-mk1.
+Cloudflare is the live multi-user control plane for assistant-mk1. It owns
+coordination, authorization, normal chat session state, policy, and canonical
+control-plane writes. It does not own arbitrary heavy execution.
 
-Document status: Cloudflare already owns the current authz/control-plane slice
-for users, accounts, workspaces, memberships, active workspace preferences,
-workspace-scoped test agents, active agent preferences, demo runs, and
-Cloudflare Agent-backed normal chat. Durable Object SQLite owns hot per-thread
-messages, while D1 remains the product/control-plane source of truth. R2
-artifacts, richer policy, secret custody, customer-facing agent configuration,
-and production admin flows are still target work.
+Document status: Cloudflare currently owns users, accounts, workspaces,
+memberships, active workspace preferences, workspace-scoped agents, active
+agent preferences, normal chat coordination, Admin summaries, diagnostic runs,
+tool policy, approvals, runtime traces, and control-plane events. Secret
+custody, customer-facing admin flows, mutation-capable tools, and richer
+artifact storage remain target work.
 
-## Role
+## Responsibilities
 
-Cloudflare should own coordination, not arbitrary heavy execution.
+Use Cloudflare for:
 
-Use it for:
-
-- Live per-user/workspace agent state.
-- WebSocket, SSE, or HTTP chat coordination.
-- User-facing stream ownership for conversation and workflow progress.
-- Run control records for foreground, background, workflow, and child execution
-  status.
-- Scheduled checks, alarms, and trigger handling.
+- Trusted user/workspace/agent authorization.
+- User-facing chat/session coordination.
+- Cloudflare Agents normal live chat.
+- D1-backed run, policy, tool, audit, trace, and event records.
+- Durable Object session snapshots and per-thread hot state.
 - Typed workflow intent creation.
-- Tenant-scoped reads and writes to app data.
-- Policy checks before workflow or tool execution.
-- Streaming lightweight results back to the frontend.
-- Cloudflare Agents for normal live chat.
-- LangGraph-compatible workflow facade only during transition or explicit
-  heavy-workflow escalation.
+- Tool exposure and execution policy.
+- Scoped callbacks from Fly/LangGraph.
+- Browser-visible runtime summaries and live-session events.
 
-Do not use it as the default place for:
+Do not use Cloudflare as the default runtime for arbitrary CLIs, Python-heavy
+workflows, browser automation, long CPU-heavy jobs, native dependencies, or
+tools that need a normal Linux container. Those belong in Fly tool runners or
+other server-side execution services.
 
-- Arbitrary CLIs.
-- Python-heavy workflows.
-- Browser automation.
-- Long CPU-heavy jobs.
-- Git submodules with native dependencies.
-- Tool execution that needs a normal Linux container.
+## Storage
 
-Those belong in Fly tool runners or other server-side execution services.
-
-## Storage Mapping
-
-- Durable Object state or Durable Object SQLite: per-agent hot state and coordination.
-- D1: relational control data such as users, workspaces, tool registry, permissions, ledgers, triggers, audit events, and decision records.
-- R2: artifacts such as logs, reports, traces, screenshots, exports, and research bundles.
-
-R2 is object storage, not a general application database.
+- Durable Object state / Durable Object SQLite: session coordination and hot
+  per-thread messages.
+- D1: relational product/control-plane state: users, workspaces, memberships,
+  agents, preferences, chat/control runs, tool permissions, approvals, audit
+  events, traces, and events.
+- R2: future artifacts such as logs, reports, screenshots, exports, and
+  research bundles.
 
 The current D1 schema is early-dev and rebuildable. Keep the active schema in
-`cloudflare/control-plane/schema.sql` instead of preserving incremental
-migration history. The schema starts by dropping current dev tables. If the dev
-schema changes incompatibly, rebuild the dev database deliberately with the
-current schema.
-
-## Agent Shape
-
-A future Cloudflare Agent should be scoped to a user/workspace/agent identity. It can:
-
-- Load current managed state, notes, memory, and open work.
-- Answer simple questions without launching a heavy workflow.
-- Create typed `WorkflowIntent` records for complex work.
-- Create and update `RunRecord` status, heartbeat, interruption, cancellation,
-  and parent/child metadata.
-- Wake on schedules or external events.
-- Call Fly tool runners through signed server-to-server requests.
-- Receive progress callbacks or read workflow status produced by Fly/LangGraph.
-- Stream workflow progress and final results to the frontend.
-- Record decision records and audit events after work completes.
-
-## Mediated Data APIs
-
-Cloudflare is the owner of app-state reads and writes for the initial implementation. Fly/LangGraph use mediated Cloudflare APIs instead of direct database credentials.
-
-These APIs should expose scoped operations, not raw tables:
-
-- Load workspace context.
-- List and create decision records.
-- Append audit events.
-- Create artifact metadata and upload/sign R2 objects.
-- Read and patch managed state.
-- Read tool permissions and execution policy.
-
-This keeps tenant isolation below the prompt layer and gives the platform one place to enforce auth, policy, redaction, and audit.
-
-The mediated API should expose data-client operations over the durable entity contracts in `docs/db-contracts.md`; it should not expose raw D1 table access to workflow callers.
-
-Scoped direct storage access from Fly/LangGraph is a future optimization, not a current implementation path.
+`cloudflare/control-plane/schema.sql`; it intentionally starts by dropping dev
+tables. Rebuild local or remote D1 only when deliberately resetting dev state.
 
 ## Tenant Boundary
 
-Every Cloudflare entry point must derive tenant scope from trusted auth/session/trigger context. The model must not provide `userId` or `workspaceId`.
+Every Cloudflare entry point must derive tenant scope from trusted
+auth/session/trigger context. The model and browser must not provide trusted
+`userId`, `workspaceId`, `threadId`, or `agentId`.
 
-All D1 queries, R2 object keys, Durable Object IDs, and tool-runner calls must include tenant scope.
+Hosted web requests use WorkOS AuthKit in Vercel/Next. Vercel maps WorkOS
+user, account source, and external role/permission signals into a
+server-to-server Cloudflare call. Cloudflare resolves the internal user, active
+workspace, membership, and active agent before reading or writing state.
 
-The hosted web boundary uses WorkOS AuthKit in Vercel/Next to derive trusted
-identity. Vercel maps WorkOS user, account source, and external role/permission
-signals into a server-to-server call to Cloudflare. Cloudflare resolves the
-internal user, active workspace, membership, and active agent, then enforces
-ownership before reading or writing control-plane state. In the current
-pre-user dev environment, Cloudflare auto-bootstraps D1-backed user, default
-workspace, initial active membership, and default agent rows on first valid
-WorkOS-shaped request. Cloudflare then resolves the active workspace and active
-agent from D1 preferences, falling back to defaults when no user preference
-exists.
+Local development can fall back to server-derived `WORKBENCH_DEV_*` identity
+only when `WORKBENCH_ALLOW_LOCAL_DEV_IDENTITY=true` and the runtime is not
+production. Hosted production fails closed if WorkOS is incomplete.
 
-Local development can still fall back to server-derived `WORKBENCH_DEV_*`
-identity values when WorkOS is not configured, but only with
-`WORKBENCH_ALLOW_LOCAL_DEV_IDENTITY=true` and a non-production runtime. Hosted
-production fails closed if WorkOS is incomplete. The durable rule is that Worker
-storage operations take trusted scope explicitly and executor callbacks resolve
-scope from the stored run record.
+## Chat Runtime
 
-## Chat Runtime And Agents
+Normal hosted chat uses Cloudflare Agents directly:
 
-The current hosted chat path uses Cloudflare Agents directly. Vercel derives
-WorkOS/local identity and calls Cloudflare for the current chat session.
-Cloudflare resolves the active workspace, membership, thread, and agent from
-D1, mints a short-lived signed Agent token, and returns workspace-scoped recent
-threads. The browser uses assistant-ui's AI SDK runtime plus the Cloudflare
-Agents React client to connect to one `WorkbenchThreadChatAgent` Durable Object
-per resolved thread.
+```txt
+Vercel session facade
+  -> Cloudflare resolves active workspace/member/agent/thread
+  -> WorkbenchSessionAgent returns session snapshot and short-lived token
+  -> browser connects to WorkbenchThreadChatAgent
+  -> Agent streams OpenRouter and mirrors compact metadata to D1
+```
 
-For normal assistant chat, the Agent resolves runtime config and behavior from
-the active D1 agent, streams OpenRouter through `AIChatAgent`, persists hot
-message state in Durable Object SQLite, and mirrors compact session/thread/run/
-trace metadata into D1 for Admin. Browser requests never provide trusted
-tenant, workspace, thread, or agent scope.
+The latency-sensitive message path should stay small: verify the scoped Agent
+token, read cached runtime/behavior config from the Durable Object, write the
+minimal D1 run-start mirror, then contact OpenRouter. Completion mirrors,
+trace spans, event writes, and thread-touch updates should happen after
+streaming starts or through `waitUntil` when correctness allows it.
 
-The latency-sensitive send path should stay small: verify the scoped Agent
-token, read cached runtime/behavior config from the Durable Object instance,
-write one minimal D1 run-start mirror batch, then start the provider request.
-Completion mirrors, trace-detail spans, event writes, and thread-touch updates
-should happen after streaming starts or through `waitUntil` where correctness
-does not depend on blocking first token. D1 is the source of truth for
-authorization and Admin visibility, but normal chat should not perform serial
-control-plane writes before contacting OpenRouter.
+Fly/LangGraph remain available for graph-shaped workflows, heavy tools,
+browser automation, and explicit escalation. They should not be the default
+path for a plain message.
 
-Fly/LangGraph remain available as the execution plane for graph-shaped
-workflows, heavy tools, browser automation, and future escalation paths. Other
-LangGraph-compatible endpoints can still exist for transition and explicit
-workflow needs, but that is not the default for a plain message.
+## Live Session Events
 
-The current dev policy is intentionally small. Chat defaults to `ask`, Agent
-chat is available to active memberships, and mutation-capable tool execution is
-blocked until approval policy exists. Duplicate/concurrent message behavior is
-handled by the Cloudflare Agent runtime.
-
-Cloudflare also records tenant-scoped control-plane events for session,
-thread, intent, policy, and run progress. The current browser-facing workbench
-reads those events through Vercel's same-origin facade as a compact activity
-feed. The Worker exposes both snapshot reads and a short-lived SSE event stream
-for this activity feed, so browser-visible runtime progress can come from
-Cloudflare-owned state without exposing Cloudflare credentials or tenant scope
-to the browser.
-
-Live workbench state now converges on the user/workspace
+The browser-visible workbench state converges on the scoped
 `WorkbenchSessionAgent` stream:
 
-- Cloudflare `GET /chat/session/stream`
-- Vercel `GET /api/workbench/chat-session/stream`
+- Cloudflare: `GET /chat/session/stream`
+- Vercel facade: `GET /api/workbench/chat-session/stream`
 
-On connect, the coordinator emits `session.snapshot`. It then broadcasts
-compact `session.thread.created`, `session.thread.activated`,
-`session.threads.refreshed`, `chat.run.started`, `chat.run.completed`,
-`chat.run.failed`, `tool.run.updated`, `trace.updated`, and
-`admin.summary.invalidated` events. These events are scoped hints over
-canonical D1 and Durable Object state; payloads must stay redacted and exclude
-tokens, prompts, secrets, raw provider payloads, and full tool output.
+The stream can emit compact `session.snapshot`, thread create/activate/refresh
+events, chat run lifecycle events, tool updates, trace updates, and Admin
+summary invalidation. Payloads are hints over canonical D1 and Durable Object
+state; they must exclude tokens, prompts, secrets, raw provider payloads, and
+full tool output.
 
 Tool runners and future Fly/LangGraph workflows should publish progress by
-calling scoped Cloudflare callbacks that update D1 records first, then notify
-the matching `WorkbenchSessionAgent`. The browser should not subscribe to Fly
-directly for product/runtime state.
-
-The current implementation also exposes a scoped chat runtime summary:
-Cloudflare `GET /chat/runtime-summary` and Vercel
-`GET /api/workbench/chat-runtime-summary`. The summary is derived only after
-Cloudflare resolves the trusted user, active workspace, membership, and active
-agent. It reports the latest session, active or latest owned thread, latest
-intent, policy decision, run status/error, recent chat events, and a compact
-state such as `no_session`, `thread_ready`, `blocked`, `running`, `failed`, or
-`completed`.
-
-This is observable control-plane state plus Durable Object-backed live chat
-state. The durable north star remains: Cloudflare owns the user-facing
-conversation/control plane, and Fly executes signed heavy work only when the
-control plane escalates to it.
+calling scoped Cloudflare callbacks that update D1 first, then notify the
+matching session Agent. The browser should not subscribe to Fly directly for
+product/runtime state.
 
 ## Runtime Traces
 
-Cloudflare D1 is also the first-party runtime trace store. The Worker writes
-`runtime_traces` and `runtime_spans` for scoped chat/thread/tool operations so
-Admin can answer which service was hit and where latency accumulated.
+D1 is the first-party runtime trace store. The Worker writes `runtime_traces`
+and `runtime_spans` for scoped chat/thread/tool operations so Admin can answer
+which service was hit and where latency accumulated.
 
 Current trace kinds:
 
 - `chat.thread.create`
 - `chat.agent.stream`
-- `chat.run.stream` for the legacy/simple-chat transition path
+- `chat.run.stream` for legacy/simple-chat transition paths
 - `tool.url.inspect`
 - `diagnostic.demo.inspect` when it can be attached without broad executor
   refactors
 
-Trace reads are scoped after the same trusted identity resolution as every
-other workbench route:
+Trace reads are scoped after the same identity resolution as every other
+workbench route:
 
 - Cloudflare `GET /runtime/traces/latest?limit=10`
 - Cloudflare `GET /runtime/traces/:traceId`
 - Vercel `GET /api/workbench/runtime-traces/latest`
 - Vercel `GET /api/workbench/runtime-traces/:traceId`
 
-Span payloads must stay compact and redacted. Store operational metadata such
+Trace payloads must stay compact and redacted. Store operational metadata such
 as model id, run id, safe URL summary, duration, status, and error code. Do not
 store prompts, auth headers, provider secrets, full provider payloads, or full
-tool output in trace data. Tool output belongs in artifacts.
+tool output.
 
-For latency analysis, Agent chat traces should distinguish Worker wall-clock
-duration from D1 execution metadata when available. A slow first token should
-be attributable to one of the visible stages: token verification, config cache
-miss, D1 run-start batch, provider first token, stream duration, or post-stream
-D1 mirror work.
+## Tools And Policy
 
-## Tool Admin Visibility
+The current tool slice is read-only and Admin-triggered. Cloudflare exposes
+`GET /tools`, `POST /tools/runs`, `POST /tools/policy`, and scoped approval
+routes; Vercel facades live under `/api/workbench/tools`.
 
-The current tool slice is intentionally read-only and Admin-triggered.
-Cloudflare exposes `GET /tools` and `POST /tools/runs`, with Vercel facades
-under `/api/workbench/tools`. These routes resolve the current user, active
-workspace, membership, and active agent before returning tool visibility or
-starting a tool run.
+`url.inspect` is the first non-demo adapter. It runs in `dry_run` mode, rejects
+local/private/metadata targets, performs bounded public HTTP inspection, and
+stores Cloudflare-owned workflow/run/tool-call/artifact/audit/event state. It
+can become model-visible only by explicit owner/admin policy opt-in for the
+current user/workspace/agent permission row, and exposure stays blocked when
+approval is required or the tool is disabled.
 
-`url.inspect` is the first non-demo adapter. It runs in `dry_run` mode under
-the `tool-admin-readonly-v0` policy reference, rejects local/private/metadata
-targets, performs a bounded public HTTP inspection, and stores the result as
-Cloudflare-owned workflow/run/tool-call/artifact/audit/event state. It can be
-made model-visible only by explicit owner/admin policy opt-in for the current
-user/workspace/agent permission row, and exposure stays blocked when approval
-is required or the tool is disabled.
+`demo.inspect` remains registered as diagnostic compatibility for the original
+Cloudflare-owned run slice. It is not editable through Admin and should not be
+treated as the model for future production tools.
 
-Tool Policy v0 makes this first policy boundary durable. Cloudflare stores
-workspace/user/agent-scoped `tool_permissions` rows for `url.inspect` and
-`demo.inspect`, records `control_policy_decisions` for Admin tool run attempts,
-and exposes a small Admin-only `POST /tools/policy` control to enable or disable
-`url.inspect`. Policy Expansion v0.1 adds approval-required and kill-switch
-state to those permission rows, plus `control_approval_requests` for
-approval-shaped interrupts. Disabled tools fail before input validation or
-execution and record policy/audit/control-plane events. Approval-required
-`url.inspect` requests validate safe input, then persist an interrupted
-workflow intent/run and requested approval without creating a tool call or
-artifact. Admin can list scoped approvals, approve the original validated
-request into dry-run execution, or deny it into cancellation; `approval.updated`
-events refresh the UI. `/tools` also returns separate Admin and model-exposure
-policy explanations, and the Cloudflare Agent exposes `url.inspect` to the
-model only when the same policy boundary allows it. This is still a read-only
-tool slice: secrets, mutation-capable tools, model-side approval UI, and
-approval resume for mutation remain blocked.
+Generic policy evaluates execution modes, approval state, model exposure, kill
+switches, allowlists, denylists, cooldowns, hourly limits, max runtime, and max
+artifact bytes. Approval-required `url.inspect` validates safe input, persists
+an interrupted run and requested approval, then waits for Admin approve/deny.
 
-Signed Facade v0.4 hardens the Vercel-to-Cloudflare boundary. Vercel still owns
-WorkOS session resolution, but normal facade requests are signed with a shared
-server-side secret. Cloudflare verifies the signature, timestamp, nonce, body
-hash, method, path/query, and forwarded `x-assistant-mk1-*` headers before
-trusting identity headers. Used nonces are stored in `control_request_nonces`
-until expiry so stale and replayed facade requests are rejected before identity
-resolution.
+## Trust Boundary
 
-Generic Tool Policy v0.4 keeps `url.inspect` as the only editable executable
-tool, but policy state is no longer `url.inspect`-shaped. The evaluator now
-understands generic allowed execution modes, approval state, model exposure,
-kill switches, allowlists, denylists, cooldowns, hourly limits, max runtime,
-and max artifact bytes. `demo.inspect` remains registered but not editable
-through Admin.
+Vercel owns hosted web session resolution. Cloudflare owns membership, agent
+access, session, thread, tool, and run ownership from trusted scope. Normal
+facade requests may be signed with a shared server-side secret; Cloudflare
+verifies signature metadata before trusting forwarded identity headers.
 
-Generic Tool Runner Boundary v0.5 adds the first execution boundary inside
-Cloudflare before Fly transport is introduced. `url.inspect` Admin runs,
-approval resumes, and model tool calls use the same Cloudflare-inline runner
-metadata and durable run/tool/artifact finish path. `demo.inspect` is represented
-in the runner catalog for compatibility, but the existing signed executor route
-remains intact until a later Fly transport slice deliberately migrates it.
-
-Fly Runner Transport v0.6 keeps the same `url.inspect` API behavior while
-adding an optional signed Cloudflare-to-Fly execution path. Cloudflare still
-creates and finalizes canonical run/tool/artifact/audit/event state; Fly only
-validates the signed invocation, executes the read-only adapter, and returns a
-structured result. The transport is gated by `WORKBENCH_RUNNER_TRANSPORT=fly`
-plus a runner URL and matching signing secret, and inline execution remains the
-default fallback.
-
-This is still not complete production authorization. WorkOS is the hosted web
-auth provider, and Cloudflare now owns the first D1-backed membership and agent
-routing slices, but explicit invites/admin flows, tool authorization, secret
-authorization, and a stronger Vercel-to-Cloudflare trust contract are still
-future gates. The durable rule is that Vercel owns the hosted web session,
-Cloudflare enforces membership, agent access, session, thread, and run
-ownership from trusted scope, and Fly remains the heavy execution plane. The
-facade must not expose the Fly token to Vercel or the browser, and it must not
-be mistaken for the final product API.
+The facade must not expose Fly tokens, provider keys, tool credentials, or
+tenant scope to the browser. Fly remains the heavy execution plane and reports
+progress back through Cloudflare-owned state.

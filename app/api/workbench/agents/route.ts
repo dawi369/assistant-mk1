@@ -5,16 +5,13 @@ import {
   createCloudflareAgent,
   getCloudflareAgents,
 } from "@/lib/workbench/cloudflare-control-plane-client";
+import { workbenchJson } from "@/lib/workbench/route-handler";
 import type { AgentSummary } from "@/lib/workbench/workbench-types";
 
 export const runtime = "nodejs";
 
 export async function GET() {
-  try {
-    return NextResponse.json(await getCloudflareAgents());
-  } catch (error) {
-    return toWorkbenchApiError(error, "Cloudflare agents request failed");
-  }
+  return workbenchJson(getCloudflareAgents, "Cloudflare agents request failed");
 }
 
 const agentProfiles = new Set(["default", "analyst", "operator"]);

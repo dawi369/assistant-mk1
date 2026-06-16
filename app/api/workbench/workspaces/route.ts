@@ -5,15 +5,12 @@ import {
   createCloudflareWorkspace,
   getCloudflareWorkspaces,
 } from "@/lib/workbench/cloudflare-control-plane-client";
+import { workbenchJson } from "@/lib/workbench/route-handler";
 
 export const runtime = "nodejs";
 
 export async function GET() {
-  try {
-    return NextResponse.json(await getCloudflareWorkspaces());
-  } catch (error) {
-    return toWorkbenchApiError(error, "Cloudflare workspaces request failed");
-  }
+  return workbenchJson(getCloudflareWorkspaces, "Cloudflare workspaces request failed");
 }
 
 export async function POST(request: NextRequest) {

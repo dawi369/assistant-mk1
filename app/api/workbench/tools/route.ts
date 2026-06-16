@@ -1,14 +1,8 @@
-import { NextResponse } from "next/server";
-
-import { toWorkbenchApiError } from "@/lib/workbench/api-errors";
 import { getCloudflareTools } from "@/lib/workbench/cloudflare-control-plane-client";
+import { workbenchJson } from "@/lib/workbench/route-handler";
 
 export const runtime = "nodejs";
 
 export async function GET() {
-  try {
-    return NextResponse.json(await getCloudflareTools());
-  } catch (error) {
-    return toWorkbenchApiError(error, "Cloudflare tools request failed");
-  }
+  return workbenchJson(getCloudflareTools, "Cloudflare tools request failed");
 }

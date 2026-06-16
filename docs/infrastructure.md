@@ -1,217 +1,108 @@
 # Infrastructure
 
-Assistant-mk1 is a reusable agent framework. Infrastructure should support many apps and many users without making Polymancer the only product shape.
+Assistant-mk1 infrastructure should support many agent apps without making any
+reference app the product shape.
 
-Document status: this page intentionally compares the current hosted dev
-baseline with the target runtime. Use `docs/deployment-vercel.md` and
-`docs/dev-infrastructure-readiness.md` as runbooks.
+Document status: this page describes active ownership and request flow. Use
+`docs/deployment-vercel.md`, `docs/deployment-fly.md`, and
+`docs/dev-infrastructure-readiness.md` as operational runbooks.
 
-## Target Topology
+## Ownership
+
+- Vercel: Next.js frontend, WorkOS AuthKit session, same-origin API facades,
+  and browser ergonomics.
+- Cloudflare: authorization, user/workspace/agent resolution, normal chat
+  coordination, D1 control-plane state, Durable Object session state, tool
+  policy, runtime summaries, events, and traces.
+- Fly/LangGraph: graph-shaped workflows, signed server-side executors, heavy
+  tools, and Linux-container work.
+- Sentry: sampled external errors and performance telemetry. Product/runtime
+  truth still starts from Cloudflare-owned D1 records and Admin summaries.
+
+## Current Hosted Flow
 
 ```txt
 browser
   -> Vercel Next.js app
-  -> WorkOS AuthKit session via the Next SDK
-  -> Vercel server facade derives trusted user/account identity and external membership signals
-  -> Cloudflare control plane over a server-to-server boundary for product/authz state
-  -> user/workspace Cloudflare session coordinator Durable Object
-  -> short-lived Cloudflare Agent connection token for the active thread
-  -> Cloudflare AIChatAgent Durable Object for normal live chat
-  -> typed intent/router and run control records in D1
-  -> Fly LangGraph workflow or tool runner only for explicit heavy escalation
-  -> decision records, audit events, artifacts, managed state
+  -> WorkOS AuthKit session via Next SDK
+  -> Vercel facade derives trusted user/account identity
+  -> Cloudflare resolves user, workspace, membership, active agent, and thread
+  -> WorkbenchSessionAgent returns session snapshot and Agent connection token
+  -> WorkbenchThreadChatAgent streams normal chat through OpenRouter
 ```
 
-Vercel owns the hosted web session and browser ergonomics. Cloudflare owns
-authorization, user/workspace/agent-scoped state, policy, run control, and
-canonical writes. Fly and LangGraph services do not own the user-facing
-session; they report progress and results back through Cloudflare-managed state
-or callbacks.
+For `/new` and old-thread activation, Cloudflare returns the minimal active
+thread/agent/connection payload first, then refreshes recent-thread state in
+the background. Browser cache is display-only; D1 and Durable Objects remain
+authoritative.
 
-## Current Dev Baseline vs Target Runtime
+After the first session load, the browser should prefer the scoped
+`GET /chat/session/stream` event source over broad polling. The stream carries
+session snapshots, thread changes, chat run lifecycle, Admin tool updates,
+trace updates, and Admin invalidation hints. Payloads must stay redacted.
 
-The current hosted dev baseline is intentionally split but not fully at the north-star runtime yet:
+## Escalation Flow
 
-- Vercel hosts the Next.js frontend and same-origin browser API facade.
-- WorkOS AuthKit runs at the Vercel boundary for hosted sign-in. Vercel maps
-  WorkOS user identity and, when present, WorkOS organization identity into
-  trusted account/workspace headers for Cloudflare. Organization-backed
-  accounts get one default workspace in the current slice; the north star
-  allows multiple workspaces per organization later. The current personal
-  workspace fallback exists for pre-user development and possible future solo
-  use.
-- Cloudflare owns the production-shaped workbench run-control path and normal
-  hosted chat. Vercel forwards trusted WorkOS/local identity, Cloudflare
-  resolves authorization, then a user/workspace session coordinator Durable
-  Object owns hot active-thread/session switching and mints short-lived Agent
-  tokens. The browser connects to a per-thread Cloudflare `AIChatAgent` Durable
-  Object. Durable Object SQLite owns hot per-thread messages; D1 owns
-  tenant-scoped sessions, thread ownership, active thread/agent selection, chat
-  intents, policy decisions, run envelopes, traces, and control-plane activity
-  events. The same user/workspace session coordinator exposes the live
-  `GET /chat/session/stream` event source for sidebar, runtime hint, Admin
-  invalidation, chat run state, and future workflow/tool progress hints.
-- Fly runs the LangGraph runtime gateway and signed executor endpoints for
-  heavy workflow/tool execution and explicit escalation.
-
-assistant-ui now uses the Cloudflare Agents chat runtime for normal hosted
-messages. The old LangGraph-shaped facade remains a transition/compatibility
-surface and a future heavy-workflow bridge, not the normal small-message path.
-The current boundary enforces trusted tenant ownership for sessions,
-thread-scoped calls, active membership, and active agent selection, and keeps
-Fly out of normal chat. The workbench can read recent Cloudflare activity
-through a same-origin Vercel facade and can subscribe to a short-lived
-Cloudflare-backed event stream for live activity updates. It is not a frontend
-auth system.
-
-The current small-chat path is:
+Normal chat should have `runtime = cloudflare-agent-chat`. Fly/LangGraph is
+reserved for explicit workflow or heavy-tool escalation:
 
 ```txt
-assistant-ui runtime
-  -> cached browser display shell for instant sidebar/scope paint when present
-  -> Vercel /api/workbench/chat-session
-  -> Cloudflare resolves active workspace/member/agent
-  -> user/workspace session coordinator resolves active thread and mints token
-  -> Browser connects to Cloudflare AIChatAgent Durable Object
-  -> OpenRouter
+Cloudflare policy/router
+  -> typed workflow intent or tool invocation
+  -> run/control records in D1
+  -> Fly LangGraph workflow or signed tool runner
+  -> scoped Cloudflare callbacks
+  -> D1 audit/artifact/decision/event state
+  -> workbench stream/Admin visibility
 ```
 
-For `/new` and old-thread selection, Cloudflare returns a minimal active
-thread/agent/connection payload before forcing a full recent-thread refresh.
-The browser may optimistically show cached or pending thread summaries, but D1
-and the session coordinator remain authoritative for actual activation and
-Agent token scope.
+Fly and LangGraph should read or write product state through mediated,
+tenant-scoped Cloudflare APIs first. Direct D1/R2 access is a future
+optimization only for measured hot paths and must preserve the same scoped
+data-client, authz, redaction, and audit rules.
 
-After the first session load, the browser should prefer Cloudflare session
-events over broad polling. `/new`, thread activation, Agent chat run
-start/end/failure, Admin tool updates, and trace changes invalidate or update
-the UI through the session stream. Admin summary reads still exist, but they
-are pulled when Admin is open or a live event says the summary is stale.
+## Request Responsibilities
 
-The LangGraph-shaped contract is no longer the normal chat runtime. A normal
-chat run should have `runtime = cloudflare-agent-chat`; Fly/LangGraph is
-reserved for explicit workflow or heavy-tool escalation.
+1. Vercel derives WorkOS user/account identity from the server session, or a
+   trusted trigger supplies equivalent metadata.
+2. Cloudflare resolves internal user, account, workspace, membership, and
+   active agent.
+3. Policy checks membership, agent access, tool permissions, execution mode,
+   approvals, limits, and kill switches.
+4. The runtime either answers through Cloudflare Agents or creates a typed
+   workflow/tool run.
+5. Executed work writes scoped results back as run records, tool calls,
+   artifacts, decision records, audit events, traces, and lifecycle events.
+6. Cloudflare streams product/runtime state to the frontend from canonical
+   state.
 
-The north-star runtime keeps WorkOS AuthKit at the Vercel web boundary, then
-moves user-facing conversation and workflow progress streaming behind the
-Cloudflare control plane. Fly remains the execution plane for LangGraph
-workflows and heavy tools, and writes durable outputs back through mediated
-Cloudflare APIs or callbacks.
+## Storage
 
-## Responsibilities
+- Durable Object state / Durable Object SQLite: hot session and per-thread chat
+  state.
+- D1: users, workspaces, memberships, agents, preferences, chat/control run
+  envelopes, tool permissions, approvals, audit events, traces, and events.
+- R2: future durable artifacts such as logs, screenshots, reports, exports, and
+  research bundles.
+- LangGraph runtime storage: workflow-engine state for graph-shaped execution,
+  not product authorization truth.
 
-- Frontend: operator cockpit for conversation, state, tools, approvals, artifacts, and run history.
-- Conversational control plane: live user/workspace agent coordination, fast answers from canonical state, memory updates, and typed workflow escalation.
-- Workflow execution plane: explicit multi-step workflows such as `observe -> analyze -> propose -> execute -> review`.
-- Run control: durable status, heartbeat, parent/child ownership, interrupts, cancellation, and recovery metadata for active and historical executions.
-- Tool runners: server-side execution for CLIs, OSS packages, git submodules, scripts, browser automation, API tools, and heavy jobs.
-- Storage: tenant-scoped relational data, per-agent hot state, object artifacts, and workflow backend state.
-- Secrets: encrypted, scoped, revocable, server-side only, and available only to approved tools.
-- Observability: audit events, tool logs, workflow status, artifacts, heartbeat status, and failure reasons.
+Canonical durable entity contracts are in `docs/db-contracts.md`.
 
-## Request Flow
+## Observability
 
-1. A user sends a message or an external event arrives.
-2. Vercel derives WorkOS user, account id, and safe external membership signals
-   from the server session, or a trusted trigger supplies equivalent metadata.
-3. Cloudflare resolves `userId`, `accountId`, `workspaceId`, membership, and
-   active agent from that trusted context.
-4. The conversational agent reads scoped canonical state and answers directly when possible.
-5. If work needs escalation, the runtime creates a typed `WorkflowIntent`.
-6. Policy checks tenant scope, membership, agent access, tool permissions,
-   execution mode, approvals, and kill switches.
-7. The runtime creates or updates a `RunRecord` for the execution attempt.
-8. The workflow engine or tool runner executes the approved work.
-9. Complex workflows read and write app state through mediated, tenant-scoped Cloudflare APIs first.
-10. Outputs are written back as decision records, audit events, artifacts, ledgers, and managed-state updates.
-11. Cloudflare streams run status and results to the frontend from canonical state.
-12. The frontend shows the new state and lets the user inspect why it changed.
-
-Canonical durable entity contracts are defined in `docs/db-contracts.md`. This infrastructure page should describe flow and ownership, not duplicate entity shapes.
-
-## Runtime Split
-
-Cloudflare Agents are now the normal live-chat control plane because they fit
-stateful multi-user coordination. Fly is the preferred execution plane for
-heavy tools and LangGraph workflow workers. LangGraph remains important for
-complex graph-shaped workflows, but it is not the always-on per-user chat
-runtime.
-
-## Observability Surfaces
-
-Assistant-MK1 uses Cloudflare-owned D1 records for durable runtime truth and
-Sentry for external exception/trace monitoring. The current Sentry project is
-`t23/assistant-mk1`.
-
-Keep Vercel, Cloudflare, and future Fly/LangGraph events in the same Sentry
-project, then filter by `runtime.surface`:
+Use one Sentry project for the product and filter by `runtime.surface`:
 
 - `vercel-next`
 - `cloudflare-worker`
 - `fly-langgraph`
 
-That matches the product boundary: one Assistant-MK1 product with multiple
-runtime surfaces. If a future customer deployment genuinely needs hard
-separation for billing, access, or data residency, create a separate Sentry
-project then; do not split projects just because the infrastructure has
-multiple deploy targets.
-
-Production tracing is intentionally sampled at a low rate by default. Sentry
-may show normal request transactions when sampled; those belong to performance
-telemetry. Product-state debugging should still start from Cloudflare D1 runtime
-summaries and Admin, while unresolved Sentry issues should be treated as
-code/runtime failures.
-
-## Stream Ownership
-
-Cloudflare owns the user-facing stream. The frontend should keep its WebSocket/SSE/HTTP streaming relationship with the conversational control plane. Fly tool runners and LangGraph workflow services should publish progress by calling Cloudflare callbacks or writing scoped status to canonical state that Cloudflare can stream.
-
-This keeps auth, tenant scope, UI state, and cross-user isolation in one place.
-
-The current implementation has the first pieces of this: a tenant-scoped
-session event stream for product/runtime progress and a Cloudflare
-`AIChatAgent` stream for normal chat. A user/workspace session coordinator
-Durable Object keeps `/new`, old-thread switching, token refresh, recent chat
-state, Admin invalidation, and future executor progress out of the D1-heavy
-polling path. The browser keeps only display-safe recent-chat metadata so the
-workbench shell does not blank during coordinator refreshes. Fly is reserved
-for graph-shaped workflow execution and heavy tools.
-
-## Workflow Data Access
-
-Start with mediated Cloudflare APIs for workflow reads and writes. LangGraph and tool runners should call scoped APIs such as:
-
-- `GET /workspace-context`
-- `GET /decision-records`
-- `POST /decision-records`
-- `POST /audit-events`
-- `POST /artifacts`
-- `PATCH /managed-state`
-
-Those APIs validate tenant scope, permissions, execution policy, and redaction before touching D1 or R2.
-
-Workflow and tool code should depend on data-client operations, not raw tables. See `docs/db-contracts.md` for the initial operation groups.
-
-Future optimization: scoped direct D1/R2 access from Fly/LangGraph is not part of the initial implementation. It may be considered later only for measured hot paths where mediated APIs create a concrete performance or reliability problem. Even then, direct access must use the same scoped data-client interface, tenant checks, redaction rules, and audit events.
-
-## Tool Exposure
-
-The durable tool registry can contain more tools than a single model run should
-see. Before a workflow or child run starts, the control plane should resolve the
-model-visible tool surface from tenant scope, agent configuration, tool
-permissions, workflow stage, execution mode, policy, and delegation context.
-
-This resolver is a policy boundary, not just prompt decoration. It reduces
-token cost, narrows risk, and gives the UI a concrete explanation for why a tool
-was exposed or hidden.
-
-## Lifecycle Events
-
-The first extension surface should be typed lifecycle events, not arbitrary
-shell hooks. Events such as `run.started`, `tool.finished`, and
-`approval.requested` should drive audit records, UI history, policy checks, and
-future hook/plugin decisions.
+Keep production tracing sampled. Admin/D1 runtime summaries answer product
+state questions; unresolved Sentry issues are code/runtime failures.
 
 ## Reference App Boundary
 
-Polymancer stress-tests the system with market workflows, secrets, ledgers, triggers, and autonomy. It is a reference mapping only. The same infrastructure must support deployments, documents, research, tickets, operations, and other agent workflows.
+Polymancer, deployment agents, and the Personal Job Agent are stress tests for
+market workflows, operations, browser automation, secrets, ledgers, triggers,
+and autonomy. They should pressure the framework without redefining the base
+tenant model or adding a committed `Project` entity.
