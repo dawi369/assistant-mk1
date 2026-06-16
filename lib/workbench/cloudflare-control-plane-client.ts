@@ -18,6 +18,7 @@ import type {
   CloudflareWorkspaceMutationResponse,
   CloudflareWorkspacesResponse,
   ChatThreadResponse,
+  ChatThreadStatus,
   ChatThreadsResponse,
   ChatSessionResponse,
   ChatRuntimeSummaryResponse,
@@ -278,10 +279,26 @@ export const streamChatSessionEvents = async () => {
 export const createChatSessionThread = () =>
   requestControlPlane<ChatSessionResponse>("/chat/session/threads", { method: "POST" });
 
+export const getChatSessionThreads = (input?: {
+  status?: Extract<ChatThreadStatus, "active" | "archived">;
+}) =>
+  requestControlPlane<ChatThreadsResponse>(
+    `/chat/session/threads${input?.status ? `?status=${encodeURIComponent(input.status)}` : ""}`,
+  );
+
 export const activateChatSessionThread = (threadId: Id) =>
   requestControlPlane<ChatSessionResponse>(
     `/chat/session/threads/${encodeURIComponent(threadId)}/activate`,
     { method: "POST" },
+  );
+
+export const updateChatSessionThread = (
+  threadId: Id,
+  input: { title?: string; status?: ChatThreadStatus },
+) =>
+  requestControlPlane<ChatSessionResponse>(
+    `/chat/session/threads/${encodeURIComponent(threadId)}`,
+    { method: "PATCH", body: JSON.stringify(input) },
   );
 
 export const getCloudflareWorkspaces = () =>

@@ -465,6 +465,8 @@ export type ChatThreadSummary = {
   messageCount?: number;
 };
 
+export type ChatThreadStatus = "active" | "archived" | "deleted";
+
 export type ChatThreadsResponse = {
   ok?: boolean;
   threads?: ChatThreadSummary[];
@@ -505,7 +507,15 @@ export type ChatSessionResponse = {
   };
   pending?: { type: "create" } | { type: "activate"; threadId: Id };
   transition?: {
-    type: "initial" | "create" | "activate" | "token_refresh";
+    type:
+      | "initial"
+      | "create"
+      | "activate"
+      | "rename"
+      | "archive"
+      | "restore"
+      | "delete"
+      | "token_refresh";
     startedAt?: string;
   };
   expiresAt?: string;
@@ -518,6 +528,7 @@ export type WorkbenchSessionEvent = {
     | "session.snapshot"
     | "session.thread.created"
     | "session.thread.activated"
+    | "session.thread.updated"
     | "session.threads.refreshed"
     | "chat.run.started"
     | "chat.run.completed"

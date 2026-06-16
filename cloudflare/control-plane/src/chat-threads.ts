@@ -83,6 +83,7 @@ const activeThreadForAgent = async (env: Env, identity: AgentIdentity) =>
     .first<{ active_thread_id: string | null }>();
 
 export const handleListChatThreads = async (env: Env, identity: AgentIdentity, url: URL) => {
+  const status = url.searchParams.get("status") === "archived" ? "archived" : "active";
   const [activeSession, threads] = await Promise.all([
     activeThreadForAgent(env, identity),
     env.DB.prepare(
@@ -98,11 +99,17 @@ export const handleListChatThreads = async (env: Env, identity: AgentIdentity, u
                 LIMIT 1
               ) AS latest_run_status
        FROM chat_threads t
-       WHERE t.user_id = ? AND t.workspace_id = ? AND t.agent_id = ?
+       WHERE t.user_id = ? AND t.workspace_id = ? AND t.agent_id = ? AND t.status = ?
        ORDER BY t.updated_at DESC, t.created_at DESC
        LIMIT ?`,
     )
-      .bind(identity.scope.userId, identity.scope.workspaceId, identity.agentId, limitFromUrl(url))
+      .bind(
+        identity.scope.userId,
+        identity.scope.workspaceId,
+        identity.agentId,
+        status,
+        limitFromUrl(url),
+      )
       .all<ChatThreadListRow>(),
   ]);
 
@@ -119,7 +126,7 @@ export const handleListChatThreads = async (env: Env, identity: AgentIdentity, u
 
 export const handleGetChatThread = async (env: Env, identity: AgentIdentity, threadId: string) => {
   const thread = await getOwnedChatThread(env, identity.scope, threadId);
-  if (!thread || thread.agent_id !== identity.agentId) {
+  if (!thread || thread.agent_id !== identity.agentId || thread.status === "deleted") {
     return json({ ok: false, error: "Thread not found" }, { status: 404 });
   }
 

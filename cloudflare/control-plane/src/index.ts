@@ -27,6 +27,8 @@ import {
   handleChatSession,
   handleChatSessionStream,
   handleCreateChatSessionThread,
+  handleListChatSessionThreads,
+  handleUpdateChatSessionThread,
 } from "./chat-session";
 import { handleGetChatThread, handleListChatThreads } from "./chat-threads";
 import {
@@ -176,6 +178,10 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
     return handleChatSessionStream(request, env, identity);
   }
 
+  if (request.method === "GET" && url.pathname === "/chat/session/threads") {
+    return handleListChatSessionThreads(request, env, identity);
+  }
+
   if (request.method === "POST" && url.pathname === "/chat/session/threads") {
     return handleCreateChatSessionThread(request, env, identity);
   }
@@ -189,6 +195,16 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
       env,
       identity,
       decodeURIComponent(activateChatSessionThreadMatch[1]),
+    );
+  }
+
+  const updateChatSessionThreadMatch = url.pathname.match(/^\/chat\/session\/threads\/([^/]+)$/);
+  if (request.method === "PATCH" && updateChatSessionThreadMatch?.[1]) {
+    return handleUpdateChatSessionThread(
+      request,
+      env,
+      identity,
+      decodeURIComponent(updateChatSessionThreadMatch[1]),
     );
   }
 

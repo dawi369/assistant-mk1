@@ -6,6 +6,7 @@ import { deriveThreadAgentInstanceName } from "./chat-agent-connection-context";
 import {
   createChatSession,
   getLatestChatSession,
+  getLatestRunningChatRun,
   getOwnedChatThread,
   touchChatSession,
 } from "./chat-boundary-store";
@@ -32,8 +33,18 @@ type ChatThreadListRow = ChatThreadRow & {
   agent_updated_at: string | null;
 };
 
-type CoordinatorAction = "get" | "create" | "activate" | "stream" | "broadcast";
-type SessionTransitionType = "initial" | "create" | "activate" | "token_refresh";
+type CoordinatorAction = "get" | "list" | "create" | "activate" | "update" | "stream" | "broadcast";
+type ThreadListStatus = "active" | "archived";
+type ThreadMutationStatus = "active" | "archived" | "deleted";
+type SessionTransitionType =
+  | "initial"
+  | "create"
+  | "activate"
+  | "rename"
+  | "archive"
+  | "restore"
+  | "delete"
+  | "token_refresh";
 
 type CoordinatorRequest = {
   action: CoordinatorAction;
@@ -41,6 +52,11 @@ type CoordinatorRequest = {
   agentHost?: string;
   threadId?: string;
   refresh?: "threads";
+  status?: ThreadListStatus;
+  update?: {
+    title?: string;
+    status?: ThreadMutationStatus;
+  };
   event?: Partial<WorkbenchSessionEvent> & {
     type?: WorkbenchSessionEventType;
     data?: Record<string, unknown>;
@@ -219,7 +235,12 @@ const workspaceSummary = async (
     : null;
 };
 
-const listWorkspaceThreads = async (env: Env, identity: AgentIdentity, activeThreadId?: string) => {
+const listWorkspaceThreads = async (
+  env: Env,
+  identity: AgentIdentity,
+  activeThreadId?: string,
+  status: ThreadListStatus = "active",
+) => {
   const threads = await env.DB.prepare(
     `SELECT t.thread_id, t.session_id, t.user_id, t.workspace_id, t.agent_id, t.status,
             t.upstream_json, t.created_at, t.updated_at, t.last_seen_at,
@@ -242,11 +263,11 @@ const listWorkspaceThreads = async (env: Env, identity: AgentIdentity, activeThr
             ) AS latest_run_status
      FROM chat_threads t
      LEFT JOIN agents a ON a.id = t.agent_id AND a.workspace_id = t.workspace_id
-     WHERE t.user_id = ? AND t.workspace_id = ?
+     WHERE t.user_id = ? AND t.workspace_id = ? AND t.status = ?
      ORDER BY t.updated_at DESC, t.created_at DESC
      LIMIT 30`,
   )
-    .bind(identity.scope.userId, identity.scope.workspaceId)
+    .bind(identity.scope.userId, identity.scope.workspaceId, status)
     .all<ChatThreadListRow>();
 
   return threads.results.map((thread) =>
@@ -367,6 +388,7 @@ const buildSnapshot = async (
     (latestSession?.active_thread_id
       ? await getOwnedChatThread(env, identity.scope, latestSession.active_thread_id)
       : null);
+  if (thread?.status !== "active") thread = null;
   let agent =
     input.activeAgent ?? (await selectAgent(env, identity.agentId, identity.scope.workspaceId));
 
@@ -478,8 +500,10 @@ const ensureCoordinatorRequest = (value: unknown): CoordinatorRequest | null => 
   const candidate = value as Partial<CoordinatorRequest>;
   if (
     candidate.action !== "get" &&
+    candidate.action !== "list" &&
     candidate.action !== "create" &&
     candidate.action !== "activate" &&
+    candidate.action !== "update" &&
     candidate.action !== "stream" &&
     candidate.action !== "broadcast"
   ) {
@@ -504,6 +528,40 @@ const safeSnapshotData = (snapshot: SessionSnapshot) => ({
   activeThread: snapshot.activeThread,
   threads: snapshot.threads,
 });
+
+const safeThreadData = (snapshot: SessionSnapshot, thread: ReturnType<typeof toThreadSummary>) => ({
+  ...safeSnapshotData(snapshot),
+  thread,
+});
+
+const transitionForStatus = (status: ThreadMutationStatus): SessionTransitionType => {
+  if (status === "active") return "restore";
+  if (status === "archived") return "archive";
+  return "delete";
+};
+
+const findFallbackActiveThread = async (
+  env: Env,
+  identity: AgentIdentity,
+  excludeThreadId?: string,
+) =>
+  env.DB.prepare(
+    `SELECT thread_id, session_id, user_id, workspace_id, agent_id, status, upstream_json,
+            created_at, updated_at, last_seen_at
+     FROM chat_threads
+     WHERE user_id = ? AND workspace_id = ? AND status = 'active' AND thread_id != ?
+     ORDER BY updated_at DESC, created_at DESC
+     LIMIT 1`,
+  )
+    .bind(identity.scope.userId, identity.scope.workspaceId, excludeThreadId ?? "")
+    .first<ChatThreadRow>();
+
+const titleFromUpdate = (title: string | undefined) => {
+  if (title === undefined) return undefined;
+  const trimmed = title.replace(/\s+/g, " ").trim();
+  if (!trimmed) return null;
+  return trimmed.length > 120 ? `${trimmed.slice(0, 117)}...` : trimmed;
+};
 
 export class WorkbenchSessionAgent {
   private snapshot: SessionSnapshot | null = null;
@@ -577,6 +635,19 @@ export class WorkbenchSessionAgent {
     });
   }
 
+  private async listThreads(input: CoordinatorRequest) {
+    const latestSession = await getLatestChatSession(this.env, input.identity.scope);
+    return {
+      ok: true,
+      threads: await listWorkspaceThreads(
+        this.env,
+        input.identity,
+        latestSession?.active_thread_id ?? undefined,
+        input.status === "archived" ? "archived" : "active",
+      ),
+    };
+  }
+
   private async createThread(input: CoordinatorRequest) {
     const startedAt = new Date().toISOString();
     const sessionId =
@@ -626,13 +697,148 @@ export class WorkbenchSessionAgent {
     });
   }
 
+  private async updateThread(input: CoordinatorRequest) {
+    const startedAt = new Date().toISOString();
+    const threadId = input.threadId?.trim();
+    if (!threadId) return { ok: false, error: "threadId is required", status: 400 };
+    if (input.update?.title === undefined && !input.update?.status) {
+      return { ok: false, error: "title or status is required", status: 400 };
+    }
+
+    const thread = await getOwnedChatThread(this.env, input.identity.scope, threadId);
+    if (!thread || thread.status === "deleted") {
+      return { ok: false, error: "Thread not found", status: 404 };
+    }
+
+    const nextTitle = titleFromUpdate(input.update.title);
+    if (nextTitle === null) return { ok: false, error: "title cannot be empty", status: 400 };
+
+    const nextStatus = input.update.status;
+    if (nextStatus === "archived" || nextStatus === "deleted") {
+      const runningRun = await getLatestRunningChatRun(this.env, input.identity.scope, threadId);
+      if (runningRun) {
+        return {
+          ok: false,
+          error: "Thread has a running chat response",
+          status: 409,
+        };
+      }
+    }
+
+    const timestamp = new Date().toISOString();
+    const upstream = parseDataJson(thread.upstream_json);
+    if (nextTitle !== undefined) upstream.title = nextTitle;
+    const status = nextStatus ?? thread.status;
+    await this.env.DB.prepare(
+      `UPDATE chat_threads
+       SET status = ?,
+           upstream_json = ?,
+           updated_at = ?,
+           last_seen_at = ?
+       WHERE user_id = ? AND workspace_id = ? AND thread_id = ?`,
+    )
+      .bind(
+        status,
+        toJson(upstream),
+        timestamp,
+        timestamp,
+        input.identity.scope.userId,
+        input.identity.scope.workspaceId,
+        threadId,
+      )
+      .run();
+
+    const latestSession = await getLatestChatSession(this.env, input.identity.scope);
+    const deactivatedActiveThread =
+      latestSession?.active_thread_id === threadId &&
+      (nextStatus === "archived" || nextStatus === "deleted");
+    let snapshotIdentity = input.identity;
+    let activeThread: ChatThreadRow | undefined;
+    let activeAgent: AgentRow | undefined;
+
+    if (deactivatedActiveThread) {
+      const fallback = await findFallbackActiveThread(this.env, input.identity, threadId);
+      if (fallback) {
+        const fallbackAgent = await selectAgent(
+          this.env,
+          fallback.agent_id,
+          input.identity.scope.workspaceId,
+        );
+        if (!fallbackAgent || fallbackAgent.status !== "active") {
+          throw new Error("Agent is not active");
+        }
+        await upsertActiveAgentPreference(this.env, {
+          userId: input.identity.scope.userId,
+          workspaceId: input.identity.scope.workspaceId,
+          agentId: fallbackAgent.id,
+          reason: "thread-lifecycle-fallback",
+        });
+        await touchChatSession(
+          this.env,
+          input.identity.scope,
+          fallback.session_id,
+          fallback.thread_id,
+        );
+        snapshotIdentity = { ...input.identity, agentId: fallbackAgent.id };
+        activeThread = fallback;
+        activeAgent = fallbackAgent;
+      } else {
+        const sessionId =
+          latestSession?.session_id ??
+          (await createChatSession(this.env, input.identity, { source: "cloudflare-agent-chat" }));
+        const created = await createThreadContext(this.env, input.identity, sessionId);
+        snapshotIdentity = { ...input.identity, agentId: created.activeAgent.id };
+        activeThread = created.thread;
+        activeAgent = created.activeAgent;
+      }
+    }
+
+    this.snapshot = await buildSnapshot(this.env, snapshotIdentity, {
+      revision: this.nextRevision(),
+      activeThread,
+      activeAgent,
+    });
+    const updatedThread =
+      (await getOwnedChatThread(this.env, input.identity.scope, threadId)) ?? thread;
+    const updatedAgent =
+      (await selectAgent(this.env, updatedThread.agent_id, input.identity.scope.workspaceId)) ??
+      activeAgent;
+    const summarizedThread = updatedAgent
+      ? toActiveThreadSummary(this.env, updatedThread, updatedAgent, this.snapshot.context.threadId)
+      : toThreadSummary(this.env, updatedThread, {
+          activeThreadId: this.snapshot.context.threadId,
+          activeAgentId: this.snapshot.context.agentId,
+        });
+    const transition = nextStatus ? transitionForStatus(nextStatus) : "rename";
+
+    this.broadcastEvent(
+      this.createEvent("session.thread.updated", {
+        ...safeThreadData(this.snapshot, summarizedThread),
+        transition: { type: transition, startedAt },
+      }),
+    );
+    this.broadcastEvent(
+      this.createEvent("admin.summary.invalidated", {
+        reason: `thread-${transition}`,
+        threadId,
+      }),
+    );
+    return responseFromSnapshot(this.env, input.agentHost!, this.snapshot, {
+      partial: true,
+      threadsRefreshRecommended: true,
+      transition: { type: transition, startedAt },
+    });
+  }
+
   private async activateThread(input: CoordinatorRequest) {
     const startedAt = new Date().toISOString();
     const threadId = input.threadId?.trim();
     if (!threadId) return { ok: false, error: "threadId is required" };
 
     const thread = await getOwnedChatThread(this.env, input.identity.scope, threadId);
-    if (!thread) return { ok: false, error: "Thread not found", status: 404 };
+    if (!thread || thread.status !== "active") {
+      return { ok: false, error: "Thread not found", status: 404 };
+    }
 
     const agent = await selectAgent(this.env, thread.agent_id, input.identity.scope.workspaceId);
     if (!agent) return { ok: false, error: "Thread not found", status: 404 };
@@ -743,7 +949,12 @@ export class WorkbenchSessionAgent {
         const result = this.broadcast(input);
         return json(result, { status: "status" in result ? result.status : 200 });
       }
+      if (input.action === "list") return json(await this.listThreads(input));
       if (input.action === "create") return json(await this.createThread(input));
+      if (input.action === "update") {
+        const result = await this.updateThread(input);
+        return json(result, { status: "status" in result ? result.status : 200 });
+      }
       if (input.action === "activate") {
         const result = await this.activateThread(input);
         return json(result, { status: "status" in result ? result.status : 200 });

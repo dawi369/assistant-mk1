@@ -40,27 +40,49 @@ const cacheVersion = 1;
 const lastSessionShellCacheKey = "assistant-mk1:chat-session:last";
 
 type SessionAction = "read" | "create" | "activate";
+type ThreadUpdateInput = {
+  title?: string;
+  status?: "active" | "archived" | "deleted";
+};
+
+const sessionActionPath = (input: {
+  action?: SessionAction;
+  threadId?: string;
+  update?: ThreadUpdateInput;
+}) => {
+  if (input.action === "create") return `${sessionPath}/threads`;
+  if (input.action === "activate" && input.threadId) {
+    return `${sessionPath}/threads/${encodeURIComponent(input.threadId)}/activate`;
+  }
+  if (input.update && input.threadId) {
+    return `${sessionPath}/threads/${encodeURIComponent(input.threadId)}`;
+  }
+  return sessionPath;
+};
+
+const sessionRequestMethod = (input: { action?: SessionAction; update?: ThreadUpdateInput }) => {
+  if (input.update) return "PATCH";
+  if (input.action === "create" || input.action === "activate") return "POST";
+  return "GET";
+};
 
 const readSession = async (
   input: {
     action?: SessionAction;
     threadId?: string;
     refresh?: "threads";
+    update?: ThreadUpdateInput;
   } = {},
 ): Promise<ChatSessionResponse> => {
-  const basePath =
-    input.action === "create"
-      ? `${sessionPath}/threads`
-      : input.action === "activate" && input.threadId
-        ? `${sessionPath}/threads/${encodeURIComponent(input.threadId)}/activate`
-        : sessionPath;
+  const basePath = sessionActionPath(input);
   const path =
     input.refresh && input.action !== "create" && input.action !== "activate"
       ? `${basePath}?refresh=${encodeURIComponent(input.refresh)}`
       : basePath;
   const response = await fetch(path, {
-    method: input.action === "create" || input.action === "activate" ? "POST" : "GET",
+    method: sessionRequestMethod(input),
     cache: "no-store",
+    body: input.update ? JSON.stringify(input.update) : undefined,
   });
   const body = (await response.json().catch(() => ({}))) as ChatSessionResponse & {
     error?: string;
@@ -103,8 +125,14 @@ type ChatSessionContextValue = {
   isTransitioning: boolean;
   pending: PendingSessionTransition | null;
   threads: ChatThreadSummary[];
+  archivedThreads: ChatThreadSummary[];
   createThread: () => Promise<void>;
   activateThread: (threadId: string) => Promise<void>;
+  renameThread: (threadId: string, title: string) => Promise<void>;
+  archiveThread: (threadId: string) => Promise<void>;
+  restoreThread: (threadId: string) => Promise<void>;
+  deleteThread: (threadId: string) => Promise<void>;
+  loadArchivedThreads: () => Promise<void>;
   refresh: () => Promise<void>;
   retry: () => Promise<void>;
 };
@@ -113,6 +141,7 @@ type LoadSessionInput = {
   action?: SessionAction;
   threadId?: string;
   refresh?: "threads";
+  update?: ThreadUpdateInput;
   optimistic?: boolean;
   refreshSummary?: boolean;
 };
@@ -125,6 +154,7 @@ const sessionEventTypes: WorkbenchSessionEvent["type"][] = [
   "session.snapshot",
   "session.thread.created",
   "session.thread.activated",
+  "session.thread.updated",
   "session.threads.refreshed",
   "chat.run.started",
   "chat.run.completed",
@@ -221,6 +251,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
   const [isSessionStreamConnected, setIsSessionStreamConnected] = useState(false);
   const [latestSessionEvent, setLatestSessionEvent] = useState<WorkbenchSessionEvent | null>(null);
   const [pending, setPending] = useState<PendingSessionTransition | null>({ type: "initial" });
+  const [archivedThreads, setArchivedThreads] = useState<ChatThreadSummary[]>([]);
   const connectionRef = useRef<WorkbenchAgentConnection | null>(null);
   const loadSessionRef = useRef<((input?: LoadSessionInput) => Promise<void>) | null>(null);
 
@@ -248,9 +279,17 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
           ? ({ type: "create" } as const)
           : input.action === "activate" && input.threadId
             ? ({ type: "activate", threadId: input.threadId } as const)
-            : !connectionRef.current
-              ? ({ type: "initial" } as const)
-              : null;
+            : input.update?.title !== undefined && input.threadId
+              ? ({ type: "rename", threadId: input.threadId } as const)
+              : input.update?.status === "archived" && input.threadId
+                ? ({ type: "archive", threadId: input.threadId } as const)
+                : input.update?.status === "active" && input.threadId
+                  ? ({ type: "restore", threadId: input.threadId } as const)
+                  : input.update?.status === "deleted" && input.threadId
+                    ? ({ type: "delete", threadId: input.threadId } as const)
+                    : !connectionRef.current
+                      ? ({ type: "initial" } as const)
+                      : null;
 
       if (transition) setPending(transition);
       if (input.action === "create") {
@@ -264,6 +303,14 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
         setError(null);
         const nextSession = await readSession(input);
         applySession(nextSession);
+        if (
+          input.threadId &&
+          (input.update?.status === "active" || input.update?.status === "deleted")
+        ) {
+          setArchivedThreads((current) =>
+            current.filter((thread) => thread.threadId !== input.threadId),
+          );
+        }
         if (input.refreshSummary ?? input.action !== undefined) requestWorkbenchSummaryRefresh();
         if (nextSession.threadsRefreshRecommended && input.action !== undefined) {
           window.setTimeout(
@@ -276,7 +323,12 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
         if (input.action === "create") {
           setSession((current) => removePendingThreads(current));
         }
-        if (!connectionRef.current || input.action === "create" || input.action === "activate") {
+        if (
+          !connectionRef.current ||
+          input.action === "create" ||
+          input.action === "activate" ||
+          input.update
+        ) {
           setError(message);
         } else {
           console.warn("Cloudflare Agent session refresh failed", nextError);
@@ -409,6 +461,21 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
     return () => window.clearTimeout(timeout);
   }, [connection?.expiresAt, loadSession]);
 
+  const loadArchivedThreads = useCallback(async () => {
+    const response = await fetch(`${sessionPath}/threads?status=archived`, {
+      cache: "no-store",
+    });
+    const body = (await response.json().catch(() => ({}))) as {
+      ok?: boolean;
+      threads?: ChatThreadSummary[];
+      error?: string;
+    };
+    if (!response.ok || !body.ok) {
+      throw new Error(body.error ?? "Failed to load archived chats");
+    }
+    setArchivedThreads(body.threads ?? []);
+  }, []);
+
   const value = useMemo<ChatSessionContextValue>(
     () => ({
       session,
@@ -420,6 +487,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
       isTransitioning: pending !== null && pending.type !== "initial",
       pending,
       threads: session?.threads ?? [],
+      archivedThreads,
       createThread: () => loadSession({ action: "create", refreshSummary: true }),
       activateThread: (threadId: string) =>
         loadSession({
@@ -428,6 +496,15 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
           optimistic: true,
           refreshSummary: true,
         }),
+      renameThread: (threadId: string, title: string) =>
+        loadSession({ threadId, update: { title }, refreshSummary: true }),
+      archiveThread: (threadId: string) =>
+        loadSession({ threadId, update: { status: "archived" }, refreshSummary: true }),
+      restoreThread: (threadId: string) =>
+        loadSession({ threadId, update: { status: "active" }, refreshSummary: true }),
+      deleteThread: (threadId: string) =>
+        loadSession({ threadId, update: { status: "deleted" }, refreshSummary: true }),
+      loadArchivedThreads,
       refresh: () => loadSession({ refresh: "threads", refreshSummary: false }),
       retry: () => loadSession({ refreshSummary: false }),
     }),
@@ -436,7 +513,9 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
       error,
       isSessionStreamConnected,
       latestSessionEvent,
+      loadArchivedThreads,
       loadSession,
+      archivedThreads,
       pending,
       session,
     ],

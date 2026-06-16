@@ -1,6 +1,7 @@
 import type {
   AgentSummary,
   ChatSessionResponse,
+  ChatThreadStatus,
   ChatThreadSummary,
   WorkbenchSessionEvent,
 } from "@/lib/workbench/workbench-types";
@@ -8,7 +9,11 @@ import type {
 export type PendingSessionTransition =
   | { type: "initial" }
   | { type: "create" }
-  | { type: "activate"; threadId: string };
+  | { type: "activate"; threadId: string }
+  | { type: "rename"; threadId: string }
+  | { type: "archive"; threadId: string }
+  | { type: "restore"; threadId: string }
+  | { type: "delete"; threadId: string };
 
 export type SessionConnectionSnapshot = {
   threadId?: string;
@@ -22,6 +27,11 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
 const isPendingThread = (threadId?: string) => Boolean(threadId?.startsWith("pending-thread-"));
+
+const visibleThreadStatuses = new Set<ChatThreadStatus>(["active"]);
+
+export const isVisibleThread = (thread?: Pick<ChatThreadSummary, "status"> | null) =>
+  Boolean(thread && visibleThreadStatuses.has(thread.status as ChatThreadStatus));
 
 export const sanitizeAgent = (agent?: AgentSummary | null): AgentSummary | null => {
   if (!agent) return null;
@@ -37,6 +47,7 @@ export const sanitizeAgent = (agent?: AgentSummary | null): AgentSummary | null 
 export const sanitizeThread = (thread?: ChatThreadSummary | null): ChatThreadSummary | null => {
   if (isPendingThread(thread?.threadId)) return null;
   if (!thread) return null;
+  if (!isVisibleThread(thread)) return null;
   return {
     ...thread,
     agent: sanitizeAgent(thread.agent),
@@ -55,10 +66,11 @@ const dedupeThreads = (threads: ChatThreadSummary[]) => {
 export const mergeThreads = (current: ChatThreadSummary[], incoming: ChatThreadSummary[]) => {
   const incomingIds = new Set(incoming.map((thread) => thread.threadId));
   return dedupeThreads([
-    ...incoming,
+    ...incoming.filter(isVisibleThread),
     ...current
       .filter((thread) => !incomingIds.has(thread.threadId))
       .filter((thread) => !isPendingThread(thread.threadId))
+      .filter(isVisibleThread)
       .map((thread) => ({ ...thread, isActive: false })),
   ]);
 };
@@ -72,7 +84,7 @@ export const mergeSession = (
     ...incoming,
     workspace: incoming.workspace ?? current?.workspace ?? null,
     activeAgent: incoming.activeAgent ?? current?.activeAgent ?? null,
-    activeThread: incoming.activeThread ?? current?.activeThread ?? null,
+    activeThread: sanitizeThread(incoming.activeThread) ?? current?.activeThread ?? null,
     threads: mergeThreads(current?.threads ?? [], incoming.threads ?? []),
   };
 };
@@ -97,7 +109,17 @@ export const sessionFromEvent = (event: WorkbenchSessionEvent): ChatSessionRespo
   const revision =
     event.revision ?? (typeof data.revision === "number" ? data.revision : undefined);
 
-  if (!data.workspace && !data.activeAgent && !data.activeThread && !threads) return null;
+  const updatedThread = isRecord(data.thread) ? (data.thread as ChatThreadSummary) : undefined;
+  const eventThreads = threads
+    ? updatedThread && !threads.some((thread) => thread.threadId === updatedThread.threadId)
+      ? [...threads, updatedThread]
+      : threads
+    : updatedThread
+      ? [updatedThread]
+      : undefined;
+  if (!data.workspace && !data.activeAgent && !data.activeThread && !eventThreads) {
+    return null;
+  }
 
   return {
     ok: true,
@@ -106,7 +128,7 @@ export const sessionFromEvent = (event: WorkbenchSessionEvent): ChatSessionRespo
     workspace: (data.workspace as ChatSessionResponse["workspace"]) ?? undefined,
     activeAgent: (data.activeAgent as ChatSessionResponse["activeAgent"]) ?? undefined,
     activeThread: (data.activeThread as ChatSessionResponse["activeThread"]) ?? undefined,
-    threads,
+    threads: eventThreads,
     transition: isRecord(data.transition)
       ? (data.transition as ChatSessionResponse["transition"])
       : undefined,
@@ -157,7 +179,9 @@ export const sessionEventRequiresConnectionRefresh = (
   connection: SessionConnectionSnapshot,
 ) => {
   if (event.type !== "session.thread.created" && event.type !== "session.thread.activated") {
-    return false;
+    if (event.type !== "session.thread.updated") return false;
+    const transition = isRecord(event.data.transition) ? event.data.transition : null;
+    if (transition?.type !== "archive" && transition?.type !== "delete") return false;
   }
   if (!session?.activeThread?.threadId || !session.activeAgent?.id) return false;
   return (

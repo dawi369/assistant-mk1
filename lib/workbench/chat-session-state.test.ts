@@ -47,7 +47,12 @@ const agent = (id: string): AgentSummary => ({
   },
 });
 
-const thread = (id: string, active = false, threadAgent = agent("agent-a")): ChatThreadSummary => ({
+const thread = (
+  id: string,
+  active = false,
+  threadAgent = agent("agent-a"),
+  input: Partial<ChatThreadSummary> = {},
+): ChatThreadSummary => ({
   threadId: id,
   sessionId: "session-1",
   agentId: threadAgent.id,
@@ -56,6 +61,7 @@ const thread = (id: string, active = false, threadAgent = agent("agent-a")): Cha
   title: id,
   isActive: active,
   messageCount: 0,
+  ...input,
 });
 
 const session = (input: Partial<ChatSessionResponse> = {}): ChatSessionResponse => ({
@@ -146,9 +152,142 @@ describe("chat-session-state", () => {
     ).toBe(true);
   });
 
+  it("merges a thread rename without changing thread identity", () => {
+    const renamedThread = thread("thread-a", true, agent("agent-a"), {
+      title: "Renamed chat",
+    });
+    const merged = mergeSession(
+      session(),
+      sessionFromEvent(
+        event("session.thread.updated", {
+          workspace,
+          activeAgent: renamedThread.agent,
+          activeThread: renamedThread,
+          threads: [renamedThread],
+          thread: renamedThread,
+          transition: { type: "rename" },
+        }),
+      )!,
+    );
+
+    expect(merged.activeThread?.threadId).toBe("thread-a");
+    expect(merged.activeThread?.title).toBe("Renamed chat");
+    expect(merged.threads?.map((item) => item.threadId)).toEqual(["thread-a"]);
+  });
+
+  it("removes archived threads from the active display list", () => {
+    const fallbackThread = thread("thread-b", true);
+    const archivedThread = thread("thread-a", false, agent("agent-a"), {
+      status: "archived",
+      title: "Archived chat",
+    });
+    const merged = mergeSession(
+      session({
+        activeThread: thread("thread-a", true),
+        threads: [thread("thread-a", true), fallbackThread],
+      }),
+      sessionFromEvent(
+        event("session.thread.updated", {
+          workspace,
+          activeAgent: fallbackThread.agent,
+          activeThread: fallbackThread,
+          threads: [fallbackThread],
+          thread: archivedThread,
+          transition: { type: "archive" },
+        }),
+      )!,
+    );
+
+    expect(merged.activeThread?.threadId).toBe("thread-b");
+    expect(merged.threads?.map((item) => item.threadId)).toEqual(["thread-b"]);
+    expect(
+      sessionEventRequiresConnectionRefresh(
+        event("session.thread.updated", { transition: { type: "archive" } }),
+        merged,
+        { threadId: "thread-a", agentId: "agent-a", workspaceId: workspace.id },
+      ),
+    ).toBe(true);
+  });
+
+  it("restores archived threads into the active display list", () => {
+    const restoredThread = thread("thread-a", false, agent("agent-a"), {
+      title: "Restored chat",
+    });
+    const fallbackThread = thread("thread-b", true);
+    const merged = mergeSession(
+      session({
+        activeThread: fallbackThread,
+        threads: [fallbackThread],
+      }),
+      sessionFromEvent(
+        event("session.thread.updated", {
+          workspace,
+          activeAgent: fallbackThread.agent,
+          activeThread: fallbackThread,
+          threads: [restoredThread, fallbackThread],
+          thread: restoredThread,
+          transition: { type: "restore" },
+        }),
+      )!,
+    );
+
+    expect(merged.activeThread?.threadId).toBe("thread-b");
+    expect(merged.threads?.map((item) => item.threadId)).toEqual(["thread-a", "thread-b"]);
+  });
+
+  it("removes soft-deleted threads from active and archived display state", () => {
+    const fallbackThread = thread("thread-b", true);
+    const deletedThread = thread("thread-a", false, agent("agent-a"), {
+      status: "deleted",
+      title: "Deleted chat",
+    });
+    const merged = mergeSession(
+      session({
+        activeThread: thread("thread-a", true),
+        threads: [thread("thread-a", true), fallbackThread],
+      }),
+      sessionFromEvent(
+        event("session.thread.updated", {
+          workspace,
+          activeAgent: fallbackThread.agent,
+          activeThread: fallbackThread,
+          threads: [fallbackThread],
+          thread: deletedThread,
+          transition: { type: "delete" },
+        }),
+      )!,
+    );
+
+    expect(merged.activeThread?.threadId).toBe("thread-b");
+    expect(merged.threads?.map((item) => item.threadId)).toEqual(["thread-b"]);
+  });
+
   it("identifies stale session events", () => {
     expect(
       shouldIgnoreSessionEvent(session({ revision: 5 }), event("session.snapshot", {}, 4)),
+    ).toBe(true);
+  });
+
+  it("identifies stale lifecycle events so old rows cannot be resurrected", () => {
+    const staleEvent = event(
+      "session.thread.updated",
+      {
+        thread: thread("thread-a"),
+        threads: [thread("thread-a")],
+        transition: { type: "restore" },
+      },
+      4,
+    );
+
+    expect(
+      shouldIgnoreSessionEvent(
+        session({
+          revision: 5,
+          activeThread: thread("thread-b", true),
+          threads: [thread("thread-b", true)],
+        }),
+        staleEvent,
+      ),
     ).toBe(true);
   });
 
