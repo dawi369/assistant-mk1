@@ -2,6 +2,7 @@ import { selectMembership } from "./authz-store";
 import { appendControlPlaneEvent } from "./control-plane-events";
 import { appendControlAudit } from "./demo-run-store";
 import { isRecord, json, parseDataJson, parseJson } from "./http";
+import { toHumanInterventionEventData, toHumanInterventionSummary } from "./human-interventions";
 import { isAdminMembership } from "./membership-policy";
 import {
   inspectUrl,
@@ -19,6 +20,20 @@ import {
 } from "./runtime-traces";
 import { dispatchWorkbenchSessionEvent } from "./session-coordinator";
 import {
+  readDynamicCapabilityContext,
+  resolveDynamicToolCapabilities,
+  type DynamicCapabilityContext,
+  type DynamicCapabilityDecision,
+} from "./dynamic-capabilities";
+import { connectionAuthForTool } from "./connection-auth";
+import {
+  buildControlRunRelation,
+  readControlRunRelation,
+  toControlRunRelationEventData,
+  type ControlRunRelation,
+  type ControlRunRelationParent,
+} from "./run-relations";
+import {
   demoInspectToolName,
   evaluateToolPolicy,
   isKnownTool,
@@ -35,7 +50,9 @@ import {
   runnerMetadataFor,
   resolveConfiguredRunnerTransport,
   type ToolAdapterMetadata,
+  type ToolRunnerSandboxContract,
   type ToolRunnerMetadata,
+  urlInspectSandboxContract,
 } from "./tool-runner";
 import {
   createId,
@@ -43,6 +60,7 @@ import {
   type AgentIdentity,
   type ControlApprovalRequestRow,
   type ControlArtifactRow,
+  type ControlRunRow,
   type ControlToolCallRow,
   type Env,
   type ExecutionMode,
@@ -57,6 +75,8 @@ type ToolRunIdentity = AgentIdentity & {
   runId: string;
   workflowIntentId: string;
   source?: "admin" | "approval" | "model";
+  runner?: ToolRunnerMetadata;
+  relation?: ControlRunRelation;
 };
 
 type UrlInspectRunSource = "admin" | "approval" | "model";
@@ -105,22 +125,26 @@ const scopeFromRow = (row: { user_id: string; workspace_id: string }): TenantSco
   workspaceId: row.workspace_id,
 });
 
-const toToolCallSummary = (row: ControlToolCallRow) => ({
-  id: row.id,
-  scope: scopeFromRow(row),
-  agentId: row.agent_id,
-  workflowIntentId: row.workflow_intent_id,
-  runId: row.run_id,
-  toolId: row.tool_id,
-  status: row.status,
-  inputSummary: row.input_summary ?? undefined,
-  outputSummary: row.output_summary ?? undefined,
-  artifactRefs: parseJson(row.artifact_refs_json) ?? [],
-  data: parseDataJson(row.data_json),
-  startedAt: row.started_at,
-  finishedAt: row.finished_at ?? undefined,
-  createdAt: row.created_at,
-});
+const toToolCallSummary = (row: ControlToolCallRow) => {
+  const data = parseDataJson(row.data_json);
+  return {
+    id: row.id,
+    scope: scopeFromRow(row),
+    agentId: row.agent_id,
+    workflowIntentId: row.workflow_intent_id,
+    runId: row.run_id,
+    toolId: row.tool_id,
+    status: row.status,
+    inputSummary: row.input_summary ?? undefined,
+    outputSummary: row.output_summary ?? undefined,
+    artifactRefs: parseJson(row.artifact_refs_json) ?? [],
+    relation: readControlRunRelation(data) ?? undefined,
+    data,
+    startedAt: row.started_at,
+    finishedAt: row.finished_at ?? undefined,
+    createdAt: row.created_at,
+  };
+};
 
 const toArtifactSummary = (row: ControlArtifactRow) => ({
   id: row.id,
@@ -144,6 +168,7 @@ const toApprovalRequestSummary = (row: ControlApprovalRequestRow) => ({
   status: row.status,
   reason: row.reason,
   data: parseDataJson(row.data_json),
+  humanIntervention: toHumanInterventionSummary(row),
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -156,6 +181,12 @@ const toPolicySummary = (policy: Awaited<ReturnType<typeof evaluateToolPolicy>>)
   policyReference: policy.policyReference,
   constraints: policy.constraints,
 });
+
+const capabilityForTool = (
+  decisions: DynamicCapabilityDecision[],
+  toolName: string,
+): DynamicCapabilityDecision | undefined =>
+  decisions.find((decision) => decision.kind === "tool" && decision.capabilityId === toolName);
 
 const readLatestApprovalRequest = async (env: Env, identity: AgentIdentity, toolName: string) =>
   env.DB.prepare(
@@ -200,9 +231,18 @@ export const listLatestArtifacts = async (env: Env, scope: TenantScope, limit = 
   return rows.results.map(toArtifactSummary);
 };
 
-export const resolveToolSummaries = async (env: Env, identity: AgentIdentity) => {
+export const resolveToolSummaries = async (
+  env: Env,
+  identity: AgentIdentity,
+  capabilityContext: DynamicCapabilityContext = readDynamicCapabilityContext(),
+) => {
   const membership = await selectMembership(env, identity.scope.userId, identity.scope.workspaceId);
-  return Promise.all(
+  const capabilityDecisions = await resolveDynamicToolCapabilities(
+    env,
+    identity,
+    capabilityContext,
+  );
+  const tools = await Promise.all(
     toolSummaries.map(async (tool) => {
       const adminPolicy = await evaluateToolPolicy(env, identity, {
         membership,
@@ -223,6 +263,7 @@ export const resolveToolSummaries = async (env: Env, identity: AgentIdentity) =>
         typeof permissionData.killSwitchReason === "string"
           ? permissionData.killSwitchReason
           : undefined;
+      const capability = capabilityForTool(capabilityDecisions, tool.name);
 
       const reason =
         adminPolicy.decision === "allow"
@@ -232,7 +273,9 @@ export const resolveToolSummaries = async (env: Env, identity: AgentIdentity) =>
       return {
         ...tool,
         runner:
-          tool.name === urlInspectToolName ? urlInspectRunnerMetadata(env, "admin") : tool.runner,
+          tool.name === urlInspectToolName
+            ? urlInspectRunnerMetadata(env, "admin", adminPolicy.constraints)
+            : tool.runner,
         adminVisible: adminPolicy.decision === "allow" && adminPolicy.adminVisible,
         modelVisible: modelPolicy.decision === "allow" && modelPolicy.modelVisible,
         reason,
@@ -243,14 +286,22 @@ export const resolveToolSummaries = async (env: Env, identity: AgentIdentity) =>
         killSwitchReason,
         policyEditable: adminPolicy.policyEditable,
         policyConstraints: adminPolicy.constraints,
+        connectionAuth: connectionAuthForTool(tool.name),
         adminPolicy: toPolicySummary(adminPolicy),
         modelExposurePolicy: toPolicySummary(modelPolicy),
+        capability,
         latestApprovalRequest: latestApprovalRequest
           ? toApprovalRequestSummary(latestApprovalRequest)
           : undefined,
       };
     }),
   );
+
+  return {
+    context: capabilityContext,
+    decisions: capabilityDecisions,
+    tools,
+  };
 };
 
 const toolError = urlInspectError;
@@ -261,8 +312,67 @@ const urlPolicyResource = (url: URL) => ({
   host: url.hostname.toLowerCase(),
 });
 
-const urlInspectRunnerMetadata = (env: Env, source: UrlInspectRunSource): ToolRunnerMetadata =>
-  runnerMetadataFor(urlInspectAdapter, source, resolveConfiguredRunnerTransport(env));
+const externalParentRelation = (parentRunId: string): ControlRunRelation => ({
+  kind: "child",
+  parentRunId,
+  rootRunId: parentRunId,
+  depth: 1,
+  durableChild: false,
+});
+
+const relationEventData = (relation?: ControlRunRelation) =>
+  relation ? toControlRunRelationEventData(relation) : undefined;
+
+const readParentControlRun = async (
+  env: Env,
+  identity: AgentIdentity,
+  parentRunId: string,
+): Promise<ControlRunRelationParent | null> => {
+  const row = await env.DB.prepare(
+    `SELECT id, user_id, workspace_id, agent_id, workflow_intent_id, status, execution_json,
+            stage, engine, heartbeat_at, last_event_at, completed_at, failed_at, data_json,
+            created_at, updated_at
+     FROM control_runs
+     WHERE user_id = ? AND workspace_id = ? AND agent_id = ? AND id = ?
+     LIMIT 1`,
+  )
+    .bind(identity.scope.userId, identity.scope.workspaceId, identity.agentId, parentRunId)
+    .first<ControlRunRow>();
+
+  return row ? { id: row.id, data: parseDataJson(row.data_json) } : null;
+};
+
+const urlInspectRunnerMetadata = (
+  env: Env,
+  source: UrlInspectRunSource,
+  constraints?: {
+    allowlist?: string[];
+    denylist?: string[];
+    maxRuntimeMs?: number;
+  },
+): ToolRunnerMetadata =>
+  runnerMetadataFor(
+    urlInspectAdapter,
+    source,
+    resolveConfiguredRunnerTransport(env),
+    urlInspectSandboxContract(constraints),
+  );
+
+const sandboxTraceData = (sandbox?: ToolRunnerSandboxContract) =>
+  sandbox
+    ? {
+        lifecycle: sandbox.lifecycle,
+        network: {
+          egress: sandbox.network.egress,
+          allowedSchemes: sandbox.network.allowedSchemes,
+          allowedHosts: sandbox.network.allowedHosts,
+          deniedHosts: sandbox.network.deniedHosts,
+          privateNetwork: sandbox.network.privateNetwork,
+          enforcement: sandbox.network.enforcement,
+        },
+        limits: sandbox.limits,
+      }
+    : undefined;
 
 const runnerDispatchTraceData = (
   runner: ToolRunnerMetadata,
@@ -287,6 +397,7 @@ const runnerDispatchTraceData = (
       transport: runner.transport,
       adapterVersion: runner.adapterVersion,
       source: runner.source,
+      sandbox: sandboxTraceData(runner.sandbox),
       durationMs,
       status: runnerStatus,
       errorCode: result.ok ? undefined : result.error.code,
@@ -305,7 +416,13 @@ export const insertToolRunRecords = async (
     policyDecisionId: string;
     source?: UrlInspectRunSource;
     parentRunId?: string | null;
+    parentRun?: ControlRunRelationParent | null;
     traceId?: string | null;
+    sandboxConstraints?: {
+      allowlist?: string[];
+      denylist?: string[];
+      maxRuntimeMs?: number;
+    };
   },
 ): Promise<ToolRunIdentity> => {
   const timestamp = new Date().toISOString();
@@ -314,8 +431,18 @@ export const insertToolRunRecords = async (
   const toolCallId = `${runId}-tool-url-inspect`;
   const execution = { mode: input.executionMode, policy: urlInspectPolicy };
   const source = input.source ?? "admin";
-  const runner = urlInspectRunnerMetadata(env, source);
+  const runner = urlInspectRunnerMetadata(env, source, input.sandboxConstraints);
   const normalizedInput = { url: input.url.toString() };
+  const builtRelation = input.parentRun
+    ? buildControlRunRelation({ runId, parent: input.parentRun })
+    : input.parentRunId
+      ? { ok: true as const, relation: externalParentRelation(input.parentRunId) }
+      : buildControlRunRelation({ runId });
+  if (!builtRelation.ok) {
+    throw new Error(builtRelation.reason);
+  }
+  const relation = builtRelation.relation;
+  const relationData = toControlRunRelationEventData(relation);
 
   await env.DB.prepare(
     `INSERT INTO control_workflow_intents (
@@ -365,7 +492,8 @@ export const insertToolRunRecords = async (
         policyDecisionId: input.policyDecisionId,
         source,
         runner,
-        parentRunId: input.parentRunId ?? undefined,
+        relation,
+        parentRunId: relation.parentRunId,
         traceId: input.traceId ?? undefined,
       }),
       timestamp,
@@ -398,7 +526,8 @@ export const insertToolRunRecords = async (
         runner,
         resource: urlPolicyResource(input.url),
         policyDecisionId: input.policyDecisionId,
-        parentRunId: input.parentRunId ?? undefined,
+        relation,
+        parentRunId: relation.parentRunId,
         traceId: input.traceId ?? undefined,
       }),
       timestamp,
@@ -406,13 +535,14 @@ export const insertToolRunRecords = async (
     )
     .run();
 
-  const runIdentity = { ...identity, runId, workflowIntentId, source };
+  const runIdentity = { ...identity, runId, workflowIntentId, source, runner, relation };
   await appendControlAudit(env, {
     ...runIdentity,
     action: "intent.created",
     summary: "Created URL inspection workflow intent.",
     targetType: "workflowIntent",
     targetId: workflowIntentId,
+    data: { relation: relationData },
   });
   await appendControlAudit(env, {
     ...runIdentity,
@@ -420,6 +550,7 @@ export const insertToolRunRecords = async (
     summary: "Started url.inspect tool call.",
     targetType: "toolCall",
     targetId: toolCallId,
+    data: { relation: relationData },
   });
   await appendControlPlaneEvent(env, identity, {
     type: "tool.started",
@@ -432,7 +563,8 @@ export const insertToolRunRecords = async (
       toolName: urlInspectToolName,
       source,
       runner,
-      parentRunId: input.parentRunId ?? undefined,
+      relation: relationData,
+      parentRunId: relation.parentRunId,
       traceId: input.traceId ?? undefined,
     },
   });
@@ -448,6 +580,11 @@ const insertApprovalInterruptedRun = async (
     executionMode: ExecutionMode;
     policyDecisionId: string;
     reason: string;
+    sandboxConstraints?: {
+      allowlist?: string[];
+      denylist?: string[];
+      maxRuntimeMs?: number;
+    };
   },
 ) => {
   const timestamp = new Date().toISOString();
@@ -455,7 +592,7 @@ const insertApprovalInterruptedRun = async (
   const runId = createId("cf-run");
   const approvalRequestId = createId("cf-approval");
   const execution = { mode: input.executionMode, policy: urlInspectPolicy };
-  const runner = urlInspectRunnerMetadata(env, "approval");
+  const runner = urlInspectRunnerMetadata(env, "approval", input.sandboxConstraints);
   const normalizedInput = { url: input.url.toString() };
   const payload = { toolName: urlInspectToolName, input: normalizedInput, runner };
 
@@ -561,19 +698,35 @@ const insertApprovalInterruptedRun = async (
     targetId: approvalRequestId,
     data: { toolName: urlInspectToolName, runner },
   });
+  const humanIntervention = toHumanInterventionEventData({
+    approvalRequestId,
+    status: "requested",
+    runId,
+    workflowIntentId,
+    toolName: urlInspectToolName,
+    reason: input.reason,
+  });
+
   await appendControlPlaneEvent(env, identity, {
     type: "run.interrupted",
     summary: input.reason,
     targetType: "run",
     targetId: runId,
-    data: { runId, workflowIntentId, toolName: urlInspectToolName, approvalRequestId, runner },
+    data: {
+      runId,
+      workflowIntentId,
+      toolName: urlInspectToolName,
+      approvalRequestId,
+      runner,
+      humanIntervention,
+    },
   });
   await appendControlPlaneEvent(env, identity, {
     type: "approval.requested",
     summary: input.reason,
     targetType: "approvalRequest",
     targetId: approvalRequestId,
-    data: { runId, workflowIntentId, toolName: urlInspectToolName, runner },
+    data: { runId, workflowIntentId, toolName: urlInspectToolName, runner, humanIntervention },
   });
 
   return { runId, workflowIntentId, approvalRequestId };
@@ -587,7 +740,8 @@ export const finishToolRun = async (
   const timestamp = new Date().toISOString();
   const toolCallId = `${identity.runId}-tool-url-inspect`;
   const artifactId = `${identity.runId}-artifact-url-inspect`;
-  const runner = urlInspectRunnerMetadata(env, identity.source ?? "admin");
+  const runner = identity.runner ?? urlInspectRunnerMetadata(env, identity.source ?? "admin");
+  const relation = relationEventData(identity.relation);
   const artifactRef = {
     id: artifactId,
     kind: "report",
@@ -605,7 +759,12 @@ export const finishToolRun = async (
       .bind(
         "failed",
         result.error.message,
-        toJson({ error: result.error, runner }),
+        toJson({
+          error: result.error,
+          runner,
+          relation,
+          parentRunId: identity.relation?.parentRunId,
+        }),
         timestamp,
         toolCallId,
         identity.scope.userId,
@@ -616,6 +775,8 @@ export const finishToolRun = async (
       error: result.error,
       toolName: urlInspectToolName,
       runner,
+      relation,
+      parentRunId: identity.relation?.parentRunId,
     });
     await appendControlAudit(env, {
       ...identity,
@@ -623,7 +784,7 @@ export const finishToolRun = async (
       summary: "url.inspect failed.",
       targetType: "toolCall",
       targetId: toolCallId,
-      data: { error: result.error },
+      data: { error: result.error, relation },
     });
     await appendControlPlaneEvent(env, identity, {
       type: "tool.failed",
@@ -635,6 +796,8 @@ export const finishToolRun = async (
         error: result.error,
         source: identity.source ?? "admin",
         runner,
+        relation,
+        parentRunId: identity.relation?.parentRunId,
       },
     });
     return { toolCallId, artifact: null };
@@ -655,7 +818,12 @@ export const finishToolRun = async (
       artifactRef.title,
       artifactRef.mimeType,
       JSON.stringify(result.output).length,
-      toJson({ output: result.output, runner }),
+      toJson({
+        output: result.output,
+        runner,
+        relation,
+        parentRunId: identity.relation?.parentRunId,
+      }),
       timestamp,
     )
     .run();
@@ -682,6 +850,8 @@ export const finishToolRun = async (
     toolName: urlInspectToolName,
     timingMs: result.output.timingMs,
     runner,
+    relation,
+    parentRunId: identity.relation?.parentRunId,
   });
   await appendControlAudit(env, {
     ...identity,
@@ -708,6 +878,8 @@ export const finishToolRun = async (
       toolName: urlInspectToolName,
       source: identity.source ?? "admin",
       runner,
+      relation,
+      parentRunId: identity.relation?.parentRunId,
     },
   });
 
@@ -724,7 +896,7 @@ export const executeUrlInspectRunner = async (
     traceId?: string | null;
   },
 ) => {
-  const runner = urlInspectRunnerMetadata(env, runIdentity.source ?? "admin");
+  const runner = runIdentity.runner ?? urlInspectRunnerMetadata(env, runIdentity.source ?? "admin");
   const runnerStartedAtMs = Date.now();
   const result =
     runner.transport === "fly"
@@ -952,12 +1124,21 @@ const insertApprovedToolCallRecord = async (
   env: Env,
   identity: AgentIdentity,
   approval: ControlApprovalRequestRow,
-  input: { url: URL; executionMode: ExecutionMode; policyDecisionId: string },
+  input: {
+    url: URL;
+    executionMode: ExecutionMode;
+    policyDecisionId: string;
+    sandboxConstraints?: {
+      allowlist?: string[];
+      denylist?: string[];
+      maxRuntimeMs?: number;
+    };
+  },
 ): Promise<ToolRunIdentity> => {
   const timestamp = new Date().toISOString();
   const toolCallId = `${approval.run_id}-tool-url-inspect`;
   const execution = { mode: input.executionMode, policy: urlInspectPolicy };
-  const runner = urlInspectRunnerMetadata(env, "approval");
+  const runner = urlInspectRunnerMetadata(env, "approval", input.sandboxConstraints);
   const normalizedInput = { url: input.url.toString() };
 
   await env.DB.prepare(
@@ -997,6 +1178,7 @@ const insertApprovedToolCallRecord = async (
     runId: approval.run_id,
     workflowIntentId: approval.workflow_intent_id,
     source: "approval" as const,
+    runner,
   };
   await appendControlAudit(env, {
     ...runIdentity,
@@ -1048,6 +1230,7 @@ const approvalRequestBody = (approval: ControlApprovalRequestRow, status?: strin
   id: approval.id,
   status: status ?? approval.status,
   reason: approval.reason,
+  humanIntervention: toHumanInterventionSummary(approval, { status }),
   createdAt: approval.created_at,
   updatedAt: approval.updated_at,
 });
@@ -1090,6 +1273,8 @@ const summarizeApprovalRequest = async (
         })
       : null;
 
+  const policySummary = currentPolicy ? toPolicySummary(currentPolicy) : undefined;
+
   return {
     id: row.id,
     scope: scopeFromRow(row),
@@ -1109,7 +1294,16 @@ const summarizeApprovalRequest = async (
     executionMode: typeof execution.mode === "string" ? execution.mode : undefined,
     policyDecisionId: typeof data.policyDecisionId === "string" ? data.policyDecisionId : undefined,
     decision: toApprovalDecisionSummary(data),
-    currentPolicy: currentPolicy ? toPolicySummary(currentPolicy) : undefined,
+    currentPolicy: policySummary,
+    humanIntervention: toHumanInterventionSummary(row, {
+      currentPolicy: policySummary
+        ? {
+            decision: policySummary.decision,
+            code: policySummary.code,
+            reason: policySummary.reason,
+          }
+        : undefined,
+    }),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -1161,6 +1355,7 @@ const dispatchApprovalUpdated = async (
     reason?: string;
   },
 ) => {
+  const humanIntervention = toHumanInterventionEventData(input);
   await appendControlPlaneEvent(env, identity, {
     type: "approval.updated",
     summary: input.reason ?? `Approval ${input.status}.`,
@@ -1172,6 +1367,7 @@ const dispatchApprovalUpdated = async (
       runId: input.runId,
       workflowIntentId: input.workflowIntentId,
       toolName: input.toolName ?? urlInspectToolName,
+      humanIntervention,
     },
   });
   await dispatchWorkbenchSessionEvent(env, identity, {
@@ -1182,6 +1378,7 @@ const dispatchApprovalUpdated = async (
       runId: input.runId,
       workflowIntentId: input.workflowIntentId,
       toolName: input.toolName ?? urlInspectToolName,
+      humanIntervention,
     },
   });
 };
@@ -1243,16 +1440,19 @@ export const handleListToolApprovals = async (
   });
 };
 
-export const handleListTools = async (env: Env, identity: AgentIdentity) => {
-  const [tools, latestToolCalls, latestArtifacts] = await Promise.all([
-    resolveToolSummaries(env, identity),
+export const handleListTools = async (request: Request, env: Env, identity: AgentIdentity) => {
+  const capabilityContext = readDynamicCapabilityContext(new URL(request.url));
+  const [toolResolution, latestToolCalls, latestArtifacts] = await Promise.all([
+    resolveToolSummaries(env, identity, capabilityContext),
     listLatestToolCalls(env, identity.scope),
     listLatestArtifacts(env, identity.scope),
   ]);
 
   return json({
     ok: true,
-    tools,
+    capabilityContext: toolResolution.context,
+    capabilityDecisions: toolResolution.decisions,
+    tools: toolResolution.tools,
     latestToolCalls,
     latestArtifacts,
   });
@@ -1430,8 +1630,8 @@ export const handleUpdateToolPolicy = async (
     allowlist,
     denylist,
   });
-  const tools = await resolveToolSummaries(env, identity);
-  const tool = tools.find((item) => item.name === toolName);
+  const toolResolution = await resolveToolSummaries(env, identity);
+  const tool = toolResolution.tools.find((item) => item.name === toolName);
   await appendControlPlaneEvent(env, identity, {
     type: "tool.policy.updated",
     summary: `${toolName} policy updated.`,
@@ -1661,6 +1861,7 @@ export const handleApproveToolApproval = async (
     url: validated.url,
     executionMode: policy.executionMode,
     policyDecisionId,
+    sandboxConstraints: policy.constraints,
   });
   const { result, finished } = await executeUrlInspectRunner(env, runIdentity, validated.url, {
     executionMode: policy.executionMode,
@@ -2020,6 +2221,68 @@ export const handleRunTool = async (
     );
   }
 
+  const requestedParentRunId =
+    isRecord(body) && typeof body.parentRunId === "string" && body.parentRunId.trim()
+      ? body.parentRunId.trim()
+      : "";
+  let parentRun: ControlRunRelationParent | null = null;
+  if (requestedParentRunId) {
+    parentRun = await readParentControlRun(env, identity, requestedParentRunId);
+    if (!parentRun) {
+      const details = {
+        code: "parent_run_not_found",
+        message: "Parent run was not found in this workspace.",
+        retryable: false,
+        redacted: true,
+      };
+      if (trace) {
+        await finishToolTrace(env, identity, trace, {
+          status: "blocked",
+          summary: details.message,
+          data: { error: details, parentRunId: requestedParentRunId, policyDecisionId },
+        });
+      }
+      return json(
+        { ok: false, error: details.message, details, policyDecisionId },
+        { status: 404 },
+      );
+    }
+
+    const parentRelation = readControlRunRelation(parentRun.data, parentRun.id);
+    const nextDepth = (parentRelation?.depth ?? 0) + 1;
+    if (nextDepth > 1) {
+      const details = {
+        code: "child_run_depth_exceeded",
+        message: "Child run depth exceeds the configured max depth of 1.",
+        retryable: false,
+        redacted: true,
+      };
+      if (trace) {
+        await finishToolTrace(env, identity, trace, {
+          status: "blocked",
+          summary: details.message,
+          data: { error: details, parentRunId: requestedParentRunId, policyDecisionId },
+        });
+      }
+      await appendControlPlaneEvent(env, identity, {
+        type: "run.child.blocked",
+        summary: details.message,
+        targetType: "run",
+        targetId: requestedParentRunId,
+        data: {
+          parentRunId: requestedParentRunId,
+          reason: details.code,
+          maxDepth: 1,
+          nextDepth,
+        },
+      });
+      return json(
+        { ok: false, error: details.message, details, policyDecisionId },
+        { status: 403 },
+      );
+    }
+  }
+
   if (policy.code === "approval_required") {
     const approvalStartedAtMs = Date.now();
     const interrupted = await insertApprovalInterruptedRun(env, identity, {
@@ -2027,6 +2290,7 @@ export const handleRunTool = async (
       executionMode: policy.executionMode,
       policyDecisionId,
       reason: policy.reason,
+      sandboxConstraints: policy.constraints,
     });
     if (trace) {
       await recordSpan(env, identity, {
@@ -2107,6 +2371,14 @@ export const handleRunTool = async (
           id: interrupted.approvalRequestId,
           status: "requested",
           reason: policy.reason,
+          humanIntervention: toHumanInterventionEventData({
+            approvalRequestId: interrupted.approvalRequestId,
+            status: "requested",
+            runId: interrupted.runId,
+            workflowIntentId: interrupted.workflowIntentId,
+            toolName: urlInspectToolName,
+            reason: policy.reason,
+          }),
         },
         error: policy.reason,
         details: toolPolicyError(policy),
@@ -2121,6 +2393,8 @@ export const handleRunTool = async (
     url: validated.url,
     executionMode: policy.executionMode,
     policyDecisionId,
+    parentRun,
+    sandboxConstraints: resourcePolicy.constraints,
   });
   if (trace) {
     await recordSpan(env, identity, {
@@ -2202,6 +2476,8 @@ export const handleRunTool = async (
       artifactId: finished.artifact?.id ?? null,
       status: result.ok ? "completed" : "failed",
       traceId: trace?.traceId,
+      relation: relationEventData(runIdentity.relation),
+      parentRunId: runIdentity.relation?.parentRunId,
       errorCode: result.ok ? undefined : result.error.code,
     },
   });
@@ -2223,6 +2499,8 @@ export const handleRunTool = async (
       toolName: urlInspectToolName,
       runId: runIdentity.runId,
       traceId: trace?.traceId,
+      relation: relationEventData(runIdentity.relation),
+      parentRunId: runIdentity.relation?.parentRunId,
     },
   });
   const [latestToolCalls, latestArtifacts] = await Promise.all([
@@ -2244,6 +2522,7 @@ export const handleRunTool = async (
         status: result.ok ? "completed" : "failed",
         execution: { mode: policy.executionMode, policy: urlInspectPolicy },
         policyDecisionId,
+        relation: relationEventData(runIdentity.relation),
       },
       toolCall,
       artifact,

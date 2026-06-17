@@ -247,6 +247,15 @@ runSmoke("Cloudflare runtime traces smoke", async () => {
   ) {
     throw new Error(`runner dispatch metadata missing: ${JSON.stringify(runnerDispatchSpan)}`);
   }
+  const sandboxData = (runnerData as { sandbox?: unknown }).sandbox;
+  if (
+    !sandboxData ||
+    typeof sandboxData !== "object" ||
+    Array.isArray(sandboxData) ||
+    (sandboxData as { network?: { privateNetwork?: unknown } }).network?.privateNetwork !== "deny"
+  ) {
+    throw new Error(`runner sandbox metadata missing: ${JSON.stringify(runnerDispatchSpan)}`);
+  }
   requireSpan(toolDetail.spans, (span) => span.name === "Artifact/write completion");
 
   const blocked = await fetchRaw("/tools/runs", owner, {

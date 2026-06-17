@@ -237,7 +237,83 @@ const handleDemoInspectExecutor = async (request: IncomingMessage, response: Ser
 type ToolRunnerInvocation = {
   toolName?: string;
   input?: unknown;
-  runner?: unknown;
+  runner?: {
+    sandbox?: {
+      network?: {
+        allowedSchemes?: unknown;
+        allowedHosts?: unknown;
+        deniedHosts?: unknown;
+        privateNetwork?: unknown;
+      };
+    };
+  };
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+const stringList = (value: unknown) =>
+  Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    : [];
+
+const matchesSandboxPattern = (value: string, pattern: string) => {
+  const normalizedValue = value.toLowerCase();
+  const normalizedPattern = pattern.trim().toLowerCase();
+  if (!normalizedPattern) return false;
+  if (normalizedValue === normalizedPattern) return true;
+  if (normalizedPattern.startsWith("*."))
+    return normalizedValue.endsWith(normalizedPattern.slice(1));
+  if (normalizedPattern.startsWith(".")) return normalizedValue.endsWith(normalizedPattern);
+  return false;
+};
+
+const sandboxEgressError = (runner: ToolRunnerInvocation["runner"], url: URL) => {
+  const sandbox = isRecord(runner?.sandbox) ? runner.sandbox : null;
+  const network = isRecord(sandbox?.network) ? sandbox.network : null;
+  if (!network) {
+    return {
+      code: "sandbox_required",
+      message: "Runner invocation must include a sandbox network policy.",
+    };
+  }
+
+  const allowedSchemes = stringList(network.allowedSchemes);
+  const scheme = url.protocol.replace(":", "").toLowerCase();
+  if (allowedSchemes.length > 0 && !allowedSchemes.includes(scheme)) {
+    return {
+      code: "sandbox_scheme_blocked",
+      message: `${scheme} egress is not allowed by the sandbox policy.`,
+    };
+  }
+  if (network.privateNetwork !== "deny") {
+    return {
+      code: "sandbox_private_network_policy_required",
+      message: "Runner sandbox must deny private network egress.",
+    };
+  }
+
+  const host = url.hostname.toLowerCase();
+  const deniedHosts = stringList(network.deniedHosts);
+  if (deniedHosts.some((pattern) => matchesSandboxPattern(host, pattern))) {
+    return {
+      code: "sandbox_egress_denied",
+      message: `${host} is denied by the sandbox egress policy.`,
+    };
+  }
+
+  const allowedHosts = stringList(network.allowedHosts);
+  if (
+    allowedHosts.length > 0 &&
+    !allowedHosts.some((pattern) => matchesSandboxPattern(host, pattern))
+  ) {
+    return {
+      code: "sandbox_egress_not_allowed",
+      message: `${host} is not allowed by the sandbox egress policy.`,
+    };
+  }
+
+  return null;
 };
 
 const handleToolRunnerInvocation = async (
@@ -277,6 +353,20 @@ const handleToolRunnerInvocation = async (
     json(response, validated.status, {
       ok: false,
       error: validated.error,
+      runner: parsed.runner,
+    });
+    return;
+  }
+
+  const sandboxError = sandboxEgressError(parsed.runner, validated.url);
+  if (sandboxError) {
+    json(response, 403, {
+      ok: false,
+      error: {
+        ...sandboxError,
+        retryable: false,
+        redacted: true,
+      },
       runner: parsed.runner,
     });
     return;

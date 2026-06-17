@@ -28,6 +28,21 @@ type ChatThreadsResponse = {
   error?: string;
 };
 
+type EventSnapshot = {
+  id?: string;
+  type?: string;
+  summary?: string;
+  targetType?: string;
+  targetId?: string;
+  data?: Record<string, unknown>;
+};
+
+type EventsResponse = {
+  ok?: boolean;
+  events?: EventSnapshot[];
+  error?: string;
+};
+
 const { baseUrl, suffix, readJson, assertStatus, startStream, streamBody } = createSmokeContext();
 
 const owner: TenantIdentity = {
@@ -53,6 +68,12 @@ const getSession = (identity: TenantIdentity) =>
 
 const listThreads = (identity: TenantIdentity, status: "active" | "archived") =>
   readJson<ChatThreadsResponse>(`/chat/session/threads?status=${status}`, identity);
+
+const latestEvents = (identity: TenantIdentity, limit = 100) =>
+  readJson<EventsResponse>(`/events/latest?limit=${limit}`, identity);
+
+const eventsAfter = (identity: TenantIdentity, eventId: string, limit = 100) =>
+  readJson<EventsResponse>(`/events?after=${encodeURIComponent(eventId)}&limit=${limit}`, identity);
 
 const createThread = (identity: TenantIdentity) =>
   readJson<ChatSessionResponse>("/chat/session/threads", identity, {
@@ -94,6 +115,20 @@ const assertListIncludes = (
   const hasThread = response.threads?.some((thread) => thread.threadId === threadId) ?? false;
   if (hasThread !== expected) {
     throw new Error(`${label} ${expected ? "did not include" : "included"} ${threadId}`);
+  }
+};
+
+const requireEventTypes = (events: EventSnapshot[], expectedTypes: string[]) => {
+  const eventTypes = new Set(events.map((event) => event.type));
+  for (const type of expectedTypes) {
+    if (!eventTypes.has(type)) throw new Error(`missing lifecycle event ${type}`);
+  }
+};
+
+const assertEventDataIsRedacted = (events: EventSnapshot[]) => {
+  const raw = JSON.stringify(events.filter((event) => event.type?.startsWith("session.thread.")));
+  if (/token|secret|rawPrompt|messages|providerPayload/i.test(raw)) {
+    throw new Error("lifecycle event feed included disallowed sensitive fields");
   }
 };
 
@@ -188,6 +223,29 @@ runSmoke("Cloudflare chat session lifecycle smoke", async () => {
     false,
   );
 
+  const events = (await latestEvents(owner)).events ?? [];
+  requireEventTypes(events, [
+    "session.thread.created",
+    "session.thread.activated",
+    "session.thread.renamed",
+    "session.thread.archived",
+    "session.thread.restored",
+    "session.thread.deleted",
+    "session.thread.blocked",
+  ]);
+  assertEventDataIsRedacted(events);
+
+  const oldestEvent = events.at(-1);
+  if (!oldestEvent?.id) throw new Error("event feed did not return event ids");
+  const replayed = (await eventsAfter(owner, oldestEvent.id)).events ?? [];
+  if (replayed.length === 0) throw new Error("event feed after cursor did not replay newer events");
+  assertEventDataIsRedacted(replayed);
+
+  const otherTenantEvents = (await latestEvents(otherTenant)).events ?? [];
+  if (otherTenantEvents.length > 0) {
+    throw new Error("cross-tenant event replay leaked lifecycle events");
+  }
+
   console.log(
     JSON.stringify(
       {
@@ -195,6 +253,7 @@ runSmoke("Cloudflare chat session lifecycle smoke", async () => {
         threadB,
         runningThread,
         finalActiveThread: deleted.activeThread?.threadId,
+        replayedEvents: replayed.length,
       },
       null,
       2,

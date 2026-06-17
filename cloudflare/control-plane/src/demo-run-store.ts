@@ -1,4 +1,5 @@
 import { parseDataJson, parseJson } from "./http";
+import { readControlRunRelation } from "./run-relations";
 import {
   createId,
   demoExecution,
@@ -55,40 +56,63 @@ const toIntent = (row: ControlIntentRow) => ({
   updatedAt: row.updated_at,
 });
 
-const toRun = (row: ControlRunRow) => ({
-  id: row.id,
-  scope: scopeFromRow(row),
-  agentId: row.agent_id,
-  workflowIntentId: row.workflow_intent_id,
-  status: row.status,
-  execution: parseDataJson(row.execution_json),
-  stage: row.stage ?? undefined,
-  engine: row.engine ?? undefined,
-  heartbeatAt: row.heartbeat_at ?? undefined,
-  lastEventAt: row.last_event_at ?? undefined,
-  completedAt: row.completed_at ?? undefined,
-  failedAt: row.failed_at ?? undefined,
-  data: parseDataJson(row.data_json),
-  createdAt: row.created_at,
-  updatedAt: row.updated_at,
-});
+const toRun = (row: ControlRunRow) => {
+  const data = parseDataJson(row.data_json);
+  return {
+    id: row.id,
+    scope: scopeFromRow(row),
+    agentId: row.agent_id,
+    workflowIntentId: row.workflow_intent_id,
+    status: row.status,
+    execution: parseDataJson(row.execution_json),
+    stage: row.stage ?? undefined,
+    engine: row.engine ?? undefined,
+    heartbeatAt: row.heartbeat_at ?? undefined,
+    lastEventAt: row.last_event_at ?? undefined,
+    completedAt: row.completed_at ?? undefined,
+    failedAt: row.failed_at ?? undefined,
+    relation: readControlRunRelation(data, row.id) ?? undefined,
+    data,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+};
 
-const toToolCall = (row: ControlToolCallRow) => ({
-  id: row.id,
-  scope: scopeFromRow(row),
-  agentId: row.agent_id,
-  workflowIntentId: row.workflow_intent_id,
-  runId: row.run_id,
-  toolId: row.tool_id,
-  status: row.status,
-  inputSummary: row.input_summary ?? undefined,
-  outputSummary: row.output_summary ?? undefined,
-  artifactRefs: parseJson(row.artifact_refs_json) ?? [],
-  data: parseDataJson(row.data_json),
-  startedAt: row.started_at,
-  finishedAt: row.finished_at ?? undefined,
-  createdAt: row.created_at,
-});
+const toToolCall = (row: ControlToolCallRow) => {
+  const data = parseDataJson(row.data_json);
+  return {
+    id: row.id,
+    scope: scopeFromRow(row),
+    agentId: row.agent_id,
+    workflowIntentId: row.workflow_intent_id,
+    runId: row.run_id,
+    toolId: row.tool_id,
+    status: row.status,
+    inputSummary: row.input_summary ?? undefined,
+    outputSummary: row.output_summary ?? undefined,
+    artifactRefs: parseJson(row.artifact_refs_json) ?? [],
+    relation: readControlRunRelation(data) ?? undefined,
+    data,
+    startedAt: row.started_at,
+    finishedAt: row.finished_at ?? undefined,
+    createdAt: row.created_at,
+  };
+};
+
+const toChildRunSummary = (row: ControlRunRow) => {
+  const data = parseDataJson(row.data_json);
+  return {
+    id: row.id,
+    workflowIntentId: row.workflow_intent_id,
+    agentId: row.agent_id,
+    status: row.status,
+    stage: row.stage ?? undefined,
+    engine: row.engine ?? undefined,
+    relation: readControlRunRelation(data, row.id) ?? undefined,
+    updatedAt: row.updated_at,
+    createdAt: row.created_at,
+  };
+};
 
 const toArtifact = (row: ControlArtifactRow) => ({
   id: row.id,
@@ -259,6 +283,22 @@ export const getControlRunSnapshot = async (env: Env, scope: TenantScope, runId:
     .bind(scope.userId, scope.workspaceId, runId)
     .all<ControlAuditRow>();
 
+  const childRuns = await env.DB.prepare(
+    `SELECT id, user_id, workspace_id, agent_id, workflow_intent_id, status, execution_json,
+            stage, engine, heartbeat_at, last_event_at, completed_at, failed_at, data_json,
+            created_at, updated_at
+     FROM control_runs
+     WHERE user_id = ? AND workspace_id = ?
+       AND (
+         json_extract(data_json, '$.relation.parentRunId') = ?
+         OR json_extract(data_json, '$.parentRunId') = ?
+       )
+     ORDER BY updated_at DESC, created_at DESC
+     LIMIT 20`,
+  )
+    .bind(scope.userId, scope.workspaceId, runId, runId)
+    .all<ControlRunRow>();
+
   return {
     scope,
     intent: intentRow ? toIntent(intentRow) : null,
@@ -267,6 +307,7 @@ export const getControlRunSnapshot = async (env: Env, scope: TenantScope, runId:
     artifacts: artifacts.results.map(toArtifact),
     decisions: decisions.results.map(toDecision),
     auditEvents: auditEvents.results.map(toAuditEvent),
+    childRuns: childRuns.results.map(toChildRunSummary),
   };
 };
 

@@ -70,6 +70,12 @@ policy requires approval
   -> audit event records decision
 ```
 
+Current implementation: tool approval requests also expose a generic
+`humanIntervention` view. It describes parked work and its approve/deny resume
+surface without replacing the existing approval endpoints. This is the first
+shared HITL shape; clarification requests, blocked credentials, and explicit
+confirmation prompts should adopt the same shape when they land.
+
 ## Limits And Kill Switches
 
 Policy configuration may include:
@@ -108,6 +114,14 @@ A tool should be hidden from the model when:
 
 Hidden tools may still appear in admin/debug UI with a reason, but should not be
 included in the model-visible tool list.
+
+Current implementation: Cloudflare resolves dynamic tool capabilities through
+the same policy path that gates Admin and model tool use. The first resolver
+slice returns compact decisions for `/tools` so operators can inspect why a
+tool is visible or hidden for a tenant, agent, stage, execution mode, and
+surface. Listing decisions are intentionally not persisted as audit events;
+actual run, approval, and policy-update enforcement still records durable
+policy decisions.
 
 ## Production Mutation Gate
 

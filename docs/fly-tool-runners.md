@@ -40,8 +40,10 @@ The Fly service must:
 
 - Verify the request signature.
 - Validate tenant scope and tool permission.
+- Validate the runner sandbox contract.
 - Enforce timeout and cancellation policy.
 - Enforce execution mode and approval requirements.
+- Enforce egress policy before external network access.
 - Redact secrets from logs and responses.
 - Return structured output and artifact references.
 - Write or return audit summaries for persistence.
@@ -64,6 +66,30 @@ Fly/LangGraph workflow
 Future optimization: scoped direct D1/R2 access may be considered only after a measured performance or reliability problem. It must use the same scoped data-client interface and produce the same audit events. It is not part of the initial implementation.
 
 See `docs/db-contracts.md` for the durable entity contracts and repository-style operation groups Fly/LangGraph should call through the mediated data client.
+
+## Sandbox Lifecycle And Network Policy
+
+Sandbox lifecycle/network policy v0 is a signed runner contract, not a new
+infrastructure resource. Cloudflare attaches a compact `runner.sandbox` object
+to runner metadata and Fly invocation bodies. The current `url.inspect`
+contract states:
+
+- lifecycle template: `url-inspect-v1`
+- setup: per invocation
+- filesystem: ephemeral
+- workspace state: none
+- artifact promotion: metadata only
+- network: public web egress only
+- schemes: `http` and `https`
+- private network egress: denied
+- enforcement: control plane and runner
+
+The Cloudflare control plane derives allowlist, denylist, and runtime-limit
+fields from existing tool policy constraints. The Fly gateway rejects missing
+sandbox contracts and blocks `url.inspect` requests whose target host does not
+match the signed sandbox egress policy. This slice does not create persistent
+sandboxes, volumes, browser automation, artifact stores, or a broader network
+policy service.
 
 ## LangGraph On Fly
 

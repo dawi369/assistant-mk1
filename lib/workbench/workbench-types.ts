@@ -6,6 +6,14 @@ import type {
   WorkflowStage,
 } from "@/lib/agent-framework/contracts";
 
+export type RunRelationSummary = {
+  kind?: "root" | "child" | string;
+  parentRunId?: Id;
+  rootRunId?: Id;
+  depth?: number;
+  durableChild?: boolean;
+};
+
 export type CloudflareOwnedDemoRunSnapshot = {
   scope: TenantScope;
   intent: {
@@ -21,6 +29,7 @@ export type CloudflareOwnedDemoRunSnapshot = {
     workflowIntentId?: Id;
     execution?: Partial<ExecutionPolicy>;
     stage?: WorkflowStage | string;
+    relation?: RunRelationSummary;
     updatedAt?: string;
     data?: Record<string, unknown>;
   } | null;
@@ -30,6 +39,18 @@ export type CloudflareOwnedDemoRunSnapshot = {
     status?: string;
     inputSummary?: string;
     outputSummary?: string;
+    relation?: RunRelationSummary;
+  }>;
+  childRuns?: Array<{
+    id?: Id;
+    workflowIntentId?: Id;
+    agentId?: Id;
+    status?: RunStatus | string;
+    stage?: WorkflowStage | string;
+    engine?: string;
+    relation?: RunRelationSummary;
+    updatedAt?: string;
+    createdAt?: string;
   }>;
   artifacts: Array<{
     id: Id;
@@ -73,6 +94,32 @@ export type ControlPlaneEventsResponse = {
   error?: string;
 };
 
+export type DynamicCapabilityContext = {
+  stage: "observe" | "analyze" | "propose" | "execute" | "review";
+  executionMode: "ask" | "dry_run" | "execute";
+  surface: "admin_list" | "admin_run" | "admin_resume" | "model_exposure" | "model_tool_call";
+  platform: "cloudflare-control-plane";
+  featureFlags: string[];
+};
+
+export type DynamicCapabilityDecision = {
+  capabilityId: string;
+  kind: "tool";
+  visible: boolean;
+  decision: "allow" | "block";
+  code?: string;
+  reason?: string;
+  policyReference?: string;
+  permissionStatus?: "enabled" | "disabled" | "pending_review" | string;
+  allowedExecutionModes?: Array<"ask" | "dry_run" | "execute">;
+  approvalRequired?: boolean;
+  adminVisible?: boolean;
+  modelVisible?: boolean;
+  policyEditable?: boolean;
+  constraints?: ToolSummary["policyConstraints"];
+  connectionAuth?: ConnectionAuthBrokerage;
+};
+
 export type ToolSummary = {
   name: string;
   description: string;
@@ -89,6 +136,26 @@ export type ToolSummary = {
     transport?: "cloudflare_inline" | "fly";
     adapterVersion?: string;
     source?: "admin" | "approval" | "model" | "demo-compat";
+    sandbox?: {
+      lifecycle?: {
+        template?: string;
+        setup?: "per_invocation" | string;
+        workspaceState?: "none" | "persistent" | string;
+        filesystem?: "ephemeral" | "workspace_persistent" | string;
+        artifactPromotion?: "metadata_only" | "explicit" | string;
+      };
+      network?: {
+        egress?: "public_web" | string;
+        allowedSchemes?: string[];
+        allowedHosts?: string[];
+        deniedHosts?: string[];
+        privateNetwork?: "deny" | string;
+        enforcement?: "control_plane_and_runner" | string;
+      };
+      limits?: {
+        maxRuntimeMs?: number;
+      };
+    };
   };
   permissionStatus?: "enabled" | "disabled" | "pending_review";
   policyReference?: string;
@@ -96,6 +163,7 @@ export type ToolSummary = {
   approvalRequired?: boolean;
   killSwitchReason?: string;
   policyEditable?: boolean;
+  connectionAuth?: ConnectionAuthBrokerage;
   policyConstraints?: {
     limits?: {
       perUserPerHour?: number;
@@ -123,6 +191,7 @@ export type ToolSummary = {
     policyReference?: string;
     constraints?: ToolSummary["policyConstraints"];
   };
+  capability?: DynamicCapabilityDecision;
   latestApprovalRequest?: {
     id?: Id;
     status?: string;
@@ -131,6 +200,18 @@ export type ToolSummary = {
     updatedAt?: string;
     data?: Record<string, unknown>;
   };
+};
+
+export type ConnectionAuthBrokerage = {
+  required?: boolean;
+  status?: "not_required" | "authorization_required" | "authorized" | "refresh_required" | string;
+  principal?: "none" | "app" | "user" | string;
+  connectionName?: string;
+  authorizationEventType?: "connection.authorization_required" | string;
+  tokenRefresh?: "not_applicable" | "brokered" | string;
+  toolFilter?: "not_required" | "connection_scoped" | string;
+  approvalOrder?: "policy_before_connection" | "connection_before_policy" | string;
+  reason?: string;
 };
 
 export type ToolCallSummary = {
@@ -144,6 +225,7 @@ export type ToolCallSummary = {
   inputSummary?: string;
   outputSummary?: string;
   artifactRefs?: unknown[];
+  relation?: RunRelationSummary;
   data?: Record<string, unknown>;
   startedAt?: string;
   finishedAt?: string;
@@ -194,12 +276,36 @@ export type ToolApprovalRequestSummary = {
     executionMode?: string;
     policyReference?: string;
   };
+  humanIntervention?: {
+    id?: Id;
+    kind?: "approval" | string;
+    status?: string;
+    state?: "parked" | "resumable" | "decided" | string;
+    requiredAction?: "approve_or_deny" | "none" | string;
+    resumeSurface?: "admin_resume" | string;
+    runId?: Id;
+    workflowIntentId?: Id;
+    toolId?: string;
+    reason?: string;
+    title?: string;
+    approvePath?: string;
+    denyPath?: string;
+    currentPolicy?: {
+      decision?: "allow" | "block";
+      code?: string;
+      reason?: string;
+    };
+    createdAt?: string;
+    updatedAt?: string;
+  };
   createdAt?: string;
   updatedAt?: string;
 };
 
 export type CloudflareToolsResponse = {
   ok?: boolean;
+  capabilityContext?: DynamicCapabilityContext;
+  capabilityDecisions?: DynamicCapabilityDecision[];
   tools?: ToolSummary[];
   latestToolCalls?: ToolCallSummary[];
   latestArtifacts?: ArtifactSummary[];
@@ -227,6 +333,7 @@ export type CloudflareToolRunResponse = {
     status?: string;
     execution?: Partial<ExecutionPolicy>;
     policyDecisionId?: Id;
+    relation?: RunRelationSummary;
   };
   approvalRequest?: ToolApprovalRequestSummary;
   toolCall?: ToolCallSummary | null;
@@ -356,7 +463,16 @@ export type AgentBehaviorConfig = {
   instructionId: string;
   format?: "xml";
   templateId?: string;
+  authoring?: AgentBehaviorAuthoringMetadata;
   preview?: string;
+};
+
+export type AgentBehaviorAuthoringMetadata = {
+  kind?: "built_in_template" | string;
+  format?: "xml" | string;
+  source?: "cloudflare-control-plane" | string;
+  editable?: boolean;
+  snapshotOnCreate?: boolean;
 };
 
 export type AgentBehaviorTemplate = {
@@ -366,6 +482,7 @@ export type AgentBehaviorTemplate = {
   profile: "default" | "analyst" | "operator";
   version: string;
   format: "xml";
+  authoring?: AgentBehaviorAuthoringMetadata;
   prompt: string;
 };
 
@@ -671,6 +788,8 @@ export type CloudflareAdminSummaryResponse = {
     demo: {
       latestRun: CloudflareOwnedDemoRunSnapshot | null;
     };
+    capabilityContext: DynamicCapabilityContext;
+    capabilityDecisions: DynamicCapabilityDecision[];
     tools: ToolSummary[];
     latestToolCalls: ToolCallSummary[];
     latestArtifacts: ArtifactSummary[];

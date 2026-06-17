@@ -78,7 +78,7 @@ observe -> analyze -> propose -> execute -> review
 - `app/api/[..._path]/route.ts`: LangGraph API proxy.
 - `app/api/workbench/*`: Vercel same-origin facades over Cloudflare.
 - `app/api/external-signals/route.ts`: token-protected external starts,
-  resumes, and cron creation.
+  resumes, cron creation, and local/dev schedule dispatch.
 - `backend/agent.ts`: LangGraph graph/provider seam.
 - `cloudflare/control-plane/*`: Worker, D1 schema, Durable Object Agents,
   authz, policy, chat, tools, events, and traces.

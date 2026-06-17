@@ -17,7 +17,30 @@ const scope = {
   workspaceId: `workspace:workos-org:runner-org-${suffix}:default`,
 };
 
-const invocationBody = (runId = `cf-run-${suffix}`) =>
+const sandbox = (allowedHosts = ["example.com"]) => ({
+  lifecycle: {
+    template: "url-inspect-v1",
+    setup: "per_invocation",
+    workspaceState: "none",
+    filesystem: "ephemeral",
+    artifactPromotion: "metadata_only",
+  },
+  network: {
+    egress: "public_web",
+    allowedSchemes: ["http", "https"],
+    allowedHosts,
+    deniedHosts: [],
+    privateNetwork: "deny",
+    enforcement: "control_plane_and_runner",
+  },
+  limits: {},
+});
+
+const invocationBody = (
+  runId = `cf-run-${suffix}`,
+  input: { url: string } = { url: "https://example.com" },
+  allowedHosts = ["example.com"],
+) =>
   JSON.stringify({
     scope,
     agentId: `agent:${scope.workspaceId}:default`,
@@ -25,11 +48,12 @@ const invocationBody = (runId = `cf-run-${suffix}`) =>
     workflowIntentId: `cf-intent-${suffix}`,
     toolName: "url.inspect",
     execution: { mode: "dry_run", policy: "tool-admin-readonly-v0" },
-    input: { url: "https://example.com" },
+    input,
     runner: {
       transport: "fly",
       adapterVersion: "url-inspect-v1",
       source: "admin",
+      sandbox: sandbox(allowedHosts),
     },
     policyDecisionId: `cf-policy-${suffix}`,
     source: "admin",
@@ -91,15 +115,64 @@ runSmoke("Fly tool runner smoke", async () => {
   const validBody = (await valid.json()) as {
     ok?: boolean;
     output?: { status?: number; finalUrl?: string };
-    runner?: { transport?: string; adapterVersion?: string };
+    runner?: {
+      transport?: string;
+      adapterVersion?: string;
+      sandbox?: { network?: { privateNetwork?: string } };
+    };
   };
   if (
     !validBody.ok ||
     validBody.output?.status !== 200 ||
     validBody.runner?.transport !== "fly" ||
-    validBody.runner.adapterVersion !== "url-inspect-v1"
+    validBody.runner.adapterVersion !== "url-inspect-v1" ||
+    validBody.runner.sandbox?.network?.privateNetwork !== "deny"
   ) {
     throw new Error(`valid runner response was unexpected: ${JSON.stringify(validBody)}`);
+  }
+
+  const blockedEgress = await signedFetch({
+    body: invocationBody(`cf-run-blocked-egress-${suffix}`, { url: "https://example.com" }, [
+      "allowed.example",
+    ]),
+    nonce: `blocked-egress-${suffix}`,
+  });
+  if (blockedEgress.status !== 403) {
+    throw new Error(`expected sandbox egress block, got ${blockedEgress.status}`);
+  }
+  const blockedEgressBody = (await blockedEgress.json()) as { error?: { code?: string } };
+  if (blockedEgressBody.error?.code !== "sandbox_egress_not_allowed") {
+    throw new Error(`sandbox egress block missing code: ${JSON.stringify(blockedEgressBody)}`);
+  }
+
+  const missingSandboxBody = JSON.stringify({
+    scope,
+    agentId: `agent:${scope.workspaceId}:default`,
+    runId: `cf-run-missing-sandbox-${suffix}`,
+    workflowIntentId: `cf-intent-${suffix}`,
+    toolName: "url.inspect",
+    execution: { mode: "dry_run", policy: "tool-admin-readonly-v0" },
+    input: { url: "https://example.com" },
+    runner: {
+      transport: "fly",
+      adapterVersion: "url-inspect-v1",
+      source: "admin",
+    },
+    policyDecisionId: `cf-policy-${suffix}`,
+    source: "admin",
+  });
+  const missingSandbox = await signedFetch({
+    body: missingSandboxBody,
+    nonce: `missing-sandbox-${suffix}`,
+  });
+  if (missingSandbox.status !== 403) {
+    throw new Error(`expected missing sandbox block, got ${missingSandbox.status}`);
+  }
+  const missingSandboxResponse = (await missingSandbox.json()) as { error?: { code?: string } };
+  if (missingSandboxResponse.error?.code !== "sandbox_required") {
+    throw new Error(
+      `missing sandbox block missing code: ${JSON.stringify(missingSandboxResponse)}`,
+    );
   }
 
   const unsigned = await fetch(`${baseUrl}${path}`, {

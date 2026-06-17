@@ -7,7 +7,10 @@ export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
   try {
-    const response = await streamControlPlaneEvents(request.nextUrl.searchParams.get("after"));
+    const response = await streamControlPlaneEvents(
+      request.nextUrl.searchParams.get("after"),
+      request.headers.get("Last-Event-ID"),
+    );
     const headers = new Headers(response.headers);
     headers.delete("content-encoding");
     headers.delete("content-length");

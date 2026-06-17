@@ -19,6 +19,14 @@ type ToolSummary = {
     transport?: string;
     adapterVersion?: string;
     source?: string;
+    sandbox?: {
+      lifecycle?: { template?: string };
+      network?: {
+        egress?: string;
+        privateNetwork?: string;
+        enforcement?: string;
+      };
+    };
   };
   policyConstraints?: {
     limits?: {
@@ -42,15 +50,56 @@ type ToolSummary = {
     code?: string;
     reason?: string;
   };
+  capability?: {
+    capabilityId?: string;
+    kind?: string;
+    visible?: boolean;
+    decision?: string;
+    code?: string;
+    reason?: string;
+    policyReference?: string;
+    permissionStatus?: string;
+    connectionAuth?: {
+      status?: string;
+      principal?: string;
+      approvalOrder?: string;
+    };
+  };
+  connectionAuth?: {
+    required?: boolean;
+    status?: string;
+    principal?: string;
+    tokenRefresh?: string;
+    toolFilter?: string;
+    approvalOrder?: string;
+  };
   latestApprovalRequest?: {
     id?: string;
     status?: string;
     reason?: string;
+    humanIntervention?: {
+      state?: string;
+    };
   };
 };
 
 type ToolsResponse = {
   ok?: boolean;
+  capabilityContext?: {
+    stage?: string;
+    executionMode?: string;
+    surface?: string;
+    platform?: string;
+    featureFlags?: string[];
+  };
+  capabilityDecisions?: Array<{
+    capabilityId?: string;
+    kind?: string;
+    visible?: boolean;
+    decision?: string;
+    code?: string;
+    policyReference?: string;
+  }>;
   tools?: ToolSummary[];
   latestToolCalls?: Array<{
     id?: string;
@@ -66,17 +115,32 @@ type ToolsResponse = {
   error?: string;
 };
 
+type RunRelationSummary = {
+  kind?: string;
+  parentRunId?: string;
+  rootRunId?: string;
+  depth?: number;
+  durableChild?: boolean;
+};
+
 type ToolRunResponse = {
   ok?: boolean;
   run?: {
     id?: string;
     status?: string;
     workflowIntentId?: string;
+    relation?: RunRelationSummary;
   };
   approvalRequest?: {
     id?: string;
     status?: string;
     reason?: string;
+    humanIntervention?: {
+      id?: string;
+      state?: string;
+      requiredAction?: string;
+      resumeSurface?: string;
+    };
   };
   toolCall?: {
     id?: string;
@@ -87,6 +151,14 @@ type ToolRunResponse = {
         transport?: string;
         adapterVersion?: string;
         source?: string;
+        sandbox?: {
+          lifecycle?: { template?: string };
+          network?: {
+            egress?: string;
+            privateNetwork?: string;
+            enforcement?: string;
+          };
+        };
       };
     };
   } | null;
@@ -99,6 +171,23 @@ type ToolRunResponse = {
 };
 
 type ToolApprovalActionResponse = ToolRunResponse;
+
+type DemoRunResponse = {
+  ok?: boolean;
+  snapshot?: {
+    run?: {
+      id?: string;
+      status?: string;
+      relation?: RunRelationSummary;
+    } | null;
+    childRuns?: Array<{
+      id?: string;
+      status?: string;
+      relation?: RunRelationSummary;
+    }>;
+  } | null;
+  error?: string;
+};
 
 type ToolApprovalSummary = {
   id?: string;
@@ -116,6 +205,14 @@ type ToolApprovalSummary = {
     decision?: string;
     code?: string;
     reason?: string;
+  };
+  humanIntervention?: {
+    id?: string;
+    state?: string;
+    requiredAction?: string;
+    resumeSurface?: string;
+    approvePath?: string;
+    denyPath?: string;
   };
 };
 
@@ -146,8 +243,14 @@ type AdminSummaryResponse = {
         run?: {
           id?: string;
           status?: string;
+          relation?: RunRelationSummary;
         } | null;
         toolCalls?: Array<{ id?: string; runId?: string }>;
+        childRuns?: Array<{
+          id?: string;
+          status?: string;
+          relation?: RunRelationSummary;
+        }>;
         artifacts?: Array<{ id?: string }>;
         auditEvents?: Array<{ action?: string; targetId?: string }>;
       } | null;
@@ -248,11 +351,35 @@ runSmoke("Cloudflare tool admin smoke", async () => {
   console.log(`Smoking Cloudflare tool admin at ${baseUrl}`);
 
   const tools = await readJson<ToolsResponse>("/tools", owner);
+  if (
+    tools.capabilityContext?.stage !== "observe" ||
+    tools.capabilityContext.executionMode !== "dry_run" ||
+    tools.capabilityContext.surface !== "model_exposure" ||
+    tools.capabilityContext.platform !== "cloudflare-control-plane"
+  ) {
+    throw new Error(`dynamic capability context missing: ${JSON.stringify(tools)}`);
+  }
   const urlInspect = requireTool(tools.tools, "url.inspect");
   if (!urlInspect.adminVisible) throw new Error("url.inspect should be Admin-visible for owner");
   if (urlInspect.modelVisible) throw new Error("url.inspect should not be model-visible in v0");
+  if (
+    urlInspect.capability?.decision !== "block" ||
+    urlInspect.capability.code !== "model_exposure_blocked"
+  ) {
+    throw new Error(
+      `url.inspect capability should explain model block: ${JSON.stringify(urlInspect)}`,
+    );
+  }
   if (urlInspect.modelExposurePolicy?.code !== "model_exposure_blocked") {
     throw new Error(`url.inspect should explain model exposure: ${JSON.stringify(urlInspect)}`);
+  }
+  if (
+    urlInspect.connectionAuth?.status !== "not_required" ||
+    urlInspect.connectionAuth.principal !== "none" ||
+    urlInspect.connectionAuth.tokenRefresh !== "not_applicable" ||
+    urlInspect.capability?.connectionAuth?.status !== "not_required"
+  ) {
+    throw new Error(`url.inspect connection auth summary invalid: ${JSON.stringify(urlInspect)}`);
   }
   if (urlInspect.permissionStatus !== "enabled") {
     throw new Error(`url.inspect should seed enabled, got ${urlInspect.permissionStatus}`);
@@ -262,15 +389,28 @@ runSmoke("Cloudflare tool admin smoke", async () => {
   }
   if (
     urlInspect.runner?.transport !== expectedRunnerTransport ||
-    urlInspect.runner.adapterVersion !== "url-inspect-v1"
+    urlInspect.runner.adapterVersion !== "url-inspect-v1" ||
+    urlInspect.runner.sandbox?.lifecycle?.template !== "url-inspect-v1" ||
+    urlInspect.runner.sandbox?.network?.privateNetwork !== "deny"
   ) {
     throw new Error(`url.inspect runner metadata missing: ${JSON.stringify(urlInspect)}`);
   }
 
   const demoInspect = requireTool(tools.tools, "demo.inspect");
   if (demoInspect.modelVisible) throw new Error("demo.inspect should not be model-visible");
+  if (
+    demoInspect.capability?.decision !== "block" ||
+    demoInspect.capability.code !== "model_exposure_blocked"
+  ) {
+    throw new Error(
+      `demo.inspect capability should explain model block: ${JSON.stringify(demoInspect)}`,
+    );
+  }
   if (demoInspect.modelExposurePolicy?.code !== "model_exposure_blocked") {
     throw new Error(`demo.inspect should explain model exposure: ${JSON.stringify(demoInspect)}`);
+  }
+  if (demoInspect.connectionAuth?.status !== "not_required") {
+    throw new Error(`demo.inspect connection auth summary invalid: ${JSON.stringify(demoInspect)}`);
   }
   if (
     demoInspect.runner?.transport !== "cloudflare_inline" ||
@@ -310,17 +450,66 @@ runSmoke("Cloudflare tool admin smoke", async () => {
   if (!run.ok || run.run?.status !== "completed") {
     throw new Error(`url.inspect run did not complete: ${JSON.stringify(run)}`);
   }
+  if (!run.run.id)
+    throw new Error(`url.inspect run did not return a run id: ${JSON.stringify(run)}`);
   if (run.toolCall?.toolId !== "url.inspect" || run.toolCall.status !== "completed") {
     throw new Error("url.inspect run did not return a completed tool call");
   }
   if (
     run.toolCall.data?.runner?.transport !== expectedRunnerTransport ||
     run.toolCall.data.runner.adapterVersion !== "url-inspect-v1" ||
-    run.toolCall.data.runner.source !== "admin"
+    run.toolCall.data.runner.source !== "admin" ||
+    run.toolCall.data.runner.sandbox?.network?.enforcement !== "control_plane_and_runner"
   ) {
     throw new Error(`url.inspect run did not include runner metadata: ${JSON.stringify(run)}`);
   }
   if (!run.artifact?.id) throw new Error("url.inspect run did not return an artifact");
+
+  const childRun = await readJson<ToolRunResponse>("/tools/runs", owner, {
+    method: "POST",
+    body: JSON.stringify({
+      toolName: "url.inspect",
+      executionMode: "dry_run",
+      input: { url: "https://example.com" },
+      parentRunId: run.run.id,
+    }),
+  });
+  if (!childRun.ok || childRun.run?.status !== "completed" || !childRun.run.id) {
+    throw new Error(`child url.inspect run did not complete: ${JSON.stringify(childRun)}`);
+  }
+  if (
+    childRun.run.relation?.kind !== "child" ||
+    childRun.run.relation.parentRunId !== run.run.id ||
+    childRun.run.relation.depth !== 1
+  ) {
+    throw new Error(`child run relation invalid: ${JSON.stringify(childRun.run)}`);
+  }
+
+  const grandchildRun = await fetchRaw("/tools/runs", owner, {
+    method: "POST",
+    body: JSON.stringify({
+      toolName: "url.inspect",
+      executionMode: "dry_run",
+      input: { url: "https://example.com" },
+      parentRunId: childRun.run.id,
+    }),
+  });
+  await expectErrorCode(grandchildRun, 403, "child_run_depth_exceeded");
+
+  const parentSnapshot = await readJson<DemoRunResponse>(
+    `/workbench/demo-runs/${encodeURIComponent(run.run.id)}`,
+    owner,
+  );
+  if (
+    !parentSnapshot.snapshot?.childRuns?.some(
+      (item) =>
+        item.id === childRun.run?.id &&
+        item.relation?.parentRunId === run.run?.id &&
+        item.relation?.depth === 1,
+    )
+  ) {
+    throw new Error(`parent snapshot did not include child run: ${JSON.stringify(parentSnapshot)}`);
+  }
 
   const approvalPolicy = await readJson<ToolPolicyUpdateResponse>("/tools/policy", owner, {
     method: "POST",
@@ -365,6 +554,13 @@ runSmoke("Cloudflare tool admin smoke", async () => {
   if (approvalRun.approvalRequest?.status !== "requested" || !approvalRun.approvalRequest.id) {
     throw new Error(`approval request missing: ${JSON.stringify(approvalRun)}`);
   }
+  if (
+    approvalRun.approvalRequest.humanIntervention?.state !== "parked" ||
+    approvalRun.approvalRequest.humanIntervention.requiredAction !== "approve_or_deny" ||
+    approvalRun.approvalRequest.humanIntervention.resumeSurface !== "admin_resume"
+  ) {
+    throw new Error(`approval response missing HITL summary: ${JSON.stringify(approvalRun)}`);
+  }
 
   const requestedApprovals = await readJson<ToolApprovalsResponse>(
     "/tools/approvals?status=requested",
@@ -379,6 +575,16 @@ runSmoke("Cloudflare tool admin smoke", async () => {
   }
   if (requestedApproval.input?.url !== "https://example.com/") {
     throw new Error(`requested approval input URL missing: ${JSON.stringify(requestedApproval)}`);
+  }
+  if (
+    requestedApproval.humanIntervention?.state !== "parked" ||
+    requestedApproval.humanIntervention.requiredAction !== "approve_or_deny" ||
+    !requestedApproval.humanIntervention.approvePath ||
+    !requestedApproval.humanIntervention.denyPath
+  ) {
+    throw new Error(
+      `requested approval HITL summary invalid: ${JSON.stringify(requestedApproval)}`,
+    );
   }
   if (requestedApproval.currentPolicy?.decision !== "allow") {
     throw new Error(
@@ -421,6 +627,11 @@ runSmoke("Cloudflare tool admin smoke", async () => {
   if (approvalToolAfterRun.latestApprovalRequest?.id !== approvalRun.approvalRequest.id) {
     throw new Error("latest approval request was not attached to /tools summary");
   }
+  if (approvalToolAfterRun.latestApprovalRequest.humanIntervention?.state !== "parked") {
+    throw new Error(
+      `latest approval request missing HITL summary: ${JSON.stringify(approvalToolAfterRun)}`,
+    );
+  }
 
   const approved = await readJson<ToolApprovalActionResponse>(
     `/tools/approvals/${encodeURIComponent(approvalRun.approvalRequest.id)}/approve`,
@@ -439,6 +650,11 @@ runSmoke("Cloudflare tool admin smoke", async () => {
       `approved response should include updated approval: ${JSON.stringify(approved)}`,
     );
   }
+  if (approved.approvalRequest.humanIntervention?.state !== "resumable") {
+    throw new Error(
+      `approved response missing resumable HITL summary: ${JSON.stringify(approved)}`,
+    );
+  }
 
   const decidedAfterApprove = await readJson<ToolApprovalsResponse>(
     "/tools/approvals?status=decided",
@@ -450,6 +666,9 @@ runSmoke("Cloudflare tool admin smoke", async () => {
   );
   if (approvedApproval.status !== "approved" || !approvedApproval.decision?.decidedAt) {
     throw new Error(`approved approval queue entry invalid: ${JSON.stringify(approvedApproval)}`);
+  }
+  if (approvedApproval.humanIntervention?.state !== "resumable") {
+    throw new Error(`approved approval HITL summary invalid: ${JSON.stringify(approvedApproval)}`);
   }
 
   const approvedSummary = await readJson<AdminSummaryResponse>("/admin/workspace-summary", owner);
@@ -475,6 +694,11 @@ runSmoke("Cloudflare tool admin smoke", async () => {
   if (denyRun.approvalRequest?.status !== "requested" || !denyRun.approvalRequest.id) {
     throw new Error(`deny approval request missing: ${JSON.stringify(denyRun)}`);
   }
+  if (denyRun.approvalRequest.humanIntervention?.state !== "parked") {
+    throw new Error(
+      `deny approval request missing parked HITL summary: ${JSON.stringify(denyRun)}`,
+    );
+  }
   const denied = await readJson<ToolApprovalActionResponse>(
     `/tools/approvals/${encodeURIComponent(denyRun.approvalRequest.id)}/deny`,
     owner,
@@ -492,6 +716,9 @@ runSmoke("Cloudflare tool admin smoke", async () => {
   if (denied.approvalRequest?.status !== "denied") {
     throw new Error(`denied response should include updated approval: ${JSON.stringify(denied)}`);
   }
+  if (denied.approvalRequest.humanIntervention?.state !== "decided") {
+    throw new Error(`denied response missing decided HITL summary: ${JSON.stringify(denied)}`);
+  }
 
   const decidedAfterDeny = await readJson<ToolApprovalsResponse>(
     "/tools/approvals?status=decided",
@@ -503,6 +730,9 @@ runSmoke("Cloudflare tool admin smoke", async () => {
     deniedApproval.decision?.denyReason !== "Smoke test denial."
   ) {
     throw new Error(`denied approval queue entry invalid: ${JSON.stringify(deniedApproval)}`);
+  }
+  if (deniedApproval.humanIntervention?.state !== "decided") {
+    throw new Error(`denied approval HITL summary invalid: ${JSON.stringify(deniedApproval)}`);
   }
 
   const deniedSummary = await readJson<AdminSummaryResponse>("/admin/workspace-summary", owner);
@@ -627,6 +857,28 @@ runSmoke("Cloudflare tool admin smoke", async () => {
   }
   if (exposed.tool.modelExposurePolicy?.decision !== "allow") {
     throw new Error(`url.inspect model exposure should be allowed: ${JSON.stringify(exposed)}`);
+  }
+  if (exposed.tool.capability?.decision !== "allow" || !exposed.tool.capability.visible) {
+    throw new Error(`url.inspect capability should allow exposure: ${JSON.stringify(exposed)}`);
+  }
+
+  const adminListTools = await readJson<ToolsResponse>(
+    "/tools?surface=admin_list&stage=review&executionMode=dry_run",
+    owner,
+  );
+  if (
+    adminListTools.capabilityContext?.surface !== "admin_list" ||
+    adminListTools.capabilityContext.stage !== "review"
+  ) {
+    throw new Error(
+      `dynamic capability query context did not apply: ${JSON.stringify(adminListTools)}`,
+    );
+  }
+  const adminListUrlInspect = requireTool(adminListTools.tools, "url.inspect");
+  if (adminListUrlInspect.capability?.decision !== "allow") {
+    throw new Error(
+      `url.inspect should resolve for admin_list capability: ${JSON.stringify(adminListUrlInspect)}`,
+    );
   }
 
   const nonEditablePolicyUpdate = await fetchRaw("/tools/policy", owner, {

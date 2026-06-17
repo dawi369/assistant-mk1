@@ -18,6 +18,28 @@ export type ToolRunnerMetadata = {
   transport: ToolRunnerTransport;
   adapterVersion: string;
   source: ToolRunnerSource;
+  sandbox?: ToolRunnerSandboxContract;
+};
+
+export type ToolRunnerSandboxContract = {
+  lifecycle: {
+    template: string;
+    setup: "per_invocation";
+    workspaceState: "none" | "persistent";
+    filesystem: "ephemeral" | "workspace_persistent";
+    artifactPromotion: "metadata_only" | "explicit";
+  };
+  network: {
+    egress: "public_web";
+    allowedSchemes: Array<"http" | "https">;
+    allowedHosts: string[];
+    deniedHosts: string[];
+    privateNetwork: "deny";
+    enforcement: "control_plane_and_runner";
+  };
+  limits: {
+    maxRuntimeMs?: number;
+  };
 };
 
 export type ToolAdapterMetadata = {
@@ -31,10 +53,49 @@ export const runnerMetadataFor = (
   adapter: ToolAdapterMetadata,
   source: ToolRunnerSource,
   transport: ToolRunnerTransport = adapter.transport,
+  sandbox?: ToolRunnerSandboxContract,
 ): ToolRunnerMetadata => ({
   transport,
   adapterVersion: adapter.adapterVersion,
   source,
+  sandbox,
+});
+
+const normalizePatterns = (patterns?: string[]) =>
+  Array.isArray(patterns)
+    ? Array.from(
+        new Set(
+          patterns
+            .map((pattern) => pattern.trim().toLowerCase())
+            .filter((pattern) => pattern.length > 0)
+            .slice(0, 64),
+        ),
+      )
+    : [];
+
+export const urlInspectSandboxContract = (input?: {
+  allowlist?: string[];
+  denylist?: string[];
+  maxRuntimeMs?: number;
+}): ToolRunnerSandboxContract => ({
+  lifecycle: {
+    template: "url-inspect-v1",
+    setup: "per_invocation",
+    workspaceState: "none",
+    filesystem: "ephemeral",
+    artifactPromotion: "metadata_only",
+  },
+  network: {
+    egress: "public_web",
+    allowedSchemes: ["http", "https"],
+    allowedHosts: normalizePatterns(input?.allowlist),
+    deniedHosts: normalizePatterns(input?.denylist),
+    privateNetwork: "deny",
+    enforcement: "control_plane_and_runner",
+  },
+  limits: {
+    maxRuntimeMs: input?.maxRuntimeMs,
+  },
 });
 
 export type ToolRunnerExecution = {

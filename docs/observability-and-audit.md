@@ -24,12 +24,18 @@ The workbench UI should not need to parse model prose to show this state.
 
 Lifecycle events are the first extension surface.
 
+Replayable Visibility v0 persists compact lifecycle facts in Cloudflare
+`control_plane_events` while keeping live session SSE as the UI reconciliation
+path. The event feed is the replayable Admin/history surface; live SSE remains
+a hint channel over canonical state.
+
 Initial events:
 
 - `intent.created`
 - `run.queued`
 - `run.started`
 - `run.interrupted`
+- `run.child.blocked`
 - `approval.requested`
 - `tool.requested`
 - `tool.started`

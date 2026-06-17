@@ -21,11 +21,14 @@ These files should stay aligned with code changes:
 - `cloudflare-control-plane.md`: Worker/D1 responsibilities, Cloudflare Agents
   chat, Admin/tool routes, and transitional LangGraph facade.
 - `agent-workbench.md`: product scope, Admin direction, and component rules.
+- `agent-profile-authoring.md`: behavior template authoring format and
+  snapshot contract.
 - `implementation-roadmap.md`: current baseline, active next targets,
   production gates, and deferred work.
 - `workbench-ui.md`: current UI baseline and target workbench surfaces.
 - `dev-infrastructure-readiness.md`: local/remote setup, smoke commands, and
   resource checklist.
+- `evals.md`: real-session eval posture, manifest, and verifier command.
 - `deployment-vercel.md` and `deployment-fly.md`: deployment runbooks.
 - `diagrams/current-implementation-topology.mmd`: current topology source.
 
@@ -73,6 +76,10 @@ Decision records capture durable choices and direction:
 - `decisions/ADR-0005-cloudflare-langgraph-facade.md`
 - `decisions/ADR-0006-cloudflare-owned-model-routing.md`
 - `decisions/ADR-0007-cloudflare-agents-live-chat-runtime.md`
+- `decisions/ADR-0008-selective-eve-pattern-adoption.md`
+
+ADR-0008 is the accepted source for Eve-inspired pattern adoption. There is no
+separate Eve reference doc.
 
 ## Archive
 

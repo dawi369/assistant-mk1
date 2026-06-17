@@ -172,7 +172,20 @@ export const getWorkspaceContext = () =>
 export const getCloudflareAdminSummary = () =>
   requestControlPlane<CloudflareAdminSummaryResponse>("/admin/workspace-summary");
 
-export const getCloudflareTools = () => requestControlPlane<CloudflareToolsResponse>("/tools");
+export const getCloudflareTools = (input?: {
+  stage?: "observe" | "analyze" | "propose" | "execute" | "review";
+  executionMode?: "ask" | "dry_run" | "execute";
+  surface?: "admin_list" | "admin_run" | "admin_resume" | "model_exposure" | "model_tool_call";
+  featureFlags?: string;
+}) => {
+  const params = new URLSearchParams();
+  if (input?.stage) params.set("stage", input.stage);
+  if (input?.executionMode) params.set("executionMode", input.executionMode);
+  if (input?.surface) params.set("surface", input.surface);
+  if (input?.featureFlags) params.set("featureFlags", input.featureFlags);
+  const query = params.toString();
+  return requestControlPlane<CloudflareToolsResponse>(`/tools${query ? `?${query}` : ""}`);
+};
 
 export const getCloudflareToolApprovals = (input?: {
   status?: "requested" | "decided" | "all";
@@ -201,6 +214,7 @@ export const runCloudflareTool = (input: {
   toolName: "url.inspect";
   executionMode?: "dry_run";
   input: { url: string };
+  parentRunId?: Id;
 }) =>
   requestControlPlane<CloudflareToolRunResponse>("/tools/runs", {
     method: "POST",
@@ -345,13 +359,17 @@ export const getLatestControlPlaneEvents = (limit = 50) =>
     `/events/latest?limit=${encodeURIComponent(String(limit))}`,
   );
 
-export const streamControlPlaneEvents = async (after?: string | null) => {
+export const streamControlPlaneEvents = async (
+  after?: string | null,
+  lastEventId?: string | null,
+) => {
   const searchParams = new URLSearchParams();
   if (after) searchParams.set("after", after);
   const queryString = searchParams.toString() ? `?${searchParams.toString()}` : "";
   const request = await controlPlaneRequest(`/events/stream${queryString}`, {
     headers: {
       accept: "text/event-stream",
+      ...(lastEventId && !after ? { "Last-Event-ID": lastEventId } : {}),
     },
   });
   const response = await fetchWithTimeout(request.url, request.init);

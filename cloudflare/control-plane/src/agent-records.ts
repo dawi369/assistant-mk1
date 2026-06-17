@@ -2,6 +2,7 @@ import { parseDataJson } from "./http";
 import { createId, toJson, type AgentRow, type Env } from "./types";
 import {
   createAgentBehaviorSnapshot,
+  type AgentBehaviorAuthoringMetadata,
   type AgentBehaviorTemplateId,
 } from "./agent-behavior-templates";
 
@@ -32,6 +33,7 @@ export type AgentBehaviorConfig = {
   instructionId: string;
   format?: "xml";
   templateId?: string;
+  authoring?: AgentBehaviorAuthoringMetadata;
   preview?: string;
 };
 
@@ -112,6 +114,10 @@ const readBehaviorSnapshot = (row: AgentRow | null) => {
   return {
     templateId: typeof record.templateId === "string" ? record.templateId : undefined,
     version: typeof record.version === "string" ? record.version : "unknown",
+    authoring:
+      record.authoring && typeof record.authoring === "object" && !Array.isArray(record.authoring)
+        ? (record.authoring as AgentBehaviorAuthoringMetadata)
+        : undefined,
     prompt: record.prompt,
   };
 };
@@ -133,6 +139,7 @@ export const resolveAgentBehaviorConfig = (
       instructionId,
       format: "xml",
       templateId: snapshot.templateId,
+      authoring: snapshot.authoring,
       ...(options?.includePreview ? { preview: snapshot.prompt } : {}),
     };
   }

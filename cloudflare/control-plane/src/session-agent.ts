@@ -10,7 +10,9 @@ import {
   getOwnedChatThread,
   touchChatSession,
 } from "./chat-boundary-store";
+import { appendControlPlaneEvent } from "./control-plane-events";
 import { json, parseDataJson, parseJson } from "./http";
+import { toThreadLifecycleControlPlaneEvent } from "./session-lifecycle-events";
 import type { WorkbenchSessionEvent, WorkbenchSessionEventType } from "./session-event-types";
 import {
   createId,
@@ -45,6 +47,7 @@ type SessionTransitionType =
   | "restore"
   | "delete"
   | "token_refresh";
+type ThreadStatusTransition = "archive" | "restore" | "delete";
 
 type CoordinatorRequest = {
   action: CoordinatorAction;
@@ -534,7 +537,7 @@ const safeThreadData = (snapshot: SessionSnapshot, thread: ReturnType<typeof toT
   thread,
 });
 
-const transitionForStatus = (status: ThreadMutationStatus): SessionTransitionType => {
+const transitionForStatus = (status: ThreadMutationStatus): ThreadStatusTransition => {
   if (status === "active") return "restore";
   if (status === "archived") return "archive";
   return "delete";
@@ -562,6 +565,12 @@ const titleFromUpdate = (title: string | undefined) => {
   if (!trimmed) return null;
   return trimmed.length > 120 ? `${trimmed.slice(0, 117)}...` : trimmed;
 };
+
+const appendThreadLifecycleEvent = (
+  env: Env,
+  identity: AgentIdentity,
+  input: Parameters<typeof toThreadLifecycleControlPlaneEvent>[0],
+) => appendControlPlaneEvent(env, identity, toThreadLifecycleControlPlaneEvent(input));
 
 export class WorkbenchSessionAgent {
   private snapshot: SessionSnapshot | null = null;
@@ -678,6 +687,12 @@ export class WorkbenchSessionAgent {
       activeThread,
       threads: mergeActiveThread(this.snapshot?.threads ?? [], activeThread),
     };
+    await appendThreadLifecycleEvent(this.env, activeIdentity, {
+      transition: "create",
+      threadId: activeThread.threadId,
+      activeThreadId: activeThread.threadId,
+      nextStatus: activeThread.status,
+    });
     this.broadcastEvent(
       this.createEvent("session.thread.created", {
         ...safeSnapshotData(this.snapshot),
@@ -717,6 +732,14 @@ export class WorkbenchSessionAgent {
     if (nextStatus === "archived" || nextStatus === "deleted") {
       const runningRun = await getLatestRunningChatRun(this.env, input.identity.scope, threadId);
       if (runningRun) {
+        await appendThreadLifecycleEvent(this.env, input.identity, {
+          transition: "blocked",
+          threadId,
+          previousStatus: thread.status,
+          nextStatus,
+          blockedAction: transitionForStatus(nextStatus),
+          reasonCode: "running_chat_response",
+        });
         return {
           ok: false,
           error: "Thread has a running chat response",
@@ -810,6 +833,14 @@ export class WorkbenchSessionAgent {
           activeAgentId: this.snapshot.context.agentId,
         });
     const transition = nextStatus ? transitionForStatus(nextStatus) : "rename";
+    await appendThreadLifecycleEvent(this.env, snapshotIdentity, {
+      transition,
+      threadId,
+      activeThreadId: this.snapshot.context.threadId,
+      replacementThreadId: deactivatedActiveThread ? this.snapshot.context.threadId : undefined,
+      previousStatus: thread.status,
+      nextStatus: updatedThread.status,
+    });
 
     this.broadcastEvent(
       this.createEvent("session.thread.updated", {
@@ -870,6 +901,12 @@ export class WorkbenchSessionAgent {
       activeThread,
       threads: mergeActiveThread(this.snapshot?.threads ?? [], activeThread),
     };
+    await appendThreadLifecycleEvent(this.env, activeIdentity, {
+      transition: "activate",
+      threadId: activeThread.threadId,
+      activeThreadId: activeThread.threadId,
+      nextStatus: activeThread.status,
+    });
     this.broadcastEvent(
       this.createEvent("session.thread.activated", {
         ...safeSnapshotData(this.snapshot),

@@ -52,6 +52,13 @@ delivery hints over canonical D1/Durable Object state; they never contain
 tokens, prompts, secrets, raw provider payloads, full tool output, or trusted
 tenant scope.
 
+Replayable Visibility v0 keeps that live session stream optimized for client
+reconciliation and records durable lifecycle facts separately in
+`control_plane_events`. Thread create, activate, rename, archive, restore,
+delete, and blocked lifecycle attempts should be replayable from the
+Cloudflare event feed for Admin/history reconstruction. Those durable events
+are compact, scoped, redacted facts; they are not full session snapshots.
+
 The browser may keep a display-only session shell for UX: recent thread
 summaries, active thread id, active workspace label, active agent label/profile,
 model id, and last known coordinator revision. That cache must never contain
@@ -109,6 +116,12 @@ Child run rules:
 - Child results should return as structured summaries plus durable outputs, not
   only prose in the parent transcript.
 
+Current child-run inspection v0 applies this contract to control-plane
+`url.inspect` runs without adding autonomous subagents. Direct child runs store
+`relation.parentRunId`, `relation.rootRunId`, `relation.depth`, and
+`relation.durableChild` inside existing JSON data, Admin run snapshots list
+direct children, and explicit nesting beyond depth `1` is blocked.
+
 ## Interrupts
 
 Interrupts pause execution and wait for human or external input. They are the correct primitive for approvals, blocked decisions, missing credentials, and user confirmation.
@@ -140,7 +153,17 @@ part of the first implementation.
 
 ## Crons
 
-Recurring starts should create typed workflow intents. In the current starter, cron creation can use the LangGraph Agent Server API. In the target architecture, schedules may live in a Cloudflare-style stateful control plane and escalate to LangGraph or tool runners only when needed.
+Recurring starts should create typed workflow intents. In the current starter,
+cron creation can use the LangGraph Agent Server API. In the target
+architecture, schedules may live in a Cloudflare-style stateful control plane
+and escalate to LangGraph or tool runners only when needed.
+
+Schedule Dispatch Ergonomics v0 keeps scheduling on the existing
+token-protected `/api/external-signals` ingress. `create_cron` still registers a
+LangGraph cron. `dispatch_schedule` starts or enqueues a run immediately with
+root-owned schedule metadata so local/dev and operator-triggered wakeups can
+exercise the same run path without waiting for production cron. This slice does
+not add a schedule table, trigger UI, or Cloudflare-owned cron dispatcher.
 
 ## External Signals
 
@@ -187,10 +210,27 @@ Create a cron:
 ```json
 {
   "action": "create_cron",
+  "scheduleId": "weekday-check",
   "schedule": "0 9 * * 1-5",
   "timezone": "Europe/Prague",
   "input": {
     "messages": [{ "role": "user", "content": "Run the weekday check." }]
+  }
+}
+```
+
+Dispatch a schedule immediately:
+
+```json
+{
+  "action": "dispatch_schedule",
+  "scheduleId": "weekday-check",
+  "scheduledFor": "2026-06-17T13:00:00.000Z",
+  "input": {
+    "messages": [{ "role": "user", "content": "Run the weekday check." }]
+  },
+  "metadata": {
+    "reason": "local-dev-smoke"
   }
 }
 ```

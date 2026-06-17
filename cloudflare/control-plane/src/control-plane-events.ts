@@ -143,8 +143,15 @@ const listEventsAfterCursor = async (
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const encodeSse = (event: string, data: unknown) =>
-  `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+export const readControlEventReplayAfter = (url: URL, headers?: Headers) => {
+  const after = url.searchParams.get("after")?.trim();
+  if (after) return after;
+  const lastEventId = headers?.get("Last-Event-ID")?.trim();
+  return lastEventId || undefined;
+};
+
+const encodeSse = (event: string, data: unknown, id?: string) =>
+  `${id ? `id: ${id}\n` : ""}event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 
 const encodeHeartbeat = () => `: heartbeat ${new Date().toISOString()}\n\n`;
 
@@ -177,7 +184,7 @@ export const handleLatestControlPlaneEvents = async (
 
 export const handleControlPlaneEvents = async (env: Env, identity: AgentIdentity, url: URL) => {
   const limit = readLimit(url);
-  const after = url.searchParams.get("after")?.trim();
+  const after = readControlEventReplayAfter(url);
   const events = after
     ? await listEventsAfter(env, identity, after, limit)
     : await listLatestEvents(env, identity, limit);
@@ -191,10 +198,11 @@ export const handleControlPlaneEvents = async (env: Env, identity: AgentIdentity
 export const handleControlPlaneEventStream = async (
   env: Env,
   identity: AgentIdentity,
-  url: URL,
+  request: Request,
 ) => {
   const encoder = new TextEncoder();
-  const after = url.searchParams.get("after")?.trim();
+  const url = new URL(request.url);
+  const after = readControlEventReplayAfter(url, request.headers);
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -213,7 +221,7 @@ export const handleControlPlaneEventStream = async (
               cursor = event.cursor;
               controller.enqueue(
                 encoder.encode(
-                  encodeSse("control-plane-event", toControlPlaneEventSnapshot(event)),
+                  encodeSse("control-plane-event", toControlPlaneEventSnapshot(event), event.id),
                 ),
               );
             }

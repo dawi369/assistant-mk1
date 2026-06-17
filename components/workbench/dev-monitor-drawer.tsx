@@ -865,6 +865,14 @@ export function AdminPanel({
                           value={selectedBehaviorTemplate.description}
                         />
                         <StatusRow label="Version" value={selectedBehaviorTemplate.version} />
+                        <StatusRow
+                          label="Authoring"
+                          value={[
+                            selectedBehaviorTemplate.authoring?.kind ?? "built_in_template",
+                            selectedBehaviorTemplate.authoring?.source ??
+                              "cloudflare-control-plane",
+                          ].join(" / ")}
+                        />
                         <pre className="bg-muted/50 max-h-48 overflow-auto rounded-md p-3 text-xs whitespace-pre-wrap">
                           {selectedBehaviorTemplate.prompt}
                         </pre>
@@ -981,6 +989,14 @@ export function AdminPanel({
                                       {approval.executionMode ?? "dry_run"} /{" "}
                                       {formatAge(approval.createdAt)}
                                     </span>
+                                    {approval.humanIntervention ? (
+                                      <span className="text-muted-foreground block text-xs">
+                                        Intervention: {approval.humanIntervention.state ?? "parked"}{" "}
+                                        /{" "}
+                                        {approval.humanIntervention.requiredAction ??
+                                          "approve_or_deny"}
+                                      </span>
+                                    ) : null}
                                     {approval.currentPolicy?.reason ? (
                                       <span
                                         className={
@@ -1072,6 +1088,12 @@ export function AdminPanel({
                                         {approval.decision.denyReason}
                                       </span>
                                     ) : null}
+                                    {approval.humanIntervention ? (
+                                      <span className="text-muted-foreground block text-xs">
+                                        Intervention:{" "}
+                                        {approval.humanIntervention.state ?? "decided"}
+                                      </span>
+                                    ) : null}
                                   </span>
                                   <StatusPill
                                     status={approval.status ?? "decided"}
@@ -1113,6 +1135,20 @@ export function AdminPanel({
                               <span className="text-muted-foreground block text-xs">
                                 policy: {tool.policyReference ?? "none"}
                               </span>
+                              {tool.runner?.sandbox ? (
+                                <span className="text-muted-foreground block text-xs">
+                                  sandbox: {tool.runner.sandbox.lifecycle?.template ?? "unknown"} /{" "}
+                                  {tool.runner.sandbox.network?.egress ?? "egress"} /{" "}
+                                  {tool.runner.sandbox.network?.privateNetwork ?? "private"}
+                                </span>
+                              ) : null}
+                              {tool.connectionAuth ? (
+                                <span className="text-muted-foreground block text-xs">
+                                  connection: {tool.connectionAuth.status ?? "unknown"} /{" "}
+                                  {tool.connectionAuth.principal ?? "none"} /{" "}
+                                  {tool.connectionAuth.approvalOrder ?? "policy"}
+                                </span>
+                              ) : null}
                             </span>
                             <span className="flex shrink-0 flex-col items-end gap-1">
                               <StatusPill
@@ -1134,6 +1170,15 @@ export function AdminPanel({
                             </span>
                           </div>
                           <p className="text-muted-foreground mt-2 text-xs">{tool.reason}</p>
+                          {tool.capability ? (
+                            <p className="text-muted-foreground mt-1 text-xs">
+                              Capability: {tool.capability.decision} /{" "}
+                              {tool.capability.code ?? "unknown"} for{" "}
+                              {summary.capabilityContext?.surface ?? "model_exposure"} (
+                              {summary.capabilityContext?.stage ?? "observe"},{" "}
+                              {summary.capabilityContext?.executionMode ?? "dry_run"})
+                            </p>
+                          ) : null}
                           {tool.adminPolicy?.reason ? (
                             <p className="text-muted-foreground mt-1 text-xs">
                               Admin policy: {tool.adminPolicy.code ?? "unknown"} -{" "}
@@ -1361,6 +1406,38 @@ export function AdminPanel({
                     title={latestDecision?.title ?? "none yet"}
                     detail={latestDecision?.summary}
                   />
+                  {demoSnapshot?.childRuns?.length ? (
+                    <div className="border-border rounded-md border p-3">
+                      <p className="text-muted-foreground text-xs">Child runs</p>
+                      <ol className="mt-2 space-y-2">
+                        {demoSnapshot.childRuns.slice(0, 4).map((childRun) => (
+                          <li key={childRun.id} className="space-y-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="truncate text-sm font-medium">
+                                {childRun.id ?? "child run"}
+                              </span>
+                              <StatusPill
+                                status={childRun.status ?? "unknown"}
+                                tone={childRun.status}
+                              />
+                            </div>
+                            <StatusRow
+                              label="Relation"
+                              value={[
+                                childRun.relation?.kind ?? "child",
+                                childRun.relation?.depth !== undefined
+                                  ? `depth ${childRun.relation.depth}`
+                                  : null,
+                              ]
+                                .filter(Boolean)
+                                .join(" / ")}
+                              compact
+                            />
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  ) : null}
                 </DetailsBlock>
               </MonitorSection>
             </DetailsBlock>
@@ -1472,6 +1549,19 @@ export function AdminPanel({
                   <StatusRow label="Source" value={summary?.activeAgent?.behavior.source} />
                   <StatusRow label="Format" value={summary?.activeAgent?.behavior.format} />
                   <StatusRow label="Template" value={summary?.activeAgent?.behavior.templateId} />
+                  <StatusRow
+                    label="Authoring"
+                    value={
+                      summary?.activeAgent?.behavior.authoring
+                        ? [
+                            summary.activeAgent.behavior.authoring.kind,
+                            summary.activeAgent.behavior.authoring.source,
+                          ]
+                            .filter(Boolean)
+                            .join(" / ")
+                        : undefined
+                    }
+                  />
                   <StatusRow label="Version" value={summary?.activeAgent?.behavior.version} />
                   <CopyId
                     label="Instruction id"

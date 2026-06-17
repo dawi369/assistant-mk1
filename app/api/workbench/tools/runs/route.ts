@@ -11,6 +11,7 @@ export async function POST(request: NextRequest) {
       toolName?: unknown;
       executionMode?: unknown;
       input?: { url?: unknown };
+      parentRunId?: unknown;
     };
     if (body.toolName !== "url.inspect") {
       return NextResponse.json(
@@ -34,6 +35,7 @@ export async function POST(request: NextRequest) {
         input: {
           url: body.input && typeof body.input.url === "string" ? body.input.url : "",
         },
+        parentRunId: typeof body.parentRunId === "string" ? body.parentRunId : undefined,
       }),
       { status: 201 },
     );

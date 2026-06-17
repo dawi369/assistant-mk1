@@ -48,6 +48,27 @@ The provisional runtime contract is `ToolExposureResolver`. It receives
 candidate runtime tool definitions and scoped run context, then returns
 visibility decisions for that run.
 
+Dynamic capability resolution v0 is implemented in the Cloudflare control
+plane for registered tools. `GET /tools` returns a `capabilityContext`,
+`capabilityDecisions`, and each tool's matching `capability` decision for a
+requested context:
+
+- `stage=observe|analyze|propose|execute|review`
+- `executionMode=ask|dry_run|execute`
+- `surface=admin_list|admin_run|admin_resume|model_exposure|model_tool_call`
+- optional `featureFlags` as a comma-separated diagnostic list
+
+The resolver is policy-backed, tenant/workspace/agent scoped, and currently
+tool-only. It reuses existing `tool_permissions` and policy evaluation; it does
+not add model-visible tools, new runners, new schemas, or new execution rights.
+Unsupported query values fall back to safe defaults for inspection.
+
+Capability decisions also include `connectionAuth`. In the current slice both
+registered tools report `not_required`, `principal=none`, no token refresh, and
+`policy_before_connection`. Future connected tools should use the same shape to
+report app/user principals, connection-scoped tool filters, authorization
+required events, and token-refresh brokerage without exposing secrets.
+
 ## Tool Definition
 
 A runtime tool should declare:
@@ -190,6 +211,9 @@ Behavior:
 - Executes through the runner boundary, which can use Cloudflare-inline or the
   signed Fly transport and stamps durable runner metadata on run, tool-call,
   artifact, and event data.
+- Carries `runner.sandbox` lifecycle/network metadata. The current contract is
+  per-invocation, ephemeral filesystem, no workspace-persistent state, metadata
+  artifact promotion only, public web egress, and private network denied.
 
 This still does not add secret custody, mutation-capable execution, or
 model-side approval UI.

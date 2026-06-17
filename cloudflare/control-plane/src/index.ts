@@ -123,7 +123,7 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
   }
 
   if (request.method === "GET" && url.pathname === "/tools") {
-    return handleListTools(env, identity);
+    return handleListTools(request, env, identity);
   }
 
   if (request.method === "POST" && url.pathname === "/tools/runs") {
@@ -252,7 +252,7 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
   }
 
   if (request.method === "GET" && url.pathname === "/events/stream") {
-    return handleControlPlaneEventStream(env, identity, url);
+    return handleControlPlaneEventStream(env, identity, request);
   }
 
   if (request.method === "GET" && url.pathname === "/events") {

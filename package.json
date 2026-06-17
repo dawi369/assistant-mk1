@@ -12,6 +12,7 @@
     "start:langgraph-gateway": "tsx scripts/langgraph-runtime-gateway.ts",
     "start:langgraph-runtime": "concurrently -n gateway,langgraph -c cyan,magenta \"pnpm start:langgraph-gateway\" \"pnpm start:backend\"",
     "test:unit": "vitest run",
+    "eval:real-session-posture": "tsx scripts/eval-real-session-posture.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint && oxfmt --check",
     "format": "oxfmt --check",

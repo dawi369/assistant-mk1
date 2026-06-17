@@ -11,22 +11,12 @@ import { Client } from "@langchain/langgraph-sdk";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { toWorkbenchApiError } from "@/lib/workbench/api-errors";
+import {
+  normalizeExternalSignal,
+  type ExternalSignalPayload,
+} from "@/lib/workbench/schedule-dispatch";
 
 export const runtime = "nodejs";
-
-type SignalAction = "start" | "resume" | "create_cron";
-
-type ExternalSignalPayload = {
-  action: SignalAction;
-  assistantId?: string;
-  threadId?: string;
-  input?: Record<string, unknown> | null;
-  command?: unknown;
-  schedule?: string;
-  timezone?: string;
-  webhook?: string;
-  metadata?: Record<string, unknown>;
-};
 
 const constantTimeEqual = (a: string, b: string) => {
   const bufA = Buffer.from(a);
@@ -81,46 +71,42 @@ export async function POST(req: NextRequest) {
 
   try {
     const client = getClient();
-    const assistantId = getAssistantId(payload);
-    const metadata = {
-      source: "external-signal",
-      ...payload.metadata,
-    };
+    const normalized = normalizeExternalSignal(payload);
+    if (!normalized.ok) {
+      return NextResponse.json({ error: normalized.error }, { status: normalized.status });
+    }
+    const signal = normalized.signal;
+    const assistantId = getAssistantId(signal);
 
-    if (payload.action === "create_cron") {
-      if (!payload.schedule) {
-        return NextResponse.json(
-          { error: "schedule is required for create_cron" },
-          { status: 400 },
-        );
-      }
-
+    if (signal.action === "create_cron") {
       const cron = await client.crons.create(assistantId, {
-        schedule: payload.schedule,
-        timezone: payload.timezone,
-        input: payload.input ?? null,
-        metadata,
-        webhook: payload.webhook,
+        schedule: signal.schedule ?? "",
+        timezone: signal.timezone,
+        input: signal.input,
+        metadata: signal.metadata,
+        webhook: signal.webhook,
       });
 
       return NextResponse.json({ cron });
     }
 
-    const thread = payload.threadId
-      ? await client.threads.get(payload.threadId)
-      : await client.threads.create({ metadata, graphId: assistantId });
+    const thread = signal.threadId
+      ? await client.threads.get(signal.threadId)
+      : await client.threads.create({ metadata: signal.metadata, graphId: assistantId });
 
     const run = await client.runs.create(thread.thread_id, assistantId, {
-      input: payload.action === "start" ? (payload.input ?? null) : null,
-      command: payload.action === "resume" ? (payload.command as never) : undefined,
-      metadata,
-      webhook: payload.webhook,
+      input:
+        signal.action === "start" || signal.action === "dispatch_schedule" ? signal.input : null,
+      command: signal.action === "resume" ? (signal.command as never) : undefined,
+      metadata: signal.metadata,
+      webhook: signal.webhook,
       multitaskStrategy: "enqueue",
     });
 
     return NextResponse.json({
       threadId: thread.thread_id,
       run,
+      dispatch: signal.scheduleDispatch,
     });
   } catch (error) {
     return toWorkbenchApiError(error, "External signal request failed", { defaultStatus: 500 });

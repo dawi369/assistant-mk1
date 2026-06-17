@@ -104,6 +104,7 @@ export type LifecycleEventName =
   | "run.queued"
   | "run.started"
   | "run.interrupted"
+  | "run.child.blocked"
   | "approval.requested"
   | "tool.requested"
   | "tool.started"

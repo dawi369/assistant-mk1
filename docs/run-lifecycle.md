@@ -108,6 +108,15 @@ Rules:
 - On denial or timeout, transition to `cancelled` or `failed` according to
   policy.
 
+Unified HITL v0 wraps current approval requests in a generic
+`humanIntervention` summary. The existing `url.inspect` approval endpoints stay
+stable, but approval list responses, approval action responses, durable
+`approval.updated` events, and live session `approval.updated` events now expose
+the same compact shape: intervention id, kind, state, required action, run id,
+workflow intent id, tool id, resume surface, and redacted reason/policy context.
+This gives future clarification, credential, and confirmation interrupts a
+shared product contract without adding a new schema in this slice.
+
 ## Cancellation
 
 Cancellation should be explicit and auditable.
@@ -145,6 +154,16 @@ Rules:
 
 Default max depth for the first implementation should be `1` unless a workflow
 explicitly needs deeper orchestration.
+
+Current v0 is inspection-first. Cloudflare `url.inspect` runs persist
+`data_json.relation` in existing control-run and tool-call JSON, keep
+`data_json.parentRunId` as a compatibility alias when present, and expose direct
+children from the existing Admin run snapshot. Explicit child creation is
+accepted only when the parent control run resolves inside the same trusted
+tenant/workspace/agent scope. Attempts to create a grandchild are blocked with
+`child_run_depth_exceeded` and emit a compact control-plane event. No new schema,
+autonomous subagent runtime, or durable child execution engine is introduced in
+this slice.
 
 ## Failure Classification
 
