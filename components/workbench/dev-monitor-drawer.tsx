@@ -52,13 +52,19 @@ import { deriveRuntimeState } from "@/lib/workbench/chat-runtime-live-state";
 import { useWorkbenchAgentConnection } from "@/lib/workbench/use-agent-connection";
 import type {
   AgentBehaviorTemplate,
+  ArtifactSummary,
+  CloudflareArtifactHistoryResponse,
   CloudflareAgentBehaviorTemplatesResponse,
   CloudflareAdminSummaryResponse,
+  CloudflareExecutionHistoryResponse,
+  CloudflareExecutionHistoryRunResponse,
   CloudflareToolApprovalsResponse,
   CloudflareOwnedDemoRunResponse,
+  CloudflareOwnedDemoRunSnapshot,
   CloudflareToolApprovalActionResponse,
   CloudflareToolPolicyUpdateResponse,
   CloudflareToolRunResponse,
+  ExecutionHistoryRunSummary,
   ToolApprovalRequestSummary,
 } from "@/lib/workbench/workbench-types";
 
@@ -70,6 +76,8 @@ const behaviorTemplatesPath = "/api/workbench/agent-behavior-templates";
 const toolRunsPath = "/api/workbench/tools/runs";
 const toolPolicyPath = "/api/workbench/tools/policy";
 const toolApprovalsPath = "/api/workbench/tools/approvals";
+const historyRunsPath = "/api/workbench/history/runs";
+const historyArtifactsPath = "/api/workbench/history/artifacts";
 const agentModelOptions = ["deepseek/deepseek-v4-flash", "openai/gpt-4.1-mini"] as const;
 const defaultBehaviorTemplateByProfile = {
   default: "assistant-general",
@@ -96,6 +104,44 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const listValue = (items?: string[]) => (items && items.length > 0 ? items.join(", ") : undefined);
 
+const runHistoryTitle = (run: ExecutionHistoryRunSummary) =>
+  run.displayName ?? run.summary ?? run.id;
+
+const formatBytes = (value?: number) => {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const snapshotDisplayJson = (snapshot: CloudflareOwnedDemoRunSnapshot) => ({
+  scope: snapshot.scope,
+  intent: snapshot.intent
+    ? {
+        id: snapshot.intent.id,
+        type: snapshot.intent.type,
+        stage: snapshot.intent.stage,
+        execution: snapshot.intent.execution,
+      }
+    : null,
+  run: snapshot.run
+    ? {
+        id: snapshot.run.id,
+        status: snapshot.run.status,
+        workflowIntentId: snapshot.run.workflowIntentId,
+        execution: snapshot.run.execution,
+        stage: snapshot.run.stage,
+        relation: snapshot.run.relation,
+        updatedAt: snapshot.run.updatedAt,
+      }
+    : null,
+  toolCalls: snapshot.toolCalls,
+  childRuns: snapshot.childRuns ?? [],
+  artifacts: snapshot.artifacts,
+  decisions: snapshot.decisions,
+  auditEvents: snapshot.auditEvents,
+});
+
 export function AdminPanel({
   open,
   onOpenChange,
@@ -116,8 +162,12 @@ export function AdminPanel({
   const [summary, setSummary] = useState<CloudflareAdminSummaryResponse["summary"] | null>(null);
   const [approvalQueue, setApprovalQueue] = useState<ToolApprovalRequestSummary[]>([]);
   const [behaviorTemplates, setBehaviorTemplates] = useState<AgentBehaviorTemplate[]>([]);
+  const [historyRuns, setHistoryRuns] = useState<ExecutionHistoryRunSummary[]>([]);
+  const [historyArtifacts, setHistoryArtifacts] = useState<ArtifactSummary[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingApprovals, setIsLoadingApprovals] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [isLoadingRunSnapshot, setIsLoadingRunSnapshot] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [isRunningTool, setIsRunningTool] = useState(false);
   const [updatingToolPolicy, setUpdatingToolPolicy] = useState<string | null>(null);
@@ -140,8 +190,13 @@ export function AdminPanel({
     approval: ToolApprovalRequestSummary;
     action: "approve" | "deny";
   } | null>(null);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [selectedRunSnapshot, setSelectedRunSnapshot] =
+    useState<CloudflareOwnedDemoRunSnapshot | null>(null);
   const [denyReason, setDenyReason] = useState("");
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [runSnapshotError, setRunSnapshotError] = useState<string | null>(null);
 
   const demoSnapshot = summary?.demo.latestRun ?? null;
   const chatRuntime = summary?.chatRuntime ?? null;
@@ -165,6 +220,10 @@ export function AdminPanel({
   const latestArtifact = demoSnapshot?.artifacts.at(-1);
   const latestAdminToolCall = summary?.latestToolCalls?.at(0) ?? null;
   const latestAdminArtifact = summary?.latestArtifacts?.at(0) ?? null;
+  const latestHistoryRun = historyRuns.at(0) ?? null;
+  const latestHistoryArtifact = historyArtifacts.at(0) ?? null;
+  const selectedHistoryRun =
+    historyRuns.find((historyRun) => historyRun.id === selectedRunId) ?? null;
   const urlInspectTool = summary?.tools?.find((tool) => tool.name === "url.inspect") ?? null;
   const pendingApprovals = approvalQueue.filter((approval) => approval.status === "requested");
   const decidedApprovals = approvalQueue.filter((approval) => approval.status !== "requested");
@@ -222,6 +281,13 @@ export function AdminPanel({
     () => behaviorTemplates.find((template) => template.id === agentBehaviorTemplateId) ?? null,
     [agentBehaviorTemplateId, behaviorTemplates],
   );
+  const selectedRunState = selectedRunId
+    ? isLoadingRunSnapshot
+      ? "Loading snapshot"
+      : runSnapshotError
+        ? "Snapshot failed"
+        : (selectedRunSnapshot?.run?.status ?? selectedHistoryRun?.status ?? "Selected")
+    : "No run selected";
 
   const loadSummary = async () => {
     setIsLoading(true);
@@ -261,6 +327,56 @@ export function AdminPanel({
     }
   };
 
+  const loadHistory = async () => {
+    setIsLoadingHistory(true);
+    try {
+      const [runsResponse, artifactsResponse] = await Promise.all([
+        fetch(`${historyRunsPath}?limit=20`, { cache: "no-store" }),
+        fetch(`${historyArtifactsPath}?limit=20`, { cache: "no-store" }),
+      ]);
+      const [runsBody, artifactsBody] = await Promise.all([
+        readJsonResponse<CloudflareExecutionHistoryResponse>(
+          runsResponse,
+          "Failed to load execution history",
+        ),
+        readJsonResponse<CloudflareArtifactHistoryResponse>(
+          artifactsResponse,
+          "Failed to load artifact history",
+        ),
+      ]);
+      setHistoryRuns(runsBody.runs ?? []);
+      setHistoryArtifacts(artifactsBody.artifacts ?? []);
+      setHistoryError(null);
+    } catch (loadError) {
+      setHistoryError(loadError instanceof Error ? loadError.message : "Failed to load history");
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
+  const inspectHistoryRun = async (runId: string) => {
+    setSelectedRunId(runId);
+    setIsLoadingRunSnapshot(true);
+    setRunSnapshotError(null);
+    try {
+      const response = await fetch(`${historyRunsPath}/${encodeURIComponent(runId)}`, {
+        cache: "no-store",
+      });
+      const body = await readJsonResponse<CloudflareExecutionHistoryRunResponse>(
+        response,
+        "Failed to load run snapshot",
+      );
+      setSelectedRunSnapshot(body.snapshot ?? null);
+    } catch (loadError) {
+      setSelectedRunSnapshot(null);
+      setRunSnapshotError(
+        loadError instanceof Error ? loadError.message : "Failed to load run snapshot",
+      );
+    } finally {
+      setIsLoadingRunSnapshot(false);
+    }
+  };
+
   const loadBehaviorTemplates = async () => {
     try {
       const response = await fetch(behaviorTemplatesPath, { cache: "no-store" });
@@ -276,15 +392,16 @@ export function AdminPanel({
     }
   };
 
-  useEffect(() => {
-    if (!open) return;
+  const loadAdminData = () => {
     void loadSummary();
     void loadApprovals();
+    void loadHistory();
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    loadAdminData();
     void loadBehaviorTemplates();
-    const loadAdminData = () => {
-      void loadSummary();
-      void loadApprovals();
-    };
     window.addEventListener(workbenchSummaryRefreshEvent, loadAdminData);
     return () => window.removeEventListener(workbenchSummaryRefreshEvent, loadAdminData);
   }, [open]);
@@ -292,8 +409,7 @@ export function AdminPanel({
   useEffect(() => {
     if (!open || (!isDemoActive && !isChatActive)) return;
     const interval = window.setInterval(() => {
-      void loadSummary();
-      void loadApprovals();
+      loadAdminData();
     }, 750);
     return () => window.clearInterval(interval);
   }, [open, isDemoActive, isChatActive]);
@@ -401,7 +517,7 @@ export function AdminPanel({
         action === "approve" ? "Failed to approve tool run" : "Failed to deny tool run",
       );
       setApprovalDialog(null);
-      await Promise.all([loadSummary(), loadApprovals()]);
+      await Promise.all([loadSummary(), loadApprovals(), loadHistory()]);
       requestWorkbenchSummaryRefresh();
     } catch (approvalError) {
       setFetchError(
@@ -544,8 +660,17 @@ export function AdminPanel({
               <p className="text-muted-foreground text-xs">
                 Summary generated {formatTime(summary?.generatedAt)} / {summaryStateLabel}
               </p>
-              <Button size="sm" variant="outline" onClick={loadSummary} disabled={isLoading}>
-                {isLoading ? <Loader2Icon className="animate-spin" /> : <RefreshCwIcon />}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={loadAdminData}
+                disabled={isLoading || isLoadingApprovals || isLoadingHistory}
+              >
+                {isLoading || isLoadingApprovals || isLoadingHistory ? (
+                  <Loader2Icon className="animate-spin" />
+                ) : (
+                  <RefreshCwIcon />
+                )}
                 Refresh
               </Button>
             </div>
@@ -751,6 +876,346 @@ export function AdminPanel({
                   }
                 />
               </div>
+            </MonitorSection>
+
+            <MonitorSection icon={FileTextIcon} title="Execution History">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <StatusRow
+                  label="Latest run"
+                  value={
+                    latestHistoryRun
+                      ? `${latestHistoryRun.status ?? "unknown"} / ${formatAge(
+                          latestHistoryRun.updatedAt ?? latestHistoryRun.createdAt,
+                        )}`
+                      : "No run history"
+                  }
+                  compact
+                  tone={latestHistoryRun ? "ok" : "muted"}
+                />
+                <StatusRow
+                  label="Latest artifact"
+                  value={
+                    latestHistoryArtifact
+                      ? (latestHistoryArtifact.title ?? latestHistoryArtifact.id)
+                      : "No artifacts"
+                  }
+                  compact
+                  tone={latestHistoryArtifact ? "ok" : "muted"}
+                />
+                <StatusRow
+                  label="Loaded runs"
+                  value={isLoadingHistory ? "Loading" : String(historyRuns.length)}
+                  compact
+                />
+                <StatusRow label="Selected run" value={selectedRunState} compact />
+              </div>
+
+              {historyError ? (
+                <div className="border-destructive/30 bg-destructive/10 rounded-md border p-3 text-sm">
+                  <p className="text-destructive font-medium">{historyError}</p>
+                  <p className="text-muted-foreground mt-1 text-xs">
+                    Summary and approval data can still render while history reloads.
+                  </p>
+                </div>
+              ) : null}
+
+              <DetailsBlock title="Recent runs" defaultOpen>
+                {isLoadingHistory && !historyRuns.length ? (
+                  <EmptyPanelText>Loading execution history.</EmptyPanelText>
+                ) : historyRuns.length ? (
+                  <ol className="space-y-2">
+                    {historyRuns.map((historyRun) => (
+                      <li
+                        key={historyRun.id}
+                        className="border-border rounded-md border p-3 text-sm"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <span className="min-w-0">
+                            <span className="block truncate font-medium">
+                              {runHistoryTitle(historyRun)}
+                            </span>
+                            <span className="text-muted-foreground block text-xs">
+                              {historyRun.stage ?? "unknown stage"} /{" "}
+                              {historyRun.engine ?? "unknown engine"} /{" "}
+                              {historyRun.toolCallCount ?? 0} tool calls
+                            </span>
+                            <span className="text-muted-foreground/80 block text-xs">
+                              {formatAge(historyRun.updatedAt ?? historyRun.createdAt)}
+                              {historyRun.completedAt
+                                ? ` / completed ${formatTime(historyRun.completedAt)}`
+                                : ""}
+                              {historyRun.failedAt
+                                ? ` / failed ${formatTime(historyRun.failedAt)}`
+                                : ""}
+                            </span>
+                            {historyRun.artifactIds?.length || historyRun.decisionIds?.length ? (
+                              <span className="text-muted-foreground block text-xs">
+                                {(historyRun.artifactIds?.length ?? 0).toString()} artifacts /{" "}
+                                {(historyRun.decisionIds?.length ?? 0).toString()} decisions
+                              </span>
+                            ) : null}
+                          </span>
+                          <span className="flex shrink-0 flex-col items-end gap-2">
+                            <StatusPill
+                              status={historyRun.status ?? "unknown"}
+                              tone={historyRun.status}
+                            />
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={isLoadingRunSnapshot && selectedRunId === historyRun.id}
+                              onClick={() => void inspectHistoryRun(historyRun.id)}
+                            >
+                              {isLoadingRunSnapshot && selectedRunId === historyRun.id ? (
+                                <Loader2Icon className="animate-spin" />
+                              ) : (
+                                <FileTextIcon />
+                              )}
+                              Inspect
+                            </Button>
+                          </span>
+                        </div>
+                        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          <CopyId label="Run id" value={historyRun.id} />
+                          <CopyId label="Workflow intent id" value={historyRun.workflowIntentId} />
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <EmptyPanelText>
+                    Run a tool, diagnostic, callback, or chat workflow to populate execution
+                    history.
+                  </EmptyPanelText>
+                )}
+              </DetailsBlock>
+
+              <DetailsBlock title="Selected run snapshot" defaultOpen={Boolean(selectedRunId)}>
+                {!selectedRunId ? (
+                  <EmptyPanelText>Select a run to inspect its stored D1 snapshot.</EmptyPanelText>
+                ) : isLoadingRunSnapshot ? (
+                  <EmptyPanelText>Loading run snapshot.</EmptyPanelText>
+                ) : runSnapshotError ? (
+                  <div className="border-destructive/30 bg-destructive/10 rounded-md border p-3 text-sm">
+                    <p className="text-destructive font-medium">{runSnapshotError}</p>
+                    <CopyId label="Run id" value={selectedRunId} />
+                  </div>
+                ) : selectedRunSnapshot ? (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <StatusRow
+                        label="Run status"
+                        value={selectedRunSnapshot.run?.status}
+                        compact
+                        tone={selectedRunSnapshot.run?.status === "completed" ? "ok" : "muted"}
+                      />
+                      <StatusRow
+                        label="Intent"
+                        value={selectedRunSnapshot.intent?.type ?? selectedRunSnapshot.intent?.id}
+                        compact
+                      />
+                      <StatusRow
+                        label="Stage"
+                        value={selectedRunSnapshot.run?.stage ?? selectedRunSnapshot.intent?.stage}
+                        compact
+                      />
+                      <StatusRow
+                        label="Tool calls"
+                        value={String(selectedRunSnapshot.toolCalls.length)}
+                        compact
+                      />
+                      <StatusRow
+                        label="Artifacts"
+                        value={String(selectedRunSnapshot.artifacts.length)}
+                        compact
+                      />
+                      <StatusRow
+                        label="Decisions"
+                        value={String(selectedRunSnapshot.decisions.length)}
+                        compact
+                      />
+                    </div>
+
+                    <DetailsBlock title="Snapshot tool calls">
+                      {selectedRunSnapshot.toolCalls.length ? (
+                        <ol className="space-y-2">
+                          {selectedRunSnapshot.toolCalls.slice(0, 8).map((toolCall) => (
+                            <li
+                              key={toolCall.id}
+                              className="border-border rounded-md border p-3 text-sm"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <span className="min-w-0">
+                                  <span className="block truncate font-medium">
+                                    {toolCall.toolId ?? "unknown tool"}
+                                  </span>
+                                  <span className="text-muted-foreground block text-xs">
+                                    {toolCall.outputSummary ??
+                                      toolCall.inputSummary ??
+                                      "Tool call recorded."}
+                                  </span>
+                                </span>
+                                <StatusPill
+                                  status={toolCall.status ?? "unknown"}
+                                  tone={toolCall.status}
+                                />
+                              </div>
+                              <CopyId label="Tool call id" value={toolCall.id} />
+                            </li>
+                          ))}
+                        </ol>
+                      ) : (
+                        <EmptyPanelText>No tool calls attached to this run.</EmptyPanelText>
+                      )}
+                    </DetailsBlock>
+
+                    <DetailsBlock title="Snapshot artifacts">
+                      {selectedRunSnapshot.artifacts.length ? (
+                        <ol className="space-y-2">
+                          {selectedRunSnapshot.artifacts.slice(0, 8).map((artifact) => (
+                            <li
+                              key={artifact.id}
+                              className="border-border rounded-md border p-3 text-sm"
+                            >
+                              <p className="truncate font-medium">
+                                {artifact.title ?? artifact.id}
+                              </p>
+                              <p className="text-muted-foreground mt-1 break-all text-xs">
+                                {artifact.uri ?? "metadata artifact"}
+                              </p>
+                              <CopyId label="Artifact id" value={artifact.id} />
+                            </li>
+                          ))}
+                        </ol>
+                      ) : (
+                        <EmptyPanelText>No artifacts attached to this run.</EmptyPanelText>
+                      )}
+                    </DetailsBlock>
+
+                    <DetailsBlock title="Snapshot decisions">
+                      {selectedRunSnapshot.decisions.length ? (
+                        <ol className="space-y-2">
+                          {selectedRunSnapshot.decisions.slice(0, 8).map((decision) => (
+                            <li
+                              key={decision.id}
+                              className="border-border rounded-md border p-3 text-sm"
+                            >
+                              <p className="truncate font-medium">
+                                {decision.title ?? decision.id}
+                              </p>
+                              <p className="text-muted-foreground mt-1 text-xs">
+                                {decision.summary ?? decision.thesis ?? "Decision recorded."}
+                              </p>
+                              <CopyId label="Decision id" value={decision.id} />
+                            </li>
+                          ))}
+                        </ol>
+                      ) : (
+                        <EmptyPanelText>No decision records attached to this run.</EmptyPanelText>
+                      )}
+                    </DetailsBlock>
+
+                    {selectedRunSnapshot.childRuns?.length ? (
+                      <DetailsBlock title="Snapshot child runs">
+                        <ol className="space-y-2">
+                          {selectedRunSnapshot.childRuns.slice(0, 8).map((childRun) => (
+                            <li
+                              key={childRun.id}
+                              className="border-border rounded-md border p-3 text-sm"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <span className="min-w-0">
+                                  <span className="block truncate font-medium">
+                                    {childRun.id ?? "child run"}
+                                  </span>
+                                  <span className="text-muted-foreground block text-xs">
+                                    {childRun.stage ?? "stage unknown"} /{" "}
+                                    {childRun.engine ?? "engine unknown"} /{" "}
+                                    {formatAge(childRun.updatedAt ?? childRun.createdAt)}
+                                  </span>
+                                </span>
+                                <StatusPill
+                                  status={childRun.status ?? "unknown"}
+                                  tone={childRun.status}
+                                />
+                              </div>
+                            </li>
+                          ))}
+                        </ol>
+                      </DetailsBlock>
+                    ) : null}
+
+                    <DetailsBlock title="Snapshot audit events">
+                      {selectedRunSnapshot.auditEvents.length ? (
+                        <ol className="space-y-2">
+                          {selectedRunSnapshot.auditEvents.slice(0, 8).map((event) => (
+                            <li
+                              key={event.id}
+                              className="border-border rounded-md border p-3 text-sm"
+                            >
+                              <p className="truncate font-medium">
+                                {event.action ?? "audit.event"}
+                              </p>
+                              <p className="text-muted-foreground mt-1 text-xs">
+                                {event.summary ?? "Audit event recorded."}
+                              </p>
+                              <p className="text-muted-foreground/80 mt-1 text-xs">
+                                {formatTime(event.createdAt)}
+                              </p>
+                            </li>
+                          ))}
+                        </ol>
+                      ) : (
+                        <EmptyPanelText>No audit events attached to this run.</EmptyPanelText>
+                      )}
+                    </DetailsBlock>
+
+                    <DetailsBlock title="Selected snapshot JSON">
+                      <pre className="bg-muted/50 max-h-72 overflow-auto rounded-md p-3 text-xs whitespace-pre-wrap">
+                        {JSON.stringify(snapshotDisplayJson(selectedRunSnapshot), null, 2)}
+                      </pre>
+                    </DetailsBlock>
+                  </div>
+                ) : (
+                  <EmptyPanelText>No snapshot returned for the selected run.</EmptyPanelText>
+                )}
+              </DetailsBlock>
+
+              <DetailsBlock title="Artifact metadata" defaultOpen>
+                {isLoadingHistory && !historyArtifacts.length ? (
+                  <EmptyPanelText>Loading artifact metadata.</EmptyPanelText>
+                ) : historyArtifacts.length ? (
+                  <ol className="space-y-2">
+                    {historyArtifacts.map((artifact) => (
+                      <li key={artifact.id} className="border-border rounded-md border p-3 text-sm">
+                        <div className="flex items-start justify-between gap-3">
+                          <span className="min-w-0">
+                            <span className="block truncate font-medium">
+                              {artifact.title ?? artifact.id}
+                            </span>
+                            <span className="text-muted-foreground block text-xs">
+                              {artifact.kind ?? "artifact"} / {artifact.mimeType ?? "metadata"} /{" "}
+                              {formatBytes(artifact.sizeBytes) ?? "size unknown"}
+                            </span>
+                            <span className="text-muted-foreground/80 block text-xs">
+                              {formatAge(artifact.createdAt)}
+                            </span>
+                          </span>
+                        </div>
+                        <p className="text-muted-foreground mt-2 break-all text-xs">
+                          {artifact.uri ?? "metadata-only artifact"}
+                        </p>
+                        <CopyId label="Artifact id" value={artifact.id} />
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <EmptyPanelText>
+                    Metadata artifacts will appear here after tool runs or callbacks create them.
+                  </EmptyPanelText>
+                )}
+              </DetailsBlock>
             </MonitorSection>
 
             <DetailsBlock title="Manage" defaultOpen={false}>
