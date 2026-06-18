@@ -4,7 +4,10 @@ This folder mixes current runbooks, target contracts, reference-app pressure,
 and historical notes. Check document status before treating any file as current
 implementation truth.
 
-There is no separate goal doc:
+There is no separate goal doc. The north star is a reusable workbench product:
+personal enough for my own agent operations, packaged enough for developers to
+run or buy, and configurable enough for willing businesses to integrate without
+forking the core runtime.
 
 - Product direction: `agent-workbench.md`
 - Implementation sequencing: `implementation-roadmap.md`

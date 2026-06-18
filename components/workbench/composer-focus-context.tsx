@@ -11,15 +11,27 @@ const ComposerFocusContext = createContext<ComposerFocusContextValue | null>(nul
 
 export function WorkbenchComposerFocusProvider({ children }: { children: ReactNode }) {
   const inputRef = useRef<HTMLElement | null>(null);
+  const focusRequestRef = useRef(0);
 
   const registerComposerInput = useCallback((element: HTMLElement | null) => {
     inputRef.current = element;
   }, []);
 
   const focusComposer = useCallback(() => {
-    window.requestAnimationFrame(() => {
-      inputRef.current?.focus({ preventScroll: true });
-    });
+    const requestId = ++focusRequestRef.current;
+    const startedAt = performance.now();
+    const tryFocus = () => {
+      if (requestId !== focusRequestRef.current) return;
+      const input = inputRef.current;
+      if (input && document.contains(input)) {
+        input.focus({ preventScroll: true });
+        return;
+      }
+      if (performance.now() - startedAt < 1500) {
+        window.requestAnimationFrame(tryFocus);
+      }
+    };
+    window.requestAnimationFrame(tryFocus);
   }, []);
 
   const value = useMemo(

@@ -177,10 +177,10 @@ Never expose secrets in:
 Adapters should redact before writing artifacts and again before returning data
 to the model or UI.
 
-## Current Demo Tool
+## Diagnostic Compatibility Tool
 
-The current demo tool should stay harmless and deterministic until production
-policy, auth, and secret custody are ready. Required shape:
+`demo.inspect` remains as harmless compatibility coverage for the original
+Cloudflare-owned run slice. It should stay deterministic and non-productized:
 
 - Native TypeScript inspection tool.
 - Supports `ask` and `dry_run`.
@@ -192,9 +192,9 @@ Do not start with a mutation-capable external integration.
 
 ## Current Read-Only URL Tool
 
-`url.inspect` is the first non-demo adapter. It is read-only, dry-run only, and
-can be exposed to the model only by explicit policy opt-in for the current
-user/workspace/agent permission row.
+`url.inspect` is the current public-web read-only adapter. It is read-only,
+dry-run only, and can be exposed to the model only by explicit policy opt-in
+for the current user/workspace/agent permission row.
 
 Behavior:
 
@@ -217,3 +217,27 @@ Behavior:
 
 This still does not add secret custody, mutation-capable execution, or
 model-side approval UI.
+
+## Current Read-Only Repo Tool
+
+`repo.snapshot` is the first serious CLI/OSS-style adapter. It is read-only,
+dry-run only, and designed to prove the runner boundary without handing the
+model a shell.
+
+Behavior:
+
+- Accepts only bounded options, not arbitrary commands or filesystem paths.
+- Runs a fixed repo-inspection command set through the signed runner boundary.
+- Uses a sandbox contract with no network egress, ephemeral filesystem,
+  timeout, stdout/stderr byte limits, and redaction.
+- Does not depend on `.git` being available in the deployed image.
+- Returns structured repo summary metadata: package manager, scripts, selected
+  repo files, docs/config signals, command metrics, and redacted error details.
+- Promotes only metadata artifacts, currently
+  `d1://control-plane/{runId}/repo-snapshot-report.json`.
+- Is Admin-visible by default and model-hidden unless explicit policy enables
+  model exposure for the current user/workspace/agent scope.
+
+This adapter is the template for future read-only CLI/OSS tools: fixed inputs,
+fixed execution contract, structured output, policy before exposure, and
+Cloudflare-owned run/artifact/audit/trace records.

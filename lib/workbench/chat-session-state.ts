@@ -23,6 +23,12 @@ export type SessionConnectionSnapshot = {
 
 const nowIso = () => new Date().toISOString();
 
+export const formatCurrentThreadTitle = (date: Date = new Date()) =>
+  new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
@@ -216,17 +222,19 @@ export const createPendingThreadOptimistically = (
   session: ChatSessionResponse | null,
   createId: () => string = () => crypto.randomUUID(),
   now: () => string = nowIso,
+  title?: string,
 ): ChatSessionResponse | null => {
   if (!session?.workspace || !session.activeAgent) return session;
+  const timestamp = now();
   const pendingThread: ChatThreadSummary = {
     threadId: `pending-thread-${createId()}`,
     sessionId: session.activeThread?.sessionId ?? "pending-session",
     agentId: session.activeAgent.id,
     agent: session.activeAgent,
     status: "pending",
-    title: "New chat",
-    createdAt: now(),
-    updatedAt: now(),
+    title: title ?? formatCurrentThreadTitle(new Date(timestamp)),
+    createdAt: timestamp,
+    updatedAt: timestamp,
     isActive: true,
     messageCount: 0,
   };

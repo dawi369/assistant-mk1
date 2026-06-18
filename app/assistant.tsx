@@ -24,6 +24,7 @@ import { ArrowUpIcon, Loader2Icon, PaperclipIcon, RefreshCwIcon } from "lucide-r
 
 import { Button } from "@/components/ui/button";
 import { Thread } from "@/components/assistant-ui/thread";
+import { useWorkbenchComposerFocus } from "@/components/workbench/composer-focus-context";
 import {
   type WorkbenchAgentConnection,
   useWorkbenchAgentConnection,
@@ -163,6 +164,7 @@ function PreRuntimeDraftSurface({
   onRetry: () => Promise<void>;
   session: ReturnType<typeof useWorkbenchAgentConnection>["session"];
 }) {
+  const { registerComposerInput } = useWorkbenchComposerFocus();
   const activeThreadLabel = session?.activeThread?.title || session?.activeThread?.threadId;
   const hasCachedShell = session?.isStale === true;
   const statusLabel = error ? "Connection failed" : "Connecting to Cloudflare Agent";
@@ -235,6 +237,7 @@ function PreRuntimeDraftSurface({
               className="bg-background flex w-full flex-col gap-2 rounded-(--composer-radius) border p-(--composer-padding) shadow-xs transition-shadow"
             >
               <textarea
+                ref={registerComposerInput}
                 value={draft}
                 onChange={(event) => onDraftChange(event.target.value)}
                 placeholder="Draft a message..."

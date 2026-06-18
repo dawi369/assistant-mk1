@@ -18,9 +18,14 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
-    return NextResponse.json(await createChatSessionThread());
+    const body = (await request.json().catch(() => ({}))) as { title?: unknown };
+    return NextResponse.json(
+      await createChatSessionThread({
+        title: typeof body.title === "string" ? body.title : undefined,
+      }),
+    );
   } catch (error) {
     return toWorkbenchApiError(error, "Cloudflare chat session thread creation failed");
   }

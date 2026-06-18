@@ -1,9 +1,17 @@
 # Agent Workbench
 
-The workbench is the reusable frontend layer this repo is meant to become.
-Chat remains the first interface, but the product should support long-running
-agent work, tools, external triggers, user knowledge, managed state, audit
-trails, and multi-user isolation.
+The workbench is the reusable product layer this repo is meant to become. Chat
+remains the first interface, but the product should support long-running agent
+work, tools, external triggers, user knowledge, managed state, audit trails,
+and multi-user isolation.
+
+The target audience is broader than internal use:
+
+- personal/operator use for my own agent workflows
+- developer use, where another dev can run, configure, extend, and eventually
+  buy the workbench as a serious OSS/commercial tool
+- business integration use, where a willing company gets scoped agents inside
+  its workflows, permissions, data, approvals, and audit boundaries
 
 Document status: the shipped surface is assistant-ui chat plus a
 command-accessed Admin panel. The broader surfaces below are direction, not a
@@ -17,9 +25,10 @@ workbench composition can still show app/domain context, environment, docs,
 repo assumptions, or app state.
 
 Reference apps such as Polymancer, deployment agents, and the Personal Job
-Agent are benchmark pressure tests. They should validate autonomy, secrets,
-ledgers, browser automation, external signals, and policy without baking a
-single domain into the base workbench.
+Agent are benchmark pressure tests. Real customer integrations should follow
+the same rule: validate autonomy, secrets, ledgers, browser automation,
+external signals, and policy without baking a single domain into the base
+workbench.
 
 ## Core Surfaces
 
@@ -53,28 +62,30 @@ single domain into the base workbench.
   waterfall, chat readiness, active workspace, active agent/profile, latest
   meaningful event, and important error.
 - Admin has secondary workspace/agent controls, behavior template import and
-  preview, tool registry visibility, `url.inspect`, approval queue, and
-  policy/model-exposure explanations.
+  preview, tool registry visibility, `url.inspect`, `repo.snapshot`, approval
+  queue, and policy/model-exposure explanations.
 - Cloudflare exposes backend execution and artifact history metadata through
-  scoped workbench APIs, but there is no dedicated customer-facing history UI
-  or blob artifact storage yet.
-- The diagnostic `demo.inspect` path still exists as compatibility coverage for
-  the original Cloudflare-owned run slice.
+  scoped workbench APIs. Admin can inspect recent runs and metadata-only
+  artifacts; there is no blob artifact storage or polished customer-facing
+  history product yet.
+- The diagnostic `demo.inspect` path exists only as compatibility coverage for
+  the original Cloudflare-owned run slice. It should not shape the product.
 
 ## Near-Term Milestones
 
-1. Use runtime traces and live-session events to stabilize chat, thread
-   switching, and Admin-triggered tool request paths.
-2. Finish recent chat history polish with Cloudflare-owned authorization and
-   assistant-ui thread-list primitives where they fit.
+1. Make the connected workbench feel local-first: cached shell first, immediate
+   draft input, fast thread switching, and background Cloudflare reconciliation.
+2. Turn Admin-only execution and artifact history into a customer-facing
+   workbench surface when the data model is stable enough.
 3. Expand agent behavior from template import/preview into editing, version
    history, approvals, and tool-specific configuration.
 4. Harden model-side tool rendering and approval explanations before broader
    model-visible tool use.
-5. Build the customer-facing artifact list and execution-history UI on top of
-   the Cloudflare history APIs.
-6. Add swappable domain context configuration for downstream apps.
-7. Add a first CLI/OSS-backed read-only tool on the runner boundary.
+5. Add swappable domain context configuration for downstream apps and customer
+   integrations without introducing a committed `Project` entity too early.
+6. Broaden read-only tool adapters beyond `url.inspect` and `repo.snapshot`
+   while keeping mutation-capable tools behind the production gates.
+7. Move Fly/LangGraph producers onto the generic scoped callback path.
 8. Add generic managed-state, audit, and decision-record surfaces.
 
 ## Component Rules

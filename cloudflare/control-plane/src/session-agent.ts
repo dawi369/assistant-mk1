@@ -56,6 +56,7 @@ type CoordinatorRequest = {
   threadId?: string;
   refresh?: "threads";
   status?: ThreadListStatus;
+  title?: string;
   update?: {
     title?: string;
     status?: ThreadMutationStatus;
@@ -138,6 +139,19 @@ const firstUserMessageTitle = (thread: ChatThreadRow) => {
   const compact = text.replace(/\s+/g, " ").trim();
   if (!compact) return "New chat";
   return compact.length > 56 ? `${compact.slice(0, 53)}...` : compact;
+};
+
+const formatThreadTimeTitle = (date: Date = new Date()) =>
+  new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+
+const titleFromInput = (title: string | undefined) => {
+  if (title === undefined) return undefined;
+  const trimmed = title.replace(/\s+/g, " ").trim();
+  if (!trimmed) return null;
+  return trimmed.length > 120 ? `${trimmed.slice(0, 117)}...` : trimmed;
 };
 
 const messageCount = (thread: ChatThreadRow) => {
@@ -281,13 +295,19 @@ const listWorkspaceThreads = async (
   );
 };
 
-const createThreadContext = async (env: Env, identity: AgentIdentity, sessionId: string) => {
+const createThreadContext = async (
+  env: Env,
+  identity: AgentIdentity,
+  sessionId: string,
+  title?: string,
+) => {
   const activeAgent = await selectAgent(env, identity.agentId, identity.scope.workspaceId);
   if (!activeAgent || activeAgent.status !== "active") {
     throw new Error("Agent is not active");
   }
 
   const timestamp = new Date().toISOString();
+  const threadTitle = titleFromInput(title) ?? formatThreadTimeTitle(new Date(timestamp));
   const threadId = createId("cf-thread");
   const instanceName = await deriveThreadAgentInstanceName({
     userId: identity.scope.userId,
@@ -298,6 +318,7 @@ const createThreadContext = async (env: Env, identity: AgentIdentity, sessionId:
   const upstream = {
     source: "cloudflare-agent-chat",
     runtime: "cloudflare-agent-chat",
+    title: threadTitle,
     threadId,
     instanceName,
     agent: toAgentRuntimeMetadata(env, activeAgent, identity.agentId),
@@ -559,12 +580,7 @@ const findFallbackActiveThread = async (
     .bind(identity.scope.userId, identity.scope.workspaceId, excludeThreadId ?? "")
     .first<ChatThreadRow>();
 
-const titleFromUpdate = (title: string | undefined) => {
-  if (title === undefined) return undefined;
-  const trimmed = title.replace(/\s+/g, " ").trim();
-  if (!trimmed) return null;
-  return trimmed.length > 120 ? `${trimmed.slice(0, 117)}...` : trimmed;
-};
+const titleFromUpdate = titleFromInput;
 
 const appendThreadLifecycleEvent = (
   env: Env,
@@ -663,7 +679,7 @@ export class WorkbenchSessionAgent {
       this.snapshot?.context.sessionId ??
       (await getLatestChatSession(this.env, input.identity.scope))?.session_id ??
       (await createChatSession(this.env, input.identity, { source: "cloudflare-agent-chat" }));
-    const created = await createThreadContext(this.env, input.identity, sessionId);
+    const created = await createThreadContext(this.env, input.identity, sessionId, input.title);
     const activeIdentity = { ...input.identity, agentId: created.activeAgent.id };
     const activeThread = toActiveThreadSummary(
       this.env,

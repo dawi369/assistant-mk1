@@ -28,29 +28,43 @@ scoped.
 - Fly/LangGraph remain available for graph-shaped workflows, the runtime
   gateway, and signed heavy tool execution. They are not the default path for a
   plain chat message.
-- The diagnostic `demo.inspect` path remains as compatibility coverage for the
-  original Cloudflare-owned run slice. The first real read-only adapter is
-  `url.inspect`, with Cloudflare-owned tool policy, approvals, runner metadata,
-  artifacts, audit events, and runtime traces.
+- The diagnostic `demo.inspect` path remains compatibility coverage for the
+  original Cloudflare-owned run slice. It is not a product pattern.
+- Read-only tools now include `url.inspect` and `repo.snapshot`, with
+  Cloudflare-owned tool policy, runner metadata, artifacts, audit events,
+  runtime traces, and model exposure controls.
+- Vercel external signals now enter Cloudflare first. Cloudflare creates typed
+  workflow intent, run, audit, and control-plane event records before
+  delegating to LangGraph where needed.
+- Generic signed workflow callbacks are implemented at
+  `POST /workbench/run-callbacks` for delegated work to report compact
+  lifecycle/artifact metadata back into Cloudflare-owned D1 state.
+- Admin can read recent execution history, artifact metadata, and selected run
+  snapshots through Cloudflare-owned history APIs.
 - The current dev schema is rebuildable. Keep the active schema in
   `cloudflare/control-plane/schema.sql` until the project explicitly introduces
   migrations and remote data retention.
 
 ## Active Next Targets
 
-1. Stabilize normal chat and Admin runtime visibility on top of the trace graph,
-   live-session events, and recent-thread switching.
+1. Make the chat shell feel local-first: cached workspace/thread chrome,
+   immediate draft input, fast thread switching, and background reconciliation
+   with Cloudflare-owned truth.
 2. Keep model-visible tools narrow and policy-gated; harden model-side tool
    rendering and approval explanations before broader model tool use.
-3. Add the first read-only CLI/OSS-backed tool on the runner boundary, with
-   timeout, logs, structured output, artifact metadata, and no secret custody.
+3. Expand read-only adapters beyond `url.inspect` and `repo.snapshot` only
+   where they prove the common runner, policy, artifact, and audit model.
 4. Expand agent behavior from template import/preview into editing, version
    history, approvals, and tool-specific configuration.
-5. Add artifact list and execution history surfaces beyond diagnostic snapshots.
-6. Add swappable domain context configuration for downstream apps without
-   introducing a committed `Project` entity.
-7. Broaden Cloudflare-owned workflow progress by having Fly/LangGraph publish
-   scoped callbacks into D1 and the `WorkbenchSessionAgent`.
+5. Promote execution history and artifact metadata from Admin-only visibility
+   into a product-grade workbench surface.
+6. Add swappable domain context configuration for downstream apps, developer
+   installs, and business integrations without introducing a committed
+   `Project` entity.
+7. Move more Fly/LangGraph producers onto scoped callbacks and session-event
+   fanout instead of one-off status paths.
+8. Define the developer/customer packaging story: setup, capability toggles,
+   sample integrations, safe defaults, and upgrade boundaries.
 
 ## Production Gates
 
@@ -95,3 +109,13 @@ tool and workbench work:
   runtime summaries, live events, and traces.
 - Admin visibility, tool registry exposure, `url.inspect`, durable tool policy,
   approval lifecycle, and runner metadata.
+- `repo.snapshot` as the first serious read-only CLI/OSS adapter behind the
+  shared policy/run/artifact/audit/trace model.
+- Cloudflare-first external-signal intent mirroring before LangGraph
+  delegation.
+- Generic signed workflow callback ingestion with demo compatibility migrated
+  onto the shared callback path.
+- Admin execution history, artifact metadata history, and selected-run
+  snapshots.
+- Runtime visibility trimming, Admin summary projection tiers, and a
+  responsive pre-runtime draft shell.

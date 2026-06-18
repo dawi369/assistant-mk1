@@ -318,8 +318,11 @@ export const streamChatSessionEvents = async () => {
   return response;
 };
 
-export const createChatSessionThread = () =>
-  requestControlPlane<ChatSessionResponse>("/chat/session/threads", { method: "POST" });
+export const createChatSessionThread = (input?: { title?: string }) =>
+  requestControlPlane<ChatSessionResponse>("/chat/session/threads", {
+    method: "POST",
+    body: input?.title ? JSON.stringify({ title: input.title }) : undefined,
+  });
 
 export const getChatSessionThreads = (input?: {
   status?: Extract<ChatThreadStatus, "active" | "archived">;

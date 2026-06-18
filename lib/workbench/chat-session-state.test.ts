@@ -297,9 +297,11 @@ describe("chat-session-state", () => {
       session(),
       () => "fixed-id",
       () => "2026-06-13T00:00:00.000Z",
+      "12:00 AM",
     );
 
     expect(withPending?.activeThread?.threadId).toBe("pending-thread-fixed-id");
+    expect(withPending?.activeThread?.title).toBe("12:00 AM");
 
     const cleaned = removePendingThreads(withPending);
 

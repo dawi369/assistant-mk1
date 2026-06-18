@@ -20,6 +20,7 @@ const coordinatorResponse = async (
     threadId?: string;
     refresh?: "threads";
     status?: ThreadListStatus;
+    title?: string;
     update?: {
       title?: string;
       status?: ThreadMutationStatus;
@@ -43,6 +44,7 @@ const coordinatorResponse = async (
       threadId: input.threadId,
       refresh: input.refresh,
       status: input.status,
+      title: input.title,
       update: input.update,
       agentHost: agentHostFromRequest(request),
     }),
@@ -109,7 +111,13 @@ export const handleCreateChatSessionThread = async (
   request: Request,
   env: Env,
   identity: AgentIdentity,
-) => coordinatorResponse(request, env, identity, { action: "create" });
+) => {
+  const body = (await request.json().catch(() => ({}))) as { title?: unknown };
+  return coordinatorResponse(request, env, identity, {
+    action: "create",
+    title: typeof body.title === "string" ? body.title : undefined,
+  });
+};
 
 export const handleActivateChatSessionThread = async (
   request: Request,

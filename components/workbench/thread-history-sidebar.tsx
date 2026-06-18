@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { useWorkbenchComposerFocus } from "@/components/workbench/composer-focus-context";
 import { cn } from "@/lib/utils";
 import { useWorkbenchAgentConnection } from "@/lib/workbench/use-agent-connection";
 import type { ChatThreadSummary } from "@/lib/workbench/workbench-types";
@@ -50,9 +51,12 @@ export function ThreadHistorySidebar({
   } = useWorkbenchAgentConnection();
   const [view, setView] = useState<"active" | "archived">("active");
   const [archiveError, setArchiveError] = useState<string | null>(null);
+  const { focusComposer } = useWorkbenchComposerFocus();
   const creatingThread = pending?.type === "create";
+  const isNavigatingThread = pending?.type === "activate" || pending?.type === "create";
   const isCached = session?.isStale === true;
   const actionsDisabled = disableThreadActions || !connection || isCached;
+  const threadItemsDisabled = actionsDisabled || isNavigatingThread;
   const visibleThreads = view === "archived" ? archivedThreads : threads;
   const loadingArchived = view === "archived" && isLoadingArchivedThreads;
   const loadingInitialThreads = isInitialLoading && visibleThreads.length === 0;
@@ -81,7 +85,6 @@ export function ThreadHistorySidebar({
     if (pending?.type === "rename") return "Renaming chat...";
     if (pending?.type === "archive") return "Archiving chat...";
     if (pending?.type === "restore") return "Restoring chat...";
-    if (pending?.type === "delete") return "Deleting chat...";
     if (isTransitioning) return "Switching thread...";
     return null;
   }, [isCached, isTransitioning, pending?.type]);
@@ -105,6 +108,24 @@ export function ThreadHistorySidebar({
     } catch (nextError) {
       setArchiveError(nextError instanceof Error ? nextError.message : fallback);
     }
+  };
+
+  const handleCreateThread = async () => {
+    if (disableNewChat || creatingThread || actionsDisabled) return;
+    focusComposer();
+    await runThreadAction(async () => {
+      await createThread();
+      focusComposer();
+    }, "Failed to start chat");
+  };
+
+  const handleActivateThread = async (threadId: string) => {
+    if (threadItemsDisabled) return;
+    focusComposer();
+    await runThreadAction(async () => {
+      await activateThread(threadId);
+      focusComposer();
+    }, "Failed to switch chat");
   };
 
   const handleRename = async (thread: ChatThreadSummary) => {
@@ -162,7 +183,7 @@ export function ThreadHistorySidebar({
             disabled={disableNewChat || creatingThread || actionsDisabled}
             aria-label="New chat"
             title={actionsDisabled ? "Connect to Cloudflare before starting a chat" : "New chat"}
-            onClick={() => void createThread()}
+            onClick={() => void handleCreateThread()}
           >
             {creatingThread ? (
               <Loader2Icon className="size-4 animate-spin" />
@@ -217,9 +238,9 @@ export function ThreadHistorySidebar({
                   key={thread.threadId}
                   thread={thread}
                   view={view}
-                  disabled={actionsDisabled}
+                  disabled={threadItemsDisabled}
                   pending={pending}
-                  onActivate={activateThread}
+                  onActivate={handleActivateThread}
                   onRename={handleRename}
                   onArchive={handleArchive}
                   onRestore={handleRestore}
@@ -265,7 +286,8 @@ function ThreadHistoryItem({
       pendingType === "restore" ||
       pendingType === "delete");
   const hasRunningRun = thread.latestRunStatus === "running";
-  const isDisabled = disabled || pendingActivation || pendingMutation;
+  const actionButtonsDisabled = disabled || pendingActivation || pendingMutation;
+  const activationDisabled = actionButtonsDisabled || thread.isActive;
   const canActivate = view === "active";
 
   return (
@@ -277,12 +299,15 @@ function ThreadHistoryItem({
     >
       <button
         type="button"
-        disabled={isDisabled || !canActivate}
+        disabled={activationDisabled || !canActivate}
         className={cn(
           "flex min-w-0 flex-1 items-center gap-2 rounded px-1.5 py-1 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-70",
           pendingActivation && "disabled:cursor-wait",
         )}
-        onClick={() => void onActivate(thread.threadId)}
+        onClick={() => {
+          if (thread.isActive) return;
+          void onActivate(thread.threadId);
+        }}
       >
         {pendingActivation || pendingMutation ? (
           <Loader2Icon className="text-muted-foreground size-3.5 shrink-0 animate-spin" />
@@ -308,7 +333,7 @@ function ThreadHistoryItem({
         variant="ghost"
         size="icon-sm"
         className="size-7 shrink-0"
-        disabled={isDisabled}
+        disabled={actionButtonsDisabled}
         title="Rename"
         aria-label="Rename chat"
         onClick={() => void onRename(thread)}
@@ -321,7 +346,7 @@ function ThreadHistoryItem({
           variant="ghost"
           size="icon-sm"
           className="size-7 shrink-0"
-          disabled={isDisabled}
+          disabled={actionButtonsDisabled}
           title="Restore"
           aria-label="Restore chat"
           onClick={() => void onRestore(thread)}
@@ -334,7 +359,7 @@ function ThreadHistoryItem({
           variant="ghost"
           size="icon-sm"
           className="size-7 shrink-0"
-          disabled={isDisabled || hasRunningRun}
+          disabled={actionButtonsDisabled || hasRunningRun}
           title={hasRunningRun ? "Wait for the running response to finish" : "Archive"}
           aria-label="Archive chat"
           onClick={() => void onArchive(thread)}
@@ -347,7 +372,7 @@ function ThreadHistoryItem({
         variant="ghost"
         size="icon-sm"
         className="text-destructive hover:text-destructive size-7 shrink-0"
-        disabled={isDisabled || hasRunningRun}
+        disabled={actionButtonsDisabled || hasRunningRun}
         title={hasRunningRun ? "Wait for the running response to finish" : "Delete"}
         aria-label="Delete chat"
         onClick={() => void onDelete(thread)}

@@ -52,7 +52,9 @@ Current implemented layout:
 - Top-right auth controls.
 - `/new` composer command for creating a fresh Cloudflare-owned thread.
 - `/admin` composer command for the flow-first Cloudflare-owned Admin panel.
-- Admin diagnostic action for `demo.inspect`.
+- Admin tool actions for read-only adapters, currently `url.inspect` and
+  `repo.snapshot`.
+- Admin diagnostic compatibility action for `demo.inspect`.
 - Cache-backed recent-chat sidebar for display-only workspace history. Cached
   rows can paint immediately, then reconcile with Cloudflare.
 
@@ -67,10 +69,11 @@ Target layout:
 The first screen should be the usable workbench, not a landing page.
 
 Thread transitions should not blank the whole app after the first successful
-Cloudflare Agent connection. `/new` may insert a pending local "New chat" row,
-and selecting an old thread may highlight the cached row immediately, but
-Cloudflare must still confirm the active thread/agent and mint the signed Agent
-token before the runtime actually switches.
+Cloudflare Agent connection. `/new` or the sidebar may insert a pending local
+row named with the current time, and selecting an old thread may highlight the
+cached row immediately, but Cloudflare must still confirm the active
+thread/agent and mint the signed Agent token before the runtime actually
+switches.
 
 The workbench shell should paint before the Cloudflare Agent token is ready.
 Cached workspace/thread chrome can render immediately, the right-side runtime
@@ -294,6 +297,10 @@ Implemented:
 - `url.inspect` can be explicitly exposed to the model only through
   owner/admin policy controls, and the UI explains disabled,
   approval-required, and kill-switch blocks inline.
+- `repo.snapshot` is available as a read-only runner-backed adapter with
+  bounded options and metadata-only artifacts.
+- Admin includes read-only execution history, artifact metadata history, and a
+  selected-run snapshot drilldown.
 - `demo.inspect` remains a dev diagnostic action, not a product-level workflow.
 - The empty chat state stays default assistant-ui but includes practical
   starter prompts for readiness, project planning, agent behavior, and failure
@@ -303,11 +310,12 @@ Next UI targets:
 
 - Customer-facing run/status strip only when a real workflow produces state
   richer than the compact chat hint.
-- Artifact/history surfaces beyond the diagnostic run snapshot.
+- Product-grade artifact/history surfaces beyond the Admin drawer.
 - Chat-side approval display through assistant-ui tool rendering when a
   model-side workflow needs approve/deny/resume.
 - Broader policy visibility for durable limits, cooldowns, richer approvals,
-  kill switches, and model-visible exposure decisions beyond `url.inspect`.
+  kill switches, and model-visible exposure decisions beyond the current
+  read-only adapters.
 
 Avoid building every panel before one vertical slice produces real data.
 

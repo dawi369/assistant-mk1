@@ -156,16 +156,23 @@ The current tool slice is read-only and Admin-triggered. Cloudflare exposes
 `GET /tools`, `POST /tools/runs`, `POST /tools/policy`, and scoped approval
 routes; Vercel facades live under `/api/workbench/tools`.
 
-`url.inspect` is the first non-demo adapter. It runs in `dry_run` mode, rejects
-local/private/metadata targets, performs bounded public HTTP inspection, and
-stores Cloudflare-owned workflow/run/tool-call/artifact/audit/event state. It
-can become model-visible only by explicit owner/admin policy opt-in for the
-current user/workspace/agent permission row, and exposure stays blocked when
-approval is required or the tool is disabled.
+`url.inspect` is the first public-web read-only adapter. It runs in `dry_run`
+mode, rejects local/private/metadata targets, performs bounded public HTTP
+inspection, and stores Cloudflare-owned workflow/run/tool-call/artifact/audit/
+event state. It can become model-visible only by explicit owner/admin policy
+opt-in for the current user/workspace/agent permission row, and exposure stays
+blocked when approval is required or the tool is disabled.
 
-`demo.inspect` remains registered as diagnostic compatibility for the original
-Cloudflare-owned run slice. It is not editable through Admin and should not be
-treated as the model for future production tools.
+`repo.snapshot` is the first serious CLI/OSS-style read-only adapter. It is
+dry-run only, Admin-visible by default, model-hidden unless explicitly enabled
+by policy, and does not accept arbitrary shell commands or filesystem paths. It
+runs through the signed runner boundary with a fixed sandbox contract:
+ephemeral filesystem, no network egress, timeout, stdout/stderr limits,
+redaction, and metadata-only artifact promotion.
+
+`demo.inspect` remains registered only as diagnostic compatibility for the
+original Cloudflare-owned run slice. It is not editable through Admin and
+should not be treated as the model for future production tools.
 
 Generic policy evaluates execution modes, approval state, model exposure, kill
 switches, allowlists, denylists, cooldowns, hourly limits, max runtime, and max

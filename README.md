@@ -2,6 +2,14 @@
 
 Assistant-mk1 is a production-oriented agent workbench built from the
 [assistant-ui](https://github.com/assistant-ui/assistant-ui) LangGraph starter.
+The repo is not meant to stay as a private internal console. The north star is
+a reusable workbench that can serve three overlapping modes:
+
+- a personal/operator workbench for my own agent workflows
+- a developer-facing product that other devs can run, adapt, and buy
+- an integration platform for businesses that want scoped agents inside their
+  own tools, policies, and data boundaries
+
 The default screen is still the assistant-ui chat surface, but the runtime is
 being shaped around a stricter hosted boundary:
 

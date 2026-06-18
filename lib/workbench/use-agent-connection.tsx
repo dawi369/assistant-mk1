@@ -15,6 +15,7 @@ import { requestWorkbenchSummaryRefresh } from "@/lib/workbench/admin-summary-ev
 import {
   activateThreadOptimistically,
   createPendingThreadOptimistically,
+  formatCurrentThreadTitle,
   mergeSession,
   removePendingThreads,
   sanitizeAgent,
@@ -73,6 +74,7 @@ const readSession = async (
     action?: SessionAction;
     threadId?: string;
     refresh?: "threads";
+    title?: string;
     update?: ThreadUpdateInput;
   } = {},
 ): Promise<ChatSessionResponse> => {
@@ -81,10 +83,15 @@ const readSession = async (
     input.refresh && input.action !== "create" && input.action !== "activate"
       ? `${basePath}?refresh=${encodeURIComponent(input.refresh)}`
       : basePath;
+  const requestBody = input.update
+    ? input.update
+    : input.action === "create" && input.title
+      ? { title: input.title }
+      : undefined;
   const response = await fetch(path, {
     method: sessionRequestMethod(input),
     cache: "no-store",
-    body: input.update ? JSON.stringify(input.update) : undefined,
+    body: requestBody ? JSON.stringify(requestBody) : undefined,
   });
   const body = (await response.json().catch(() => ({}))) as ChatSessionResponse & {
     error?: string;
@@ -145,6 +152,7 @@ type LoadSessionInput = {
   action?: SessionAction;
   threadId?: string;
   refresh?: "threads";
+  title?: string;
   update?: ThreadUpdateInput;
   optimistic?: boolean;
   refreshSummary?: boolean;
@@ -272,6 +280,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
     if (!nextConnection) {
       throw new Error("Cloudflare Agent connection response was incomplete");
     }
+    connectionRef.current = nextConnection;
     setSession((current) => {
       const merged = mergeSession(current, nextSession);
       writeCachedShell(merged);
@@ -301,7 +310,9 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
 
       if (transition) setPending(transition);
       if (input.action === "create") {
-        setSession((current) => createPendingThreadOptimistically(current));
+        setSession((current) =>
+          createPendingThreadOptimistically(current, undefined, undefined, input.title),
+        );
       }
       if (input.optimistic && input.action === "activate" && input.threadId) {
         setSession((current) => activateThreadOptimistically(current, input.threadId!));
@@ -387,7 +398,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
     if (shouldRefreshConnection) {
       if (refreshedThreadId) setPending({ type: "activate", threadId: refreshedThreadId });
       window.setTimeout(() => {
-        void loadSessionRef.current?.({ refreshSummary: true });
+        void loadSessionRef.current?.({ refreshSummary: false });
       }, 0);
     }
 
@@ -511,13 +522,18 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
       archivedThreads,
       isLoadingArchivedThreads,
       archivedThreadsError,
-      createThread: () => loadSession({ action: "create", refreshSummary: true }),
+      createThread: () =>
+        loadSession({
+          action: "create",
+          title: formatCurrentThreadTitle(),
+          refreshSummary: true,
+        }),
       activateThread: (threadId: string) =>
         loadSession({
           action: "activate",
           threadId,
           optimistic: true,
-          refreshSummary: true,
+          refreshSummary: false,
         }),
       renameThread: (threadId: string, title: string) =>
         loadSession({ threadId, update: { title }, refreshSummary: true }),

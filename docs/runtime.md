@@ -158,8 +158,11 @@ cron creation can use the LangGraph Agent Server API. In the target
 architecture, schedules may live in a Cloudflare-style stateful control plane
 and escalate to LangGraph or tool runners only when needed.
 
-Schedule Dispatch Ergonomics v0 keeps scheduling on the existing
-token-protected `/api/external-signals` ingress. `create_cron` still registers a
+Schedule Dispatch Ergonomics v0 keeps the public facade at the existing
+token-protected `/api/external-signals` ingress. Vercel validates the external
+token and forwards server-owned trigger identity to Cloudflare. Cloudflare
+creates typed workflow intent, run, audit, and control-plane event records
+before delegating to LangGraph where needed. `create_cron` still registers a
 LangGraph cron. `dispatch_schedule` starts or enqueues a run immediately with
 root-owned schedule metadata so local/dev and operator-triggered wakeups can
 exercise the same run path without waiting for production cron. This slice does
@@ -167,11 +170,13 @@ not add a schedule table, trigger UI, or Cloudflare-owned cron dispatcher.
 
 ## External Signals
 
-`POST /api/external-signals` is the current app-level staging ingress for
-outside systems. The target architecture routes external events through the
-control plane first: derive tenant scope, create a workflow intent, policy-gate
-the request, create a run record, execute through LangGraph or Fly, then stream
-status from canonical state.
+`POST /api/external-signals` is the public token-protected facade for outside
+systems. The browser or external caller does not provide trusted tenant scope.
+Vercel maps the request to server-owned trigger identity and forwards it to
+Cloudflare `POST /external-signals`. Cloudflare resolves the default/active
+workspace and agent, creates canonical workflow intent/run/audit/event records,
+then delegates to LangGraph for `start`, `resume`, `create_cron`, and
+`dispatch_schedule` behavior where needed.
 
 Authentication:
 
