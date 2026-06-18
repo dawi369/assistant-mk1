@@ -1,5 +1,9 @@
 import type { Id } from "@/lib/agent-framework/contracts";
 import { getWorkbenchIdentityHeaders } from "@/lib/workbench/agent-identity";
+import {
+  adminSummaryProjectionPath,
+  type AdminSummaryProjection,
+} from "@/lib/workbench/admin-summary-projection";
 import { signFacadeRequest } from "@/lib/workbench/control-plane-signing";
 import type {
   AgentSummary,
@@ -176,8 +180,10 @@ export const getCloudflareOwnedDemoRunSnapshot = (runId: Id) =>
 export const getWorkspaceContext = () =>
   requestControlPlane<WorkspaceContextResponse>("/workspace-context");
 
-export const getCloudflareAdminSummary = () =>
-  requestControlPlane<CloudflareAdminSummaryResponse>("/admin/workspace-summary");
+export const getCloudflareAdminSummary = (input?: { projection?: AdminSummaryProjection }) =>
+  requestControlPlane<CloudflareAdminSummaryResponse>(
+    adminSummaryProjectionPath(input?.projection),
+  );
 
 export const getCloudflareTools = (input?: {
   stage?: "observe" | "analyze" | "propose" | "execute" | "review";

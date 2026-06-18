@@ -5,6 +5,7 @@ import type {
   TenantScope,
   WorkflowStage,
 } from "@/lib/agent-framework/contracts";
+import type { AdminSummaryProjection } from "./admin-summary-projection";
 
 export type RunRelationSummary = {
   kind?: "root" | "child" | string;
@@ -748,6 +749,11 @@ export type CloudflareAdminSummaryResponse = {
   ok?: boolean;
   summary?: {
     generatedAt: string;
+    diagnostics?: {
+      projection: AdminSummaryProjection;
+      totalDurationMs: number;
+      sections: Record<string, { durationMs: number; count?: number }>;
+    };
     identity: {
       userId: Id;
       workspaceId: Id;

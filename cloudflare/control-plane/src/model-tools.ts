@@ -33,26 +33,35 @@ type ModelToolExposure = {
   fastPath?: boolean;
 };
 
+const negativeModelToolCandidateCacheTtlMs = 30_000;
+const negativeModelToolCandidateCache = new Map<string, { expiresAtMs: number }>();
+
 const readDataFlag = (data: Record<string, unknown>, name: string, fallback: boolean) =>
   typeof data[name] === "boolean" ? data[name] : fallback;
 
-export const hasModelVisibleToolCandidate = async (
-  env: Env,
-  identity: AgentIdentity,
-  toolName = urlInspectToolName,
+const modelToolCandidateCacheKey = (identity: AgentIdentity, toolName: string) =>
+  [identity.scope.userId, identity.scope.workspaceId, identity.agentId, toolName].join(":");
+
+const readNegativeModelToolCandidateCache = (cacheKey: string, nowMs: number) => {
+  const cached = negativeModelToolCandidateCache.get(cacheKey);
+  if (!cached) return false;
+  if (cached.expiresAtMs <= nowMs) {
+    negativeModelToolCandidateCache.delete(cacheKey);
+    return false;
+  }
+  return true;
+};
+
+const rememberNegativeModelToolCandidate = (cacheKey: string, nowMs: number) => {
+  negativeModelToolCandidateCache.set(cacheKey, {
+    expiresAtMs: nowMs + negativeModelToolCandidateCacheTtlMs,
+  });
+};
+
+const resolvePermissionCandidate = (
+  permission: { status: string; data_json: string } | null,
+  defaults: NonNullable<(typeof toolPolicyCatalog)[string]>,
 ) => {
-  const defaults = toolPolicyCatalog[toolName];
-  if (!defaults) return false;
-
-  const permission = await env.DB.prepare(
-    `SELECT status, data_json
-     FROM tool_permissions
-     WHERE user_id = ? AND workspace_id = ? AND agent_id = ? AND tool_id = ?
-     LIMIT 1`,
-  )
-    .bind(identity.scope.userId, identity.scope.workspaceId, identity.agentId, toolName)
-    .first<{ status: string; data_json: string }>();
-
   if (!permission) {
     return defaults.status === "enabled" && defaults.modelVisible && !defaults.requiresApproval;
   }
@@ -63,6 +72,40 @@ export const hasModelVisibleToolCandidate = async (
     readDataFlag(data, "modelVisible", defaults.modelVisible) &&
     !readDataFlag(data, "requiresApproval", defaults.requiresApproval)
   );
+};
+
+export const resetModelToolCandidateCacheForTests = () => {
+  negativeModelToolCandidateCache.clear();
+};
+
+export const hasModelVisibleToolCandidate = async (
+  env: Env,
+  identity: AgentIdentity,
+  toolName = urlInspectToolName,
+) => {
+  const defaults = toolPolicyCatalog[toolName];
+  if (!defaults) return false;
+
+  const cacheKey = modelToolCandidateCacheKey(identity, toolName);
+  const nowMs = Date.now();
+  if (readNegativeModelToolCandidateCache(cacheKey, nowMs)) return false;
+
+  const permission = await env.DB.prepare(
+    `SELECT status, data_json
+     FROM tool_permissions
+     WHERE user_id = ? AND workspace_id = ? AND agent_id = ? AND tool_id = ?
+     LIMIT 1`,
+  )
+    .bind(identity.scope.userId, identity.scope.workspaceId, identity.agentId, toolName)
+    .first<{ status: string; data_json: string }>();
+
+  const hasCandidate = resolvePermissionCandidate(permission, defaults);
+  if (!hasCandidate) {
+    rememberNegativeModelToolCandidate(cacheKey, nowMs);
+    return false;
+  }
+  negativeModelToolCandidateCache.delete(cacheKey);
+  return true;
 };
 
 export const resolveModelVisibleTools = async (

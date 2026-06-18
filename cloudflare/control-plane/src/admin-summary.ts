@@ -6,6 +6,10 @@ import { getControlRunSnapshot, readLatestControlRun } from "./demo-run-store";
 import { json, parseDataJson, parseJson } from "./http";
 import { getLatestRuntimeTraceSnapshot, listRuntimeTraceSummaries } from "./runtime-traces";
 import {
+  readAdminSummaryProjection,
+  type AdminSummaryProjection,
+} from "../../../lib/workbench/admin-summary-projection";
+import {
   selectAgent,
   selectAccountWorkspacesForUser,
   selectDefaultAgent,
@@ -29,6 +33,14 @@ const membershipRoleHeader = "x-assistant-mk1-membership-role";
 const membershipRolesHeader = "x-assistant-mk1-membership-roles";
 const membershipPermissionsHeader = "x-assistant-mk1-membership-permissions";
 const membershipStatusHeader = "x-assistant-mk1-membership-status";
+const compactEventLimit = 6;
+const drawerEventLimit = 12;
+
+type AdminSummaryDiagnostics = {
+  projection: AdminSummaryProjection;
+  totalDurationMs: number;
+  sections: Record<string, { durationMs: number; count?: number }>;
+};
 
 const readOptionalHeader = (request: Request, name: string) =>
   request.headers.get(name)?.trim() || undefined;
@@ -116,57 +128,177 @@ const newestError = (
   );
 };
 
-export const handleAdminWorkspaceSummary = async (
+const emptyCapabilityContext = {
+  stage: "observe",
+  executionMode: "dry_run",
+  surface: "model_exposure",
+  platform: "cloudflare-control-plane",
+  featureFlags: [],
+} as const;
+
+const createDiagnostics = (projection: AdminSummaryProjection): AdminSummaryDiagnostics => ({
+  projection,
+  totalDurationMs: 0,
+  sections: {},
+});
+
+const timed = async <T>(
+  diagnostics: AdminSummaryDiagnostics,
+  label: string,
+  load: () => Promise<T>,
+  count?: (value: T) => number | undefined,
+) => {
+  const startedAt = Date.now();
+  const value = await load();
+  const nextCount = count?.(value);
+  diagnostics.sections[label] = {
+    durationMs: Date.now() - startedAt,
+    ...(typeof nextCount === "number" ? { count: nextCount } : {}),
+  };
+  return value;
+};
+
+const defaultAdminSummaryReaders = {
+  selectUser,
+  selectWorkspace,
+  selectMembership,
+  selectAgent,
+  selectDefaultAgent,
+  selectWorkspaceAgents,
+  selectAccountWorkspacesForUser,
+  getChatRuntimeSummary,
+  readLatestControlRun,
+  handleLatestControlPlaneEvents,
+  resolveToolSummaries,
+  listLatestToolCalls,
+  listLatestArtifacts,
+  getLatestRuntimeTraceSnapshot,
+  listRuntimeTraceSummaries,
+  latestFailedControlRun,
+  latestErrorEvent,
+  getControlRunSnapshot,
+};
+
+export type AdminSummaryReaders = typeof defaultAdminSummaryReaders;
+
+export const buildAdminWorkspaceSummary = async (
   request: Request,
   env: Env,
   identity: AgentIdentity,
+  input?: { readers?: Partial<AdminSummaryReaders> },
 ) => {
-  const [
-    user,
-    workspace,
-    membership,
-    agent,
-    defaultAgent,
-    agents,
-    accountWorkspaces,
-    chatRuntime,
-    latestDemoRun,
-    events,
-    toolResolution,
-    latestToolCalls,
-    latestArtifacts,
-    latestTraceSnapshot,
-    recentTraces,
-  ] = await Promise.all([
-    selectUser(env, identity.scope.userId),
-    selectWorkspace(env, identity.scope.workspaceId),
-    selectMembership(env, identity.scope.userId, identity.scope.workspaceId),
-    selectAgent(env, identity.agentId, identity.scope.workspaceId),
-    selectDefaultAgent(env, identity.scope.workspaceId),
-    selectWorkspaceAgents(env, identity.scope.workspaceId),
-    identity.accountId
-      ? selectAccountWorkspacesForUser(env, {
-          userId: identity.scope.userId,
-          accountId: identity.accountId,
-        })
-      : Promise.resolve({ results: [] }),
-    getChatRuntimeSummary(env, identity),
-    readLatestControlRun(env, identity.scope),
-    handleLatestControlPlaneEvents(env, identity, new URL("https://internal/events?limit=12")),
-    resolveToolSummaries(env, identity),
-    listLatestToolCalls(env, identity.scope),
-    listLatestArtifacts(env, identity.scope),
-    getLatestRuntimeTraceSnapshot(env, identity.scope),
-    listRuntimeTraceSummaries(env, identity.scope, 10),
+  const startedAt = Date.now();
+  const projection = readAdminSummaryProjection(
+    new URL(request.url).searchParams.get("projection"),
+  );
+  const diagnostics = createDiagnostics(projection);
+  const readers = { ...defaultAdminSummaryReaders, ...input?.readers };
+  const eventLimit = projection === "compact" ? compactEventLimit : drawerEventLimit;
+
+  const [identityRows, chatRuntime, events] = await Promise.all([
+    timed(
+      diagnostics,
+      "identity",
+      () =>
+        Promise.all([
+          readers.selectUser(env, identity.scope.userId),
+          readers.selectWorkspace(env, identity.scope.workspaceId),
+          readers.selectMembership(env, identity.scope.userId, identity.scope.workspaceId),
+          readers.selectAgent(env, identity.agentId, identity.scope.workspaceId),
+          readers.selectDefaultAgent(env, identity.scope.workspaceId),
+          readers.selectWorkspaceAgents(env, identity.scope.workspaceId),
+          identity.accountId
+            ? readers.selectAccountWorkspacesForUser(env, {
+                userId: identity.scope.userId,
+                accountId: identity.accountId,
+              })
+            : Promise.resolve({ results: [] }),
+        ]),
+      () => 7,
+    ),
+    timed(diagnostics, "chatRuntime", () => readers.getChatRuntimeSummary(env, identity)),
+    timed(
+      diagnostics,
+      "events",
+      () =>
+        readers.handleLatestControlPlaneEvents(
+          env,
+          identity,
+          new URL(`https://internal/events?limit=${eventLimit}`),
+        ),
+      (value) => value.events?.length,
+    ),
   ]);
 
-  const [failedControlRun, errorEvent] = await Promise.all([
-    latestFailedControlRun(env, identity.scope),
-    latestErrorEvent(env, identity.scope),
-  ]);
+  const [user, workspace, membership, agent, defaultAgent, agents, accountWorkspaces] =
+    identityRows;
+
+  const [failedControlRun, errorEvent] = await timed(
+    diagnostics,
+    "lastError",
+    () =>
+      Promise.all([
+        readers.latestFailedControlRun(env, identity.scope),
+        readers.latestErrorEvent(env, identity.scope),
+      ]),
+    (value) => value.filter(Boolean).length,
+  );
+
+  const drawerReads =
+    projection === "drawer"
+      ? await Promise.all([
+          timed(diagnostics, "demoRun", () => readers.readLatestControlRun(env, identity.scope)),
+          timed(
+            diagnostics,
+            "tools",
+            () => readers.resolveToolSummaries(env, identity),
+            (value) => value.tools.length,
+          ),
+          timed(
+            diagnostics,
+            "toolCalls",
+            () => readers.listLatestToolCalls(env, identity.scope),
+            (value) => value.length,
+          ),
+          timed(
+            diagnostics,
+            "artifacts",
+            () => readers.listLatestArtifacts(env, identity.scope),
+            (value) => value.length,
+          ),
+          timed(
+            diagnostics,
+            "latestTrace",
+            () => readers.getLatestRuntimeTraceSnapshot(env, identity.scope),
+            (value) => value?.spans.length ?? 0,
+          ),
+          timed(
+            diagnostics,
+            "recentTraces",
+            () => readers.listRuntimeTraceSummaries(env, identity.scope, 10),
+            (value) => value.length,
+          ),
+        ])
+      : null;
+
+  const latestDemoRun = drawerReads?.[0] ?? null;
+  const toolResolution = drawerReads?.[1] ?? {
+    context: emptyCapabilityContext,
+    decisions: [],
+    tools: [],
+  };
+  const latestToolCalls = drawerReads?.[2] ?? [];
+  const latestArtifacts = drawerReads?.[3] ?? [];
+  const latestTraceSnapshot = drawerReads?.[4] ?? null;
+  const recentTraces = drawerReads?.[5] ?? [];
 
   const demoSnapshot = latestDemoRun
-    ? await getControlRunSnapshot(env, identity.scope, latestDemoRun.id)
+    ? await timed(
+        diagnostics,
+        "demoSnapshot",
+        () => readers.getControlRunSnapshot(env, identity.scope, latestDemoRun.id),
+        (value) => (value ? 1 : 0),
+      )
     : null;
   const failedControlData = failedControlRun ? parseDataJson(failedControlRun.data_json) : {};
   const lastError = newestError([
@@ -201,10 +333,13 @@ export const handleAdminWorkspaceSummary = async (
       : null,
   ]);
 
-  return json({
+  diagnostics.totalDurationMs = Date.now() - startedAt;
+
+  return {
     ok: true,
     summary: {
       generatedAt: new Date().toISOString(),
+      diagnostics,
       identity: {
         userId: identity.scope.userId,
         workspaceId: identity.scope.workspaceId,
@@ -275,5 +410,11 @@ export const handleAdminWorkspaceSummary = async (
       events: events.events ?? [],
       lastError,
     },
-  });
+  };
 };
+
+export const handleAdminWorkspaceSummary = async (
+  request: Request,
+  env: Env,
+  identity: AgentIdentity,
+) => json(await buildAdminWorkspaceSummary(request, env, identity));

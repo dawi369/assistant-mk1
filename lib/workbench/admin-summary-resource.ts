@@ -3,6 +3,7 @@ import {
   type WorkbenchSummaryRefreshSource,
   workbenchSummaryRefreshEvent,
 } from "./admin-summary-events";
+import type { AdminSummaryProjection } from "./admin-summary-projection";
 import type { CloudflareAdminSummaryResponse } from "./workbench-types";
 
 const adminSummaryPath = "/api/workbench/admin-summary";
@@ -22,12 +23,14 @@ export type AdminSummaryResourceSnapshot = {
   lastLoadedAt: number | null;
   lastRefreshSource: WorkbenchSummaryRefreshSource | null;
   lastDurationMs: number | null;
+  lastProjection: AdminSummaryProjection | null;
   refreshCounts: Record<WorkbenchSummaryRefreshSource, number>;
 };
 
 type RefreshInput = {
   source?: WorkbenchSummaryRefreshSource;
   force?: boolean;
+  projection?: AdminSummaryProjection;
 };
 
 const initialSnapshot: AdminSummaryResourceSnapshot = {
@@ -37,14 +40,17 @@ const initialSnapshot: AdminSummaryResourceSnapshot = {
   lastLoadedAt: null,
   lastRefreshSource: null,
   lastDurationMs: null,
+  lastProjection: null,
   refreshCounts: emptyRefreshCounts,
 };
 
 let snapshot = initialSnapshot;
 let inFlight: Promise<AdminSummaryResourceSnapshot> | null = null;
+let inFlightProjection: AdminSummaryProjection | null = null;
 let scheduledRefresh: number | null = null;
 let eventListenerAttached = false;
 let latestRequestSequence = 0;
+let projectionPreference: AdminSummaryProjection = "compact";
 const listeners = new Set<() => void>();
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -82,18 +88,24 @@ export const clearAdminSummaryResource = () => {
   }
   scheduledRefresh = null;
   inFlight = null;
+  inFlightProjection = null;
   latestRequestSequence += 1;
   setSnapshot(initialSnapshot);
+};
+
+export const setAdminSummaryProjectionPreference = (projection: AdminSummaryProjection) => {
+  projectionPreference = projection;
 };
 
 export const refreshAdminSummary = async (
   input: RefreshInput = {},
 ): Promise<AdminSummaryResourceSnapshot> => {
   const source = input.source ?? "event";
+  const projection = input.projection ?? projectionPreference;
   const now = Date.now();
 
   if (!input.force) {
-    if (inFlight) return inFlight;
+    if (inFlight && inFlightProjection === projection) return inFlight;
     if (snapshot.lastLoadedAt && now - snapshot.lastLoadedAt < automatedRefreshCooldownMs) {
       return snapshot;
     }
@@ -111,11 +123,14 @@ export const refreshAdminSummary = async (
     isLoading: true,
     error: null,
     lastRefreshSource: source,
+    lastProjection: projection,
     refreshCounts,
   });
 
   const startedAt = Date.now();
-  const request = fetch(adminSummaryPath, { cache: "no-store" })
+  const request = fetch(`${adminSummaryPath}?projection=${encodeURIComponent(projection)}`, {
+    cache: "no-store",
+  })
     .then(readJsonResponse)
     .then((body) => {
       const next = {
@@ -125,6 +140,7 @@ export const refreshAdminSummary = async (
         lastLoadedAt: Date.now(),
         lastRefreshSource: source,
         lastDurationMs: Date.now() - startedAt,
+        lastProjection: projection,
         refreshCounts,
       };
       if (requestSequence === latestRequestSequence) setSnapshot(next);
@@ -137,16 +153,23 @@ export const refreshAdminSummary = async (
         isLoading: false,
         lastRefreshSource: source,
         lastDurationMs: Date.now() - startedAt,
+        lastProjection: projection,
         refreshCounts,
       };
       if (requestSequence === latestRequestSequence) setSnapshot(next);
       return next;
     })
     .finally(() => {
-      if (inFlight === request) inFlight = null;
+      if (inFlight === request) {
+        inFlight = null;
+        inFlightProjection = null;
+      }
     });
 
-  if (!input.force) inFlight = request;
+  if (!input.force) {
+    inFlight = request;
+    inFlightProjection = projection;
+  }
   return request;
 };
 
@@ -179,6 +202,7 @@ export const ensureAdminSummaryEventListener = () => {
     void scheduleAdminSummaryRefresh({
       source: detail.source ?? "event",
       force: detail.force,
+      projection: projectionPreference,
     });
   });
 };
@@ -186,7 +210,9 @@ export const ensureAdminSummaryEventListener = () => {
 export const resetAdminSummaryResourceForTests = () => {
   snapshot = initialSnapshot;
   inFlight = null;
+  inFlightProjection = null;
   scheduledRefresh = null;
   eventListenerAttached = false;
+  projectionPreference = "compact";
   listeners.clear();
 };

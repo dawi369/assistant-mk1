@@ -166,6 +166,7 @@ export function AdminPanel({
     lastRefreshSource,
     lastDurationMs,
     refreshSummary,
+    setProjectionPreference,
   } = useAdminSummaryResource();
   const [approvalQueue, setApprovalQueue] = useState<ToolApprovalRequestSummary[]>([]);
   const [behaviorTemplates, setBehaviorTemplates] = useState<AgentBehaviorTemplate[]>([]);
@@ -391,18 +392,22 @@ export function AdminPanel({
   };
 
   const loadAdminData = (source: WorkbenchSummaryRefreshSource = "event", force = false) => {
-    void refreshSummary({ source, force });
+    void refreshSummary({ source, force, projection: "drawer" });
     loadDrawerData();
   };
 
   useEffect(() => {
     if (!open) return;
+    setProjectionPreference("drawer");
     loadAdminData("drawer-open");
     void loadBehaviorTemplates();
     const refreshDrawerData = () => loadDrawerData();
     window.addEventListener(workbenchSummaryRefreshEvent, refreshDrawerData);
-    return () => window.removeEventListener(workbenchSummaryRefreshEvent, refreshDrawerData);
-  }, [open, refreshSummary]);
+    return () => {
+      setProjectionPreference("compact");
+      window.removeEventListener(workbenchSummaryRefreshEvent, refreshDrawerData);
+    };
+  }, [open, refreshSummary, setProjectionPreference]);
 
   useEffect(() => {
     if (!open || (isSessionStreamConnected && !isDemoActive && !isChatActive)) return;

@@ -55,6 +55,7 @@ export function ThreadHistorySidebar({
   const actionsDisabled = disableThreadActions || !connection || isCached;
   const visibleThreads = view === "archived" ? archivedThreads : threads;
   const loadingArchived = view === "archived" && isLoadingArchivedThreads;
+  const loadingInitialThreads = isInitialLoading && visibleThreads.length === 0;
   const visibleError =
     view === "archived" ? (archiveError ?? archivedThreadsError) : (archiveError ?? error);
   const headerLabel = view === "archived" ? "Archived chats" : "Recent chats";
@@ -195,7 +196,7 @@ export function ThreadHistorySidebar({
         <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
           {visibleError && visibleThreads.length === 0 ? (
             <div className="text-muted-foreground px-2 py-2 text-xs">{visibleError}</div>
-          ) : isInitialLoading ? (
+          ) : loadingInitialThreads ? (
             <div className="text-muted-foreground px-2 py-2 text-xs">Loading chats...</div>
           ) : loadingArchived ? (
             <div className="text-muted-foreground px-2 py-2 text-xs">Loading archived chats...</div>

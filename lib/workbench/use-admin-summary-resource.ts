@@ -7,9 +7,11 @@ import {
   ensureAdminSummaryEventListener,
   getAdminSummarySnapshot,
   refreshAdminSummary,
+  setAdminSummaryProjectionPreference,
   subscribeAdminSummary,
 } from "./admin-summary-resource";
 import type { WorkbenchSummaryRefreshSource } from "./admin-summary-events";
+import type { AdminSummaryProjection } from "./admin-summary-projection";
 
 export const useAdminSummaryResource = () => {
   useEffect(() => {
@@ -23,8 +25,13 @@ export const useAdminSummaryResource = () => {
   );
 
   const refreshSummary = useCallback(
-    (input: { source?: WorkbenchSummaryRefreshSource; force?: boolean } = {}) =>
-      refreshAdminSummary(input),
+    (
+      input: {
+        source?: WorkbenchSummaryRefreshSource;
+        force?: boolean;
+        projection?: AdminSummaryProjection;
+      } = {},
+    ) => refreshAdminSummary(input),
     [],
   );
 
@@ -32,5 +39,6 @@ export const useAdminSummaryResource = () => {
     ...snapshot,
     refreshSummary,
     clearSummary: clearAdminSummaryResource,
+    setProjectionPreference: setAdminSummaryProjectionPreference,
   };
 };

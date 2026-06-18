@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { hasModelVisibleToolCandidate } from "./model-tools";
+import { hasModelVisibleToolCandidate, resetModelToolCandidateCacheForTests } from "./model-tools";
 import { urlInspectToolName } from "./tool-policy";
 import type { AgentIdentity, Env } from "./types";
 
@@ -27,6 +27,15 @@ const envWithPermission = (permission: { status: string; data_json: string } | n
 };
 
 describe("model tool exposure fast path", () => {
+  beforeEach(() => {
+    resetModelToolCandidateCacheForTests();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    resetModelToolCandidateCacheForTests();
+  });
+
   it("does not treat a missing default-hidden permission as a model-visible candidate", async () => {
     const { env } = envWithPermission(null);
 
@@ -62,5 +71,52 @@ describe("model tool exposure fast path", () => {
     await expect(
       hasModelVisibleToolCandidate(approvalGated.env, identity, urlInspectToolName),
     ).resolves.toBe(false);
+  });
+
+  it("caches negative candidate checks briefly", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-18T12:00:00.000Z"));
+    const { env, prepare } = envWithPermission(null);
+
+    await expect(hasModelVisibleToolCandidate(env, identity, urlInspectToolName)).resolves.toBe(
+      false,
+    );
+    await expect(hasModelVisibleToolCandidate(env, identity, urlInspectToolName)).resolves.toBe(
+      false,
+    );
+
+    expect(prepare).toHaveBeenCalledTimes(1);
+  });
+
+  it("expires the negative candidate cache", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-18T12:00:00.000Z"));
+    const { env, prepare } = envWithPermission(null);
+
+    await expect(hasModelVisibleToolCandidate(env, identity, urlInspectToolName)).resolves.toBe(
+      false,
+    );
+    vi.advanceTimersByTime(30_001);
+    await expect(hasModelVisibleToolCandidate(env, identity, urlInspectToolName)).resolves.toBe(
+      false,
+    );
+
+    expect(prepare).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not cache positive candidate checks", async () => {
+    const { env, prepare } = envWithPermission({
+      status: "enabled",
+      data_json: JSON.stringify({ modelVisible: true, requiresApproval: false }),
+    });
+
+    await expect(hasModelVisibleToolCandidate(env, identity, urlInspectToolName)).resolves.toBe(
+      true,
+    );
+    await expect(hasModelVisibleToolCandidate(env, identity, urlInspectToolName)).resolves.toBe(
+      true,
+    );
+
+    expect(prepare).toHaveBeenCalledTimes(2);
   });
 });

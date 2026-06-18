@@ -129,8 +129,8 @@ function WorkbenchShellContent() {
           </div>
           <Assistant>
             <WorkbenchAssistantEvents />
-            <AdminPanel open={adminOpen} onOpenChange={setAdminOpen} />
           </Assistant>
+          <AdminPanel open={adminOpen} onOpenChange={setAdminOpen} />
         </AssistantSlashCommandProvider>
       </WorkbenchComposerFocusProvider>
     </div>

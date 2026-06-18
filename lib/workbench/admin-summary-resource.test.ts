@@ -4,6 +4,7 @@ import {
   refreshAdminSummary,
   resetAdminSummaryResourceForTests,
   scheduleAdminSummaryRefresh,
+  setAdminSummaryProjectionPreference,
 } from "./admin-summary-resource";
 
 const summaryBody = {
@@ -46,6 +47,9 @@ describe("admin summary resource", () => {
     const [firstSnapshot, secondSnapshot] = await Promise.all([first, second]);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith("/api/workbench/admin-summary?projection=compact", {
+      cache: "no-store",
+    });
     expect(firstSnapshot.summary?.generatedAt).toBe(summaryBody.summary.generatedAt);
     expect(secondSnapshot.summary?.generatedAt).toBe(summaryBody.summary.generatedAt);
   });
@@ -59,6 +63,21 @@ describe("admin summary resource", () => {
     await refreshAdminSummary({ source: "manual", force: true });
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenLastCalledWith("/api/workbench/admin-summary?projection=compact", {
+      cache: "no-store",
+    });
+  });
+
+  it("uses drawer projection while the Admin drawer preference is active", async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse()));
+    vi.stubGlobal("fetch", fetchMock);
+
+    setAdminSummaryProjectionPreference("drawer");
+    await refreshAdminSummary({ source: "drawer-open", force: true });
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/workbench/admin-summary?projection=drawer", {
+      cache: "no-store",
+    });
   });
 
   it("coalesces same-tick scheduled refreshes", async () => {

@@ -26,6 +26,7 @@ import {
   updateThreadStatusFromEvent,
   type PendingSessionTransition,
 } from "@/lib/workbench/chat-session-state";
+import { sessionEventShouldRefreshAdminSummary } from "@/lib/workbench/session-event-refresh-policy";
 import type {
   AgentSummary,
   ChatSessionResponse,
@@ -390,15 +391,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
       }, 0);
     }
 
-    if (
-      event.type === "admin.summary.invalidated" ||
-      event.type === "approval.updated" ||
-      event.type === "chat.run.completed" ||
-      event.type === "chat.run.failed" ||
-      event.type === "workflow.run.updated" ||
-      event.type === "tool.run.updated" ||
-      event.type === "trace.updated"
-    ) {
+    if (sessionEventShouldRefreshAdminSummary(event.type)) {
       requestWorkbenchSummaryRefresh({ source: "event" });
     }
   }, []);

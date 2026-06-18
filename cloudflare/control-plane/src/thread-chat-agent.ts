@@ -22,7 +22,6 @@ import { selectAgent } from "./authz-store";
 import { deriveThreadAgentInstanceName } from "./chat-agent-connection-context";
 import {
   createAgentChatRunStartMirror,
-  touchChatThread,
   updateChatRun,
   updateChatThreadUpstream,
 } from "./chat-boundary-store";
@@ -376,7 +375,6 @@ export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
                 lastRunId: runId,
                 ...summarizeMessages(this.messages),
               });
-              await touchChatThread(this.getEnv(), identity.scope, claims.threadId);
               await recordSpan(this.getEnv(), identity, {
                 traceId: trace.traceId,
                 name: "Stream duration",
@@ -395,14 +393,16 @@ export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
               });
               await recordSpan(this.getEnv(), identity, {
                 traceId: trace.traceId,
-                name: "Durable Object message persist",
+                name: "Agent stream lifecycle",
                 layer: "durable_object",
                 startedAtMs: requestStartedAtMs,
                 endedAtMs,
                 spanType: "phase",
                 isAggregate: true,
                 bottleneckCandidate: false,
-                data: { note: "AIChatAgent persisted hot thread messages in DO SQLite." },
+                data: {
+                  note: "Aggregate lifecycle span for the streamed Agent response; not a DO persistence timer.",
+                },
               });
               await Promise.allSettled(traceWritePromises);
               await finishTrace(this.getEnv(), identity, trace, {
@@ -429,16 +429,6 @@ export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
                     firstTokenMs: firstTokenAtMs ? firstTokenAtMs - providerStartedAtMs : undefined,
                     totalMs: endedAtMs - requestStartedAtMs,
                   },
-                },
-              });
-              await dispatchWorkbenchSessionEvent(this.getEnv(), identity, {
-                type: "trace.updated",
-                data: {
-                  traceId: trace.traceId,
-                  kind: trace.kind,
-                  status: "completed",
-                  threadId: claims.threadId,
-                  runId,
                 },
               });
               await dispatchWorkbenchSessionEvent(this.getEnv(), identity, {
@@ -522,15 +512,6 @@ const failAgentRun = async (
       errorCode: "runtime_failed",
       retryable: true,
       message,
-    },
-  });
-  await dispatchWorkbenchSessionEvent(env, identity, {
-    type: "trace.updated",
-    data: {
-      traceId: trace.traceId,
-      kind: trace.kind,
-      status: "failed",
-      runId: input.runId,
     },
   });
   await dispatchWorkbenchSessionEvent(env, identity, {
