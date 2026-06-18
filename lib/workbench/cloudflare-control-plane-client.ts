@@ -22,6 +22,9 @@ import type {
   ChatThreadsResponse,
   ChatSessionResponse,
   ChatRuntimeSummaryResponse,
+  CloudflareArtifactHistoryResponse,
+  CloudflareExecutionHistoryResponse,
+  CloudflareExecutionHistoryRunResponse,
   ControlPlaneEventsResponse,
   WorkspaceContextResponse,
 } from "@/lib/workbench/workbench-types";
@@ -48,8 +51,12 @@ export type {
   ChatThreadResponse,
   ChatThreadsResponse,
   ChatThreadSummary,
+  CloudflareArtifactHistoryResponse,
+  CloudflareExecutionHistoryResponse,
+  CloudflareExecutionHistoryRunResponse,
   ControlPlaneEvent,
   ControlPlaneEventsResponse,
+  ExecutionHistoryRunSummary,
   ToolApprovalRequestSummary,
   WorkspaceContextResponse,
 } from "@/lib/workbench/workbench-types";
@@ -208,6 +215,21 @@ export const getLatestRuntimeTraces = (limit = 10) =>
 export const getRuntimeTrace = (traceId: Id) =>
   requestControlPlane<CloudflareRuntimeTraceResponse>(
     `/runtime/traces/${encodeURIComponent(traceId)}`,
+  );
+
+export const getExecutionHistory = (limit = 25) =>
+  requestControlPlane<CloudflareExecutionHistoryResponse>(
+    `/workbench/history/runs?limit=${encodeURIComponent(String(limit))}`,
+  );
+
+export const getExecutionHistoryRun = (runId: Id) =>
+  requestControlPlane<CloudflareExecutionHistoryRunResponse>(
+    `/workbench/history/runs/${encodeURIComponent(runId)}`,
+  );
+
+export const getArtifactHistory = (limit = 25) =>
+  requestControlPlane<CloudflareArtifactHistoryResponse>(
+    `/workbench/history/artifacts?limit=${encodeURIComponent(String(limit))}`,
   );
 
 export const runCloudflareTool = (input: {

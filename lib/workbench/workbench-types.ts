@@ -244,6 +244,47 @@ export type ArtifactSummary = {
   createdAt?: string;
 };
 
+export type ExecutionHistoryRunSummary = {
+  id: Id;
+  scope?: TenantScope;
+  agentId?: Id;
+  workflowIntentId?: Id;
+  status?: RunStatus | string;
+  stage?: WorkflowStage | string;
+  engine?: string;
+  summary?: string;
+  displayName?: string;
+  artifactIds?: Id[];
+  decisionIds?: Id[];
+  toolCallCount?: number;
+  heartbeatAt?: string;
+  lastEventAt?: string;
+  completedAt?: string;
+  failedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type CloudflareExecutionHistoryResponse = {
+  ok?: boolean;
+  runs?: ExecutionHistoryRunSummary[];
+  limit?: number;
+  error?: string;
+};
+
+export type CloudflareExecutionHistoryRunResponse = {
+  ok?: boolean;
+  snapshot?: CloudflareOwnedDemoRunSnapshot | null;
+  error?: string;
+};
+
+export type CloudflareArtifactHistoryResponse = {
+  ok?: boolean;
+  artifacts?: ArtifactSummary[];
+  limit?: number;
+  error?: string;
+};
+
 export type ToolApprovalRequestSummary = {
   id?: Id;
   scope?: TenantScope;

@@ -55,6 +55,9 @@ single domain into the base workbench.
 - Admin has secondary workspace/agent controls, behavior template import and
   preview, tool registry visibility, `url.inspect`, approval queue, and
   policy/model-exposure explanations.
+- Cloudflare exposes backend execution and artifact history metadata through
+  scoped workbench APIs, but there is no dedicated customer-facing history UI
+  or blob artifact storage yet.
 - The diagnostic `demo.inspect` path still exists as compatibility coverage for
   the original Cloudflare-owned run slice.
 
@@ -68,7 +71,8 @@ single domain into the base workbench.
    history, approvals, and tool-specific configuration.
 4. Harden model-side tool rendering and approval explanations before broader
    model-visible tool use.
-5. Add artifact list and execution history beyond diagnostic snapshots.
+5. Build the customer-facing artifact list and execution-history UI on top of
+   the Cloudflare history APIs.
 6. Add swappable domain context configuration for downstream apps.
 7. Add a first CLI/OSS-backed read-only tool on the runner boundary.
 8. Add generic managed-state, audit, and decision-record surfaces.

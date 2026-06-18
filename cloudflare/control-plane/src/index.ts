@@ -52,6 +52,11 @@ import {
   readVercelTimingHeaders,
 } from "./runtime-traces";
 import { handleWorkspaceContext } from "./workspace-context";
+import {
+  getExecutionHistoryRun,
+  listArtifactHistory,
+  listExecutionHistory,
+} from "./workbench-history";
 import { handleActivateWorkspace, handleCreateWorkspace, handleListWorkspaces } from "./workspaces";
 import { resolveAgentIdentity } from "./authz";
 import { internalErrorResponse, json, requireControlPlaneAuth, requireDevToken } from "./http";
@@ -224,6 +229,19 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
   const chatThreadMatch = url.pathname.match(/^\/chat\/threads\/([^/]+)$/);
   if (request.method === "GET" && chatThreadMatch?.[1]) {
     return handleGetChatThread(env, identity, decodeURIComponent(chatThreadMatch[1]));
+  }
+
+  if (request.method === "GET" && url.pathname === "/workbench/history/runs") {
+    return listExecutionHistory(env, identity, url);
+  }
+
+  const historyRunMatch = url.pathname.match(/^\/workbench\/history\/runs\/([^/]+)$/);
+  if (request.method === "GET" && historyRunMatch?.[1]) {
+    return getExecutionHistoryRun(env, identity, decodeURIComponent(historyRunMatch[1]));
+  }
+
+  if (request.method === "GET" && url.pathname === "/workbench/history/artifacts") {
+    return listArtifactHistory(env, identity, url);
   }
 
   if (request.method === "GET" && url.pathname === "/workspaces") {

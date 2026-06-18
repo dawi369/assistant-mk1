@@ -7,9 +7,9 @@ control-plane writes. It does not own arbitrary heavy execution.
 Document status: Cloudflare currently owns users, accounts, workspaces,
 memberships, active workspace preferences, workspace-scoped agents, active
 agent preferences, normal chat coordination, Admin summaries, diagnostic runs,
-tool policy, approvals, runtime traces, and control-plane events. Secret
-custody, customer-facing admin flows, mutation-capable tools, and richer
-artifact storage remain target work.
+tool policy, approvals, runtime traces, execution/artifact history metadata,
+and control-plane events. Secret custody, customer-facing admin flows,
+mutation-capable tools, and richer artifact storage remain target work.
 
 ## Responsibilities
 
@@ -133,6 +133,22 @@ Trace payloads must stay compact and redacted. Store operational metadata such
 as model id, run id, safe URL summary, duration, status, and error code. Do not
 store prompts, auth headers, provider secrets, full provider payloads, or full
 tool output.
+
+## Workbench History
+
+D1 is also the first workbench history store. The Worker exposes scoped
+metadata reads for execution and artifact history:
+
+- Cloudflare `GET /workbench/history/runs?limit=25`
+- Cloudflare `GET /workbench/history/runs/:runId`
+- Cloudflare `GET /workbench/history/artifacts?limit=25`
+- Vercel `GET /api/workbench/history/runs`
+- Vercel `GET /api/workbench/history/runs/:runId`
+- Vercel `GET /api/workbench/history/artifacts`
+
+These endpoints expose run summaries, tool-call counts, compact stored run
+snapshots, and metadata-only artifacts. They do not provide blob/R2 storage,
+raw logs, prompts, secrets, or customer-facing UI yet.
 
 ## Tools And Policy
 

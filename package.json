@@ -44,6 +44,7 @@
     "smoke:cloudflare-chat-session-lifecycle": "tsx scripts/smoke-cloudflare-chat-session-lifecycle.ts",
     "smoke:cloudflare-session-events": "tsx scripts/smoke-cloudflare-session-events.ts",
     "smoke:cloudflare-chat-threads": "tsx scripts/smoke-cloudflare-chat-threads.ts",
+    "smoke:cloudflare-history": "tsx scripts/smoke-cloudflare-history.ts",
     "smoke:cloudflare-workbench-run": "tsx scripts/smoke-cloudflare-workbench-run.ts",
     "smoke:cloudflare-workflow-callback-auth": "tsx scripts/smoke-cloudflare-workflow-callback-auth.ts",
     "smoke:cloudflare-langgraph-facade": "tsx scripts/smoke-cloudflare-langgraph-facade.ts",
