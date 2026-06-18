@@ -53,17 +53,22 @@ const thread = (
   active = false,
   threadAgent = agent("agent-a"),
   input: Partial<ChatThreadSummary> = {},
-): ChatThreadSummary => ({
-  threadId: id,
-  sessionId: "session-1",
-  agentId: threadAgent.id,
-  agent: threadAgent,
-  status: "active",
-  title: id,
-  isActive: active,
-  messageCount: 0,
-  ...input,
-});
+): ChatThreadSummary => {
+  const createdAt = id.endsWith("b") ? "2026-06-13T00:01:00.000Z" : "2026-06-13T00:00:00.000Z";
+  return {
+    threadId: id,
+    sessionId: "session-1",
+    agentId: threadAgent.id,
+    agent: threadAgent,
+    status: "active",
+    title: id,
+    createdAt,
+    updatedAt: createdAt,
+    isActive: active,
+    messageCount: 0,
+    ...input,
+  };
+};
 
 const session = (input: Partial<ChatSessionResponse> = {}): ChatSessionResponse => ({
   ok: true,
@@ -176,6 +181,61 @@ describe("chat-session-state", () => {
     expect(merged.threads?.map((item) => item.threadId)).toEqual(["thread-a"]);
   });
 
+  it("preserves a local display title when a partial event falls back to New chat", () => {
+    const currentThread = thread("thread-a", true, agent("agent-a"), {
+      title: "6:37:10 PM",
+    });
+    const fallbackThread = thread("thread-a", true, agent("agent-a"), {
+      title: "New chat",
+      updatedAt: "2026-06-13T00:02:00.000Z",
+    });
+
+    const merged = mergeSession(
+      session({
+        activeThread: currentThread,
+        threads: [currentThread],
+      }),
+      sessionFromEvent(
+        event("session.thread.activated", {
+          workspace,
+          activeAgent: fallbackThread.agent,
+          activeThread: fallbackThread,
+          threads: [fallbackThread],
+        }),
+      )!,
+    );
+
+    expect(merged.activeThread?.title).toBe("6:37:10 PM");
+    expect(merged.threads?.[0]?.title).toBe("6:37:10 PM");
+  });
+
+  it("does not preserve a display title across different threads", () => {
+    const currentThread = thread("thread-a", true, agent("agent-a"), {
+      title: "6:37:10 PM",
+    });
+    const nextThread = thread("thread-b", true, agent("agent-a"), {
+      title: "New chat",
+    });
+
+    const merged = mergeSession(
+      session({
+        activeThread: currentThread,
+        threads: [currentThread],
+      }),
+      sessionFromEvent(
+        event("session.thread.activated", {
+          workspace,
+          activeAgent: nextThread.agent,
+          activeThread: nextThread,
+          threads: [nextThread],
+        }),
+      )!,
+    );
+
+    expect(merged.activeThread?.threadId).toBe("thread-b");
+    expect(merged.activeThread?.title).toBe("New chat");
+  });
+
   it("removes archived threads from the active display list", () => {
     const fallbackThread = thread("thread-b", true);
     const archivedThread = thread("thread-a", false, agent("agent-a"), {
@@ -233,7 +293,7 @@ describe("chat-session-state", () => {
     );
 
     expect(merged.activeThread?.threadId).toBe("thread-b");
-    expect(merged.threads?.map((item) => item.threadId)).toEqual(["thread-a", "thread-b"]);
+    expect(merged.threads?.map((item) => item.threadId)).toEqual(["thread-b", "thread-a"]);
   });
 
   it("removes soft-deleted threads from active and archived display state", () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuiState } from "@assistant-ui/react";
 import {
   ArchiveIcon,
@@ -38,7 +38,6 @@ export function ThreadHistorySidebar({
     pending,
     error,
     isInitialLoading,
-    isTransitioning,
     isLoadingArchivedThreads,
     archivedThreadsError,
     createThread,
@@ -79,15 +78,6 @@ export function ThreadHistorySidebar({
       cancelled = true;
     };
   }, [actionsDisabled, loadArchivedThreads, view]);
-
-  const statusText = useMemo(() => {
-    if (isCached) return "Showing cached chats while Cloudflare connects...";
-    if (pending?.type === "rename") return "Renaming chat...";
-    if (pending?.type === "archive") return "Archiving chat...";
-    if (pending?.type === "restore") return "Restoring chat...";
-    if (isTransitioning) return "Switching thread...";
-    return null;
-  }, [isCached, isTransitioning, pending?.type]);
 
   const reloadArchived = async () => {
     if (view !== "archived") return;
@@ -229,9 +219,6 @@ export function ThreadHistorySidebar({
             <>
               {visibleError ? (
                 <div className="text-destructive px-2 pb-2 text-[11px]">{visibleError}</div>
-              ) : null}
-              {statusText ? (
-                <div className="text-muted-foreground px-2 pb-2 text-[11px]">{statusText}</div>
               ) : null}
               {visibleThreads.map((thread) => (
                 <ThreadHistoryItem

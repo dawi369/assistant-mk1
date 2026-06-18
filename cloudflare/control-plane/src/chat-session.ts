@@ -24,6 +24,7 @@ const coordinatorResponse = async (
     update?: {
       title?: string;
       status?: ThreadMutationStatus;
+      fallbackTitle?: string;
     };
   },
 ) => {
@@ -143,6 +144,7 @@ export const handleUpdateChatSessionThread = async (
   const body = (await request.json().catch(() => ({}))) as {
     title?: unknown;
     status?: unknown;
+    fallbackTitle?: unknown;
   };
   return coordinatorResponse(request, env, identity, {
     action: "update",
@@ -153,6 +155,7 @@ export const handleUpdateChatSessionThread = async (
         body.status === "active" || body.status === "archived" || body.status === "deleted"
           ? body.status
           : undefined,
+      fallbackTitle: typeof body.fallbackTitle === "string" ? body.fallbackTitle : undefined,
     },
   });
 };

@@ -100,7 +100,7 @@ export const handleListChatThreads = async (env: Env, identity: AgentIdentity, u
               ) AS latest_run_status
        FROM chat_threads t
        WHERE t.user_id = ? AND t.workspace_id = ? AND t.agent_id = ? AND t.status = ?
-       ORDER BY t.updated_at DESC, t.created_at DESC
+       ORDER BY t.created_at DESC, t.thread_id DESC
        LIMIT ?`,
     )
       .bind(

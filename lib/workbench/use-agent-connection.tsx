@@ -46,6 +46,7 @@ type SessionAction = "read" | "create" | "activate";
 type ThreadUpdateInput = {
   title?: string;
   status?: "active" | "archived" | "deleted";
+  fallbackTitle?: string;
 };
 
 const sessionActionPath = (input: {
@@ -538,11 +539,19 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
       renameThread: (threadId: string, title: string) =>
         loadSession({ threadId, update: { title }, refreshSummary: true }),
       archiveThread: (threadId: string) =>
-        loadSession({ threadId, update: { status: "archived" }, refreshSummary: true }),
+        loadSession({
+          threadId,
+          update: { status: "archived", fallbackTitle: formatCurrentThreadTitle() },
+          refreshSummary: true,
+        }),
       restoreThread: (threadId: string) =>
         loadSession({ threadId, update: { status: "active" }, refreshSummary: true }),
       deleteThread: (threadId: string) =>
-        loadSession({ threadId, update: { status: "deleted" }, refreshSummary: true }),
+        loadSession({
+          threadId,
+          update: { status: "deleted", fallbackTitle: formatCurrentThreadTitle() },
+          refreshSummary: true,
+        }),
       loadArchivedThreads,
       refresh: () => loadSession({ refresh: "threads", refreshSummary: false }),
       retry: () => loadSession({ refreshSummary: false }),

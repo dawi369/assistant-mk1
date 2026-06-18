@@ -142,6 +142,17 @@ export const updateChatThreadUpstream = async (
   upstream: Record<string, unknown>,
 ) => {
   const timestamp = new Date().toISOString();
+  let nextUpstream = upstream;
+  const nextTitle = typeof upstream.title === "string" ? upstream.title.trim() : "";
+  if (!nextTitle || nextTitle === "New chat") {
+    const current = await getOwnedChatThread(env, scope, threadId);
+    const currentUpstream = current ? parseDataJson(current.upstream_json) : {};
+    const currentTitle =
+      typeof currentUpstream.title === "string" ? currentUpstream.title.trim() : "";
+    if (currentTitle && currentTitle !== "New chat") {
+      nextUpstream = { ...upstream, title: currentTitle };
+    }
+  }
   await env.DB.prepare(
     `UPDATE chat_threads
      SET upstream_json = ?,
@@ -149,7 +160,7 @@ export const updateChatThreadUpstream = async (
          last_seen_at = ?
      WHERE user_id = ? AND workspace_id = ? AND thread_id = ?`,
   )
-    .bind(toJson(upstream), timestamp, timestamp, scope.userId, scope.workspaceId, threadId)
+    .bind(toJson(nextUpstream), timestamp, timestamp, scope.userId, scope.workspaceId, threadId)
     .run();
 };
 

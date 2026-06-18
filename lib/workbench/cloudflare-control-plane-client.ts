@@ -339,7 +339,7 @@ export const activateChatSessionThread = (threadId: Id) =>
 
 export const updateChatSessionThread = (
   threadId: Id,
-  input: { title?: string; status?: ChatThreadStatus },
+  input: { title?: string; status?: ChatThreadStatus; fallbackTitle?: string },
 ) =>
   requestControlPlane<ChatSessionResponse>(
     `/chat/session/threads/${encodeURIComponent(threadId)}`,

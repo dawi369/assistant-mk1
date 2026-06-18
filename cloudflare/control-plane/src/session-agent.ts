@@ -60,6 +60,7 @@ type CoordinatorRequest = {
   update?: {
     title?: string;
     status?: ThreadMutationStatus;
+    fallbackTitle?: string;
   };
   event?: Partial<WorkbenchSessionEvent> & {
     type?: WorkbenchSessionEventType;
@@ -145,6 +146,7 @@ const formatThreadTimeTitle = (date: Date = new Date()) =>
   new Intl.DateTimeFormat("en-US", {
     hour: "numeric",
     minute: "2-digit",
+    second: "2-digit",
   }).format(date);
 
 const titleFromInput = (title: string | undefined) => {
@@ -281,7 +283,7 @@ const listWorkspaceThreads = async (
      FROM chat_threads t
      LEFT JOIN agents a ON a.id = t.agent_id AND a.workspace_id = t.workspace_id
      WHERE t.user_id = ? AND t.workspace_id = ? AND t.status = ?
-     ORDER BY t.updated_at DESC, t.created_at DESC
+     ORDER BY t.created_at DESC, t.thread_id DESC
      LIMIT 30`,
   )
     .bind(identity.scope.userId, identity.scope.workspaceId, status)
@@ -574,7 +576,7 @@ const findFallbackActiveThread = async (
             created_at, updated_at, last_seen_at
      FROM chat_threads
      WHERE user_id = ? AND workspace_id = ? AND status = 'active' AND thread_id != ?
-     ORDER BY updated_at DESC, created_at DESC
+     ORDER BY created_at DESC, thread_id DESC
      LIMIT 1`,
   )
     .bind(identity.scope.userId, identity.scope.workspaceId, excludeThreadId ?? "")
@@ -825,7 +827,12 @@ export class WorkbenchSessionAgent {
         const sessionId =
           latestSession?.session_id ??
           (await createChatSession(this.env, input.identity, { source: "cloudflare-agent-chat" }));
-        const created = await createThreadContext(this.env, input.identity, sessionId);
+        const created = await createThreadContext(
+          this.env,
+          input.identity,
+          sessionId,
+          input.update.fallbackTitle,
+        );
         snapshotIdentity = { ...input.identity, agentId: created.activeAgent.id };
         activeThread = created.thread;
         activeAgent = created.activeAgent;

@@ -27,6 +27,7 @@ export const formatCurrentThreadTitle = (date: Date = new Date()) =>
   new Intl.DateTimeFormat(undefined, {
     hour: "numeric",
     minute: "2-digit",
+    second: "2-digit",
   }).format(date);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -60,6 +61,20 @@ export const sanitizeThread = (thread?: ChatThreadSummary | null): ChatThreadSum
   };
 };
 
+const threadSortTime = (thread: ChatThreadSummary) => {
+  const created = thread.createdAt ? Date.parse(thread.createdAt) : NaN;
+  if (Number.isFinite(created)) return created;
+  const updated = thread.updatedAt ? Date.parse(thread.updatedAt) : NaN;
+  return Number.isFinite(updated) ? updated : 0;
+};
+
+export const sortThreadsByCreation = (threads: ChatThreadSummary[]) =>
+  [...threads].sort((a, b) => {
+    const timeDelta = threadSortTime(b) - threadSortTime(a);
+    if (timeDelta !== 0) return timeDelta;
+    return b.threadId.localeCompare(a.threadId);
+  });
+
 const dedupeThreads = (threads: ChatThreadSummary[]) => {
   const seen = new Set<string>();
   return threads.filter((thread) => {
@@ -69,16 +84,38 @@ const dedupeThreads = (threads: ChatThreadSummary[]) => {
   });
 };
 
+const isFallbackThreadTitle = (title?: string | null) => !title || title.trim() === "New chat";
+
+const preserveDisplayTitle = <T extends ChatThreadSummary | null>(
+  incoming: T,
+  current?: ChatThreadSummary,
+): T => {
+  if (!incoming) return incoming;
+  if (
+    !current?.title ||
+    current.threadId !== incoming.threadId ||
+    !isFallbackThreadTitle(incoming.title)
+  ) {
+    return incoming;
+  }
+  return { ...incoming, title: current.title } as T;
+};
+
 export const mergeThreads = (current: ChatThreadSummary[], incoming: ChatThreadSummary[]) => {
+  const currentById = new Map(current.map((thread) => [thread.threadId, thread]));
   const incomingIds = new Set(incoming.map((thread) => thread.threadId));
-  return dedupeThreads([
-    ...incoming.filter(isVisibleThread),
-    ...current
-      .filter((thread) => !incomingIds.has(thread.threadId))
-      .filter((thread) => !isPendingThread(thread.threadId))
-      .filter(isVisibleThread)
-      .map((thread) => ({ ...thread, isActive: false })),
-  ]);
+  return sortThreadsByCreation(
+    dedupeThreads([
+      ...incoming
+        .filter(isVisibleThread)
+        .map((thread) => preserveDisplayTitle(thread, currentById.get(thread.threadId))),
+      ...current
+        .filter((thread) => !incomingIds.has(thread.threadId))
+        .filter((thread) => !isPendingThread(thread.threadId))
+        .filter(isVisibleThread)
+        .map((thread) => ({ ...thread, isActive: false })),
+    ]),
+  );
 };
 
 export const mergeSession = (
@@ -90,7 +127,11 @@ export const mergeSession = (
     ...incoming,
     workspace: incoming.workspace ?? current?.workspace ?? null,
     activeAgent: incoming.activeAgent ?? current?.activeAgent ?? null,
-    activeThread: sanitizeThread(incoming.activeThread) ?? current?.activeThread ?? null,
+    activeThread:
+      preserveDisplayTitle(
+        sanitizeThread(incoming.activeThread) ?? current?.activeThread ?? null,
+        current?.activeThread ?? undefined,
+      ) ?? null,
     threads: mergeThreads(current?.threads ?? [], incoming.threads ?? []),
   };
 };
