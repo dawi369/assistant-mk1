@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@workos-inc/authkit-nextjs/components";
 import {
+  ActivityIcon,
   AlertCircleIcon,
   BotIcon,
   Building2Icon,
@@ -13,7 +14,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { workbenchSummaryRefreshEvent } from "@/lib/workbench/admin-summary-events";
-import { chatRuntimeStateLabel, chatRuntimeStateTone } from "@/lib/workbench/chat-runtime-display";
+import { deriveRuntimeState } from "@/lib/workbench/chat-runtime-live-state";
 import { useWorkbenchAgentConnection } from "@/lib/workbench/use-agent-connection";
 import type { CloudflareAdminSummaryResponse } from "@/lib/workbench/workbench-types";
 import { cn } from "@/lib/utils";
@@ -29,6 +30,7 @@ const readSummary = async () => {
 
 export function WorkbenchRuntimeHint({ onOpenAdmin }: { onOpenAdmin: () => void }) {
   const [summary, setSummary] = useState<CloudflareAdminSummaryResponse["summary"] | null>(null);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
   const { user, loading } = useAuth();
   const {
     connection,
@@ -44,9 +46,10 @@ export function WorkbenchRuntimeHint({ onOpenAdmin }: { onOpenAdmin: () => void 
     try {
       const nextSummary = await readSummary();
       setSummary(nextSummary);
+      setSummaryError(null);
     } catch (error) {
       console.error("Failed to load admin summary", error);
-      setSummary(null);
+      setSummaryError(error instanceof Error ? error.message : "Failed to load admin summary");
     }
   };
 
@@ -62,55 +65,28 @@ export function WorkbenchRuntimeHint({ onOpenAdmin }: { onOpenAdmin: () => void 
     return () => window.removeEventListener(workbenchSummaryRefreshEvent, loadSummary);
   }, [loading, user]);
 
-  const chatRuntime = summary?.chatRuntime ?? null;
-  const hasError = Boolean(error ?? chatRuntime?.failure ?? summary?.lastError);
-  const liveChatState =
-    latestSessionEvent?.type === "chat.run.started"
-      ? "running"
-      : latestSessionEvent?.type === "chat.run.completed"
-        ? "completed"
-        : latestSessionEvent?.type === "chat.run.failed"
-          ? "failed"
-          : null;
-  const transientChatState = liveChatState;
-  const chatLabel =
-    pending?.type === "create" || pending?.type === "activate"
-      ? "Opening"
-      : transientChatState
-        ? chatRuntimeStateLabel(transientChatState)
-        : chatRuntimeStateLabel(chatRuntime?.state);
-  const chatTone = transientChatState
-    ? chatRuntimeStateTone(transientChatState)
-    : chatRuntimeStateTone(chatRuntime?.state);
+  const liveRuntime = deriveRuntimeState({
+    session,
+    connection,
+    error,
+    isSessionStreamConnected,
+    latestSessionEvent,
+    pending,
+    isInitialLoading,
+    summary,
+    summaryError,
+    authLoading: loading,
+  });
+  const hasError = Boolean(error ?? liveRuntime.errorMessage);
   const activeAgent = session?.activeAgent ?? summary?.activeAgent ?? null;
   const workspaceName = session?.workspace?.name ?? summary?.workspace?.name ?? "Workspace";
-  const agentLabel = activeAgent ? `${activeAgent.name} / ${activeAgent.profile}` : null;
-  const modelLabel = activeAgent?.runtime.model ?? null;
-  const activeThreadTitle = session?.activeThread?.title;
-  const activeThreadId = session?.activeThread?.threadId ?? summary?.chat.latestThread?.threadId;
-
-  const cloudflareStatus = error
-    ? "Connection failed"
-    : connection && isSessionStreamConnected
-      ? "Live"
-      : connection
-        ? "Agent token ready"
-        : session?.isStale
-          ? "Cached, refreshing"
-          : isInitialLoading || loading
-            ? "Connecting"
-            : "Not connected";
-
-  const cloudflareTone = error
-    ? "failed"
-    : connection && isSessionStreamConnected
-      ? "completed"
-      : connection || session?.isStale || isInitialLoading || loading
-        ? "running"
-        : undefined;
+  const agentLabel =
+    liveRuntime.activeAgentLabel ??
+    (activeAgent ? `${activeAgent.name} / ${activeAgent.profile}` : null);
+  const modelLabel = liveRuntime.modelLabel ?? activeAgent?.runtime.model ?? null;
 
   const statusClassName = useMemo(() => {
-    switch (chatTone) {
+    switch (liveRuntime.chatTone) {
       case "completed":
         return "border-emerald-200 bg-emerald-50 text-emerald-700";
       case "running":
@@ -120,7 +96,7 @@ export function WorkbenchRuntimeHint({ onOpenAdmin }: { onOpenAdmin: () => void 
       default:
         return "border-border bg-muted text-muted-foreground";
     }
-  }, [chatTone]);
+  }, [liveRuntime.chatTone]);
 
   if (!loading && !user && !summary && !session && !error) return null;
 
@@ -128,7 +104,7 @@ export function WorkbenchRuntimeHint({ onOpenAdmin }: { onOpenAdmin: () => void 
     <div className="border-border bg-background/95 text-muted-foreground hidden w-[min(22rem,calc(100vw-1.5rem))] flex-col gap-1.5 rounded-md border px-2.5 py-2 text-xs shadow-xs backdrop-blur md:flex">
       <div className="flex min-w-0 items-center justify-between gap-2">
         <span className={cn("rounded-md border px-2 py-0.5 font-medium", statusClassName)}>
-          {chatLabel}
+          {liveRuntime.chatLabel}
         </span>
         {hasError ? (
           <Button
@@ -145,8 +121,8 @@ export function WorkbenchRuntimeHint({ onOpenAdmin }: { onOpenAdmin: () => void 
       <RuntimeHintRow
         icon={CloudIcon}
         label="Cloudflare"
-        value={cloudflareStatus}
-        tone={cloudflareTone}
+        value={liveRuntime.cloudflareStatus}
+        tone={liveRuntime.cloudflareTone}
       />
       <RuntimeHintRow icon={Building2Icon} label="Workspace" value={workspaceName} />
       <RuntimeHintRow icon={BotIcon} label="Agent" value={agentLabel ?? "Agent"} />
@@ -154,11 +130,16 @@ export function WorkbenchRuntimeHint({ onOpenAdmin }: { onOpenAdmin: () => void 
       <RuntimeHintRow
         icon={MessageSquareIcon}
         label="Thread"
-        value={activeThreadTitle || activeThreadId || "Waiting for Worker"}
+        value={liveRuntime.activeThreadTitle || liveRuntime.activeThreadId || "Waiting for Worker"}
       />
+      <RuntimeHintRow icon={ActivityIcon} label="Source" value={liveRuntime.sourceLabel} />
       {session?.isStale ? (
         <div className="text-muted-foreground/80 text-[11px]">
           Cached shell is visible; chat actions unlock after Cloudflare returns a live token.
+        </div>
+      ) : liveRuntime.summaryIsStale ? (
+        <div className="text-muted-foreground/80 text-[11px]">
+          Admin summary is behind the latest live event; waiting for refreshed details.
         </div>
       ) : isSessionStreamConnected ? (
         <div className="text-muted-foreground/80 text-[11px]">Live session updates connected.</div>
@@ -166,8 +147,8 @@ export function WorkbenchRuntimeHint({ onOpenAdmin }: { onOpenAdmin: () => void 
         <div className="text-muted-foreground/80 text-[11px]">
           Agent token is ready; opening the session event stream.
         </div>
-      ) : error ? (
-        <div className="text-destructive text-[11px]">{error}</div>
+      ) : liveRuntime.errorMessage ? (
+        <div className="text-destructive text-[11px]">{liveRuntime.errorMessage}</div>
       ) : null}
     </div>
   );

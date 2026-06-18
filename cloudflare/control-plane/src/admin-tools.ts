@@ -11,6 +11,14 @@ import {
   type UrlInspectResult,
 } from "../../../lib/workbench/url-inspect";
 import {
+  repoSnapshotAdapterVersion,
+  repoSnapshotError,
+  repoSnapshotPolicy,
+  repoSnapshotToolName,
+  validateRepoSnapshotInput,
+  type RepoSnapshotResult,
+} from "../../../lib/workbench/repo-snapshot";
+import {
   finishTrace,
   recordIncomingRequestSpans,
   recordSpan,
@@ -52,6 +60,7 @@ import {
   type ToolAdapterMetadata,
   type ToolRunnerSandboxContract,
   type ToolRunnerMetadata,
+  repoSnapshotSandboxContract,
   urlInspectSandboxContract,
 } from "./tool-runner";
 import {
@@ -70,6 +79,7 @@ import {
 
 const urlInspectWorkflowType = "tool.url.inspect";
 const urlInspectAdapterVersion = "url-inspect-v1";
+const repoSnapshotWorkflowType = "tool.repo.snapshot";
 
 type ToolRunIdentity = AgentIdentity & {
   runId: string;
@@ -95,6 +105,13 @@ const demoInspectAdapter: ToolAdapterMetadata = {
   transport: cloudflareInlineRunnerTransport,
 };
 
+const repoSnapshotAdapter: ToolAdapterMetadata = {
+  toolName: repoSnapshotToolName,
+  adapterVersion: repoSnapshotAdapterVersion,
+  supportedExecutionModes: ["dry_run"],
+  transport: "fly",
+};
+
 const toolSummaries = [
   {
     name: demoInspectToolName,
@@ -117,6 +134,17 @@ const toolSummaries = [
     requiresSecrets: false,
     mutationRisk: "read_only",
     runner: runnerMetadataFor(urlInspectAdapter, "admin"),
+  },
+  {
+    name: repoSnapshotToolName,
+    description: "Capture a bounded read-only repository snapshot using CLI inspection.",
+    kind: "cli",
+    family: "repo",
+    status: "available",
+    supportedExecutionModes: ["dry_run"],
+    requiresSecrets: false,
+    mutationRisk: "read_only",
+    runner: runnerMetadataFor(repoSnapshotAdapter, "admin", "fly", repoSnapshotSandboxContract()),
   },
 ] as const;
 
@@ -275,7 +303,9 @@ export const resolveToolSummaries = async (
         runner:
           tool.name === urlInspectToolName
             ? urlInspectRunnerMetadata(env, "admin", adminPolicy.constraints)
-            : tool.runner,
+            : tool.name === repoSnapshotToolName
+              ? repoSnapshotRunnerMetadata("admin", adminPolicy.constraints)
+              : tool.runner,
         adminVisible: adminPolicy.decision === "allow" && adminPolicy.adminVisible,
         modelVisible: modelPolicy.decision === "allow" && modelPolicy.modelVisible,
         reason,
@@ -323,6 +353,12 @@ const externalParentRelation = (parentRunId: string): ControlRunRelation => ({
 const relationEventData = (relation?: ControlRunRelation) =>
   relation ? toControlRunRelationEventData(relation) : undefined;
 
+const isUrlInspectResult = (
+  result: UrlInspectResult | RepoSnapshotResult,
+): result is UrlInspectResult =>
+  result.ok === false ||
+  (result.ok && "finalUrl" in result.output && "downloadedBytes" in result.output);
+
 const readParentControlRun = async (
   env: Env,
   identity: AgentIdentity,
@@ -358,6 +394,19 @@ const urlInspectRunnerMetadata = (
     urlInspectSandboxContract(constraints),
   );
 
+const repoSnapshotRunnerMetadata = (
+  source: UrlInspectRunSource,
+  constraints?: {
+    maxRuntimeMs?: number;
+  },
+): ToolRunnerMetadata =>
+  runnerMetadataFor(
+    repoSnapshotAdapter,
+    source,
+    "fly",
+    repoSnapshotSandboxContract({ maxRuntimeMs: constraints?.maxRuntimeMs }),
+  );
+
 const sandboxTraceData = (sandbox?: ToolRunnerSandboxContract) =>
   sandbox
     ? {
@@ -376,7 +425,7 @@ const sandboxTraceData = (sandbox?: ToolRunnerSandboxContract) =>
 
 const runnerDispatchTraceData = (
   runner: ToolRunnerMetadata,
-  result: UrlInspectResult & { metrics?: Record<string, unknown> },
+  result: (UrlInspectResult | RepoSnapshotResult) & { metrics?: Record<string, unknown> },
   durationMs: number,
 ) => {
   const metrics = isRecord(result.metrics) ? result.metrics : {};
@@ -565,6 +614,161 @@ export const insertToolRunRecords = async (
       runner,
       relation: relationData,
       parentRunId: relation.parentRunId,
+      traceId: input.traceId ?? undefined,
+    },
+  });
+
+  return runIdentity;
+};
+
+const insertRepoSnapshotRunRecords = async (
+  env: Env,
+  identity: AgentIdentity,
+  input: {
+    snapshotInput: Record<string, unknown>;
+    executionMode: ExecutionMode;
+    policyDecisionId: string;
+    traceId?: string | null;
+    sandboxConstraints?: {
+      maxRuntimeMs?: number;
+    };
+  },
+): Promise<ToolRunIdentity> => {
+  const timestamp = new Date().toISOString();
+  const workflowIntentId = createId("cf-intent");
+  const runId = createId("cf-run");
+  const toolCallId = `${runId}-tool-repo-snapshot`;
+  const execution = { mode: input.executionMode, policy: repoSnapshotPolicy };
+  const runner = repoSnapshotRunnerMetadata("admin", input.sandboxConstraints);
+  const builtRelation = buildControlRunRelation({ runId });
+  if (!builtRelation.ok) throw new Error(builtRelation.reason);
+  const relation = builtRelation.relation;
+  const relationData = toControlRunRelationEventData(relation);
+
+  await env.DB.prepare(
+    `INSERT INTO control_workflow_intents (
+       id, user_id, workspace_id, agent_id, stage, type, execution_json, payload_json,
+       status, created_at, updated_at
+     )
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      workflowIntentId,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.agentId,
+      "observe",
+      repoSnapshotWorkflowType,
+      toJson(execution),
+      toJson({ toolName: repoSnapshotToolName, input: input.snapshotInput, runner }),
+      "running",
+      timestamp,
+      timestamp,
+    )
+    .run();
+
+  await env.DB.prepare(
+    `INSERT INTO control_runs (
+       id, user_id, workspace_id, agent_id, workflow_intent_id, status, execution_json,
+       stage, engine, heartbeat_at, last_event_at, data_json, created_at, updated_at
+     )
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      runId,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.agentId,
+      workflowIntentId,
+      "running",
+      toJson(execution),
+      "observe",
+      "fly-tool-runner",
+      timestamp,
+      timestamp,
+      toJson({
+        displayName: "Repository snapshot",
+        toolName: repoSnapshotToolName,
+        policy: repoSnapshotPolicy,
+        policyDecisionId: input.policyDecisionId,
+        source: "admin",
+        runner,
+        relation,
+        traceId: input.traceId ?? undefined,
+      }),
+      timestamp,
+      timestamp,
+    )
+    .run();
+
+  await env.DB.prepare(
+    `INSERT INTO control_tool_calls (
+       id, user_id, workspace_id, agent_id, workflow_intent_id, run_id, tool_id, status,
+       input_summary, artifact_refs_json, data_json, started_at, created_at
+     )
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      toolCallId,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.agentId,
+      workflowIntentId,
+      runId,
+      repoSnapshotToolName,
+      "running",
+      "Capture bounded repository snapshot",
+      "[]",
+      toJson({
+        input: input.snapshotInput,
+        execution,
+        source: "admin",
+        runner,
+        policyDecisionId: input.policyDecisionId,
+        relation,
+        traceId: input.traceId ?? undefined,
+      }),
+      timestamp,
+      timestamp,
+    )
+    .run();
+
+  const runIdentity = {
+    ...identity,
+    runId,
+    workflowIntentId,
+    source: "admin" as const,
+    runner,
+    relation,
+  };
+  await appendControlAudit(env, {
+    ...runIdentity,
+    action: "intent.created",
+    summary: "Created repo.snapshot workflow intent.",
+    targetType: "workflowIntent",
+    targetId: workflowIntentId,
+    data: { relation: relationData },
+  });
+  await appendControlAudit(env, {
+    ...runIdentity,
+    action: "tool.started",
+    summary: "Started repo.snapshot tool call.",
+    targetType: "toolCall",
+    targetId: toolCallId,
+    data: { relation: relationData },
+  });
+  await appendControlPlaneEvent(env, identity, {
+    type: "tool.started",
+    summary: "Started repo.snapshot tool call.",
+    targetType: "toolCall",
+    targetId: toolCallId,
+    data: {
+      runId,
+      workflowIntentId,
+      toolName: repoSnapshotToolName,
+      source: "admin",
+      runner,
+      relation: relationData,
       traceId: input.traceId ?? undefined,
     },
   });
@@ -898,7 +1102,7 @@ export const executeUrlInspectRunner = async (
 ) => {
   const runner = runIdentity.runner ?? urlInspectRunnerMetadata(env, runIdentity.source ?? "admin");
   const runnerStartedAtMs = Date.now();
-  const result =
+  const runnerResult =
     runner.transport === "fly"
       ? await invokeFlyToolRunner(env, runIdentity, {
           scope: runIdentity.scope,
@@ -914,6 +1118,16 @@ export const executeUrlInspectRunner = async (
           traceId: input.traceId,
         })
       : await inspectUrl(url);
+  const result = isUrlInspectResult(runnerResult)
+    ? runnerResult
+    : ({
+        ok: false,
+        error: urlInspectError(
+          "url_inspect_failed",
+          "Runner returned an invalid url.inspect response.",
+          true,
+        ),
+      } satisfies UrlInspectResult);
   const runnerEndedAtMs = Date.now();
   const runnerDurationMs = Math.max(0, Math.round(runnerEndedAtMs - runnerStartedAtMs));
   if (input.traceId) {
@@ -929,6 +1143,201 @@ export const executeUrlInspectRunner = async (
   }
   const finished = await finishToolRun(env, runIdentity, result);
   return { result, finished };
+};
+
+const finishRepoSnapshotRun = async (
+  env: Env,
+  identity: ToolRunIdentity,
+  result: RepoSnapshotResult,
+) => {
+  const timestamp = new Date().toISOString();
+  const toolCallId = `${identity.runId}-tool-repo-snapshot`;
+  const artifactId = `${identity.runId}-artifact-repo-snapshot`;
+  const runner = identity.runner ?? repoSnapshotRunnerMetadata(identity.source ?? "admin");
+  const relation = relationEventData(identity.relation);
+  const artifactRef = {
+    id: artifactId,
+    kind: "report",
+    uri: `d1://control-plane/${identity.runId}/repo-snapshot-report.json`,
+    title: "Repository snapshot report",
+    mimeType: "application/json",
+  };
+
+  if (!result.ok) {
+    await env.DB.prepare(
+      `UPDATE control_tool_calls
+       SET status = ?, output_summary = ?, data_json = ?, finished_at = ?
+       WHERE id = ? AND user_id = ? AND workspace_id = ?`,
+    )
+      .bind(
+        "failed",
+        result.error.message,
+        toJson({ error: result.error, runner, relation }),
+        timestamp,
+        toolCallId,
+        identity.scope.userId,
+        identity.scope.workspaceId,
+      )
+      .run();
+    await updateToolRunStatus(env, identity, "failed", result.error.message, {
+      error: result.error,
+      toolName: repoSnapshotToolName,
+      runner,
+      relation,
+    });
+    await appendControlAudit(env, {
+      ...identity,
+      action: "tool.failed",
+      summary: "repo.snapshot failed.",
+      targetType: "toolCall",
+      targetId: toolCallId,
+      data: { error: result.error, relation },
+    });
+    await appendControlPlaneEvent(env, identity, {
+      type: "tool.failed",
+      summary: "repo.snapshot failed.",
+      targetType: "toolCall",
+      targetId: toolCallId,
+      data: {
+        runId: identity.runId,
+        error: result.error,
+        source: identity.source ?? "admin",
+        runner,
+        relation,
+      },
+    });
+    return { toolCallId, artifact: null };
+  }
+
+  await env.DB.prepare(
+    `INSERT INTO control_artifacts (
+       id, user_id, workspace_id, kind, uri, title, mime_type, size_bytes, data_json, created_at
+     )
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      artifactId,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      "report",
+      artifactRef.uri,
+      artifactRef.title,
+      artifactRef.mimeType,
+      JSON.stringify(result.output).length,
+      toJson({ output: result.output, runner, relation }),
+      timestamp,
+    )
+    .run();
+
+  await env.DB.prepare(
+    `UPDATE control_tool_calls
+     SET status = ?, output_summary = ?, artifact_refs_json = ?, data_json = ?, finished_at = ?
+     WHERE id = ? AND user_id = ? AND workspace_id = ?`,
+  )
+    .bind(
+      "completed",
+      result.output.summary,
+      toJson([artifactRef]),
+      toJson({ output: result.output, runner }),
+      timestamp,
+      toolCallId,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+    )
+    .run();
+
+  await updateToolRunStatus(env, identity, "completed", "Repository snapshot completed.", {
+    artifactIds: [artifactId],
+    toolName: repoSnapshotToolName,
+    timingMs: result.output.timingMs,
+    runner,
+    relation,
+  });
+  await appendControlAudit(env, {
+    ...identity,
+    action: "tool.finished",
+    summary: "Finished repo.snapshot tool call.",
+    targetType: "toolCall",
+    targetId: toolCallId,
+  });
+  await appendControlAudit(env, {
+    ...identity,
+    action: "artifact.created",
+    summary: "Created repository snapshot artifact metadata.",
+    targetType: "artifact",
+    targetId: artifactId,
+  });
+  await appendControlPlaneEvent(env, identity, {
+    type: "tool.finished",
+    summary: "Finished repo.snapshot tool call.",
+    targetType: "toolCall",
+    targetId: toolCallId,
+    data: {
+      runId: identity.runId,
+      artifactId,
+      toolName: repoSnapshotToolName,
+      source: identity.source ?? "admin",
+      runner,
+      relation,
+    },
+  });
+
+  return { toolCallId, artifact: artifactRef };
+};
+
+const executeRepoSnapshotRunner = async (
+  env: Env,
+  runIdentity: ToolRunIdentity,
+  snapshotInput: Record<string, unknown>,
+  input: {
+    executionMode: ExecutionMode;
+    policyDecisionId?: string;
+    traceId?: string | null;
+  },
+) => {
+  const runner = runIdentity.runner ?? repoSnapshotRunnerMetadata(runIdentity.source ?? "admin");
+  const runnerStartedAtMs = Date.now();
+  const result = await invokeFlyToolRunner(env, runIdentity, {
+    scope: runIdentity.scope,
+    agentId: runIdentity.agentId,
+    runId: runIdentity.runId,
+    workflowIntentId: runIdentity.workflowIntentId,
+    toolName: repoSnapshotToolName,
+    execution: { mode: input.executionMode, policy: repoSnapshotPolicy },
+    input: snapshotInput,
+    runner,
+    policyDecisionId: input.policyDecisionId,
+    source: runIdentity.source ?? "admin",
+    traceId: input.traceId,
+  });
+  const runnerEndedAtMs = Date.now();
+  const runnerDurationMs = Math.max(0, Math.round(runnerEndedAtMs - runnerStartedAtMs));
+  if (input.traceId) {
+    await recordSpan(env, runIdentity, {
+      traceId: input.traceId,
+      name: "Runner dispatch",
+      layer: "executor",
+      startedAtMs: runnerStartedAtMs,
+      endedAtMs: runnerEndedAtMs,
+      status: result.ok ? "completed" : "failed",
+      data: runnerDispatchTraceData(runner, result, runnerDurationMs),
+    });
+  }
+  const repoResult =
+    result.ok && "repoFiles" in result.output
+      ? (result as RepoSnapshotResult)
+      : !result.ok
+        ? (result as RepoSnapshotResult)
+        : ({
+            ok: false,
+            error: repoSnapshotError(
+              "repo_snapshot_failed",
+              "Runner returned an invalid repo.snapshot response.",
+              true,
+            ),
+          } satisfies RepoSnapshotResult);
+  const finished = await finishRepoSnapshotRun(env, runIdentity, repoResult);
+  return { result: repoResult, finished };
 };
 
 const updateToolRunStatus = async (
@@ -1518,7 +1927,22 @@ export const handleUpdateToolPolicy = async (
         error: "Unsupported tool",
         details: toolError(
           "unsupported_tool",
-          "Only url.inspect policy can be updated through this v0 endpoint.",
+          "Only known tool policy can be updated through this v0 endpoint.",
+          false,
+        ),
+      },
+      { status: 400 },
+    );
+  }
+
+  if (toolName === repoSnapshotToolName && requiresApproval === true) {
+    return json(
+      {
+        ok: false,
+        error: "Unsupported policy flag",
+        details: toolError(
+          "unsupported_policy_flag",
+          "repo.snapshot approvals are not supported in this slice.",
           false,
         ),
       },
@@ -2085,6 +2509,194 @@ export const handleDenyToolApproval = async (
   });
 };
 
+const handleRunRepoSnapshot = async (
+  body: unknown,
+  env: Env,
+  identity: AgentIdentity,
+  incomingTrace?: IncomingRuntimeTrace,
+) => {
+  const trace = await startTrace(env, identity, {
+    traceId: incomingTrace?.traceId,
+    kind: "tool.repo.snapshot",
+    rootName: "Repository snapshot",
+    summary: "Run Admin-triggered read-only repository snapshot.",
+    startedAtMs: incomingTrace?.authzStartedAtMs,
+    data: { toolName: repoSnapshotToolName },
+  });
+  await recordIncomingRequestSpans(env, identity, trace, incomingTrace);
+
+  const executionMode =
+    isRecord(body) && typeof body.executionMode === "string" ? body.executionMode : "dry_run";
+  const policyStartedAtMs = Date.now();
+  const membership = await selectMembership(env, identity.scope.userId, identity.scope.workspaceId);
+  const policy = await evaluateToolPolicy(env, identity, {
+    membership,
+    toolName: repoSnapshotToolName,
+    executionMode,
+    surface: "admin_run",
+  });
+  const policyDecisionId = await recordToolPolicyDecision(env, identity, {
+    toolName: repoSnapshotToolName,
+    surface: "admin_run",
+    result: policy,
+    data: { requestedToolName: repoSnapshotToolName },
+  });
+  await recordSpan(env, identity, {
+    traceId: trace.traceId,
+    name: "Tool policy check",
+    layer: "cloudflare",
+    startedAtMs: policyStartedAtMs,
+    status: policy.decision === "allow" ? "completed" : "blocked",
+    data: {
+      role: membership?.role ?? null,
+      toolName: repoSnapshotToolName,
+      code: policy.code,
+      policyDecisionId,
+    },
+  });
+
+  if (policy.decision === "block") {
+    await finishToolTrace(env, identity, trace, {
+      status: "blocked",
+      summary: policy.reason,
+      data: { errorCode: policy.code, policyDecisionId },
+    });
+    return json(
+      {
+        ok: false,
+        error: policy.reason,
+        details: toolPolicyError(policy),
+        policyDecisionId,
+      },
+      { status: policy.status },
+    );
+  }
+
+  const parsedInput = validateRepoSnapshotInput(isRecord(body) ? body.input : undefined);
+  if ("code" in parsedInput) {
+    await finishToolTrace(env, identity, trace, {
+      status: "failed",
+      summary: parsedInput.message,
+      data: { error: parsedInput },
+    });
+    return json(
+      {
+        ok: false,
+        error: parsedInput.message,
+        details: parsedInput,
+      },
+      { status: 400 },
+    );
+  }
+
+  const recordsStartedAtMs = Date.now();
+  const runIdentity = await insertRepoSnapshotRunRecords(env, identity, {
+    snapshotInput: parsedInput,
+    executionMode: policy.executionMode,
+    policyDecisionId,
+    traceId: trace.traceId,
+    sandboxConstraints: policy.constraints,
+  });
+  await recordSpan(env, identity, {
+    traceId: trace.traceId,
+    name: "Run queued and tool-call record write",
+    layer: "d1",
+    startedAtMs: recordsStartedAtMs,
+    data: { runId: runIdentity.runId, workflowIntentId: runIdentity.workflowIntentId },
+  });
+
+  const executionStartedAtMs = Date.now();
+  const { result, finished } = await executeRepoSnapshotRunner(env, runIdentity, parsedInput, {
+    executionMode: policy.executionMode,
+    policyDecisionId,
+    traceId: trace.traceId,
+  });
+  await recordSpan(env, identity, {
+    traceId: trace.traceId,
+    name: result.ok ? "Artifact/write completion" : "Failure write",
+    layer: "d1",
+    startedAtMs: executionStartedAtMs,
+    status: result.ok ? "completed" : "failed",
+    data: {
+      runId: runIdentity.runId,
+      toolCallId: finished.toolCallId,
+      artifactId: finished.artifact?.id ?? null,
+    },
+  });
+  await finishToolTrace(env, identity, trace, {
+    status: result.ok ? "completed" : "failed",
+    summary: result.ok ? result.output.summary : result.error.message,
+    data: {
+      runId: runIdentity.runId,
+      workflowIntentId: runIdentity.workflowIntentId,
+      toolCallId: finished.toolCallId,
+      artifactId: finished.artifact?.id ?? null,
+      toolName: repoSnapshotToolName,
+      error: result.ok ? undefined : result.error,
+    },
+  });
+  await dispatchWorkbenchSessionEvent(env, identity, {
+    type: "tool.run.updated",
+    data: {
+      toolName: repoSnapshotToolName,
+      runId: runIdentity.runId,
+      workflowIntentId: runIdentity.workflowIntentId,
+      toolCallId: finished.toolCallId,
+      artifactId: finished.artifact?.id ?? null,
+      status: result.ok ? "completed" : "failed",
+      traceId: trace.traceId,
+      relation: relationEventData(runIdentity.relation),
+      errorCode: result.ok ? undefined : result.error.code,
+    },
+  });
+  await dispatchWorkbenchSessionEvent(env, identity, {
+    type: "trace.updated",
+    data: {
+      traceId: trace.traceId,
+      kind: trace.kind,
+      status: result.ok ? "completed" : "failed",
+      runId: runIdentity.runId,
+    },
+  });
+  await dispatchWorkbenchSessionEvent(env, identity, {
+    type: "admin.summary.invalidated",
+    data: {
+      reason: "tool-run-updated",
+      toolName: repoSnapshotToolName,
+      runId: runIdentity.runId,
+      traceId: trace.traceId,
+    },
+  });
+
+  const [latestToolCalls, latestArtifacts] = await Promise.all([
+    listLatestToolCalls(env, identity.scope),
+    listLatestArtifacts(env, identity.scope),
+  ]);
+  const toolCall = latestToolCalls.find((call) => call.id === finished.toolCallId) ?? null;
+  const artifact = finished.artifact
+    ? (latestArtifacts.find((item) => item.id === finished.artifact?.id) ?? finished.artifact)
+    : null;
+
+  return json(
+    {
+      ok: result.ok,
+      run: {
+        id: runIdentity.runId,
+        workflowIntentId: runIdentity.workflowIntentId,
+        status: result.ok ? "completed" : "failed",
+        execution: { mode: policy.executionMode, policy: repoSnapshotPolicy },
+        policyDecisionId,
+        relation: relationEventData(runIdentity.relation),
+      },
+      toolCall,
+      artifact,
+      error: result.ok ? undefined : result.error,
+      policyDecisionId,
+    },
+    { status: result.ok ? 201 : 502 },
+  );
+};
+
 export const handleRunTool = async (
   request: Request,
   env: Env,
@@ -2094,6 +2706,9 @@ export const handleRunTool = async (
   const bodyText = await request.text();
   const body = parseJson(bodyText);
   const toolName = isRecord(body) && typeof body.toolName === "string" ? body.toolName : "";
+  if (toolName === repoSnapshotToolName) {
+    return handleRunRepoSnapshot(body, env, identity, incomingTrace);
+  }
   const trace =
     toolName === urlInspectToolName
       ? await startTrace(env, identity, {

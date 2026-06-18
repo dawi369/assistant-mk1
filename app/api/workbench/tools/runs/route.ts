@@ -13,19 +13,32 @@ export async function POST(request: NextRequest) {
       input?: { url?: unknown };
       parentRunId?: unknown;
     };
-    if (body.toolName !== "url.inspect") {
+    if (body.toolName !== "url.inspect" && body.toolName !== "repo.snapshot") {
       return NextResponse.json(
         {
           ok: false,
           error: "Unsupported tool",
           details: {
             code: "unsupported_tool",
-            message: "Only url.inspect can run through this v0 endpoint.",
+            message: "Only url.inspect and repo.snapshot can run through this v0 endpoint.",
             retryable: false,
             redacted: true,
           },
         },
         { status: 400 },
+      );
+    }
+    if (body.toolName === "repo.snapshot") {
+      return NextResponse.json(
+        await runCloudflareTool({
+          toolName: "repo.snapshot",
+          executionMode: body.executionMode === "dry_run" ? "dry_run" : undefined,
+          input:
+            body.input && typeof body.input === "object" && !Array.isArray(body.input)
+              ? body.input
+              : {},
+        }),
+        { status: 201 },
       );
     }
     return NextResponse.json(

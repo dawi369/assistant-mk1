@@ -36,6 +36,30 @@ const sandbox = (allowedHosts = ["example.com"]) => ({
   limits: {},
 });
 
+const repoSnapshotSandbox = () => ({
+  lifecycle: {
+    template: "repo-snapshot-v1",
+    setup: "per_invocation",
+    workspaceState: "none",
+    filesystem: "ephemeral",
+    artifactPromotion: "metadata_only",
+  },
+  network: {
+    egress: "none",
+    allowedSchemes: [],
+    allowedHosts: [],
+    deniedHosts: ["*"],
+    privateNetwork: "deny",
+    enforcement: "control_plane_and_runner",
+  },
+  limits: {
+    maxRuntimeMs: 10_000,
+    maxStdoutBytes: 65_536,
+    maxStderrBytes: 16_384,
+    maxArtifactBytes: 131_072,
+  },
+});
+
 const invocationBody = (
   runId = `cf-run-${suffix}`,
   input: { url: string } = { url: "https://example.com" },
@@ -59,21 +83,46 @@ const invocationBody = (
     source: "admin",
   });
 
+const repoSnapshotInvocationBody = (runId = `cf-run-repo-snapshot-${suffix}`) =>
+  JSON.stringify({
+    scope,
+    agentId: `agent:${scope.workspaceId}:default`,
+    runId,
+    workflowIntentId: `cf-intent-repo-snapshot-${suffix}`,
+    toolName: "repo.snapshot",
+    execution: { mode: "dry_run", policy: "repo-snapshot-readonly-v0" },
+    input: { includeDocs: true, includeScripts: true, includeConfig: true },
+    runner: {
+      transport: "fly",
+      adapterVersion: "repo-snapshot-v1",
+      source: "admin",
+      sandbox: repoSnapshotSandbox(),
+    },
+    policyDecisionId: `cf-policy-repo-snapshot-${suffix}`,
+    source: "admin",
+  });
+
 const signedFetch = async (input?: {
   body?: string;
+  runId?: string;
+  workflowIntentId?: string;
+  toolName?: string;
   timestamp?: string;
   nonce?: string;
   tamper?: (headers: Record<string, string>) => void;
 }) => {
   const body = input?.body ?? invocationBody();
+  const runId = input?.runId ?? `cf-run-${suffix}`;
+  const workflowIntentId = input?.workflowIntentId ?? `cf-intent-${suffix}`;
+  const toolName = input?.toolName ?? "url.inspect";
   const headers: Record<string, string> = {
     "content-type": "application/json",
     "x-assistant-mk1-user-id": scope.userId,
     "x-assistant-mk1-workspace-id": scope.workspaceId,
     "x-assistant-mk1-agent-id": `agent:${scope.workspaceId}:default`,
-    "x-assistant-mk1-run-id": `cf-run-${suffix}`,
-    "x-assistant-mk1-workflow-intent-id": `cf-intent-${suffix}`,
-    "x-assistant-mk1-tool-name": "url.inspect",
+    "x-assistant-mk1-run-id": runId,
+    "x-assistant-mk1-workflow-intent-id": workflowIntentId,
+    "x-assistant-mk1-tool-name": toolName,
   };
   Object.assign(
     headers,
@@ -94,6 +143,15 @@ const signedFetch = async (input?: {
     body,
   });
 };
+
+const signedRepoSnapshotFetch = (input?: { nonce?: string }) =>
+  signedFetch({
+    body: repoSnapshotInvocationBody(),
+    runId: `cf-run-repo-snapshot-${suffix}`,
+    workflowIntentId: `cf-intent-repo-snapshot-${suffix}`,
+    toolName: "repo.snapshot",
+    nonce: input?.nonce,
+  });
 
 const expectRunnerAuthError = async (response: Response, code: string) => {
   if (response.status !== 401) {
@@ -129,6 +187,32 @@ runSmoke("Fly tool runner smoke", async () => {
     validBody.runner.sandbox?.network?.privateNetwork !== "deny"
   ) {
     throw new Error(`valid runner response was unexpected: ${JSON.stringify(validBody)}`);
+  }
+
+  const repoSnapshot = await signedRepoSnapshotFetch({ nonce: `repo-snapshot-${suffix}` });
+  if (!repoSnapshot.ok) {
+    throw new Error(`repo.snapshot runner request failed: ${repoSnapshot.status}`);
+  }
+  const repoSnapshotBody = (await repoSnapshot.json()) as {
+    ok?: boolean;
+    output?: { status?: string; repoFiles?: string[]; commandMetrics?: unknown[] };
+    runner?: {
+      transport?: string;
+      adapterVersion?: string;
+      sandbox?: { network?: { egress?: string; privateNetwork?: string } };
+    };
+  };
+  if (
+    !repoSnapshotBody.ok ||
+    repoSnapshotBody.output?.status !== "ok" ||
+    !Array.isArray(repoSnapshotBody.output.repoFiles) ||
+    !Array.isArray(repoSnapshotBody.output.commandMetrics) ||
+    repoSnapshotBody.runner?.transport !== "fly" ||
+    repoSnapshotBody.runner.adapterVersion !== "repo-snapshot-v1" ||
+    repoSnapshotBody.runner.sandbox?.network?.egress !== "none" ||
+    repoSnapshotBody.runner.sandbox.network.privateNetwork !== "deny"
+  ) {
+    throw new Error(`repo.snapshot response was unexpected: ${JSON.stringify(repoSnapshotBody)}`);
   }
 
   const blockedEgress = await signedFetch({

@@ -21,6 +21,7 @@ import {
   sanitizeThread,
   sessionEventRequiresConnectionRefresh,
   sessionFromEvent,
+  shouldRefreshThreadsAfterSessionStreamOpen,
   shouldIgnoreSessionEvent,
   updateThreadStatusFromEvent,
   type PendingSessionTransition,
@@ -126,6 +127,8 @@ type ChatSessionContextValue = {
   pending: PendingSessionTransition | null;
   threads: ChatThreadSummary[];
   archivedThreads: ChatThreadSummary[];
+  isLoadingArchivedThreads: boolean;
+  archivedThreadsError: string | null;
   createThread: () => Promise<void>;
   activateThread: (threadId: string) => Promise<void>;
   renameThread: (threadId: string, title: string) => Promise<void>;
@@ -252,8 +255,11 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
   const [latestSessionEvent, setLatestSessionEvent] = useState<WorkbenchSessionEvent | null>(null);
   const [pending, setPending] = useState<PendingSessionTransition | null>({ type: "initial" });
   const [archivedThreads, setArchivedThreads] = useState<ChatThreadSummary[]>([]);
+  const [isLoadingArchivedThreads, setIsLoadingArchivedThreads] = useState(false);
+  const [archivedThreadsError, setArchivedThreadsError] = useState<string | null>(null);
   const connectionRef = useRef<WorkbenchAgentConnection | null>(null);
   const loadSessionRef = useRef<((input?: LoadSessionInput) => Promise<void>) | null>(null);
+  const sessionStreamOpenedRef = useRef(false);
 
   useEffect(() => {
     connectionRef.current = connection;
@@ -410,6 +416,13 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
 
       source.onopen = () => {
         setIsSessionStreamConnected(true);
+        const shouldRefreshThreads = shouldRefreshThreadsAfterSessionStreamOpen(
+          sessionStreamOpenedRef.current,
+        );
+        sessionStreamOpenedRef.current = true;
+        if (shouldRefreshThreads) {
+          void loadSessionRef.current?.({ refresh: "threads", refreshSummary: false });
+        }
       };
 
       const onEvent = (message: MessageEvent<string>) => {
@@ -462,18 +475,29 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
   }, [connection?.expiresAt, loadSession]);
 
   const loadArchivedThreads = useCallback(async () => {
-    const response = await fetch(`${sessionPath}/threads?status=archived`, {
-      cache: "no-store",
-    });
-    const body = (await response.json().catch(() => ({}))) as {
-      ok?: boolean;
-      threads?: ChatThreadSummary[];
-      error?: string;
-    };
-    if (!response.ok || !body.ok) {
-      throw new Error(body.error ?? "Failed to load archived chats");
+    setIsLoadingArchivedThreads(true);
+    setArchivedThreadsError(null);
+    try {
+      const response = await fetch(`${sessionPath}/threads?status=archived`, {
+        cache: "no-store",
+      });
+      const body = (await response.json().catch(() => ({}))) as {
+        ok?: boolean;
+        threads?: ChatThreadSummary[];
+        error?: string;
+      };
+      if (!response.ok || !body.ok) {
+        throw new Error(body.error ?? "Failed to load archived chats");
+      }
+      setArchivedThreads(body.threads ?? []);
+    } catch (nextError) {
+      const message =
+        nextError instanceof Error ? nextError.message : "Failed to load archived chats";
+      setArchivedThreadsError(message);
+      throw nextError;
+    } finally {
+      setIsLoadingArchivedThreads(false);
     }
-    setArchivedThreads(body.threads ?? []);
   }, []);
 
   const value = useMemo<ChatSessionContextValue>(
@@ -488,6 +512,8 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
       pending,
       threads: session?.threads ?? [],
       archivedThreads,
+      isLoadingArchivedThreads,
+      archivedThreadsError,
       createThread: () => loadSession({ action: "create", refreshSummary: true }),
       activateThread: (threadId: string) =>
         loadSession({
@@ -513,6 +539,8 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
       error,
       isSessionStreamConnected,
       latestSessionEvent,
+      isLoadingArchivedThreads,
+      archivedThreadsError,
       loadArchivedThreads,
       loadSession,
       archivedThreads,

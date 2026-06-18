@@ -48,7 +48,7 @@ import {
   requestWorkbenchSummaryRefresh,
   workbenchSummaryRefreshEvent,
 } from "@/lib/workbench/admin-summary-events";
-import { chatRuntimeStateLabel, chatRuntimeStateTone } from "@/lib/workbench/chat-runtime-display";
+import { deriveRuntimeState } from "@/lib/workbench/chat-runtime-live-state";
 import { useWorkbenchAgentConnection } from "@/lib/workbench/use-agent-connection";
 import type {
   AgentBehaviorTemplate,
@@ -104,8 +104,15 @@ export function AdminPanel({
   onOpenChange: (open: boolean) => void;
 }) {
   const { focusComposer } = useWorkbenchComposerFocus();
-  const { session, pending, isSessionStreamConnected, latestSessionEvent } =
-    useWorkbenchAgentConnection();
+  const {
+    connection,
+    error,
+    session,
+    pending,
+    isInitialLoading,
+    isSessionStreamConnected,
+    latestSessionEvent,
+  } = useWorkbenchAgentConnection();
   const [summary, setSummary] = useState<CloudflareAdminSummaryResponse["summary"] | null>(null);
   const [approvalQueue, setApprovalQueue] = useState<ToolApprovalRequestSummary[]>([]);
   const [behaviorTemplates, setBehaviorTemplates] = useState<AgentBehaviorTemplate[]>([]);
@@ -142,7 +149,18 @@ export function AdminPanel({
   const traceWaterfall = summary?.traceWaterfall ?? [];
   const run = demoSnapshot?.run;
   const isDemoActive = run?.status ? !terminalStatuses.has(run.status) : false;
-  const isChatActive = chatRuntime?.state === "running";
+  const liveRuntime = deriveRuntimeState({
+    session,
+    connection,
+    error,
+    isSessionStreamConnected,
+    latestSessionEvent,
+    pending,
+    isInitialLoading,
+    summary,
+    summaryError: fetchError,
+  });
+  const isChatActive = liveRuntime.chatState === "running";
   const latestToolCall = demoSnapshot?.toolCalls.at(-1);
   const latestArtifact = demoSnapshot?.artifacts.at(-1);
   const latestAdminToolCall = summary?.latestToolCalls?.at(0) ?? null;
@@ -165,26 +183,41 @@ export function AdminPanel({
   const canManageAgents = canManageWorkspaces;
   const importantError = fetchError
     ? { message: fetchError, source: "drawer", status: undefined, targetId: undefined }
-    : chatRuntime?.failure
-      ? {
-          message: chatRuntime.failure.message,
-          source: chatRuntime.failure.source,
-          status: chatRuntime.failure.status,
-          targetId: chatRuntime.failure.targetId,
-          errorCode: chatRuntime.failure.errorCode,
-        }
-      : summary?.lastError
+    : error
+      ? { message: error, source: "session", status: undefined, targetId: undefined }
+      : liveRuntime.errorMessage && !chatRuntime?.failure && !summary?.lastError
         ? {
-            message: summary.lastError.message,
-            source: summary.lastError.source,
-            status: summary.lastError.status,
-            targetId: summary.lastError.targetId,
-            errorCode: undefined,
+            message: liveRuntime.errorMessage,
+            source: liveRuntime.sourceLabel,
+            status: undefined,
+            targetId: liveRuntime.activeThreadId,
           }
-        : null;
-  const chatLabel =
-    fetchError && !chatRuntime ? "Unavailable" : chatRuntimeStateLabel(chatRuntime?.state);
-  const chatTone = fetchError && !chatRuntime ? "failed" : chatRuntimeStateTone(chatRuntime?.state);
+        : chatRuntime?.failure
+          ? {
+              message: chatRuntime.failure.message,
+              source: chatRuntime.failure.source,
+              status: chatRuntime.failure.status,
+              targetId: chatRuntime.failure.targetId,
+              errorCode: chatRuntime.failure.errorCode,
+            }
+          : summary?.lastError
+            ? {
+                message: summary.lastError.message,
+                source: summary.lastError.source,
+                status: summary.lastError.status,
+                targetId: summary.lastError.targetId,
+                errorCode: undefined,
+              }
+            : null;
+  const chatLabel = liveRuntime.chatLabel;
+  const chatTone = liveRuntime.chatTone;
+  const summaryStateLabel = fetchError
+    ? "Summary fetch failed"
+    : liveRuntime.summaryIsStale
+      ? "Stale behind live event"
+      : summary
+        ? "Summary refreshed"
+        : "Not loaded";
   const selectedBehaviorTemplate = useMemo(
     () => behaviorTemplates.find((template) => template.id === agentBehaviorTemplateId) ?? null,
     [agentBehaviorTemplateId, behaviorTemplates],
@@ -509,7 +542,7 @@ export function AdminPanel({
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
             <div className="flex items-center justify-between gap-3">
               <p className="text-muted-foreground text-xs">
-                Summary generated {formatTime(summary?.generatedAt)}
+                Summary generated {formatTime(summary?.generatedAt)} / {summaryStateLabel}
               </p>
               <Button size="sm" variant="outline" onClick={loadSummary} disabled={isLoading}>
                 {isLoading ? <Loader2Icon className="animate-spin" /> : <RefreshCwIcon />}
@@ -525,22 +558,25 @@ export function AdminPanel({
                 {importantError ? <StatusPill status="Needs attention" tone="failed" /> : null}
               </div>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <StatusRow label="Workspace" value={summary?.workspace?.name} compact tone="ok" />
                 <StatusRow
-                  label="Agent"
-                  value={
-                    summary?.activeAgent
-                      ? `${summary.activeAgent.name} / ${summary.activeAgent.profile}`
-                      : undefined
-                  }
+                  label="Workspace"
+                  value={session?.workspace?.name ?? summary?.workspace?.name}
                   compact
                   tone="ok"
                 />
+                <StatusRow label="Agent" value={liveRuntime.activeAgentLabel} compact tone="ok" />
                 <StatusRow
                   label="Model"
-                  value={summary?.activeAgent?.runtime.model}
+                  value={liveRuntime.modelLabel ?? summary?.activeAgent?.runtime.model}
                   compact
                   tone="ok"
+                />
+                <StatusRow label="Runtime source" value={liveRuntime.sourceLabel} compact />
+                <StatusRow label="Summary" value={summaryStateLabel} compact />
+                <StatusRow
+                  label="Active thread"
+                  value={liveRuntime.activeThreadTitle ?? liveRuntime.activeThreadId}
+                  compact
                 />
                 <StatusRow
                   label="Latest chat event"
@@ -574,6 +610,12 @@ export function AdminPanel({
                   tone={isSessionStreamConnected ? "ok" : "muted"}
                 />
                 <StatusRow
+                  label="Connection"
+                  value={connection ? "Agent token ready" : "Waiting for Agent token"}
+                  compact
+                  tone={connection ? "ok" : "muted"}
+                />
+                <StatusRow
                   label="Latest live event"
                   value={latestSessionEvent?.type ?? "none yet"}
                   compact
@@ -602,7 +644,8 @@ export function AdminPanel({
                   value={chatLabel}
                   compact
                   tone={
-                    chatRuntime?.state === "thread_ready" || chatRuntime?.state === "completed"
+                    liveRuntime.chatState === "thread_ready" ||
+                    liveRuntime.chatState === "completed"
                       ? "ok"
                       : "muted"
                   }

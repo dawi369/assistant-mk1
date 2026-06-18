@@ -396,6 +396,29 @@ runSmoke("Cloudflare tool admin smoke", async () => {
     throw new Error(`url.inspect runner metadata missing: ${JSON.stringify(urlInspect)}`);
   }
 
+  const repoSnapshot = requireTool(tools.tools, "repo.snapshot");
+  if (!repoSnapshot.adminVisible) {
+    throw new Error("repo.snapshot should be Admin-visible for owner");
+  }
+  if (repoSnapshot.modelVisible) {
+    throw new Error("repo.snapshot should not be model-visible by default");
+  }
+  if (repoSnapshot.approvalRequired) {
+    throw new Error("repo.snapshot should not require approval in the read-only v0");
+  }
+  if (repoSnapshot.policyReference !== "repo-snapshot-readonly-v0") {
+    throw new Error(`repo.snapshot policy reference missing: ${JSON.stringify(repoSnapshot)}`);
+  }
+  if (
+    repoSnapshot.runner?.transport !== "fly" ||
+    repoSnapshot.runner.adapterVersion !== "repo-snapshot-v1" ||
+    repoSnapshot.runner.sandbox?.lifecycle?.template !== "repo-snapshot-v1" ||
+    repoSnapshot.runner.sandbox.network?.egress !== "none" ||
+    repoSnapshot.runner.sandbox.network.privateNetwork !== "deny"
+  ) {
+    throw new Error(`repo.snapshot runner metadata missing: ${JSON.stringify(repoSnapshot)}`);
+  }
+
   const demoInspect = requireTool(tools.tools, "demo.inspect");
   if (demoInspect.modelVisible) throw new Error("demo.inspect should not be model-visible");
   if (
@@ -464,6 +487,29 @@ runSmoke("Cloudflare tool admin smoke", async () => {
     throw new Error(`url.inspect run did not include runner metadata: ${JSON.stringify(run)}`);
   }
   if (!run.artifact?.id) throw new Error("url.inspect run did not return an artifact");
+
+  if (expectedRunnerTransport === "fly") {
+    const repoRun = await readJson<ToolRunResponse>("/tools/runs", owner, {
+      method: "POST",
+      body: JSON.stringify({
+        toolName: "repo.snapshot",
+        executionMode: "dry_run",
+        input: { includeDocs: true, includeScripts: true, includeConfig: true },
+      }),
+    });
+    if (!repoRun.ok || repoRun.run?.status !== "completed") {
+      throw new Error(`repo.snapshot run did not complete: ${JSON.stringify(repoRun)}`);
+    }
+    if (
+      repoRun.toolCall?.toolId !== "repo.snapshot" ||
+      repoRun.toolCall.status !== "completed" ||
+      repoRun.toolCall.data?.runner?.adapterVersion !== "repo-snapshot-v1" ||
+      repoRun.toolCall.data.runner.sandbox?.network?.egress !== "none"
+    ) {
+      throw new Error(`repo.snapshot run missing runner metadata: ${JSON.stringify(repoRun)}`);
+    }
+    if (!repoRun.artifact?.id) throw new Error("repo.snapshot run did not return an artifact");
+  }
 
   const childRun = await readJson<ToolRunResponse>("/tools/runs", owner, {
     method: "POST",

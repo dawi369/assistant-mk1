@@ -44,6 +44,7 @@ import {
   handleLangGraphFacade,
   handleLatestChatSession,
 } from "./langgraph-facade";
+import { handleExternalSignal } from "./external-signals";
 import {
   getTraceId,
   handleGetRuntimeTrace,
@@ -128,6 +129,10 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
 
   if (request.method === "POST" && url.pathname === "/tools/runs") {
     return handleRunTool(request, env, identity, incomingTrace);
+  }
+
+  if (request.method === "POST" && url.pathname === "/external-signals") {
+    return handleExternalSignal(request, env, identity);
   }
 
   if (request.method === "POST" && url.pathname === "/tools/policy") {

@@ -68,6 +68,7 @@ export const latestThreadForSession = async (
               created_at, updated_at, last_seen_at
        FROM chat_threads
        WHERE user_id = ? AND workspace_id = ? AND session_id = ? AND thread_id = ?
+         AND status = 'active'
        LIMIT 1`,
     )
       .bind(scope.userId, scope.workspaceId, sessionId, activeThreadId)
@@ -80,6 +81,7 @@ export const latestThreadForSession = async (
             created_at, updated_at, last_seen_at
      FROM chat_threads
      WHERE user_id = ? AND workspace_id = ? AND session_id = ?
+       AND status = 'active'
      ORDER BY updated_at DESC, created_at DESC
      LIMIT 1`,
   )

@@ -191,6 +191,9 @@ export const sessionEventRequiresConnectionRefresh = (
   );
 };
 
+export const shouldRefreshThreadsAfterSessionStreamOpen = (hasOpenedBefore: boolean) =>
+  hasOpenedBefore;
+
 export const activateThreadOptimistically = (
   session: ChatSessionResponse | null,
   threadId: string,

@@ -211,9 +211,9 @@ export const getRuntimeTrace = (traceId: Id) =>
   );
 
 export const runCloudflareTool = (input: {
-  toolName: "url.inspect";
+  toolName: "url.inspect" | "repo.snapshot";
   executionMode?: "dry_run";
-  input: { url: string };
+  input: { url: string } | Record<string, unknown>;
   parentRunId?: Id;
 }) =>
   requestControlPlane<CloudflareToolRunResponse>("/tools/runs", {
@@ -222,7 +222,7 @@ export const runCloudflareTool = (input: {
   });
 
 export const updateCloudflareToolPolicy = (input: {
-  toolName: "url.inspect";
+  toolName: "url.inspect" | "repo.snapshot";
   status?: "enabled" | "disabled";
   requiresApproval?: boolean;
   killSwitchReason?: string;

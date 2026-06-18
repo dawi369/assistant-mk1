@@ -397,6 +397,7 @@ export type RuntimeTrace = {
     | "chat.run.stream"
     | "chat.agent.stream"
     | "tool.url.inspect"
+    | "tool.repo.snapshot"
     | "diagnostic.demo.inspect";
   status: RuntimeTraceStatus;
   rootName: string;

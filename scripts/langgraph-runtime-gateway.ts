@@ -1,4 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
+import { spawn } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { Readable } from "node:stream";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
@@ -13,6 +15,14 @@ import {
   sha256Base64Url,
 } from "../lib/workbench/control-plane-signing";
 import { inspectUrl, validateUrlInspectInput } from "../lib/workbench/url-inspect";
+import {
+  repoSnapshotError,
+  repoSnapshotToolName,
+  validateRepoSnapshotInput,
+  type RepoSnapshotCommandMetric,
+  type RepoSnapshotOutput,
+  type RepoSnapshotResult,
+} from "../lib/workbench/repo-snapshot";
 import {
   executeDemoInspectExecutorRequest,
   type DemoInspectExecutorRequest,
@@ -240,6 +250,7 @@ type ToolRunnerInvocation = {
   runner?: {
     sandbox?: {
       network?: {
+        egress?: unknown;
         allowedSchemes?: unknown;
         allowedHosts?: unknown;
         deniedHosts?: unknown;
@@ -247,6 +258,220 @@ type ToolRunnerInvocation = {
       };
     };
   };
+};
+
+const repoSnapshotTimeoutMs = 10_000;
+const repoSnapshotMaxStdoutBytes = 64 * 1024;
+const repoSnapshotMaxStderrBytes = 8 * 1024;
+
+const redactOutput = (value: string) =>
+  value
+    .replace(/(api[_-]?key|token|secret|password)=?[^\s"']*/gi, "$1=[redacted]")
+    .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer [redacted]");
+
+const byteSlice = (value: string, maxBytes: number) => {
+  const buffer = Buffer.from(value, "utf8");
+  if (buffer.length <= maxBytes) return value;
+  return `${buffer.subarray(0, maxBytes).toString("utf8")}\n[truncated]`;
+};
+
+const runSnapshotCommand = async (
+  name: string,
+  command: string,
+  args: string[],
+): Promise<{ metric: RepoSnapshotCommandMetric; stdout: string; stderr: string }> => {
+  const startedAt = Date.now();
+  return new Promise((resolve) => {
+    const child = spawn(command, args, {
+      cwd: process.cwd(),
+      env: { ...process.env, PATH: process.env.PATH ?? "" },
+    });
+    let stdout = "";
+    let stderr = "";
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGKILL");
+    }, repoSnapshotTimeoutMs);
+
+    child.stdout.on("data", (chunk: Buffer) => {
+      stdout = byteSlice(stdout + chunk.toString("utf8"), repoSnapshotMaxStdoutBytes);
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderr = byteSlice(stderr + chunk.toString("utf8"), repoSnapshotMaxStderrBytes);
+    });
+    child.on("error", (error: Error) => {
+      clearTimeout(timeout);
+      const durationMs = Date.now() - startedAt;
+      resolve({
+        stdout: "",
+        stderr: redactOutput(error.message),
+        metric: {
+          name,
+          command: [command, ...args].join(" "),
+          status: "unavailable",
+          durationMs,
+          stdoutBytes: 0,
+          stderrBytes: Buffer.byteLength(error.message),
+        },
+      });
+    });
+    child.on("close", (code: number | null) => {
+      clearTimeout(timeout);
+      const safeStdout = redactOutput(stdout);
+      const safeStderr = redactOutput(stderr);
+      resolve({
+        stdout: safeStdout,
+        stderr: safeStderr,
+        metric: {
+          name,
+          command: [command, ...args].join(" "),
+          status: timedOut ? "timeout" : code === 0 ? "completed" : "failed",
+          durationMs: Date.now() - startedAt,
+          exitCode: code ?? undefined,
+          stdoutBytes: Buffer.byteLength(safeStdout),
+          stderrBytes: Buffer.byteLength(safeStderr),
+        },
+      });
+    });
+  });
+};
+
+const readPackageJson = async () => {
+  try {
+    const parsed = JSON.parse(await readFile("package.json", "utf8")) as {
+      packageManager?: string;
+      scripts?: Record<string, unknown>;
+    };
+    return {
+      packageManager: parsed.packageManager,
+      scripts: parsed.scripts
+        ? Object.keys(parsed.scripts)
+            .filter((name) => /^[a-z0-9:_-]{1,64}$/i.test(name))
+            .sort()
+            .slice(0, 40)
+        : [],
+    };
+  } catch {
+    return { packageManager: undefined, scripts: [] };
+  }
+};
+
+const runRepoSnapshot = async (input: unknown): Promise<RepoSnapshotResult> => {
+  const parsed = validateRepoSnapshotInput(input);
+  if ("code" in parsed) return { ok: false, error: parsed };
+  const startedAt = Date.now();
+  const [files, docs, configs, packageInfo] = await Promise.all([
+    runSnapshotCommand("repo-files", "rg", [
+      "--files",
+      "-g",
+      "!node_modules",
+      "-g",
+      "!.next",
+      "-g",
+      "!.git",
+      "-g",
+      "!.env*",
+      "-g",
+      "!*.tsbuildinfo",
+    ]),
+    parsed.includeDocs === false
+      ? Promise.resolve<Awaited<ReturnType<typeof runSnapshotCommand>>>({
+          stdout: "",
+          stderr: "",
+          metric: {
+            name: "docs",
+            command: "skipped",
+            status: "completed",
+            durationMs: 0,
+            stdoutBytes: 0,
+            stderrBytes: 0,
+          },
+        })
+      : runSnapshotCommand("docs", "rg", ["--files", "docs"]),
+    parsed.includeConfig === false
+      ? Promise.resolve<Awaited<ReturnType<typeof runSnapshotCommand>>>({
+          stdout: "",
+          stderr: "",
+          metric: {
+            name: "config",
+            command: "skipped",
+            status: "completed",
+            durationMs: 0,
+            stdoutBytes: 0,
+            stderrBytes: 0,
+          },
+        })
+      : runSnapshotCommand("config", "rg", [
+          "--files",
+          "-g",
+          "package.json",
+          "-g",
+          "pnpm-lock.yaml",
+          "-g",
+          "*.config.*",
+          "-g",
+          "*.toml",
+          "-g",
+          "*.jsonc",
+          "-g",
+          "Dockerfile*",
+          "-g",
+          ".dockerignore",
+        ]),
+    readPackageJson(),
+  ]);
+
+  const commandMetrics = [files.metric, docs.metric, configs.metric];
+  if (files.metric.status === "unavailable") {
+    return {
+      ok: false,
+      error: repoSnapshotError("repo_snapshot_unavailable", "ripgrep is not available.", false),
+    };
+  }
+
+  const listFromStdout = (stdout: string, limit: number) =>
+    stdout
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .filter((line) => !line.startsWith(".env"))
+      .slice(0, limit);
+  const repoFiles = listFromStdout(files.stdout, 80);
+  const docFiles = listFromStdout(docs.stdout, 40);
+  const configFiles = listFromStdout(configs.stdout, 40);
+  const output: RepoSnapshotOutput = {
+    status: "ok",
+    summary: `Repository snapshot captured ${repoFiles.length} files, ${docFiles.length} docs, and ${configFiles.length} config files.`,
+    packageManager: packageInfo.packageManager,
+    scripts: parsed.includeScripts === false ? [] : packageInfo.scripts,
+    repoFiles,
+    docs: docFiles,
+    configFiles,
+    signals: [
+      ...(packageInfo.packageManager
+        ? [
+            {
+              kind: "package" as const,
+              title: "Package manager",
+              value: packageInfo.packageManager,
+            },
+          ]
+        : []),
+      { kind: "runtime" as const, title: "Runner", value: "fly-langgraph-runtime" },
+      ...configFiles.slice(0, 8).map((file) => ({
+        kind: "config" as const,
+        title: "Config file",
+        value: file,
+      })),
+      ...docFiles
+        .slice(0, 8)
+        .map((file) => ({ kind: "docs" as const, title: "Doc file", value: file })),
+    ],
+    commandMetrics,
+    timingMs: Date.now() - startedAt,
+  };
+  return { ok: true, output };
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -334,15 +559,43 @@ const handleToolRunnerInvocation = async (
     json(response, 400, { ok: false, error: "request body must be JSON" });
     return;
   }
-  if (parsed.toolName !== "url.inspect") {
+  if (parsed.toolName !== "url.inspect" && parsed.toolName !== repoSnapshotToolName) {
     json(response, 400, {
       ok: false,
       error: "unsupported tool",
       details: {
         code: "unsupported_tool",
-        message: "Only url.inspect is supported by this runner endpoint.",
+        message: "Only url.inspect and repo.snapshot are supported by this runner endpoint.",
         retryable: false,
         redacted: true,
+      },
+    });
+    return;
+  }
+
+  if (parsed.toolName === repoSnapshotToolName) {
+    const network = isRecord(parsed.runner?.sandbox) ? parsed.runner.sandbox.network : null;
+    if (!isRecord(network) || network.egress !== "none" || network.privateNetwork !== "deny") {
+      json(response, 403, {
+        ok: false,
+        error: {
+          code: "sandbox_required",
+          message: "repo.snapshot requires a no-egress sandbox policy.",
+          retryable: false,
+          redacted: true,
+        },
+        runner: parsed.runner,
+      });
+      return;
+    }
+    const startedAt = Date.now();
+    const result = await runRepoSnapshot(parsed.input);
+    json(response, result.ok ? 200 : 502, {
+      ...result,
+      runner: parsed.runner,
+      metrics: {
+        transport: "fly",
+        durationMs: Date.now() - startedAt,
       },
     });
     return;

@@ -7,6 +7,7 @@ import {
   removePendingThreads,
   sessionEventRequiresConnectionRefresh,
   sessionFromEvent,
+  shouldRefreshThreadsAfterSessionStreamOpen,
   shouldIgnoreSessionEvent,
   updateThreadStatusFromEvent,
 } from "./chat-session-state";
@@ -331,5 +332,10 @@ describe("chat-session-state", () => {
 
     expect(next?.activeThread?.threadId).toBe("thread-b");
     expect(next?.pending).toEqual({ type: "activate", threadId: "thread-b" });
+  });
+
+  it("reconciles threads only after session SSE reconnects", () => {
+    expect(shouldRefreshThreadsAfterSessionStreamOpen(false)).toBe(false);
+    expect(shouldRefreshThreadsAfterSessionStreamOpen(true)).toBe(true);
   });
 });

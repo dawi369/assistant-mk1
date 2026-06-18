@@ -7,6 +7,10 @@ ENV PORT=3000
 ENV LANGGRAPH_PORT=2024
 ENV LANGGRAPH_UPSTREAM_URL=http://127.0.0.1:2024
 
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ripgrep \
+  && rm -rf /var/lib/apt/lists/*
+
 RUN corepack enable
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile

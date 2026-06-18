@@ -3,6 +3,7 @@ import {
   signFacadeRequest,
 } from "../../../lib/workbench/control-plane-signing";
 import type { UrlInspectResult } from "../../../lib/workbench/url-inspect";
+import type { RepoSnapshotResult } from "../../../lib/workbench/repo-snapshot";
 import type { AgentIdentity, Env, ExecutionMode, TenantScope } from "./types";
 
 export const cloudflareInlineRunnerTransport = "cloudflare_inline";
@@ -30,7 +31,7 @@ export type ToolRunnerSandboxContract = {
     artifactPromotion: "metadata_only" | "explicit";
   };
   network: {
-    egress: "public_web";
+    egress: "public_web" | "none";
     allowedSchemes: Array<"http" | "https">;
     allowedHosts: string[];
     deniedHosts: string[];
@@ -39,6 +40,9 @@ export type ToolRunnerSandboxContract = {
   };
   limits: {
     maxRuntimeMs?: number;
+    maxStdoutBytes?: number;
+    maxStderrBytes?: number;
+    maxArtifactBytes?: number;
   };
 };
 
@@ -98,6 +102,32 @@ export const urlInspectSandboxContract = (input?: {
   },
 });
 
+export const repoSnapshotSandboxContract = (input?: {
+  maxRuntimeMs?: number;
+}): ToolRunnerSandboxContract => ({
+  lifecycle: {
+    template: "repo-snapshot-v1",
+    setup: "per_invocation",
+    workspaceState: "none",
+    filesystem: "ephemeral",
+    artifactPromotion: "metadata_only",
+  },
+  network: {
+    egress: "none",
+    allowedSchemes: [],
+    allowedHosts: [],
+    deniedHosts: ["*"],
+    privateNetwork: "deny",
+    enforcement: "control_plane_and_runner",
+  },
+  limits: {
+    maxRuntimeMs: input?.maxRuntimeMs,
+    maxStdoutBytes: 65_536,
+    maxStderrBytes: 16_384,
+    maxArtifactBytes: 131_072,
+  },
+});
+
 export type ToolRunnerExecution = {
   mode: ExecutionMode;
   policy: string;
@@ -117,7 +147,7 @@ export type ToolRunnerInvocation = {
   traceId?: string | null;
 };
 
-export type ToolRunnerInvocationResponse = UrlInspectResult & {
+export type ToolRunnerInvocationResponse = (UrlInspectResult | RepoSnapshotResult) & {
   runner?: ToolRunnerMetadata;
   metrics?: Record<string, unknown>;
 };

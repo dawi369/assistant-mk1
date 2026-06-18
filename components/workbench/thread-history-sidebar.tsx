@@ -38,6 +38,8 @@ export function ThreadHistorySidebar({
     error,
     isInitialLoading,
     isTransitioning,
+    isLoadingArchivedThreads,
+    archivedThreadsError,
     createThread,
     activateThread,
     renameThread,
@@ -52,7 +54,9 @@ export function ThreadHistorySidebar({
   const isCached = session?.isStale === true;
   const actionsDisabled = disableThreadActions || !connection || isCached;
   const visibleThreads = view === "archived" ? archivedThreads : threads;
-  const loadingArchived = view === "archived" && pending?.type === "initial";
+  const loadingArchived = view === "archived" && isLoadingArchivedThreads;
+  const visibleError =
+    view === "archived" ? (archiveError ?? archivedThreadsError) : (archiveError ?? error);
   const headerLabel = view === "archived" ? "Archived chats" : "Recent chats";
 
   useEffect(() => {
@@ -93,26 +97,41 @@ export function ThreadHistorySidebar({
     }
   };
 
+  const runThreadAction = async (action: () => Promise<void>, fallback: string) => {
+    setArchiveError(null);
+    try {
+      await action();
+    } catch (nextError) {
+      setArchiveError(nextError instanceof Error ? nextError.message : fallback);
+    }
+  };
+
   const handleRename = async (thread: ChatThreadSummary) => {
     if (actionsDisabled) return;
     const nextTitle = window.prompt("Rename chat", thread.title || "New chat");
     if (nextTitle === null) return;
     const title = nextTitle.trim();
     if (!title || title === thread.title) return;
-    await renameThread(thread.threadId, title);
-    await reloadArchived();
+    await runThreadAction(async () => {
+      await renameThread(thread.threadId, title);
+      await reloadArchived();
+    }, "Failed to rename chat");
   };
 
   const handleArchive = async (thread: ChatThreadSummary) => {
     if (actionsDisabled || thread.latestRunStatus === "running") return;
-    await archiveThread(thread.threadId);
-    await reloadArchived();
+    await runThreadAction(async () => {
+      await archiveThread(thread.threadId);
+      await reloadArchived();
+    }, "Failed to archive chat");
   };
 
   const handleRestore = async (thread: ChatThreadSummary) => {
     if (actionsDisabled) return;
-    await restoreThread(thread.threadId);
-    await reloadArchived();
+    await runThreadAction(async () => {
+      await restoreThread(thread.threadId);
+      await reloadArchived();
+    }, "Failed to restore chat");
   };
 
   const handleDelete = async (thread: ChatThreadSummary) => {
@@ -121,8 +140,10 @@ export function ThreadHistorySidebar({
       `Delete "${thread.title || "New chat"}"? This hides the chat but keeps its audit records.`,
     );
     if (!confirmed) return;
-    await deleteThread(thread.threadId);
-    await reloadArchived();
+    await runThreadAction(async () => {
+      await deleteThread(thread.threadId);
+      await reloadArchived();
+    }, "Failed to delete chat");
   };
 
   return (
@@ -172,8 +193,8 @@ export function ThreadHistorySidebar({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
-          {(error || archiveError) && visibleThreads.length === 0 ? (
-            <div className="text-muted-foreground px-2 py-2 text-xs">{archiveError ?? error}</div>
+          {visibleError && visibleThreads.length === 0 ? (
+            <div className="text-muted-foreground px-2 py-2 text-xs">{visibleError}</div>
           ) : isInitialLoading ? (
             <div className="text-muted-foreground px-2 py-2 text-xs">Loading chats...</div>
           ) : loadingArchived ? (
@@ -184,6 +205,9 @@ export function ThreadHistorySidebar({
             </div>
           ) : (
             <>
+              {visibleError ? (
+                <div className="text-destructive px-2 pb-2 text-[11px]">{visibleError}</div>
+              ) : null}
               {statusText ? (
                 <div className="text-muted-foreground px-2 pb-2 text-[11px]">{statusText}</div>
               ) : null}

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { runnerMetadataFor, urlInspectSandboxContract } from "./tool-runner";
+import {
+  repoSnapshotSandboxContract,
+  runnerMetadataFor,
+  urlInspectSandboxContract,
+} from "./tool-runner";
 
 describe("tool runner sandbox contracts", () => {
   it("builds a compact url.inspect sandbox contract from policy constraints", () => {
@@ -57,5 +61,34 @@ describe("tool runner sandbox contracts", () => {
         },
       },
     });
+  });
+
+  it("builds a no-egress repo.snapshot sandbox contract", () => {
+    const sandbox = repoSnapshotSandboxContract({ maxRuntimeMs: 2_500 });
+
+    expect(sandbox).toEqual({
+      lifecycle: {
+        template: "repo-snapshot-v1",
+        setup: "per_invocation",
+        workspaceState: "none",
+        filesystem: "ephemeral",
+        artifactPromotion: "metadata_only",
+      },
+      network: {
+        egress: "none",
+        allowedSchemes: [],
+        allowedHosts: [],
+        deniedHosts: ["*"],
+        privateNetwork: "deny",
+        enforcement: "control_plane_and_runner",
+      },
+      limits: {
+        maxRuntimeMs: 2_500,
+        maxStdoutBytes: 65536,
+        maxStderrBytes: 16384,
+        maxArtifactBytes: 131072,
+      },
+    });
+    expect(JSON.stringify(sandbox)).not.toMatch(/token|secret|prompt|message/i);
   });
 });

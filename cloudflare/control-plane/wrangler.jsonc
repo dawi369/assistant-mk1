@@ -6,6 +6,7 @@
   "compatibility_flags": ["nodejs_compat", "nodejs_als"],
   "vars": {
     "LANGGRAPH_UPSTREAM_URL": "https://assistant-mk1-langgraph-dev.fly.dev",
+    "LANGGRAPH_ASSISTANT_ID": "agent",
     "OPENROUTER_MODEL": "deepseek/deepseek-v4-flash",
     "OPENROUTER_SITE_URL": "https://assistant-mk1.vercel.app",
     "OPENROUTER_APP_NAME": "assistant-mk1-cloudflare-chat",

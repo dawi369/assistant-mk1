@@ -11,11 +11,13 @@ import {
   type ToolPermissionRow,
   type ToolPermissionStatus,
 } from "./types";
+import { repoSnapshotPolicy, repoSnapshotToolName } from "../../../lib/workbench/repo-snapshot";
 
 export const urlInspectToolName = "url.inspect";
 export const urlInspectPolicy = "tool-admin-readonly-v0";
 export const demoInspectToolName = "demo.inspect";
 export const demoInspectPolicy = "dev-demo";
+export { repoSnapshotPolicy, repoSnapshotToolName };
 
 export type ToolPolicySurface =
   | "admin_list"
@@ -107,6 +109,21 @@ export const toolPolicyCatalog: Record<string, ToolPolicyCatalogEntry> = {
     policyEditable: true,
     mutationRisk: "read_only",
     constraints: emptyConstraints(),
+  },
+  [repoSnapshotToolName]: {
+    policyReference: repoSnapshotPolicy,
+    allowedExecutionModes: ["dry_run"],
+    adminVisible: true,
+    modelVisible: false,
+    requiresApproval: false,
+    status: "enabled",
+    policyEditable: true,
+    mutationRisk: "read_only",
+    constraints: {
+      ...emptyConstraints(),
+      maxRuntimeMs: 10_000,
+      maxArtifactBytes: 128 * 1024,
+    },
   },
   [demoInspectToolName]: {
     policyReference: demoInspectPolicy,

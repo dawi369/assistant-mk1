@@ -18,6 +18,12 @@ describe("connection auth brokerage", () => {
       reason: "url.inspect does not require an external connection.",
     });
     expect(noConnectionAuthRequired("demo.inspect").reason).toContain("demo.inspect");
+    expect(connectionAuthForTool("repo.snapshot")).toMatchObject({
+      required: false,
+      status: "not_required",
+      principal: "none",
+      tokenRefresh: "not_applicable",
+    });
   });
 
   it("defines the future authorization-required event shape without secrets", () => {
