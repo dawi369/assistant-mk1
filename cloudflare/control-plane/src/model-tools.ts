@@ -13,9 +13,11 @@ import {
   evaluateToolPolicy,
   recordToolPolicyDecision,
   toolPolicyError,
+  toolPolicyCatalog,
   urlInspectPolicy,
   urlInspectToolName,
 } from "./tool-policy";
+import { parseDataJson } from "./http";
 import type { AgentIdentity, Env } from "./types";
 
 type ResolveModelToolsInput = {
@@ -24,11 +26,63 @@ type ResolveModelToolsInput = {
   traceId: string;
 };
 
+type ModelToolExposure = {
+  decision: string;
+  code: string;
+  reason: string;
+  fastPath?: boolean;
+};
+
+const readDataFlag = (data: Record<string, unknown>, name: string, fallback: boolean) =>
+  typeof data[name] === "boolean" ? data[name] : fallback;
+
+export const hasModelVisibleToolCandidate = async (
+  env: Env,
+  identity: AgentIdentity,
+  toolName = urlInspectToolName,
+) => {
+  const defaults = toolPolicyCatalog[toolName];
+  if (!defaults) return false;
+
+  const permission = await env.DB.prepare(
+    `SELECT status, data_json
+     FROM tool_permissions
+     WHERE user_id = ? AND workspace_id = ? AND agent_id = ? AND tool_id = ?
+     LIMIT 1`,
+  )
+    .bind(identity.scope.userId, identity.scope.workspaceId, identity.agentId, toolName)
+    .first<{ status: string; data_json: string }>();
+
+  if (!permission) {
+    return defaults.status === "enabled" && defaults.modelVisible && !defaults.requiresApproval;
+  }
+  if (permission.status !== "enabled") return false;
+
+  const data = parseDataJson(permission.data_json);
+  return (
+    readDataFlag(data, "modelVisible", defaults.modelVisible) &&
+    !readDataFlag(data, "requiresApproval", defaults.requiresApproval)
+  );
+};
+
 export const resolveModelVisibleTools = async (
   env: Env,
   identity: AgentIdentity,
   input: ResolveModelToolsInput,
-): Promise<{ tools: ToolSet; exposure: { decision: string; code: string; reason: string } }> => {
+): Promise<{ tools: ToolSet; exposure: ModelToolExposure }> => {
+  const hasCandidate = await hasModelVisibleToolCandidate(env, identity, urlInspectToolName);
+  if (!hasCandidate) {
+    return {
+      tools: {},
+      exposure: {
+        decision: "block",
+        code: "no_model_visible_tools",
+        reason: "No model-visible tools are enabled for this agent.",
+        fastPath: true,
+      },
+    };
+  }
+
   const membership = await selectMembership(env, identity.scope.userId, identity.scope.workspaceId);
   const exposurePolicy = await evaluateToolPolicy(env, identity, {
     membership,

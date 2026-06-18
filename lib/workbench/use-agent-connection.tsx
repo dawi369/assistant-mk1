@@ -318,7 +318,9 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
             current.filter((thread) => thread.threadId !== input.threadId),
           );
         }
-        if (input.refreshSummary ?? input.action !== undefined) requestWorkbenchSummaryRefresh();
+        if (input.refreshSummary ?? input.action !== undefined) {
+          requestWorkbenchSummaryRefresh({ source: "event" });
+        }
         if (nextSession.threadsRefreshRecommended && input.action !== undefined) {
           window.setTimeout(
             () => void loadSession({ refresh: "threads", refreshSummary: false }),
@@ -397,7 +399,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
       event.type === "tool.run.updated" ||
       event.type === "trace.updated"
     ) {
-      requestWorkbenchSummaryRefresh();
+      requestWorkbenchSummaryRefresh({ source: "event" });
     }
   }, []);
 

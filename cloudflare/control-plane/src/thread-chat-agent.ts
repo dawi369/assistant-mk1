@@ -269,10 +269,14 @@ export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
           layer: "cloudflare",
           startedAtMs: toolResolveStartedAtMs,
           endedAtMs: Date.now(),
-          status: modelTools.exposure.decision === "allow" ? "completed" : "blocked",
+          status:
+            modelTools.exposure.decision === "allow" || modelTools.exposure.fastPath
+              ? "completed"
+              : "blocked",
           data: {
             code: modelTools.exposure.code,
             reason: modelTools.exposure.reason,
+            fastPath: Boolean(modelTools.exposure.fastPath),
             visibleToolCount: Object.keys(modelTools.tools).length,
           },
         }),

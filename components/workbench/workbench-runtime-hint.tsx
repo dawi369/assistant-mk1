@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { useAuth } from "@workos-inc/authkit-nextjs/components";
 import {
   ActivityIcon,
@@ -13,24 +13,13 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { workbenchSummaryRefreshEvent } from "@/lib/workbench/admin-summary-events";
 import { deriveRuntimeState } from "@/lib/workbench/chat-runtime-live-state";
+import { useAdminSummaryResource } from "@/lib/workbench/use-admin-summary-resource";
 import { useWorkbenchAgentConnection } from "@/lib/workbench/use-agent-connection";
-import type { CloudflareAdminSummaryResponse } from "@/lib/workbench/workbench-types";
 import { cn } from "@/lib/utils";
 
-const adminSummaryPath = "/api/workbench/admin-summary";
-
-const readSummary = async () => {
-  const response = await fetch(adminSummaryPath, { cache: "no-store" });
-  if (!response.ok) return null;
-  const body = (await response.json().catch(() => ({}))) as CloudflareAdminSummaryResponse;
-  return body.summary ?? null;
-};
-
 export function WorkbenchRuntimeHint({ onOpenAdmin }: { onOpenAdmin: () => void }) {
-  const [summary, setSummary] = useState<CloudflareAdminSummaryResponse["summary"] | null>(null);
-  const [summaryError, setSummaryError] = useState<string | null>(null);
+  const { summary, error: summaryError, refreshSummary, clearSummary } = useAdminSummaryResource();
   const { user, loading } = useAuth();
   const {
     connection,
@@ -42,28 +31,15 @@ export function WorkbenchRuntimeHint({ onOpenAdmin }: { onOpenAdmin: () => void 
     isSessionStreamConnected,
   } = useWorkbenchAgentConnection();
 
-  const loadSummary = async () => {
-    try {
-      const nextSummary = await readSummary();
-      setSummary(nextSummary);
-      setSummaryError(null);
-    } catch (error) {
-      console.error("Failed to load admin summary", error);
-      setSummaryError(error instanceof Error ? error.message : "Failed to load admin summary");
-    }
-  };
-
   useEffect(() => {
     if (loading) return;
     if (!user) {
-      setSummary(null);
+      clearSummary();
       return;
     }
 
-    void loadSummary();
-    window.addEventListener(workbenchSummaryRefreshEvent, loadSummary);
-    return () => window.removeEventListener(workbenchSummaryRefreshEvent, loadSummary);
-  }, [loading, user]);
+    void refreshSummary({ source: "initial" });
+  }, [clearSummary, loading, refreshSummary, user]);
 
   const liveRuntime = deriveRuntimeState({
     session,

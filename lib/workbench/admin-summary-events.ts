@@ -1,20 +1,47 @@
 export const workbenchSummaryRefreshEvent = "assistant-mk1:workbench-summary-refresh";
 
-let refreshTimeout: number | null = null;
+export type WorkbenchSummaryRefreshSource =
+  | "initial"
+  | "event"
+  | "manual"
+  | "drawer-open"
+  | "fallback-poll";
 
-export const requestWorkbenchSummaryRefresh = (input: { immediate?: boolean } = {}) => {
+export type WorkbenchSummaryRefreshDetail = {
+  source?: WorkbenchSummaryRefreshSource;
+  force?: boolean;
+};
+
+let refreshTimeout: number | null = null;
+let pendingDetail: WorkbenchSummaryRefreshDetail = {};
+
+const dispatchSummaryRefresh = (detail: WorkbenchSummaryRefreshDetail) => {
+  window.dispatchEvent(new CustomEvent(workbenchSummaryRefreshEvent, { detail }));
+};
+
+export const requestWorkbenchSummaryRefresh = (
+  input: { immediate?: boolean } & WorkbenchSummaryRefreshDetail = {},
+) => {
   if (typeof window === "undefined") return;
+  pendingDetail = {
+    source: input.source ?? pendingDetail.source ?? "event",
+    force: Boolean(input.force || pendingDetail.force),
+  };
   if (refreshTimeout) {
     window.clearTimeout(refreshTimeout);
     refreshTimeout = null;
   }
   if (input.immediate) {
-    window.dispatchEvent(new Event(workbenchSummaryRefreshEvent));
+    const detail = pendingDetail;
+    pendingDetail = {};
+    dispatchSummaryRefresh(detail);
     return;
   }
   refreshTimeout = window.setTimeout(() => {
     refreshTimeout = null;
-    window.dispatchEvent(new Event(workbenchSummaryRefreshEvent));
+    const detail = pendingDetail;
+    pendingDetail = {};
+    dispatchSummaryRefresh(detail);
   }, 250);
 };
 
@@ -24,5 +51,7 @@ export const flushWorkbenchSummaryRefresh = () => {
     window.clearTimeout(refreshTimeout);
     refreshTimeout = null;
   }
-  window.dispatchEvent(new Event(workbenchSummaryRefreshEvent));
+  const detail = pendingDetail;
+  pendingDetail = {};
+  dispatchSummaryRefresh(detail);
 };

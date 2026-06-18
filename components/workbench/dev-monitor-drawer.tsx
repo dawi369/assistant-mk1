@@ -47,15 +47,16 @@ import {
 import {
   requestWorkbenchSummaryRefresh,
   workbenchSummaryRefreshEvent,
+  type WorkbenchSummaryRefreshSource,
 } from "@/lib/workbench/admin-summary-events";
 import { deriveRuntimeState } from "@/lib/workbench/chat-runtime-live-state";
+import { useAdminSummaryResource } from "@/lib/workbench/use-admin-summary-resource";
 import { useWorkbenchAgentConnection } from "@/lib/workbench/use-agent-connection";
 import type {
   AgentBehaviorTemplate,
   ArtifactSummary,
   CloudflareArtifactHistoryResponse,
   CloudflareAgentBehaviorTemplatesResponse,
-  CloudflareAdminSummaryResponse,
   CloudflareExecutionHistoryResponse,
   CloudflareExecutionHistoryRunResponse,
   CloudflareToolApprovalsResponse,
@@ -68,7 +69,6 @@ import type {
   ToolApprovalRequestSummary,
 } from "@/lib/workbench/workbench-types";
 
-const adminSummaryPath = "/api/workbench/admin-summary";
 const cloudflareDemoRunsPath = "/api/workbench/cloudflare-demo-runs";
 const workspacesPath = "/api/workbench/workspaces";
 const agentsPath = "/api/workbench/agents";
@@ -159,12 +159,18 @@ export function AdminPanel({
     isSessionStreamConnected,
     latestSessionEvent,
   } = useWorkbenchAgentConnection();
-  const [summary, setSummary] = useState<CloudflareAdminSummaryResponse["summary"] | null>(null);
+  const {
+    summary,
+    error: summaryError,
+    isLoading: isLoadingSummary,
+    lastRefreshSource,
+    lastDurationMs,
+    refreshSummary,
+  } = useAdminSummaryResource();
   const [approvalQueue, setApprovalQueue] = useState<ToolApprovalRequestSummary[]>([]);
   const [behaviorTemplates, setBehaviorTemplates] = useState<AgentBehaviorTemplate[]>([]);
   const [historyRuns, setHistoryRuns] = useState<ExecutionHistoryRunSummary[]>([]);
   const [historyArtifacts, setHistoryArtifacts] = useState<ArtifactSummary[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
   const [isLoadingApprovals, setIsLoadingApprovals] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isLoadingRunSnapshot, setIsLoadingRunSnapshot] = useState(false);
@@ -213,7 +219,7 @@ export function AdminPanel({
     pending,
     isInitialLoading,
     summary,
-    summaryError: fetchError,
+    summaryError,
   });
   const isChatActive = liveRuntime.chatState === "running";
   const latestToolCall = demoSnapshot?.toolCalls.at(-1);
@@ -241,42 +247,48 @@ export function AdminPanel({
     ["owner", "admin"].includes(summary.membership.role.toLowerCase());
   const canManageAgents = canManageWorkspaces;
   const importantError = fetchError
-    ? { message: fetchError, source: "drawer", status: undefined, targetId: undefined }
-    : error
-      ? { message: error, source: "session", status: undefined, targetId: undefined }
-      : liveRuntime.errorMessage && !chatRuntime?.failure && !summary?.lastError
-        ? {
-            message: liveRuntime.errorMessage,
-            source: liveRuntime.sourceLabel,
-            status: undefined,
-            targetId: liveRuntime.activeThreadId,
-          }
-        : chatRuntime?.failure
+    ? { message: fetchError, source: "drawer action", status: undefined, targetId: undefined }
+    : summaryError
+      ? { message: summaryError, source: "summary", status: undefined, targetId: undefined }
+      : error
+        ? { message: error, source: "session", status: undefined, targetId: undefined }
+        : liveRuntime.errorMessage && !chatRuntime?.failure && !summary?.lastError
           ? {
-              message: chatRuntime.failure.message,
-              source: chatRuntime.failure.source,
-              status: chatRuntime.failure.status,
-              targetId: chatRuntime.failure.targetId,
-              errorCode: chatRuntime.failure.errorCode,
+              message: liveRuntime.errorMessage,
+              source: liveRuntime.sourceLabel,
+              status: undefined,
+              targetId: liveRuntime.activeThreadId,
             }
-          : summary?.lastError
+          : chatRuntime?.failure
             ? {
-                message: summary.lastError.message,
-                source: summary.lastError.source,
-                status: summary.lastError.status,
-                targetId: summary.lastError.targetId,
-                errorCode: undefined,
+                message: chatRuntime.failure.message,
+                source: chatRuntime.failure.source,
+                status: chatRuntime.failure.status,
+                targetId: chatRuntime.failure.targetId,
+                errorCode: chatRuntime.failure.errorCode,
               }
-            : null;
+            : summary?.lastError
+              ? {
+                  message: summary.lastError.message,
+                  source: summary.lastError.source,
+                  status: summary.lastError.status,
+                  targetId: summary.lastError.targetId,
+                  errorCode: undefined,
+                }
+              : null;
   const chatLabel = liveRuntime.chatLabel;
   const chatTone = liveRuntime.chatTone;
-  const summaryStateLabel = fetchError
+  const summaryStateLabel = summaryError
     ? "Summary fetch failed"
     : liveRuntime.summaryIsStale
       ? "Stale behind live event"
       : summary
         ? "Summary refreshed"
         : "Not loaded";
+  const summaryRefreshMeta =
+    lastRefreshSource && typeof lastDurationMs === "number"
+      ? `${lastRefreshSource} / ${lastDurationMs}ms`
+      : (lastRefreshSource ?? null);
   const selectedBehaviorTemplate = useMemo(
     () => behaviorTemplates.find((template) => template.id === agentBehaviorTemplateId) ?? null,
     [agentBehaviorTemplateId, behaviorTemplates],
@@ -288,25 +300,6 @@ export function AdminPanel({
         ? "Snapshot failed"
         : (selectedRunSnapshot?.run?.status ?? selectedHistoryRun?.status ?? "Selected")
     : "No run selected";
-
-  const loadSummary = async () => {
-    setIsLoading(true);
-    try {
-      const response = await fetch(adminSummaryPath, { cache: "no-store" });
-      const body = await readJsonResponse<CloudflareAdminSummaryResponse>(
-        response,
-        "Failed to load Cloudflare admin summary",
-      );
-      setSummary(body.summary ?? null);
-      setFetchError(null);
-    } catch (loadError) {
-      setFetchError(
-        loadError instanceof Error ? loadError.message : "Failed to load admin summary",
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const loadApprovals = async () => {
     setIsLoadingApprovals(true);
@@ -392,27 +385,32 @@ export function AdminPanel({
     }
   };
 
-  const loadAdminData = () => {
-    void loadSummary();
+  const loadDrawerData = () => {
     void loadApprovals();
     void loadHistory();
   };
 
-  useEffect(() => {
-    if (!open) return;
-    loadAdminData();
-    void loadBehaviorTemplates();
-    window.addEventListener(workbenchSummaryRefreshEvent, loadAdminData);
-    return () => window.removeEventListener(workbenchSummaryRefreshEvent, loadAdminData);
-  }, [open]);
+  const loadAdminData = (source: WorkbenchSummaryRefreshSource = "event", force = false) => {
+    void refreshSummary({ source, force });
+    loadDrawerData();
+  };
 
   useEffect(() => {
-    if (!open || (!isDemoActive && !isChatActive)) return;
+    if (!open) return;
+    loadAdminData("drawer-open");
+    void loadBehaviorTemplates();
+    const refreshDrawerData = () => loadDrawerData();
+    window.addEventListener(workbenchSummaryRefreshEvent, refreshDrawerData);
+    return () => window.removeEventListener(workbenchSummaryRefreshEvent, refreshDrawerData);
+  }, [open, refreshSummary]);
+
+  useEffect(() => {
+    if (!open || (isSessionStreamConnected && !isDemoActive && !isChatActive)) return;
     const interval = window.setInterval(() => {
-      loadAdminData();
-    }, 750);
+      loadAdminData("fallback-poll");
+    }, 4000);
     return () => window.clearInterval(interval);
-  }, [open, isDemoActive, isChatActive]);
+  }, [open, isSessionStreamConnected, isDemoActive, isChatActive, refreshSummary]);
 
   const startDemoRun = async () => {
     setIsStarting(true);
@@ -423,7 +421,7 @@ export function AdminPanel({
         response,
         "Failed to start Cloudflare demo run",
       );
-      requestWorkbenchSummaryRefresh();
+      requestWorkbenchSummaryRefresh({ source: "event" });
     } catch (startError) {
       setFetchError(
         startError instanceof Error ? startError.message : "Failed to start Cloudflare demo run",
@@ -453,10 +451,10 @@ export function AdminPanel({
         }),
         "Failed to run URL inspector",
       );
-      requestWorkbenchSummaryRefresh();
+      requestWorkbenchSummaryRefresh({ source: "event" });
     } catch (toolError) {
       setFetchError(toolError instanceof Error ? toolError.message : "Failed to run URL inspector");
-      requestWorkbenchSummaryRefresh();
+      requestWorkbenchSummaryRefresh({ source: "event" });
     } finally {
       setIsRunningTool(false);
     }
@@ -482,7 +480,7 @@ export function AdminPanel({
         }),
         "Failed to update URL inspector policy",
       );
-      requestWorkbenchSummaryRefresh();
+      requestWorkbenchSummaryRefresh({ source: "event" });
     } catch (policyError) {
       setFetchError(
         policyError instanceof Error ? policyError.message : "Failed to update tool policy",
@@ -517,13 +515,17 @@ export function AdminPanel({
         action === "approve" ? "Failed to approve tool run" : "Failed to deny tool run",
       );
       setApprovalDialog(null);
-      await Promise.all([loadSummary(), loadApprovals(), loadHistory()]);
-      requestWorkbenchSummaryRefresh();
+      await Promise.all([
+        refreshSummary({ source: "event", force: true }),
+        loadApprovals(),
+        loadHistory(),
+      ]);
+      requestWorkbenchSummaryRefresh({ source: "event" });
     } catch (approvalError) {
       setFetchError(
         approvalError instanceof Error ? approvalError.message : "Failed to update approval",
       );
-      requestWorkbenchSummaryRefresh();
+      requestWorkbenchSummaryRefresh({ source: "event" });
     } finally {
       setUpdatingApprovalId(null);
     }
@@ -544,7 +546,7 @@ export function AdminPanel({
       });
       await readJsonResponse(response, "Failed to create workspace");
       setWorkspaceName("");
-      requestWorkbenchSummaryRefresh();
+      requestWorkbenchSummaryRefresh({ source: "event" });
     } catch (createError) {
       setFetchError(
         createError instanceof Error ? createError.message : "Failed to create workspace",
@@ -563,7 +565,7 @@ export function AdminPanel({
         { method: "POST" },
       );
       await readJsonResponse(response, "Failed to activate workspace");
-      requestWorkbenchSummaryRefresh();
+      requestWorkbenchSummaryRefresh({ source: "event" });
     } catch (activateError) {
       setFetchError(
         activateError instanceof Error ? activateError.message : "Failed to activate workspace",
@@ -599,7 +601,7 @@ export function AdminPanel({
       setAgentProfile("analyst");
       setAgentModel("deepseek/deepseek-v4-flash");
       setAgentBehaviorTemplateId("assistant-analyst");
-      requestWorkbenchSummaryRefresh();
+      requestWorkbenchSummaryRefresh({ source: "event" });
     } catch (createError) {
       setFetchError(createError instanceof Error ? createError.message : "Failed to create agent");
     } finally {
@@ -615,7 +617,7 @@ export function AdminPanel({
         method: "POST",
       });
       await readJsonResponse(response, "Failed to activate agent");
-      requestWorkbenchSummaryRefresh();
+      requestWorkbenchSummaryRefresh({ source: "event" });
     } catch (activateError) {
       setFetchError(
         activateError instanceof Error ? activateError.message : "Failed to activate agent",
@@ -659,14 +661,15 @@ export function AdminPanel({
             <div className="flex items-center justify-between gap-3">
               <p className="text-muted-foreground text-xs">
                 Summary generated {formatTime(summary?.generatedAt)} / {summaryStateLabel}
+                {summaryRefreshMeta ? ` / ${summaryRefreshMeta}` : ""}
               </p>
               <Button
                 size="sm"
                 variant="outline"
-                onClick={loadAdminData}
-                disabled={isLoading || isLoadingApprovals || isLoadingHistory}
+                onClick={() => loadAdminData("manual", true)}
+                disabled={isLoadingSummary || isLoadingApprovals || isLoadingHistory}
               >
-                {isLoading || isLoadingApprovals || isLoadingHistory ? (
+                {isLoadingSummary || isLoadingApprovals || isLoadingHistory ? (
                   <Loader2Icon className="animate-spin" />
                 ) : (
                   <RefreshCwIcon />

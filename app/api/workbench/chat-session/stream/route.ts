@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 
 import { toWorkbenchApiError } from "@/lib/workbench/api-errors";
+import { createBoundedSseStream } from "@/lib/workbench/bounded-sse";
 import { streamChatSessionEvents } from "@/lib/workbench/cloudflare-control-plane-client";
 
 export const runtime = "nodejs";
+const vercelSseReconnectWindowMs = 240_000;
 
 export async function GET() {
   try {
@@ -14,12 +16,21 @@ export async function GET() {
     headers.delete("transfer-encoding");
     headers.set("cache-control", "no-store");
     headers.set("content-type", "text/event-stream; charset=utf-8");
+    headers.set("x-workbench-sse-policy", "bounded-reconnect");
+    headers.set("x-workbench-sse-reconnect-ms", String(vercelSseReconnectWindowMs));
 
-    return new NextResponse(response.body, {
-      status: response.status,
-      statusText: response.statusText,
-      headers,
-    });
+    return new NextResponse(
+      createBoundedSseStream({
+        body: response.body,
+        maxDurationMs: vercelSseReconnectWindowMs,
+        reconnectComment: "workbench bounded reconnect",
+      }),
+      {
+        status: response.status,
+        statusText: response.statusText,
+        headers,
+      },
+    );
   } catch (error) {
     return toWorkbenchApiError(error, "Cloudflare chat session stream failed");
   }
