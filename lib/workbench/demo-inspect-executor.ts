@@ -1,5 +1,6 @@
 import type { Id, TenantScope } from "@/lib/agent-framework/contracts";
 import { executeRegisteredTool } from "@/lib/agent-framework/tool-runtime";
+import { signFacadeRequest } from "@/lib/workbench/control-plane-signing";
 import {
   type DemoInspectInput,
   type DemoInspectOutput,
@@ -14,6 +15,7 @@ export type DemoInspectExecutorRequest = {
   agentId?: Id;
   callbackUrl?: string;
   callbackToken?: string;
+  callbackSigningSecret?: string;
 };
 
 type ValidatedDemoInspectExecutorRequest = {
@@ -22,12 +24,12 @@ type ValidatedDemoInspectExecutorRequest = {
   scope: TenantScope;
   agentId: Id;
   callbackUrl: string;
-  callbackToken: string;
+  callbackSigningSecret: string;
 };
 
 type DemoInspectCallbackInput = Pick<
   ValidatedDemoInspectExecutorRequest,
-  "runId" | "workflowIntentId" | "callbackUrl" | "callbackToken"
+  "runId" | "workflowIntentId" | "callbackUrl" | "callbackSigningSecret"
 > & {
   event: "run.started" | "run.completed" | "run.failed";
   output?: DemoInspectOutput;
@@ -43,10 +45,10 @@ export const validateDemoInspectExecutorRequest = (
   const workspaceId = body.scope?.workspaceId?.trim();
   const agentId = body.agentId?.trim();
 
-  if (!body.runId || !body.workflowIntentId || !body.callbackUrl || !body.callbackToken) {
+  if (!body.runId || !body.workflowIntentId || !body.callbackUrl || !body.callbackSigningSecret) {
     return {
       ok: false,
-      error: "runId, workflowIntentId, callbackUrl, and callbackToken are required",
+      error: "runId, workflowIntentId, callbackUrl, and callbackSigningSecret are required",
     };
   }
 
@@ -63,7 +65,7 @@ export const validateDemoInspectExecutorRequest = (
       runId: body.runId,
       workflowIntentId: body.workflowIntentId,
       callbackUrl: body.callbackUrl,
-      callbackToken: body.callbackToken,
+      callbackSigningSecret: body.callbackSigningSecret,
       scope: { userId, workspaceId },
       agentId,
     },
@@ -73,21 +75,34 @@ export const validateDemoInspectExecutorRequest = (
 const execution = { mode: "dry_run" as const, policy: "dev-demo" };
 
 const postCallback = async (input: DemoInspectCallbackInput) => {
+  const body = JSON.stringify({
+    runId: input.runId,
+    workflowIntentId: input.workflowIntentId,
+    event: input.event,
+    output: input.output,
+    outputSummary: input.outputSummary,
+    summary: input.summary,
+    error: input.error,
+  });
+  const url = new URL(input.callbackUrl);
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+  };
+  Object.assign(
+    headers,
+    await signFacadeRequest({
+      secret: input.callbackSigningSecret,
+      method: "POST",
+      pathWithQuery: `${url.pathname}${url.search}`,
+      body,
+      headers,
+    }),
+  );
+
   const response = await fetch(input.callbackUrl, {
     method: "POST",
-    headers: {
-      authorization: `Bearer ${input.callbackToken}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      runId: input.runId,
-      workflowIntentId: input.workflowIntentId,
-      event: input.event,
-      output: input.output,
-      outputSummary: input.outputSummary,
-      summary: input.summary,
-      error: input.error,
-    }),
+    headers,
+    body,
   });
 
   if (!response.ok) {
@@ -104,7 +119,7 @@ export const executeDemoInspectExecutorRequest = async (
     runId: request.runId,
     workflowIntentId: request.workflowIntentId,
     callbackUrl: request.callbackUrl,
-    callbackToken: request.callbackToken,
+    callbackSigningSecret: request.callbackSigningSecret,
   };
 
   await postCallback({

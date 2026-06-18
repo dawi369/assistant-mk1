@@ -60,6 +60,7 @@ Required secrets:
 - `OPENROUTER_API_KEY`
 - `OPENROUTER_MODEL`
 - `WORKBENCH_EXECUTOR_TOKEN`
+- `WORKBENCH_CALLBACK_SIGNING_SECRET`
 - `LANGGRAPH_PROXY_TOKEN`
 
 Optional secrets:
@@ -96,6 +97,7 @@ SENTRY_ENVIRONMENT=development
 SENTRY_TRACES_SAMPLE_RATE=1.0
 WORKBENCH_EXECUTOR_URL=http://localhost:3000/api/workbench/executors/demo-inspect
 WORKBENCH_EXECUTOR_TOKEN=local-executor-token
+WORKBENCH_CALLBACK_SIGNING_SECRET=local-callback-signing-secret
 EOF
 pnpm db:cloudflare:rebuild:local
 pnpm dev:cloudflare
@@ -201,6 +203,7 @@ pnpm wrangler secret put CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET --config
 pnpm wrangler secret put LANGGRAPH_UPSTREAM_TOKEN --config cloudflare/control-plane/wrangler.jsonc
 pnpm wrangler secret put WORKBENCH_EXECUTOR_TOKEN --config cloudflare/control-plane/wrangler.jsonc
 pnpm wrangler secret put WORKBENCH_EXECUTOR_URL --config cloudflare/control-plane/wrangler.jsonc
+pnpm wrangler secret put WORKBENCH_CALLBACK_SIGNING_SECRET --config cloudflare/control-plane/wrangler.jsonc
 pnpm wrangler secret put WORKBENCH_RUNNER_TRANSPORT --config cloudflare/control-plane/wrangler.jsonc
 pnpm wrangler secret put WORKBENCH_RUNNER_URL --config cloudflare/control-plane/wrangler.jsonc
 pnpm wrangler secret put WORKBENCH_RUNNER_SIGNING_SECRET --config cloudflare/control-plane/wrangler.jsonc

@@ -7,6 +7,7 @@ export type WorkbenchSessionEventType =
   | "chat.run.started"
   | "chat.run.completed"
   | "chat.run.failed"
+  | "workflow.run.updated"
   | "approval.updated"
   | "tool.run.updated"
   | "trace.updated"

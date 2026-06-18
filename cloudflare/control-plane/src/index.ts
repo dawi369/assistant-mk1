@@ -3,9 +3,9 @@ import { routeAgentRequest } from "agents";
 import {
   handleGetCloudflareDemoRun,
   handleLatestCloudflareDemoRun,
-  handleRunCallback,
   handleStartCloudflareDemoRun,
 } from "./demo-runs";
+import { handleLegacyWorkflowCallback, handleWorkflowCallback } from "./workflow-callbacks";
 import { handleAdminWorkspaceSummary } from "./admin-summary";
 import {
   handleApproveToolApproval,
@@ -94,7 +94,11 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
   if (request.method === "POST" && url.pathname === "/internal/workbench/run-callbacks") {
     const authResponse = await requireDevToken(request, env);
     if (authResponse) return authResponse;
-    return handleRunCallback(request, env);
+    return handleLegacyWorkflowCallback(request, env);
+  }
+
+  if (request.method === "POST" && url.pathname === "/workbench/run-callbacks") {
+    return handleWorkflowCallback(request, env);
   }
 
   const authResult = await requireControlPlaneAuth(request, env);

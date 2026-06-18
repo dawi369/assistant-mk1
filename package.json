@@ -45,6 +45,7 @@
     "smoke:cloudflare-session-events": "tsx scripts/smoke-cloudflare-session-events.ts",
     "smoke:cloudflare-chat-threads": "tsx scripts/smoke-cloudflare-chat-threads.ts",
     "smoke:cloudflare-workbench-run": "tsx scripts/smoke-cloudflare-workbench-run.ts",
+    "smoke:cloudflare-workflow-callback-auth": "tsx scripts/smoke-cloudflare-workflow-callback-auth.ts",
     "smoke:cloudflare-langgraph-facade": "tsx scripts/smoke-cloudflare-langgraph-facade.ts",
     "smoke:external-signals": "tsx scripts/smoke-external-signals.ts",
     "smoke:cloudflare-chat-boundary": "tsx scripts/smoke-cloudflare-chat-boundary.ts",

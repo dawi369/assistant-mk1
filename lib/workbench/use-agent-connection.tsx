@@ -162,6 +162,7 @@ const sessionEventTypes: WorkbenchSessionEvent["type"][] = [
   "chat.run.started",
   "chat.run.completed",
   "chat.run.failed",
+  "workflow.run.updated",
   "approval.updated",
   "tool.run.updated",
   "trace.updated",
@@ -392,6 +393,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
       event.type === "approval.updated" ||
       event.type === "chat.run.completed" ||
       event.type === "chat.run.failed" ||
+      event.type === "workflow.run.updated" ||
       event.type === "tool.run.updated" ||
       event.type === "trace.updated"
     ) {

@@ -1,0 +1,233 @@
+import { describe, expect, it } from "vitest";
+
+import { signFacadeRequest } from "../../../lib/workbench/control-plane-signing";
+import {
+  applyWorkflowCallbackPayload,
+  handleWorkflowCallback,
+  validateWorkflowCallbackPayload,
+} from "./workflow-callbacks";
+import type { D1PreparedStatement, D1Result, Env } from "./types";
+
+type RecordedStatement = {
+  query: string;
+  values: unknown[];
+};
+
+const runRow = (input?: { status?: string; workflowType?: string }) => ({
+  id: "run-1",
+  user_id: "user-1",
+  workspace_id: "workspace-1",
+  agent_id: "agent-1",
+  workflow_intent_id: "intent-1",
+  status: input?.status ?? "queued",
+  execution_json: "{}",
+  stage: "observe",
+  engine: "test",
+  heartbeat_at: null,
+  last_event_at: null,
+  completed_at: null,
+  failed_at: null,
+  data_json: "{}",
+  created_at: "2026-06-18T00:00:00.000Z",
+  updated_at: "2026-06-18T00:00:00.000Z",
+  workflow_type: input?.workflowType ?? "workflow.test",
+});
+
+const createRecordingEnv = (input?: { status?: string; workflowType?: string }) => {
+  const statements: RecordedStatement[] = [];
+  const nonces = new Set<unknown>();
+  const createStatement = (query: string): D1PreparedStatement & RecordedStatement => {
+    const statement = {
+      query,
+      values: [] as unknown[],
+      bind(...values: unknown[]) {
+        statement.values = values;
+        return statement;
+      },
+      async first<T = unknown>() {
+        if (query.includes("FROM control_runs r")) return runRow(input) as T;
+        if (query.includes("FROM runtime_traces")) return null as T | null;
+        return null as T | null;
+      },
+      async all<T = unknown>() {
+        return { results: [] as T[] };
+      },
+      async run() {
+        if (query.includes("INSERT INTO control_request_nonces")) {
+          const nonce = statement.values[0];
+          if (nonces.has(nonce)) throw new Error("duplicate nonce");
+          nonces.add(nonce);
+        }
+        statements.push({ query, values: statement.values });
+        return { success: true };
+      },
+    };
+    return statement;
+  };
+
+  const env = {
+    WORKBENCH_CALLBACK_SIGNING_SECRET: "callback-secret",
+    DB: {
+      prepare: createStatement,
+      async batch(batchStatements: Array<D1PreparedStatement & Partial<RecordedStatement>>) {
+        for (const statement of batchStatements) {
+          statements.push({
+            query: statement.query ?? "unknown",
+            values: statement.values ?? [],
+          });
+        }
+        return batchStatements.map(() => ({ success: true })) as D1Result[];
+      },
+    },
+  } satisfies Partial<Env>;
+
+  return { env: env as Env, statements };
+};
+
+const signedRequest = async (
+  env: Env,
+  body: Record<string, unknown>,
+  input?: { bodyOverride?: string; tamperBody?: string; nonce?: string; timestamp?: string },
+) => {
+  const bodyText = input?.bodyOverride ?? JSON.stringify(body);
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  Object.assign(
+    headers,
+    await signFacadeRequest({
+      secret: env.WORKBENCH_CALLBACK_SIGNING_SECRET ?? "",
+      method: "POST",
+      pathWithQuery: "/workbench/run-callbacks",
+      body: bodyText,
+      headers,
+      nonce: input?.nonce,
+      timestamp: input?.timestamp,
+    }),
+  );
+  return new Request("https://worker.test/workbench/run-callbacks", {
+    method: "POST",
+    headers,
+    body: input?.tamperBody ?? bodyText,
+  });
+};
+
+describe("workflow callback ingestion", () => {
+  it("validates the compact callback payload and rejects raw messages/logs", () => {
+    expect(
+      validateWorkflowCallbackPayload({
+        event: "run.progress",
+        runId: "run-1",
+        workflowIntentId: "intent-1",
+        summary: "halfway",
+        progress: { percent: 50 },
+      }),
+    ).toMatchObject({ ok: true });
+
+    expect(
+      validateWorkflowCallbackPayload({
+        event: "run.progress",
+        runId: "run-1",
+        workflowIntentId: "intent-1",
+        messages: [{ role: "user", content: "raw" }],
+      }),
+    ).toMatchObject({
+      ok: false,
+      error: { code: "invalid_body", redacted: true },
+    });
+  });
+
+  it("requires signed callbacks and rejects body tampering", async () => {
+    const { env } = createRecordingEnv();
+    const body = { event: "run.started", runId: "run-1", workflowIntentId: "intent-1" };
+
+    const unsigned = await handleWorkflowCallback(
+      new Request("https://worker.test/workbench/run-callbacks", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+      env,
+    );
+    expect(unsigned.status).toBe(401);
+
+    const tampered = await handleWorkflowCallback(
+      await signedRequest(env, body, {
+        tamperBody: JSON.stringify({ ...body, summary: "tampered" }),
+        nonce: "tampered",
+      }),
+      env,
+    );
+    expect(tampered.status).toBe(401);
+    expect(await tampered.json()).toMatchObject({
+      details: { code: "body_hash_mismatch" },
+    });
+  });
+
+  it("rejects stale and replayed signatures", async () => {
+    const { env } = createRecordingEnv();
+    const body = { event: "run.started", runId: "run-1", workflowIntentId: "intent-1" };
+
+    const stale = await handleWorkflowCallback(
+      await signedRequest(env, body, {
+        nonce: "stale",
+        timestamp: String(Date.now() - 10 * 60 * 1000),
+      }),
+      env,
+    );
+    expect(stale.status).toBe(401);
+    expect(await stale.json()).toMatchObject({
+      details: { code: "signature_stale" },
+    });
+
+    const replayRequest = await signedRequest(env, body, { nonce: "replay" });
+    const first = await handleWorkflowCallback(replayRequest, env);
+    expect(first.status).toBe(200);
+    const replay = await handleWorkflowCallback(
+      await signedRequest(env, body, { nonce: "replay" }),
+      env,
+    );
+    expect(replay.status).toBe(401);
+    expect(await replay.json()).toMatchObject({
+      details: { code: "signature_replay" },
+    });
+  });
+
+  it("updates the stored run and emits audit/control/session events", async () => {
+    const { env, statements } = createRecordingEnv();
+    const result = await applyWorkflowCallbackPayload(env, {
+      event: "run.completed",
+      runId: "run-1",
+      workflowIntentId: "intent-1",
+      summary: "completed",
+      outputSummary: "done",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(statements.some((statement) => statement.query.includes("UPDATE control_runs"))).toBe(
+      true,
+    );
+    expect(
+      statements.some((statement) => statement.query.includes("UPDATE control_workflow_intents")),
+    ).toBe(true);
+    expect(
+      statements.some((statement) => statement.query.includes("INSERT INTO control_audit_events")),
+    ).toBe(true);
+    expect(
+      statements.some((statement) => statement.query.includes("INSERT INTO control_plane_events")),
+    ).toBe(true);
+  });
+
+  it("rejects callbacks after a terminal run status", async () => {
+    const { env } = createRecordingEnv({ status: "completed" });
+    const result = await applyWorkflowCallbackPayload(env, {
+      event: "run.progress",
+      runId: "run-1",
+      workflowIntentId: "intent-1",
+      summary: "late",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.response.status).toBe(409);
+    expect(await result.response.json()).toMatchObject({
+      details: { code: "run_terminal" },
+    });
+  });
+});

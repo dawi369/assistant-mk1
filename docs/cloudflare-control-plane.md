@@ -100,6 +100,12 @@ calling scoped Cloudflare callbacks that update D1 first, then notify the
 matching session Agent. The browser should not subscribe to Fly directly for
 product/runtime state.
 
+Current v0 callback ingestion uses `POST /workbench/run-callbacks`. Producers
+sign the request with `WORKBENCH_CALLBACK_SIGNING_SECRET`; Cloudflare resolves
+tenant scope from the stored run, accepts compact lifecycle/artifact metadata,
+and emits `workflow.run.updated` plus Admin invalidation hints. The old
+`/internal/workbench/run-callbacks` route remains only as demo compatibility.
+
 ## Runtime Traces
 
 D1 is the first-party runtime trace store. The Worker writes `runtime_traces`
