@@ -101,6 +101,17 @@ export const sanitizeThread = (thread?: ChatThreadSummary | null): ChatThreadSum
   };
 };
 
+export const sanitizeActiveThread = (
+  thread?: ChatThreadSummary | null,
+): ChatThreadSummary | null => {
+  if (isPendingThread(thread?.threadId)) return null;
+  if (!thread || thread.status === "deleted") return null;
+  return {
+    ...thread,
+    agent: sanitizeAgent(thread.agent),
+  };
+};
+
 const threadSortTime = (thread: ChatThreadSummary) => {
   const created = thread.createdAt ? Date.parse(thread.createdAt) : NaN;
   if (Number.isFinite(created)) return created;
@@ -172,7 +183,7 @@ export const mergeSession = (
     activeAgent: incoming.activeAgent ?? current?.activeAgent ?? null,
     activeThread: hasIncomingActiveThread
       ? (preserveDisplayTitle(
-          sanitizeThread(incoming.activeThread),
+          sanitizeActiveThread(incoming.activeThread),
           current?.activeThread ?? undefined,
         ) ?? null)
       : (current?.activeThread ?? null),

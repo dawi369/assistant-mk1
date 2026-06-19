@@ -14,6 +14,7 @@ import {
   resolveAgentBehaviorConfig,
   resolveAgentBehaviorInstruction,
   resolveAgentRuntimeConfig,
+  toAgentSummary,
   toAgentBehaviorMetadata,
   toAgentRuntimeMetadata,
 } from "./agent-records";
@@ -23,6 +24,7 @@ import { selectAgent } from "./authz-store";
 import { deriveThreadAgentInstanceName } from "./chat-agent-connection-context";
 import {
   createAgentChatRunStartMirror,
+  promoteDraftChatThread,
   updateChatRun,
   updateChatThreadUpstream,
 } from "./chat-boundary-store";
@@ -287,9 +289,68 @@ export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
 
     try {
       const configStartedAtMs = Date.now();
-      const { runtimeConfig, behaviorConfig, behaviorInstruction, agentMetadata, cacheStatus } =
-        await this.resolveChatConfig(claims);
+      const {
+        runtimeConfig,
+        behaviorConfig,
+        behaviorInstruction,
+        agentMetadata,
+        agentRow,
+        cacheStatus,
+      } = await this.resolveChatConfig(claims);
       const configEndedAtMs = Date.now();
+      const firstMessageSummary = summarizeMessages(this.messages);
+      const draftPromotion = await promoteDraftChatThread(
+        this.getEnv(),
+        identity.scope,
+        claims.threadId,
+        {
+          source: "cloudflare-agent-chat",
+          runtime: "cloudflare-agent-chat",
+          threadId: claims.threadId,
+          instanceName: claims.instanceName,
+          agent: agentMetadata,
+          ...firstMessageSummary,
+        },
+      );
+      if (draftPromotion.promoted && draftPromotion.thread) {
+        const activeAgent = agentRow
+          ? toAgentSummary(this.getEnv(), agentRow, claims.agentId)
+          : null;
+        const activeThread = {
+          threadId: draftPromotion.thread.thread_id,
+          sessionId: draftPromotion.thread.session_id,
+          agentId: draftPromotion.thread.agent_id,
+          agent: activeAgent,
+          status: "active",
+          title: firstMessageSummary.title,
+          createdAt: draftPromotion.thread.created_at,
+          updatedAt: draftPromotion.thread.updated_at,
+          lastSeenAt: draftPromotion.thread.last_seen_at,
+          isActive: true,
+          messageCount: firstMessageSummary.messageCount,
+        };
+        this.waitUntil(
+          dispatchWorkbenchSessionEvent(this.getEnv(), identity, {
+            type: "session.thread.created",
+            data: {
+              activeAgent,
+              activeThread,
+              thread: activeThread,
+              threads: [activeThread],
+              transition: { type: "create", startedAt: new Date(requestStartedAtMs).toISOString() },
+            },
+          }),
+        );
+        this.waitUntil(
+          dispatchWorkbenchSessionEvent(this.getEnv(), identity, {
+            type: "admin.summary.invalidated",
+            data: {
+              reason: "thread-created",
+              threadId: claims.threadId,
+            },
+          }),
+        );
+      }
 
       const runStart = await createAgentChatRunStartMirror(this.getEnv(), identity, {
         traceId: trace.traceId,

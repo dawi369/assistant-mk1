@@ -27,6 +27,7 @@ import {
   handleChatSession,
   handleChatSessionStream,
   handleCreateChatSessionThread,
+  handleStageChatSessionThread,
   handleListChatSessionThreads,
   handleMaterializeChatSessionTurn,
   handleUpdateChatSessionThread,
@@ -199,6 +200,10 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
 
   if (request.method === "POST" && url.pathname === "/chat/session/threads") {
     return handleCreateChatSessionThread(request, env, identity);
+  }
+
+  if (request.method === "POST" && url.pathname === "/chat/session/stage-thread") {
+    return handleStageChatSessionThread(request, env, identity);
   }
 
   if (request.method === "POST" && url.pathname === "/chat/session/materialize-turn") {

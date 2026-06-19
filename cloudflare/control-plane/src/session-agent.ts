@@ -39,6 +39,7 @@ type CoordinatorAction =
   | "get"
   | "list"
   | "create"
+  | "stageThread"
   | "materializeTurn"
   | "activate"
   | "update"
@@ -46,6 +47,7 @@ type CoordinatorAction =
   | "broadcast";
 type ThreadListStatus = "active" | "archived";
 type ThreadMutationStatus = "active" | "archived" | "deleted";
+type MaterializedThreadStatus = "active" | "draft";
 type SessionTransitionType =
   | "initial"
   | "create"
@@ -108,10 +110,12 @@ type SessionResponseOptions = {
   partial?: boolean;
   threadsRefreshRecommended?: boolean;
   transition?: { type: SessionTransitionType; startedAt?: string };
+  stagedThread?: { threadId: string; sessionId: string; expiresAt: string; status: "draft" };
   materializedTurn?: { threadId: string; status: "accepted" };
 };
 
 const tokenTtlSeconds = 5 * 60;
+const stagedThreadTtlMs = 30 * 60 * 1000;
 const sseHeartbeatMs = 15_000;
 const sseEncoder = new TextEncoder();
 const maxMaterializeTurnMessageLength = 8_000;
@@ -320,6 +324,7 @@ const createThreadContext = async (
   identity: AgentIdentity,
   sessionId: string,
   title?: string,
+  options: { status?: MaterializedThreadStatus; draftExpiresAt?: string } = {},
 ) => {
   const activeAgent = await selectAgent(env, identity.agentId, identity.scope.workspaceId);
   if (!activeAgent || activeAgent.status !== "active") {
@@ -328,6 +333,7 @@ const createThreadContext = async (
 
   const timestamp = new Date().toISOString();
   const threadTitle = titleFromInput(title) ?? formatThreadTimeTitle(new Date(timestamp));
+  const status = options.status ?? "active";
   const threadId = createId("cf-thread");
   const instanceName = await deriveThreadAgentInstanceName({
     userId: identity.scope.userId,
@@ -342,6 +348,13 @@ const createThreadContext = async (
     threadId,
     instanceName,
     agent: toAgentRuntimeMetadata(env, activeAgent, identity.agentId),
+    ...(status === "draft"
+      ? {
+          draft: true,
+          stagedAt: timestamp,
+          stageExpiresAt: options.draftExpiresAt,
+        }
+      : {}),
   };
   await env.DB.batch([
     env.DB.prepare(
@@ -362,7 +375,7 @@ const createThreadContext = async (
       identity.scope.userId,
       identity.scope.workspaceId,
       identity.agentId,
-      "active",
+      status,
       toJson(upstream),
       timestamp,
       timestamp,
@@ -389,7 +402,7 @@ const createThreadContext = async (
     user_id: identity.scope.userId,
     workspace_id: identity.scope.workspaceId,
     agent_id: identity.agentId,
-    status: "active",
+    status,
     upstream_json: toJson(upstream),
     created_at: timestamp,
     updated_at: timestamp,
@@ -432,7 +445,7 @@ const buildSnapshot = async (
     (latestSession?.active_thread_id
       ? await getOwnedChatThread(env, identity.scope, latestSession.active_thread_id)
       : null);
-  if (thread?.status !== "active") thread = null;
+  if (thread?.status !== "active" && thread?.status !== "draft") thread = null;
   let agent =
     input.activeAgent ?? (await selectAgent(env, identity.agentId, identity.scope.workspaceId));
 
@@ -534,6 +547,7 @@ const responseFromSnapshot = async (
     partial: options.partial,
     threadsRefreshRecommended: options.threadsRefreshRecommended,
     transition: options.transition,
+    stagedThread: options.stagedThread,
     materializedTurn: options.materializedTurn,
   };
 };
@@ -545,6 +559,7 @@ const ensureCoordinatorRequest = (value: unknown): CoordinatorRequest | null => 
     candidate.action !== "get" &&
     candidate.action !== "list" &&
     candidate.action !== "create" &&
+    candidate.action !== "stageThread" &&
     candidate.action !== "materializeTurn" &&
     candidate.action !== "activate" &&
     candidate.action !== "update" &&
@@ -619,6 +634,60 @@ const clearActiveThread = async (env: Env, identity: AgentIdentity, sessionId: s
   )
     .bind(timestamp, timestamp, identity.scope.userId, identity.scope.workspaceId, sessionId)
     .run();
+};
+
+const draftExpiryFromThread = (thread: ChatThreadRow) => {
+  const upstream = parseDataJson(thread.upstream_json);
+  const rawExpiresAt = typeof upstream.stageExpiresAt === "string" ? upstream.stageExpiresAt : "";
+  const expiresAtMs = rawExpiresAt ? Date.parse(rawExpiresAt) : NaN;
+  if (Number.isFinite(expiresAtMs)) return new Date(expiresAtMs).toISOString();
+
+  const createdAtMs = Date.parse(thread.created_at);
+  const fallbackMs = Number.isFinite(createdAtMs) ? createdAtMs : Date.now();
+  return new Date(fallbackMs + stagedThreadTtlMs).toISOString();
+};
+
+const isExpiredDraftThread = (thread: ChatThreadRow) =>
+  thread.status === "draft" && Date.parse(draftExpiryFromThread(thread)) <= Date.now();
+
+const markThreadDeleted = async (env: Env, identity: AgentIdentity, thread: ChatThreadRow) => {
+  const timestamp = new Date().toISOString();
+  const upstream = {
+    ...parseDataJson(thread.upstream_json),
+    draft: false,
+    abandonedAt: timestamp,
+  };
+  await env.DB.prepare(
+    `UPDATE chat_threads
+     SET status = 'deleted',
+         upstream_json = ?,
+         updated_at = ?,
+         last_seen_at = ?
+     WHERE user_id = ? AND workspace_id = ? AND thread_id = ? AND status = 'draft'`,
+  )
+    .bind(
+      toJson(upstream),
+      timestamp,
+      timestamp,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      thread.thread_id,
+    )
+    .run();
+};
+
+const reusableDraftThread = async (
+  env: Env,
+  identity: AgentIdentity,
+  sessionId: string,
+  activeThreadId?: string | null,
+) => {
+  if (!activeThreadId) return null;
+  const thread = await getOwnedChatThread(env, identity.scope, activeThreadId);
+  if (!thread || thread.session_id !== sessionId || thread.status !== "draft") return null;
+  if (!isExpiredDraftThread(thread)) return thread;
+  await markThreadDeleted(env, identity, thread);
+  return null;
 };
 
 const submitProgrammaticTurn = async (
@@ -787,6 +856,85 @@ export class WorkbenchSessionAgent {
       partial: true,
       threadsRefreshRecommended: true,
       transition: { type: "create", startedAt },
+    });
+  }
+
+  private async stageThread(input: CoordinatorRequest) {
+    const latestSession = await getLatestChatSession(this.env, input.identity.scope);
+    const sessionId =
+      this.snapshot?.context?.sessionId ??
+      latestSession?.session_id ??
+      (await createChatSession(this.env, input.identity, { source: "cloudflare-agent-chat" }));
+    const reusable =
+      (this.snapshot?.context?.threadId
+        ? await reusableDraftThread(
+            this.env,
+            input.identity,
+            sessionId,
+            this.snapshot.context.threadId,
+          )
+        : null) ??
+      (await reusableDraftThread(
+        this.env,
+        input.identity,
+        sessionId,
+        latestSession?.active_thread_id,
+      ));
+    const draftExpiresAt = reusable
+      ? draftExpiryFromThread(reusable)
+      : new Date(Date.now() + stagedThreadTtlMs).toISOString();
+    const created = reusable
+      ? {
+          activeAgent: await selectAgent(
+            this.env,
+            reusable.agent_id,
+            input.identity.scope.workspaceId,
+          ),
+          thread: reusable,
+        }
+      : await createThreadContext(this.env, input.identity, sessionId, "New chat", {
+          status: "draft",
+          draftExpiresAt,
+        });
+
+    if (!created.activeAgent || created.activeAgent.status !== "active") {
+      throw new Error("Agent is not active");
+    }
+
+    const activeIdentity = { ...input.identity, agentId: created.activeAgent.id };
+    const activeThread = toActiveThreadSummary(
+      this.env,
+      created.thread,
+      created.activeAgent,
+      created.thread.thread_id,
+    );
+    const context = await sessionContext(activeIdentity, {
+      thread: created.thread,
+      agent: created.activeAgent,
+      accountId: input.identity.accountId,
+      accountSource: input.identity.accountSource,
+    });
+    this.snapshot = {
+      revision: this.nextRevision(),
+      context,
+      workspace:
+        this.snapshot?.workspace ??
+        (await workspaceSummary(this.env, input.identity.scope.workspaceId)),
+      activeAgent: toAgentSummary(this.env, created.activeAgent, created.activeAgent.id),
+      activeThread,
+      threads: (this.snapshot?.threads ?? [])
+        .filter((thread) => thread.threadId !== activeThread.threadId)
+        .map((thread) => ({ ...thread, isActive: false })),
+    };
+
+    return responseFromSnapshot(this.env, input.agentHost!, this.snapshot, {
+      partial: true,
+      stagedThread: {
+        threadId: activeThread.threadId,
+        sessionId: activeThread.sessionId,
+        expiresAt: draftExpiresAt,
+        status: "draft",
+      },
     });
   }
 
@@ -1145,6 +1293,7 @@ export class WorkbenchSessionAgent {
       }
       if (input.action === "list") return json(await this.listThreads(input));
       if (input.action === "create") return json(await this.createThread(input));
+      if (input.action === "stageThread") return json(await this.stageThread(input));
       if (input.action === "materializeTurn") {
         const result = await this.materializeTurn(input);
         return json(result, { status: "status" in result ? result.status : 200 });

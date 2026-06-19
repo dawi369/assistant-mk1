@@ -10,7 +10,13 @@ export async function GET(request: NextRequest) {
   const refresh = request.nextUrl.searchParams.get("refresh") === "threads" ? "threads" : undefined;
   const sourceParam = request.nextUrl.searchParams.get("source");
   const source =
-    sourceParam === "new-session" || sourceParam === "first-draft" || sourceParam === "stream-open"
+    sourceParam === "new-session" ||
+    sourceParam === "first-draft" ||
+    sourceParam === "stream-open" ||
+    sourceParam === "post-action" ||
+    sourceParam === "post-delete" ||
+    sourceParam === "post-materialize" ||
+    sourceParam === "manual"
       ? sourceParam
       : "direct";
   try {

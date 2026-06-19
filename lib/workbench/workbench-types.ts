@@ -628,7 +628,7 @@ export type ChatThreadSummary = {
   messageCount?: number;
 };
 
-export type ChatThreadStatus = "active" | "archived" | "deleted";
+export type ChatThreadStatus = "active" | "archived" | "deleted" | "draft";
 
 export type ChatThreadsResponse = {
   ok?: boolean;
@@ -667,6 +667,12 @@ export type ChatSessionResponse = {
     workspaceId?: Id;
     agentId?: Id;
     expiresAt?: string;
+  };
+  stagedThread?: {
+    threadId: Id;
+    sessionId: Id;
+    expiresAt: string;
+    status: "draft";
   };
   pending?: { type: "create" } | { type: "activate"; threadId: Id };
   materializedTurn?: { threadId: Id; status: "accepted" };

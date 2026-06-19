@@ -46,6 +46,13 @@ const lastSessionShellCacheKey = "assistant-mk1:chat-session:last";
 const warmupFreshMs = 15_000;
 
 type SessionWarmupSource = "new-session" | "first-draft" | "stream-open";
+type SessionStageSource = "new-session" | "first-focus" | "first-draft" | "first-send" | "retry";
+type SessionReadSource =
+  | SessionWarmupSource
+  | "post-action"
+  | "post-delete"
+  | "post-materialize"
+  | "manual";
 
 type SessionAction = "read" | "create" | "activate";
 type ThreadUpdateInput = {
@@ -69,7 +76,7 @@ const sessionActionPath = (input: {
   action?: SessionAction;
   threadId?: string;
   update?: ThreadUpdateInput;
-  preloadSource?: SessionWarmupSource;
+  source?: SessionReadSource;
 }) => {
   if (input.action === "create") return `${sessionPath}/threads`;
   if (input.action === "activate" && input.threadId) {
@@ -94,7 +101,7 @@ const readSession = async (
     refresh?: "threads";
     title?: string;
     update?: ThreadUpdateInput;
-    preloadSource?: SessionWarmupSource;
+    source?: SessionReadSource;
   } = {},
 ): Promise<ChatSessionResponse> => {
   const basePath = sessionActionPath(input);
@@ -102,8 +109,8 @@ const readSession = async (
   if (input.refresh && input.action !== "create" && input.action !== "activate") {
     query.set("refresh", input.refresh);
   }
-  if (input.preloadSource) {
-    query.set("source", input.preloadSource);
+  if (input.source) {
+    query.set("source", input.source);
   }
   const path = query.size > 0 ? `${basePath}?${query.toString()}` : basePath;
   const requestBody = input.update
@@ -166,6 +173,7 @@ type ChatSessionContextValue = {
   createThread: () => Promise<void>;
   startNewSession: () => void;
   preloadNewSession: (source: SessionWarmupSource) => void;
+  stageNewSession: (source: SessionStageSource) => Promise<ChatSessionResponse | null>;
   materializeTurn: (message: string) => Promise<void>;
   activateThread: (threadId: string) => Promise<void>;
   renameThread: (threadId: string, title: string) => Promise<void>;
@@ -185,7 +193,7 @@ type LoadSessionInput = {
   update?: ThreadUpdateInput;
   optimistic?: boolean;
   preload?: boolean;
-  preloadSource?: SessionWarmupSource;
+  source?: SessionReadSource;
   refreshSummary?: boolean;
 };
 
@@ -305,9 +313,11 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
   const loadSessionRef = useRef<((input?: LoadSessionInput) => Promise<void>) | null>(null);
   const sessionStreamOpenedRef = useRef(false);
   const warmupPromiseRef = useRef<Promise<void> | null>(null);
+  const stagePromiseRef = useRef<Promise<ChatSessionResponse | null> | null>(null);
   const lastWarmupRef = useRef<{ completedAt: number; ok: boolean } | null>(null);
   const deletingThreadIdsRef = useRef<ReadonlySet<string>>(new Set());
   const deleteRollbacksRef = useRef<Map<string, OptimisticDeleteRollback>>(new Map());
+  const threadRefreshTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     connectionRef.current = connection;
@@ -316,6 +326,25 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     deletingThreadIdsRef.current = deletingThreadIds;
   }, [deletingThreadIds]);
+
+  const scheduleThreadRefresh = useCallback((source: SessionReadSource, delayMs = 100) => {
+    if (threadRefreshTimeoutRef.current !== null) {
+      window.clearTimeout(threadRefreshTimeoutRef.current);
+    }
+    threadRefreshTimeoutRef.current = window.setTimeout(() => {
+      threadRefreshTimeoutRef.current = null;
+      void loadSessionRef.current?.({ refresh: "threads", refreshSummary: false, source });
+    }, delayMs);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (threadRefreshTimeoutRef.current !== null) {
+        window.clearTimeout(threadRefreshTimeoutRef.current);
+      }
+    },
+    [],
+  );
 
   const applySession = useCallback(
     (nextSession: ChatSessionResponse, input?: { preserveLocalNew?: boolean }) => {
@@ -387,10 +416,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
           requestWorkbenchSummaryRefresh({ source: "event" });
         }
         if (nextSession.threadsRefreshRecommended && input.action !== undefined) {
-          window.setTimeout(
-            () => void loadSession({ refresh: "threads", refreshSummary: false }),
-            100,
-          );
+          scheduleThreadRefresh("post-action");
         }
       } catch (nextError) {
         const message = nextError instanceof Error ? nextError.message : "Agent connection failed";
@@ -419,14 +445,14 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
             console.debug("Cloudflare Agent session warmup", {
               durationMs,
               ok: requestOk,
-              source: input.preloadSource ?? "new-session",
+              source: input.source ?? "new-session",
             });
           }
         }
         if (transition) setPending(null);
       }
     },
-    [applySession],
+    [applySession, scheduleThreadRefresh],
   );
 
   useEffect(() => {
@@ -442,7 +468,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
         refresh: "threads",
         refreshSummary: false,
         preload: true,
-        preloadSource: source,
+        source,
       }) ?? Promise.resolve();
     warmupPromiseRef.current = warmupPromise;
     warmupPromise.finally(() => {
@@ -452,6 +478,63 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const stageNewSession = useCallback(
+    async (source: SessionStageSource) => {
+      if (stagePromiseRef.current) return stagePromiseRef.current;
+
+      const startedAt = performance.now();
+      const stagePromise = (async () => {
+        try {
+          setError(null);
+          const response = await fetch(
+            `${sessionPath}/stage-thread?source=${encodeURIComponent(source)}`,
+            {
+              method: "POST",
+              cache: "no-store",
+            },
+          );
+          const nextSession = (await response.json().catch(() => ({}))) as ChatSessionResponse & {
+            error?: string;
+          };
+          if (!response.ok || !nextSession.ok) {
+            throw new Error(nextSession.error ?? "Failed to prepare chat");
+          }
+          applySession(nextSession);
+          if (process.env.NODE_ENV !== "production") {
+            console.debug("Cloudflare Agent stage thread", {
+              durationMs: Math.round(performance.now() - startedAt),
+              ok: true,
+              source,
+            });
+          }
+          return nextSession;
+        } catch (nextError) {
+          if (process.env.NODE_ENV !== "production") {
+            console.debug("Cloudflare Agent stage thread", {
+              durationMs: Math.round(performance.now() - startedAt),
+              ok: false,
+              source,
+            });
+          }
+          if (localNewSessionRef.current) {
+            console.warn("Cloudflare Agent staging failed", nextError);
+          } else {
+            const message =
+              nextError instanceof Error ? nextError.message : "Failed to prepare chat";
+            setError(message);
+          }
+          return null;
+        } finally {
+          stagePromiseRef.current = null;
+        }
+      })();
+
+      stagePromiseRef.current = stagePromise;
+      return stagePromise;
+    },
+    [applySession],
+  );
+
   const startNewSession = useCallback(() => {
     localNewSessionRef.current = true;
     setLocalNewSession(true);
@@ -460,8 +543,10 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
     connectionRef.current = null;
     setConnection(null);
     setSession((current) => enterLocalNewSession(current));
-    window.setTimeout(() => preloadNewSession("new-session"), 0);
-  }, [preloadNewSession]);
+    window.setTimeout(() => {
+      void stageNewSession("new-session");
+    }, 0);
+  }, [stageNewSession]);
 
   const materializeTurn = useCallback(
     async (message: string) => {
@@ -488,10 +573,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
         applySession(nextSession);
         requestWorkbenchSummaryRefresh({ source: "event" });
         if (nextSession.threadsRefreshRecommended) {
-          window.setTimeout(
-            () => void loadSession({ refresh: "threads", refreshSummary: false }),
-            100,
-          );
+          scheduleThreadRefresh("post-materialize");
         }
         if (process.env.NODE_ENV !== "production") {
           console.debug("Cloudflare Agent materialize turn", {
@@ -516,7 +598,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
         setPending(null);
       }
     },
-    [applySession, loadSession],
+    [applySession, scheduleThreadRefresh],
   );
 
   const restoreOptimisticDelete = useCallback((threadId: string) => {
@@ -632,29 +714,20 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
         applySession(nextSession);
         requestWorkbenchSummaryRefresh({ source: "event" });
         if (nextSession.threadsRefreshRecommended) {
-          window.setTimeout(
-            () => void loadSession({ refresh: "threads", refreshSummary: false }),
-            100,
-          );
+          scheduleThreadRefresh("post-delete");
         }
         deleteRollbacksRef.current.delete(threadId);
       } catch (nextError) {
         const message = nextError instanceof Error ? nextError.message : "Failed to delete chat";
         if (/thread not found/i.test(message)) {
           deleteRollbacksRef.current.delete(threadId);
-          window.setTimeout(
-            () => void loadSession({ refresh: "threads", refreshSummary: false }),
-            100,
-          );
+          scheduleThreadRefresh("post-delete");
           return;
         }
         restoreOptimisticDelete(threadId);
         deleteRollbacksRef.current.delete(threadId);
         setError(message);
-        window.setTimeout(
-          () => void loadSession({ refresh: "threads", refreshSummary: false }),
-          100,
-        );
+        scheduleThreadRefresh("post-delete");
         throw nextError;
       } finally {
         setDeletingThreadIds((current) => {
@@ -666,7 +739,14 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
         });
       }
     },
-    [applySession, archivedThreads, loadSession, restoreOptimisticDelete, session],
+    [
+      applySession,
+      archivedThreads,
+      loadSession,
+      restoreOptimisticDelete,
+      scheduleThreadRefresh,
+      session,
+    ],
   );
 
   const applySessionEvent = useCallback((event: WorkbenchSessionEvent) => {
@@ -857,6 +937,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
       },
       startNewSession,
       preloadNewSession,
+      stageNewSession,
       materializeTurn,
       activateThread: (threadId: string) =>
         loadSession({
@@ -877,7 +958,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
         loadSession({ threadId, update: { status: "active" }, refreshSummary: true }),
       deleteThread: deleteThreadOptimistically,
       loadArchivedThreads,
-      refresh: () => loadSession({ refresh: "threads", refreshSummary: false }),
+      refresh: () => loadSession({ refresh: "threads", refreshSummary: false, source: "manual" }),
       retry: () => loadSession({ refreshSummary: false }),
     };
   }, [
@@ -893,6 +974,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
     loadSession,
     localNewSession,
     preloadNewSession,
+    stageNewSession,
     startNewSession,
     materializeTurn,
     archivedThreads,

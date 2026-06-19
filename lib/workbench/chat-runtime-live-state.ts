@@ -5,7 +5,7 @@ import type {
   CloudflareAdminSummaryResponse,
   WorkbenchSessionEvent,
 } from "./workbench-types";
-import type { PendingSessionTransition } from "./chat-session-state";
+import { isVisibleThread, type PendingSessionTransition } from "./chat-session-state";
 
 type RuntimeConnectionSnapshot = {
   threadId?: string;
@@ -91,7 +91,9 @@ export const deriveRuntimeState = (input: {
   const chatTone = chatRuntimeStateTone(chatState);
 
   const activeAgent = input.session?.activeAgent ?? summary?.activeAgent ?? null;
-  const activeThread = input.session?.activeThread ?? null;
+  const activeThread = isVisibleThread(input.session?.activeThread)
+    ? (input.session?.activeThread ?? null)
+    : null;
   const summaryThread = summary?.chatRuntime?.latestThread ?? null;
   const errorMessage = input.error ?? input.summaryError ?? summary?.lastError?.message;
 

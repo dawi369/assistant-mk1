@@ -164,6 +164,48 @@ export const updateChatThreadUpstream = async (
     .run();
 };
 
+export const promoteDraftChatThread = async (
+  env: Env,
+  scope: TenantScope,
+  threadId: string,
+  upstreamPatch: Record<string, unknown>,
+) => {
+  const current = await getOwnedChatThread(env, scope, threadId);
+  if (!current || current.status !== "draft") {
+    return { promoted: false, thread: current };
+  }
+
+  const timestamp = new Date().toISOString();
+  const currentUpstream = parseDataJson(current.upstream_json);
+  const nextUpstream = {
+    ...currentUpstream,
+    ...upstreamPatch,
+    draft: false,
+    materializedAt: timestamp,
+  };
+  await env.DB.prepare(
+    `UPDATE chat_threads
+     SET status = 'active',
+         upstream_json = ?,
+         updated_at = ?,
+         last_seen_at = ?
+     WHERE user_id = ? AND workspace_id = ? AND thread_id = ? AND status = 'draft'`,
+  )
+    .bind(toJson(nextUpstream), timestamp, timestamp, scope.userId, scope.workspaceId, threadId)
+    .run();
+
+  return {
+    promoted: true,
+    thread: {
+      ...current,
+      status: "active",
+      upstream_json: toJson(nextUpstream),
+      updated_at: timestamp,
+      last_seen_at: timestamp,
+    },
+  };
+};
+
 export const touchChatThread = async (env: Env, scope: TenantScope, threadId: string) => {
   const timestamp = new Date().toISOString();
   await env.DB.prepare(

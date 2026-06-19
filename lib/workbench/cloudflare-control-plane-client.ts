@@ -331,6 +331,11 @@ export const createChatSessionThread = (input?: { title?: string }) =>
     body: input?.title ? JSON.stringify({ title: input.title }) : undefined,
   });
 
+export const stageChatSessionThread = () =>
+  requestControlPlane<ChatSessionResponse>("/chat/session/stage-thread", {
+    method: "POST",
+  });
+
 export const materializeChatSessionTurn = (input: { message: string }) =>
   requestControlPlane<ChatSessionResponse>("/chat/session/materialize-turn", {
     method: "POST",

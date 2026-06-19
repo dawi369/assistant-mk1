@@ -46,28 +46,39 @@ export function Assistant({ children }: { children?: ReactNode }) {
     isLocalNewSession,
     materializeTurn,
     pending,
-    preloadNewSession,
     retry,
     session,
+    stageNewSession,
   } = useWorkbenchAgentConnection();
   const [preRuntimeDraft, setPreRuntimeDraft] = useState("");
   const clearPreRuntimeDraft = useCallback(() => setPreRuntimeDraft(""), []);
+  const [queuedFirstSendDraft, setQueuedFirstSendDraft] = useState<string | null>(null);
+  const clearQueuedFirstSendDraft = useCallback(() => setQueuedFirstSendDraft(null), []);
   const [isSubmittingLocalTurn, setIsSubmittingLocalTurn] = useState(false);
   const handlePreRuntimeDraftChange = useCallback(
     (nextDraft: string) => {
       setPreRuntimeDraft(nextDraft);
       if (isLocalNewSession && nextDraft.trim()) {
-        preloadNewSession("first-draft");
+        void stageNewSession("first-draft");
       }
     },
-    [isLocalNewSession, preloadNewSession],
+    [isLocalNewSession, stageNewSession],
   );
+  const handlePreRuntimeFocus = useCallback(() => {
+    if (isLocalNewSession) void stageNewSession("first-focus");
+  }, [isLocalNewSession, stageNewSession]);
   const submitLocalTurn = useCallback(async () => {
     if (!isLocalNewSession || isSubmittingLocalTurn || !preRuntimeDraft.trim()) return;
+    const draft = preRuntimeDraft;
     setIsSubmittingLocalTurn(true);
+    setQueuedFirstSendDraft(draft);
     try {
-      await materializeTurn(preRuntimeDraft);
-      clearPreRuntimeDraft();
+      const staged = await stageNewSession("first-send");
+      if (!staged?.connection) {
+        setQueuedFirstSendDraft(null);
+        await materializeTurn(draft);
+        clearPreRuntimeDraft();
+      }
     } finally {
       setIsSubmittingLocalTurn(false);
     }
@@ -77,6 +88,7 @@ export function Assistant({ children }: { children?: ReactNode }) {
     isSubmittingLocalTurn,
     materializeTurn,
     preRuntimeDraft,
+    stageNewSession,
   ]);
 
   if (!connection || hasPendingActiveThread(session)) {
@@ -87,6 +99,7 @@ export function Assistant({ children }: { children?: ReactNode }) {
         isLocalNewSession={isLocalNewSession}
         isSubmitting={isSubmittingLocalTurn || pending?.type === "materialize"}
         onDraftChange={handlePreRuntimeDraftChange}
+        onFocus={handlePreRuntimeFocus}
         onSubmit={submitLocalTurn}
         onRetry={retry}
         session={session}
@@ -99,7 +112,9 @@ export function Assistant({ children }: { children?: ReactNode }) {
       key={connection.threadId ?? connection.instanceName}
       connection={connection}
       draft={preRuntimeDraft}
+      queuedDraft={queuedFirstSendDraft}
       onDraftHydrated={clearPreRuntimeDraft}
+      onQueuedDraftSent={clearQueuedFirstSendDraft}
     >
       {children}
       <Thread />
@@ -110,25 +125,22 @@ export function Assistant({ children }: { children?: ReactNode }) {
 function AgentRuntime({
   connection,
   draft,
+  queuedDraft,
   onDraftHydrated,
+  onQueuedDraftSent,
   children,
 }: {
   connection: WorkbenchAgentConnection;
   draft: string;
+  queuedDraft: string | null;
   onDraftHydrated: () => void;
+  onQueuedDraftSent: () => void;
   children?: ReactNode;
 }) {
-  const [isOpeningThread, setIsOpeningThread] = useState(false);
   const hostOptions = useMemo(
     () => toAgentHostOptions(connection.agentHost!),
     [connection.agentHost],
   );
-
-  useEffect(() => {
-    setIsOpeningThread(true);
-    const timeout = window.setTimeout(() => setIsOpeningThread(false), 900);
-    return () => window.clearTimeout(timeout);
-  }, [connection.threadId, connection.instanceName]);
 
   const agent = useAgent({
     agent: "WorkbenchThreadChatAgent",
@@ -153,39 +165,61 @@ function AgentRuntime({
 
   return (
     <AssistantRuntimeProvider runtime={providerRuntime}>
-      <RuntimeDraftHandoff draft={draft} onHydrated={onDraftHydrated} />
-      <div className="relative h-full">
-        {children}
-        {isOpeningThread ? (
-          <div className="pointer-events-none absolute top-20 left-1/2 z-20 -translate-x-1/2 rounded-md border border-border bg-background/95 px-3 py-1.5 text-xs text-muted-foreground shadow-xs backdrop-blur">
-            Opening chat...
-          </div>
-        ) : null}
-      </div>
+      <RuntimeDraftHandoff
+        draft={draft}
+        queuedDraft={queuedDraft}
+        onHydrated={onDraftHydrated}
+        onQueuedDraftSent={onQueuedDraftSent}
+      />
+      <div className="relative h-full">{children}</div>
     </AssistantRuntimeProvider>
   );
 }
 
-function RuntimeDraftHandoff({ draft, onHydrated }: { draft: string; onHydrated: () => void }) {
+function RuntimeDraftHandoff({
+  draft,
+  queuedDraft,
+  onHydrated,
+  onQueuedDraftSent,
+}: {
+  draft: string;
+  queuedDraft: string | null;
+  onHydrated: () => void;
+  onQueuedDraftSent: () => void;
+}) {
   const aui = useAui();
   const attemptedDraftRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!draft || attemptedDraftRef.current === draft) return;
+    const targetDraft = queuedDraft?.trim() ? queuedDraft : draft;
+    const shouldSend = Boolean(queuedDraft?.trim());
+    const attemptKey = `${shouldSend ? "send" : "hydrate"}:${targetDraft}`;
+    if (!targetDraft || attemptedDraftRef.current === attemptKey) return;
 
     const composer = aui.composer();
     const currentText = composer.getState().text ?? "";
-    attemptedDraftRef.current = draft;
+    attemptedDraftRef.current = attemptKey;
 
-    if (currentText === draft) {
+    if (currentText && currentText !== targetDraft) return;
+    if (currentText !== targetDraft) {
+      composer.setText(targetDraft);
+    }
+
+    if (shouldSend) {
+      window.setTimeout(() => {
+        aui.composer().send();
+        onQueuedDraftSent();
+        onHydrated();
+      }, 0);
+      return;
+    }
+
+    if (currentText === targetDraft) {
       onHydrated();
       return;
     }
-    if (currentText.length > 0) return;
-
-    composer.setText(draft);
     onHydrated();
-  }, [aui, draft, onHydrated]);
+  }, [aui, draft, onHydrated, onQueuedDraftSent, queuedDraft]);
 
   return null;
 }
@@ -196,6 +230,7 @@ function PreRuntimeDraftSurface({
   isLocalNewSession,
   isSubmitting,
   onDraftChange,
+  onFocus,
   onSubmit,
   onRetry,
   session,
@@ -205,6 +240,7 @@ function PreRuntimeDraftSurface({
   isLocalNewSession: boolean;
   isSubmitting: boolean;
   onDraftChange: (draft: string) => void;
+  onFocus: () => void;
   onSubmit: () => Promise<void>;
   onRetry: () => Promise<void>;
   session: ReturnType<typeof useWorkbenchAgentConnection>["session"];
@@ -291,6 +327,7 @@ function PreRuntimeDraftSurface({
                 ref={registerComposerInput}
                 value={draft}
                 onChange={(event) => onDraftChange(event.target.value)}
+                onFocus={onFocus}
                 onKeyDown={(event) => {
                   if (event.key !== "Enter" || event.shiftKey) return;
                   event.preventDefault();

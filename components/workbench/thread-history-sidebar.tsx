@@ -57,7 +57,7 @@ export function ThreadHistorySidebar({
   const isCached = session?.isStale === true;
   const actionsDisabled = disableThreadActions || isCached;
   const newChatDisabled = disableNewChat || pending?.type === "materialize";
-  const threadItemsDisabled = actionsDisabled || isNavigatingThread;
+  const threadItemsDisabled = actionsDisabled;
   const visibleThreads = (view === "archived" ? archivedThreads : threads).filter(
     (thread) => !deletingThreadIds.has(thread.threadId),
   );
@@ -112,7 +112,7 @@ export function ThreadHistorySidebar({
   };
 
   const handleActivateThread = async (threadId: string) => {
-    if (threadItemsDisabled) return;
+    if (threadItemsDisabled || isNavigatingThread) return;
     focusComposer();
     await runThreadAction(async () => {
       await activateThread(threadId);
@@ -154,10 +154,9 @@ export function ThreadHistorySidebar({
       `Delete "${thread.title || "New chat"}"? This hides the chat but keeps its audit records.`,
     );
     if (!confirmed) return;
-    await runThreadAction(async () => {
-      await deleteThread(thread.threadId);
-      await reloadArchived();
-    }, "Failed to delete chat");
+    deleteThread(thread.threadId).catch((nextError) => {
+      setArchiveError(nextError instanceof Error ? nextError.message : "Failed to delete chat");
+    });
   };
 
   return (

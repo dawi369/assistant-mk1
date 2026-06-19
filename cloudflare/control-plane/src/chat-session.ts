@@ -2,7 +2,14 @@ import { internalErrorResponse, json } from "./http";
 import { sessionCoordinatorName } from "./session-coordinator";
 import type { AgentIdentity, Env } from "./types";
 
-type SessionAction = "get" | "list" | "create" | "materializeTurn" | "activate" | "update";
+type SessionAction =
+  | "get"
+  | "list"
+  | "create"
+  | "stageThread"
+  | "materializeTurn"
+  | "activate"
+  | "update";
 type ThreadListStatus = "active" | "archived";
 type ThreadMutationStatus = "active" | "archived" | "deleted";
 
@@ -121,6 +128,15 @@ export const handleCreateChatSessionThread = async (
     title: typeof body.title === "string" ? body.title : undefined,
   });
 };
+
+export const handleStageChatSessionThread = async (
+  request: Request,
+  env: Env,
+  identity: AgentIdentity,
+) =>
+  coordinatorResponse(request, env, identity, {
+    action: "stageThread",
+  });
 
 export const handleMaterializeChatSessionTurn = async (
   request: Request,

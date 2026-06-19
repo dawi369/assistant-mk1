@@ -2,7 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@workos-inc/authkit-nextjs/components";
-import { MessageSquarePlusIcon, ShieldCheckIcon } from "lucide-react";
+import {
+  ActivityIcon,
+  FileTextIcon,
+  MessageSquarePlusIcon,
+  PlayIcon,
+  ShieldCheckIcon,
+} from "lucide-react";
 
 import { Assistant } from "@/app/assistant";
 import {
@@ -15,12 +21,24 @@ import { AdminPanel } from "@/components/workbench/dev-monitor-drawer";
 import { ThreadHistorySidebar } from "@/components/workbench/thread-history-sidebar";
 import { WorkbenchAssistantEvents } from "@/components/workbench/workbench-assistant-events";
 import { WorkbenchRuntimeHint } from "@/components/workbench/workbench-runtime-hint";
+import { requestWorkbenchSummaryRefresh } from "@/lib/workbench/admin-summary-events";
 import {
   ChatSessionProvider,
   useWorkbenchAgentConnection,
 } from "@/lib/workbench/use-agent-connection";
+import type { RunnableAdminToolName } from "@/lib/workbench/cloudflare-control-plane-client";
 
 const adminAccessPath = "/api/workbench/admin-access";
+const toolRunsPath = "/api/workbench/tools/runs";
+
+const adminTestToolInputs: Record<
+  Extract<RunnableAdminToolName, "diagnostic.ping" | "runner.echo" | "artifact.metadata.test">,
+  Record<string, unknown>
+> = {
+  "diagnostic.ping": {},
+  "runner.echo": { message: "runner echo ok" },
+  "artifact.metadata.test": { label: "admin conformance" },
+};
 
 export function WorkbenchShell() {
   return (
@@ -35,7 +53,7 @@ function WorkbenchShellContent() {
   const [adminAccess, setAdminAccess] = useState<{ isAdmin: boolean } | null>(null);
   const [adminNotice, setAdminNotice] = useState<string | null>(null);
   const { user, loading } = useAuth();
-  const { connection, isInitialLoading, startNewSession } = useWorkbenchAgentConnection();
+  const { isInitialLoading, startNewSession } = useWorkbenchAgentConnection();
 
   useEffect(() => {
     if (loading) return;
@@ -86,8 +104,45 @@ function WorkbenchShellContent() {
     [startNewSession],
   );
 
-  const slashCommands = useMemo(
-    () => [
+  const runAdminTestTool = useCallback(
+    async (toolName: keyof typeof adminTestToolInputs) => {
+      if (!adminAccess?.isAdmin) {
+        setAdminNotice("Admin tools are restricted for this account.");
+        window.setTimeout(() => setAdminNotice(null), 3000);
+        return;
+      }
+
+      setAdminNotice(`Running ${toolName}...`);
+      try {
+        const response = await fetch(toolRunsPath, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            toolName,
+            executionMode: "dry_run",
+            input: adminTestToolInputs[toolName],
+          }),
+        });
+        const body = (await response.json().catch(() => ({}))) as { error?: unknown };
+        if (!response.ok) {
+          throw new Error(
+            typeof body.error === "string" ? body.error : `Failed to run ${toolName}`,
+          );
+        }
+        setAdminNotice(`${toolName} accepted.`);
+        requestWorkbenchSummaryRefresh({ source: "event" });
+      } catch (error) {
+        setAdminNotice(error instanceof Error ? error.message : `Failed to run ${toolName}`);
+        requestWorkbenchSummaryRefresh({ source: "event" });
+      } finally {
+        window.setTimeout(() => setAdminNotice(null), 3000);
+      }
+    },
+    [adminAccess?.isAdmin],
+  );
+
+  const slashCommands = useMemo(() => {
+    const commands = [
       {
         id: "new",
         label: "New chat",
@@ -104,9 +159,35 @@ function WorkbenchShellContent() {
         icon: ShieldCheckIcon,
         execute: openAdmin,
       },
-    ],
-    [adminAccess?.isAdmin, openAdmin, startNewChat],
-  );
+    ];
+
+    if (!adminAccess?.isAdmin) return commands;
+
+    return [
+      ...commands,
+      {
+        id: "ping",
+        label: "Diagnostic ping",
+        description: "Run diagnostic.ping as an Admin dry-run.",
+        icon: ActivityIcon,
+        execute: () => runAdminTestTool("diagnostic.ping"),
+      },
+      {
+        id: "echo",
+        label: "Runner echo",
+        description: "Run runner.echo through the Fly callback path.",
+        icon: PlayIcon,
+        execute: () => runAdminTestTool("runner.echo"),
+      },
+      {
+        id: "artifact",
+        label: "Artifact metadata test",
+        description: "Run artifact.metadata.test and create metadata history.",
+        icon: FileTextIcon,
+        execute: () => runAdminTestTool("artifact.metadata.test"),
+      },
+    ];
+  }, [adminAccess?.isAdmin, openAdmin, runAdminTestTool, startNewChat]);
 
   return (
     <div className="bg-background relative h-dvh overflow-hidden">
@@ -120,10 +201,7 @@ function WorkbenchShellContent() {
               </div>
             ) : null}
           </div>
-          <ThreadHistorySidebar
-            disableNewChat={false}
-            disableThreadActions={!connection || isInitialLoading}
-          />
+          <ThreadHistorySidebar disableNewChat={false} disableThreadActions={isInitialLoading} />
           <div className="absolute top-14 right-3 z-20 flex max-w-[calc(100vw-1.5rem)] flex-col items-end gap-2">
             <WorkbenchRuntimeHint onOpenAdmin={openAdmin} />
           </div>
