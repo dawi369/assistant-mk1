@@ -12,6 +12,7 @@ import {
   facadeSignatureNonceHeader,
   facadeSignatureTimestampHeader,
   hmacSha256Base64Url,
+  signFacadeRequest,
   sha256Base64Url,
 } from "../lib/workbench/control-plane-signing";
 import { inspectUrl, validateUrlInspectInput } from "../lib/workbench/url-inspect";
@@ -247,7 +248,25 @@ const handleDemoInspectExecutor = async (request: IncomingMessage, response: Ser
 type ToolRunnerInvocation = {
   toolName?: string;
   input?: unknown;
+  scope?: {
+    userId?: unknown;
+    workspaceId?: unknown;
+  };
+  agentId?: unknown;
+  runId?: unknown;
+  workflowIntentId?: unknown;
+  policyDecisionId?: unknown;
+  source?: unknown;
+  traceId?: unknown;
+  callback?: {
+    url?: unknown;
+    protocolVersion?: unknown;
+    traceId?: unknown;
+  };
   runner?: {
+    transport?: unknown;
+    adapterVersion?: unknown;
+    source?: unknown;
     sandbox?: {
       network?: {
         egress?: unknown;
@@ -258,6 +277,35 @@ type ToolRunnerInvocation = {
       };
     };
   };
+};
+
+type WorkflowCallbackPayload = {
+  event: "run.started" | "artifact.created" | "run.completed" | "run.failed";
+  runId: string;
+  workflowIntentId: string;
+  summary?: string;
+  sequence?: number;
+  traceId?: string;
+  toolCall?: {
+    id: string;
+    toolId: string;
+    status?: string;
+    outputSummary?: string;
+    artifactRefs?: unknown[];
+    data?: Record<string, unknown>;
+  };
+  artifact?: {
+    id: string;
+    kind: string;
+    uri: string;
+    title?: string;
+    mimeType?: string;
+    sizeBytes?: number;
+    data?: Record<string, unknown>;
+  };
+  outputSummary?: string;
+  error?: string;
+  output?: Record<string, unknown>;
 };
 
 const repoSnapshotTimeoutMs = 10_000;
@@ -474,6 +522,139 @@ const runRepoSnapshot = async (input: unknown): Promise<RepoSnapshotResult> => {
   return { ok: true, output };
 };
 
+const repoSnapshotToolCallId = (runId: string) => `${runId}-tool-repo-snapshot`;
+const repoSnapshotArtifactId = (runId: string) => `${runId}-artifact-repo-snapshot`;
+
+const callbackTraceId = (invocation: ToolRunnerInvocation) => {
+  if (typeof invocation.callback?.traceId === "string" && invocation.callback.traceId.trim()) {
+    return invocation.callback.traceId.trim();
+  }
+  if (typeof invocation.traceId === "string" && invocation.traceId.trim()) {
+    return invocation.traceId.trim();
+  }
+  return undefined;
+};
+
+const repoSnapshotCallbackData = (
+  invocation: ToolRunnerInvocation,
+  output?: RepoSnapshotOutput,
+): Record<string, unknown> => ({
+  runner: invocation.runner,
+  policyDecisionId:
+    typeof invocation.policyDecisionId === "string" ? invocation.policyDecisionId : undefined,
+  source: typeof invocation.source === "string" ? invocation.source : undefined,
+  timingMs: output?.timingMs,
+  commandMetrics: output?.commandMetrics,
+  fileCounts: output
+    ? {
+        repoFiles: output.repoFiles.length,
+        docs: output.docs.length,
+        configFiles: output.configFiles.length,
+      }
+    : undefined,
+});
+
+const callbackFailure = (message: string): RepoSnapshotResult => ({
+  ok: false,
+  error: repoSnapshotError("repo_snapshot_failed", message, true),
+});
+
+const postWorkflowCallback = async (
+  invocation: ToolRunnerInvocation,
+  payload: WorkflowCallbackPayload,
+): Promise<{ ok: true } | { ok: false; result: RepoSnapshotResult; status: number }> => {
+  if (!invocation.callback) return { ok: true };
+  if (
+    invocation.callback.protocolVersion !== "workflow-callback-v0" ||
+    typeof invocation.callback.url !== "string" ||
+    !invocation.callback.url.trim()
+  ) {
+    return {
+      ok: false,
+      status: 400,
+      result: callbackFailure("Runner callback context is invalid."),
+    };
+  }
+
+  const secret = process.env.WORKBENCH_CALLBACK_SIGNING_SECRET?.trim();
+  if (!secret) {
+    return {
+      ok: false,
+      status: 500,
+      result: callbackFailure("Workbench callback signing is not configured for the runner."),
+    };
+  }
+
+  let callbackUrl: URL;
+  try {
+    callbackUrl = new URL(invocation.callback.url);
+  } catch {
+    return {
+      ok: false,
+      status: 400,
+      result: callbackFailure("Runner callback URL is invalid."),
+    };
+  }
+
+  const body = JSON.stringify(payload);
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    "x-assistant-mk1-run-id": payload.runId,
+    "x-assistant-mk1-workflow-intent-id": payload.workflowIntentId,
+    "x-assistant-mk1-tool-name": repoSnapshotToolName,
+  };
+  Object.assign(
+    headers,
+    await signFacadeRequest({
+      secret,
+      method: "POST",
+      pathWithQuery: `${callbackUrl.pathname}${callbackUrl.search}`,
+      body,
+      headers,
+    }),
+  );
+
+  let response: Response;
+  try {
+    response = await fetch(callbackUrl, {
+      method: "POST",
+      headers,
+      body,
+    });
+  } catch {
+    return {
+      ok: false,
+      status: 502,
+      result: callbackFailure(`Callback delivery failed for ${payload.event}.`),
+    };
+  }
+
+  if (!response.ok) {
+    return {
+      ok: false,
+      status: response.status >= 500 ? 502 : 500,
+      result: callbackFailure(`Callback ${payload.event} was rejected with ${response.status}.`),
+    };
+  }
+
+  return { ok: true };
+};
+
+const emitRepoSnapshotCallback = async (
+  invocation: ToolRunnerInvocation,
+  payload: Omit<WorkflowCallbackPayload, "runId" | "workflowIntentId" | "traceId">,
+) => {
+  const runId = typeof invocation.runId === "string" ? invocation.runId : "";
+  const workflowIntentId =
+    typeof invocation.workflowIntentId === "string" ? invocation.workflowIntentId : "";
+  return postWorkflowCallback(invocation, {
+    ...payload,
+    runId,
+    workflowIntentId,
+    traceId: callbackTraceId(invocation),
+  });
+};
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
@@ -589,13 +770,162 @@ const handleToolRunnerInvocation = async (
       return;
     }
     const startedAt = Date.now();
+    const startedCallback = await emitRepoSnapshotCallback(parsed, {
+      event: "run.started",
+      sequence: 1,
+      summary: "repo.snapshot runner started.",
+      toolCall: {
+        id: repoSnapshotToolCallId(typeof parsed.runId === "string" ? parsed.runId : "unknown-run"),
+        toolId: repoSnapshotToolName,
+        status: "running",
+        data: repoSnapshotCallbackData(parsed),
+      },
+    });
+    if (!startedCallback.ok) {
+      json(response, startedCallback.status, {
+        ...startedCallback.result,
+        runner: parsed.runner,
+        metrics: {
+          transport: "fly",
+          durationMs: Date.now() - startedAt,
+          callback: { status: "failed", event: "run.started" },
+        },
+      });
+      return;
+    }
+
     const result = await runRepoSnapshot(parsed.input);
+    const runId = typeof parsed.runId === "string" ? parsed.runId : "unknown-run";
+    const artifactRef = result.ok
+      ? {
+          id: repoSnapshotArtifactId(runId),
+          kind: "report",
+          uri: `d1://control-plane/${runId}/repo-snapshot-report.json`,
+          title: "Repository snapshot report",
+          mimeType: "application/json",
+          sizeBytes: JSON.stringify(result.output).length,
+          data: {
+            ...repoSnapshotCallbackData(parsed, result.output),
+            outputSummary: result.output.summary,
+          },
+        }
+      : null;
+
+    if (result.ok && artifactRef) {
+      const artifactCallback = await emitRepoSnapshotCallback(parsed, {
+        event: "artifact.created",
+        sequence: 2,
+        summary: "Created repository snapshot artifact metadata.",
+        artifact: artifactRef,
+        toolCall: {
+          id: repoSnapshotToolCallId(runId),
+          toolId: repoSnapshotToolName,
+          status: "running",
+          artifactRefs: [
+            {
+              id: artifactRef.id,
+              kind: artifactRef.kind,
+              uri: artifactRef.uri,
+              title: artifactRef.title,
+              mimeType: artifactRef.mimeType,
+            },
+          ],
+          data: repoSnapshotCallbackData(parsed, result.output),
+        },
+      });
+      if (!artifactCallback.ok) {
+        json(response, artifactCallback.status, {
+          ...artifactCallback.result,
+          runner: parsed.runner,
+          metrics: {
+            transport: "fly",
+            durationMs: Date.now() - startedAt,
+            callback: { status: "failed", event: "artifact.created" },
+          },
+        });
+        return;
+      }
+    }
+
+    const terminalCallback = await emitRepoSnapshotCallback(
+      parsed,
+      result.ok
+        ? {
+            event: "run.completed",
+            sequence: 3,
+            summary: result.output.summary,
+            outputSummary: result.output.summary,
+            output: {
+              status: result.output.status,
+              summary: result.output.summary,
+              packageManager: result.output.packageManager,
+              timingMs: result.output.timingMs,
+              commandMetrics: result.output.commandMetrics,
+              fileCounts: {
+                repoFiles: result.output.repoFiles.length,
+                docs: result.output.docs.length,
+                configFiles: result.output.configFiles.length,
+              },
+            },
+            toolCall: {
+              id: repoSnapshotToolCallId(runId),
+              toolId: repoSnapshotToolName,
+              status: "completed",
+              outputSummary: result.output.summary,
+              artifactRefs: artifactRef
+                ? [
+                    {
+                      id: artifactRef.id,
+                      kind: artifactRef.kind,
+                      uri: artifactRef.uri,
+                      title: artifactRef.title,
+                      mimeType: artifactRef.mimeType,
+                    },
+                  ]
+                : [],
+              data: repoSnapshotCallbackData(parsed, result.output),
+            },
+          }
+        : {
+            event: "run.failed",
+            sequence: 3,
+            summary: result.error.message,
+            error: result.error.message,
+            toolCall: {
+              id: repoSnapshotToolCallId(runId),
+              toolId: repoSnapshotToolName,
+              status: "failed",
+              outputSummary: result.error.message,
+              data: {
+                ...repoSnapshotCallbackData(parsed),
+                errorCode: result.error.code,
+              },
+            },
+          },
+    );
+    if (!terminalCallback.ok) {
+      json(response, terminalCallback.status, {
+        ...terminalCallback.result,
+        runner: parsed.runner,
+        metrics: {
+          transport: "fly",
+          durationMs: Date.now() - startedAt,
+          callback: {
+            status: "failed",
+            event: result.ok ? "run.completed" : "run.failed",
+          },
+        },
+      });
+      return;
+    }
+
     json(response, result.ok ? 200 : 502, {
       ...result,
       runner: parsed.runner,
       metrics: {
         transport: "fly",
         durationMs: Date.now() - startedAt,
+        callback: parsed.callback ? { status: "completed" } : { status: "skipped" },
       },
     });
     return;

@@ -29,6 +29,7 @@ For the dedicated LangGraph runtime, set:
 fly secrets set OPENROUTER_API_KEY=...
 fly secrets set WORKBENCH_EXECUTOR_TOKEN=...
 fly secrets set WORKBENCH_RUNNER_SIGNING_SECRET=...
+fly secrets set WORKBENCH_CALLBACK_SIGNING_SECRET=...
 fly secrets set LANGGRAPH_PROXY_TOKEN=...
 ```
 
@@ -113,6 +114,9 @@ LANGGRAPH_RUNTIME_BASE_URL=https://assistant-mk1-langgraph-dev.fly.dev \
 WORKBENCH_RUNNER_SIGNING_SECRET=<runner-secret> \
 pnpm smoke:fly-tool-runner
 ```
+
+When validating callback-backed runner behavior against a reachable callback
+receiver, also set `WORKBENCH_RUNNER_CALLBACK_URL`.
 
 Cloudflare uses this path only when the Worker is configured with
 `WORKBENCH_RUNNER_TRANSPORT=fly`, `WORKBENCH_RUNNER_URL`, and the matching

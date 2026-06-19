@@ -5,6 +5,7 @@ const baseUrl = (process.env.LANGGRAPH_RUNTIME_BASE_URL ?? "http://localhost:300
   /\/$/,
   "",
 );
+const runnerCallbackUrl = process.env.WORKBENCH_RUNNER_CALLBACK_URL?.trim();
 const signingSecret = process.env.WORKBENCH_RUNNER_SIGNING_SECRET?.trim();
 if (!signingSecret) {
   throw new Error("WORKBENCH_RUNNER_SIGNING_SECRET is required for Fly runner smoke");
@@ -100,6 +101,14 @@ const repoSnapshotInvocationBody = (runId = `cf-run-repo-snapshot-${suffix}`) =>
     },
     policyDecisionId: `cf-policy-repo-snapshot-${suffix}`,
     source: "admin",
+    traceId: `cf-trace-repo-snapshot-${suffix}`,
+    callback: runnerCallbackUrl
+      ? {
+          url: runnerCallbackUrl,
+          protocolVersion: "workflow-callback-v0",
+          traceId: `cf-trace-repo-snapshot-${suffix}`,
+        }
+      : undefined,
   });
 
 const signedFetch = async (input?: {
@@ -201,6 +210,7 @@ runSmoke("Fly tool runner smoke", async () => {
       adapterVersion?: string;
       sandbox?: { network?: { egress?: string; privateNetwork?: string } };
     };
+    metrics?: { callback?: { status?: string } };
   };
   if (
     !repoSnapshotBody.ok ||
@@ -210,7 +220,8 @@ runSmoke("Fly tool runner smoke", async () => {
     repoSnapshotBody.runner?.transport !== "fly" ||
     repoSnapshotBody.runner.adapterVersion !== "repo-snapshot-v1" ||
     repoSnapshotBody.runner.sandbox?.network?.egress !== "none" ||
-    repoSnapshotBody.runner.sandbox.network.privateNetwork !== "deny"
+    repoSnapshotBody.runner.sandbox.network.privateNetwork !== "deny" ||
+    (runnerCallbackUrl && repoSnapshotBody.metrics?.callback?.status !== "completed")
   ) {
     throw new Error(`repo.snapshot response was unexpected: ${JSON.stringify(repoSnapshotBody)}`);
   }

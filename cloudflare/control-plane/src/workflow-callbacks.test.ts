@@ -230,4 +230,51 @@ describe("workflow callback ingestion", () => {
       details: { code: "run_terminal" },
     });
   });
+
+  it("persists repo.snapshot artifact and tool-call metadata from callbacks", async () => {
+    const { env, statements } = createRecordingEnv({ workflowType: "tool.repo.snapshot" });
+    const result = await applyWorkflowCallbackPayload(env, {
+      event: "artifact.created",
+      runId: "run-1",
+      workflowIntentId: "intent-1",
+      summary: "Created repository snapshot artifact metadata.",
+      artifact: {
+        id: "run-1-artifact-repo-snapshot",
+        kind: "report",
+        uri: "d1://control-plane/run-1/repo-snapshot-report.json",
+        title: "Repository snapshot report",
+        mimeType: "application/json",
+        data: {
+          runner: { transport: "fly", adapterVersion: "repo-snapshot-v1", source: "admin" },
+          timingMs: 42,
+        },
+      },
+      toolCall: {
+        id: "run-1-tool-repo-snapshot",
+        toolId: "repo.snapshot",
+        status: "running",
+        artifactRefs: [
+          {
+            id: "run-1-artifact-repo-snapshot",
+            kind: "report",
+            uri: "d1://control-plane/run-1/repo-snapshot-report.json",
+          },
+        ],
+        data: {
+          runner: { transport: "fly", adapterVersion: "repo-snapshot-v1", source: "admin" },
+        },
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(
+      statements.some((statement) => statement.query.includes("INSERT INTO control_artifacts")),
+    ).toBe(true);
+    const toolCallInsert = statements.find((statement) =>
+      statement.query.includes("INSERT INTO control_tool_calls"),
+    );
+    expect(toolCallInsert?.values).toContain("run-1-tool-repo-snapshot");
+    expect(toolCallInsert?.values).toContain("repo.snapshot");
+    expect(JSON.stringify(toolCallInsert?.values)).toContain("repo-snapshot-v1");
+  });
 });

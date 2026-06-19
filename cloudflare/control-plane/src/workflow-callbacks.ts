@@ -520,6 +520,15 @@ const upsertToolCall = async (
 ) => {
   if (!payload.toolCall) return;
   const timestamp = new Date().toISOString();
+  const existing = await env.DB.prepare(
+    `SELECT data_json
+     FROM control_tool_calls
+     WHERE user_id = ? AND workspace_id = ? AND id = ?
+     LIMIT 1`,
+  )
+    .bind(identity.scope.userId, identity.scope.workspaceId, payload.toolCall.id)
+    .first<{ data_json: string }>();
+  const existingData = existing ? parseDataJson(existing.data_json) : {};
   const status =
     payload.toolCall.status ??
     (payload.event === "run.completed"
@@ -553,7 +562,11 @@ const upsertToolCall = async (
       null,
       payload.toolCall.outputSummary ?? payload.outputSummary ?? payload.summary ?? null,
       toJson(payload.toolCall.artifactRefs ?? []),
-      toJson({ source: "workflow_callback", ...payload.toolCall.data }),
+      toJson({
+        ...existingData,
+        callback: { source: "workflow_callback", event: payload.event },
+        ...payload.toolCall.data,
+      }),
       timestamp,
       status === "completed" || status === "failed" ? timestamp : null,
       timestamp,

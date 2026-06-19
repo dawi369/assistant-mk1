@@ -4,6 +4,7 @@ import {
 } from "../../../lib/workbench/control-plane-signing";
 import type { UrlInspectResult } from "../../../lib/workbench/url-inspect";
 import type { RepoSnapshotResult } from "../../../lib/workbench/repo-snapshot";
+import type { RunnerEchoResult } from "../../../lib/workbench/admin-test-tools";
 import type { AgentIdentity, Env, ExecutionMode, TenantScope } from "./types";
 
 export const cloudflareInlineRunnerTransport = "cloudflare_inline";
@@ -45,6 +46,36 @@ export type ToolRunnerSandboxContract = {
     maxArtifactBytes?: number;
   };
 };
+
+export const noEgressSandboxContract = (input: {
+  template: string;
+  maxRuntimeMs?: number;
+  maxStdoutBytes?: number;
+  maxStderrBytes?: number;
+  maxArtifactBytes?: number;
+}): ToolRunnerSandboxContract => ({
+  lifecycle: {
+    template: input.template,
+    setup: "per_invocation",
+    workspaceState: "none",
+    filesystem: "ephemeral",
+    artifactPromotion: "metadata_only",
+  },
+  network: {
+    egress: "none",
+    allowedSchemes: [],
+    allowedHosts: [],
+    deniedHosts: ["*"],
+    privateNetwork: "deny",
+    enforcement: "control_plane_and_runner",
+  },
+  limits: {
+    maxRuntimeMs: input.maxRuntimeMs,
+    maxStdoutBytes: input.maxStdoutBytes,
+    maxStderrBytes: input.maxStderrBytes,
+    maxArtifactBytes: input.maxArtifactBytes,
+  },
+});
 
 export type ToolAdapterMetadata = {
   toolName: string;
@@ -104,33 +135,35 @@ export const urlInspectSandboxContract = (input?: {
 
 export const repoSnapshotSandboxContract = (input?: {
   maxRuntimeMs?: number;
-}): ToolRunnerSandboxContract => ({
-  lifecycle: {
+}): ToolRunnerSandboxContract =>
+  noEgressSandboxContract({
     template: "repo-snapshot-v1",
-    setup: "per_invocation",
-    workspaceState: "none",
-    filesystem: "ephemeral",
-    artifactPromotion: "metadata_only",
-  },
-  network: {
-    egress: "none",
-    allowedSchemes: [],
-    allowedHosts: [],
-    deniedHosts: ["*"],
-    privateNetwork: "deny",
-    enforcement: "control_plane_and_runner",
-  },
-  limits: {
     maxRuntimeMs: input?.maxRuntimeMs,
     maxStdoutBytes: 65_536,
     maxStderrBytes: 16_384,
     maxArtifactBytes: 131_072,
-  },
-});
+  });
+
+export const runnerEchoSandboxContract = (input?: {
+  maxRuntimeMs?: number;
+}): ToolRunnerSandboxContract =>
+  noEgressSandboxContract({
+    template: "runner-echo-v1",
+    maxRuntimeMs: input?.maxRuntimeMs,
+    maxStdoutBytes: 4_096,
+    maxStderrBytes: 4_096,
+    maxArtifactBytes: 0,
+  });
 
 export type ToolRunnerExecution = {
   mode: ExecutionMode;
   policy: string;
+};
+
+export type ToolRunnerCallbackContext = {
+  url: string;
+  protocolVersion: "workflow-callback-v0";
+  traceId?: string | null;
 };
 
 export type ToolRunnerInvocation = {
@@ -142,12 +175,13 @@ export type ToolRunnerInvocation = {
   execution: ToolRunnerExecution;
   input: Record<string, unknown>;
   runner: ToolRunnerMetadata;
+  callback?: ToolRunnerCallbackContext;
   policyDecisionId?: string;
   source?: ToolRunnerSource;
   traceId?: string | null;
 };
 
-export type ToolRunnerInvocationResponse = (UrlInspectResult | RepoSnapshotResult) & {
+export type ToolRunnerInvocationResponse = (UrlInspectResult | RepoSnapshotResult | RunnerEchoResult) & {
   runner?: ToolRunnerMetadata;
   metrics?: Record<string, unknown>;
 };

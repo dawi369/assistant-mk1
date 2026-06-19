@@ -11,12 +11,28 @@ import {
   type ToolPermissionRow,
   type ToolPermissionStatus,
 } from "./types";
+import {
+  artifactMetadataTestPolicy,
+  artifactMetadataTestToolName,
+  diagnosticPingPolicy,
+  diagnosticPingToolName,
+  runnerEchoPolicy,
+  runnerEchoToolName,
+} from "../../../lib/workbench/admin-test-tools";
 import { repoSnapshotPolicy, repoSnapshotToolName } from "../../../lib/workbench/repo-snapshot";
 
 export const urlInspectToolName = "url.inspect";
 export const urlInspectPolicy = "tool-admin-readonly-v0";
 export const demoInspectToolName = "demo.inspect";
 export const demoInspectPolicy = "dev-demo";
+export {
+  artifactMetadataTestPolicy,
+  artifactMetadataTestToolName,
+  diagnosticPingPolicy,
+  diagnosticPingToolName,
+  runnerEchoPolicy,
+  runnerEchoToolName,
+};
 export { repoSnapshotPolicy, repoSnapshotToolName };
 
 export type ToolPolicySurface =
@@ -135,6 +151,46 @@ export const toolPolicyCatalog: Record<string, ToolPolicyCatalogEntry> = {
     policyEditable: false,
     mutationRisk: "read_only",
     constraints: emptyConstraints(),
+  },
+  [diagnosticPingToolName]: {
+    policyReference: diagnosticPingPolicy,
+    allowedExecutionModes: ["dry_run"],
+    adminVisible: true,
+    modelVisible: false,
+    requiresApproval: false,
+    status: "enabled",
+    policyEditable: false,
+    mutationRisk: "read_only",
+    constraints: emptyConstraints(),
+  },
+  [runnerEchoToolName]: {
+    policyReference: runnerEchoPolicy,
+    allowedExecutionModes: ["dry_run"],
+    adminVisible: true,
+    modelVisible: false,
+    requiresApproval: false,
+    status: "enabled",
+    policyEditable: false,
+    mutationRisk: "read_only",
+    constraints: {
+      ...emptyConstraints(),
+      maxRuntimeMs: 5_000,
+      maxArtifactBytes: 0,
+    },
+  },
+  [artifactMetadataTestToolName]: {
+    policyReference: artifactMetadataTestPolicy,
+    allowedExecutionModes: ["dry_run"],
+    adminVisible: true,
+    modelVisible: false,
+    requiresApproval: false,
+    status: "enabled",
+    policyEditable: false,
+    mutationRisk: "read_only",
+    constraints: {
+      ...emptyConstraints(),
+      maxArtifactBytes: 16 * 1024,
+    },
   },
 };
 
@@ -548,7 +604,9 @@ export const evaluateToolPolicy = async (
   const permission = await ensureToolPermission(env, identity, input.toolName);
   const data = parseDataJson(permission?.data_json ?? "{}");
   const adminVisibleFlag = readDataFlag(data, "adminVisible", defaults.adminVisible);
-  const modelVisibleFlag = readDataFlag(data, "modelVisible", defaults.modelVisible);
+  const modelVisibleFlag = defaults.policyEditable
+    ? readDataFlag(data, "modelVisible", defaults.modelVisible)
+    : defaults.modelVisible;
   const approvalRequired = readDataFlag(data, "requiresApproval", defaults.requiresApproval);
   const killSwitchReason =
     typeof data.killSwitchReason === "string" ? data.killSwitchReason : undefined;
