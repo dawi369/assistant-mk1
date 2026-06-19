@@ -2,9 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   activateThreadOptimistically,
+  canCreateThreadFromSessionShell,
   createPendingThreadOptimistically,
+  enterLocalNewSession,
+  hasPendingActiveThread,
   mergeSession,
   removePendingThreads,
+  removeThreadsFromSession,
   sessionEventRequiresConnectionRefresh,
   sessionFromEvent,
   shouldRefreshThreadsAfterSessionStreamOpen,
@@ -106,6 +110,51 @@ describe("chat-session-state", () => {
     expect(merged.revision).toBe(11);
     expect(merged.activeThread?.threadId).toBe("thread-b");
     expect(merged.threads?.map((item) => item.threadId)).toEqual(["thread-b"]);
+  });
+
+  it("removes an optimistic deleted active thread and clears its connection", () => {
+    const current = session({
+      connection: {
+        agentHost: "https://agent.example.com",
+        agentName: "WorkbenchThreadChatAgent",
+        instanceName: "thread-a",
+        token: "token",
+        threadId: "thread-a",
+        workspaceId: workspace.id,
+        agentId: "agent-a",
+      },
+      expiresAt: "2026-06-13T00:10:00.000Z",
+      threads: [thread("thread-a", true), thread("thread-b")],
+    });
+
+    const next = removeThreadsFromSession(current, new Set(["thread-a"]));
+
+    expect(next?.activeThread).toBeNull();
+    expect(next?.connection).toBeUndefined();
+    expect(next?.expiresAt).toBeUndefined();
+    expect(next?.threads?.map((item) => item.threadId)).toEqual(["thread-b"]);
+    expect(next?.threads?.[0]?.isActive).toBe(false);
+  });
+
+  it("removes an optimistic deleted inactive thread without clearing active connection", () => {
+    const current = session({
+      connection: {
+        agentHost: "https://agent.example.com",
+        agentName: "WorkbenchThreadChatAgent",
+        instanceName: "thread-a",
+        token: "token",
+        threadId: "thread-a",
+        workspaceId: workspace.id,
+        agentId: "agent-a",
+      },
+      threads: [thread("thread-a", true), thread("thread-b")],
+    });
+
+    const next = removeThreadsFromSession(current, new Set(["thread-b"]));
+
+    expect(next?.activeThread?.threadId).toBe("thread-a");
+    expect(next?.connection?.threadId).toBe("thread-a");
+    expect(next?.threads?.map((item) => item.threadId)).toEqual(["thread-a"]);
   });
 
   it("merges a token-free thread-created event into display state", () => {
@@ -323,6 +372,30 @@ describe("chat-session-state", () => {
     expect(merged.threads?.map((item) => item.threadId)).toEqual(["thread-b"]);
   });
 
+  it("clears active thread when a session event explicitly carries activeThread null", () => {
+    const current = session({
+      activeThread: thread("thread-a", true),
+      threads: [thread("thread-a", true)],
+    });
+    const incoming = sessionFromEvent(
+      event("session.thread.updated", {
+        workspace,
+        activeAgent: agent("agent-a"),
+        activeThread: null,
+        threads: [],
+        transition: { type: "delete" },
+      }),
+    );
+
+    const merged = mergeSession(current, incoming!);
+
+    expect(merged.activeThread).toBeNull();
+    expect(merged.threads).toEqual([]);
+    expect(
+      sessionEventRequiresConnectionRefresh(event("session.thread.updated", {}), merged, null),
+    ).toBe(false);
+  });
+
   it("identifies stale session events", () => {
     expect(
       shouldIgnoreSessionEvent(session({ revision: 5 }), event("session.snapshot", {}, 4)),
@@ -367,6 +440,50 @@ describe("chat-session-state", () => {
 
     expect(cleaned?.activeThread?.threadId).toBe("thread-a");
     expect(cleaned?.threads?.map((item) => item.threadId)).toEqual(["thread-a"]);
+  });
+
+  it("detects pending active new-chat state for local-first shell switching", () => {
+    const withPending = createPendingThreadOptimistically(
+      session(),
+      () => "fixed-id",
+      () => "2026-06-13T00:00:00.000Z",
+      "12:00 AM",
+    );
+
+    expect(hasPendingActiveThread(withPending)).toBe(true);
+    expect(hasPendingActiveThread(session())).toBe(false);
+  });
+
+  it("allows new-chat creation from a cached workspace and active agent shell", () => {
+    expect(canCreateThreadFromSessionShell(session())).toBe(true);
+    expect(canCreateThreadFromSessionShell(session({ activeAgent: null }))).toBe(false);
+    expect(canCreateThreadFromSessionShell(session({ workspace: null }))).toBe(false);
+    expect(canCreateThreadFromSessionShell(null)).toBe(false);
+  });
+
+  it("enters a local new-session shell without creating a visible thread", () => {
+    const next = enterLocalNewSession(
+      session({
+        connection: {
+          agentHost: "https://example.com",
+          agentName: "workbench-thread-chat-agent",
+          instanceName: "agent-instance",
+          token: "token",
+          threadId: "thread-a",
+          sessionId: "session-1",
+          workspaceId: workspace.id,
+          agentId: "agent-a",
+        },
+        threads: [thread("thread-a", true), thread("thread-b")],
+      }),
+    );
+
+    expect(next?.activeThread).toBeNull();
+    expect(next?.connection).toBeUndefined();
+    expect(next?.threads?.map((item) => [item.threadId, item.isActive])).toEqual([
+      ["thread-a", false],
+      ["thread-b", false],
+    ]);
   });
 
   it("updates run status only for the matching thread", () => {

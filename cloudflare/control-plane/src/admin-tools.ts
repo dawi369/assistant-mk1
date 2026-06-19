@@ -438,11 +438,11 @@ const repoSnapshotArtifactUri = (runId: string) =>
   `d1://control-plane/${runId}/repo-snapshot-report.json`;
 const terminalRunStatuses = new Set<RunStatus>(["completed", "failed", "cancelled"]);
 
-const isUrlInspectResult = (
-  result: UrlInspectResult | RepoSnapshotResult,
-): result is UrlInspectResult =>
-  result.ok === false ||
-  (result.ok && "finalUrl" in result.output && "downloadedBytes" in result.output);
+const isUrlInspectResult = (result: unknown): result is UrlInspectResult =>
+  isRecord(result) &&
+  typeof result.ok === "boolean" &&
+  (result.ok === false ||
+    (isRecord(result.output) && "finalUrl" in result.output && "downloadedBytes" in result.output));
 
 const readParentControlRun = async (
   env: Env,
@@ -521,9 +521,21 @@ const sandboxTraceData = (sandbox?: ToolRunnerSandboxContract) =>
       }
     : undefined;
 
+type RunnerDispatchTraceResult =
+  | {
+      ok: true;
+      output: { status?: unknown };
+      metrics?: Record<string, unknown>;
+    }
+  | {
+      ok: false;
+      error?: { code?: unknown };
+      metrics?: Record<string, unknown>;
+    };
+
 const runnerDispatchTraceData = (
   runner: ToolRunnerMetadata,
-  result: (UrlInspectResult | RepoSnapshotResult) & { metrics?: Record<string, unknown> },
+  result: RunnerDispatchTraceResult,
   durationMs: number,
 ) => {
   const metrics = isRecord(result.metrics) ? result.metrics : {};
@@ -547,7 +559,7 @@ const runnerDispatchTraceData = (
       sandbox: sandboxTraceData(runner.sandbox),
       durationMs,
       status: runnerStatus,
-      errorCode: result.ok ? undefined : result.error.code,
+      errorCode: result.ok ? undefined : result.error?.code,
       responseStatus,
       remoteDurationMs,
     },
@@ -1693,7 +1705,11 @@ const readConformanceFinishedState = async (
        WHERE user_id = ? AND workspace_id = ? AND id = ?
        LIMIT 1`,
     )
-      .bind(identity.scope.userId, identity.scope.workspaceId, conformanceToolCallId(identity.runId, toolName))
+      .bind(
+        identity.scope.userId,
+        identity.scope.workspaceId,
+        conformanceToolCallId(identity.runId, toolName),
+      )
       .first<ControlToolCallRow>(),
     artifactId
       ? env.DB.prepare(
@@ -3334,6 +3350,218 @@ const handleRunRepoSnapshot = async (
   );
 };
 
+const handleRunConformanceTool = async (
+  request: Request,
+  body: unknown,
+  env: Env,
+  identity: AgentIdentity,
+  toolName: string,
+  incomingTrace?: IncomingRuntimeTrace,
+) => {
+  const config = conformanceToolConfig(toolName);
+  const trace = await startTrace(env, identity, {
+    traceId: incomingTrace?.traceId,
+    kind: config.traceKind,
+    rootName: config.traceRootName,
+    summary: config.traceSummary,
+    startedAtMs: incomingTrace?.authzStartedAtMs,
+    data: { toolName },
+  });
+  await recordIncomingRequestSpans(env, identity, trace, incomingTrace);
+
+  const executionMode =
+    isRecord(body) && typeof body.executionMode === "string" ? body.executionMode : "dry_run";
+  const policyStartedAtMs = Date.now();
+  const membership = await selectMembership(env, identity.scope.userId, identity.scope.workspaceId);
+  const policy = await evaluateToolPolicy(env, identity, {
+    membership,
+    toolName,
+    executionMode,
+    surface: "admin_run",
+  });
+  const policyDecisionId = await recordToolPolicyDecision(env, identity, {
+    toolName,
+    surface: "admin_run",
+    result: policy,
+    data: { requestedToolName: toolName },
+  });
+  await recordSpan(env, identity, {
+    traceId: trace.traceId,
+    name: "Tool policy check",
+    layer: "cloudflare",
+    startedAtMs: policyStartedAtMs,
+    status: policy.decision === "allow" ? "completed" : "blocked",
+    data: {
+      role: membership?.role ?? null,
+      toolName,
+      code: policy.code,
+      policyDecisionId,
+    },
+  });
+
+  if (policy.decision === "block") {
+    await finishToolTrace(env, identity, trace, {
+      status: "blocked",
+      summary: policy.reason,
+      data: { errorCode: policy.code, policyDecisionId },
+    });
+    return json(
+      {
+        ok: false,
+        error: policy.reason,
+        details: toolPolicyError(policy),
+        policyDecisionId,
+      },
+      { status: policy.status },
+    );
+  }
+
+  const rawInput = isRecord(body) ? body.input : undefined;
+  const parsedInput =
+    toolName === diagnosticPingToolName
+      ? validateDiagnosticPingInput(rawInput)
+      : toolName === runnerEchoToolName
+        ? validateRunnerEchoInput(rawInput)
+        : validateArtifactMetadataTestInput(rawInput);
+  if ("code" in parsedInput) {
+    await finishToolTrace(env, identity, trace, {
+      status: "failed",
+      summary: parsedInput.message,
+      data: { error: parsedInput },
+    });
+    return json(
+      {
+        ok: false,
+        error: parsedInput.message,
+        details: parsedInput,
+      },
+      { status: 400 },
+    );
+  }
+
+  const runner =
+    toolName === runnerEchoToolName
+      ? runnerEchoRunnerMetadata("admin", policy.constraints)
+      : config.runner;
+  const recordsStartedAtMs = Date.now();
+  const runIdentity = await insertConformanceToolRunRecords(env, identity, {
+    toolName,
+    toolInput: parsedInput,
+    executionMode: policy.executionMode,
+    policyDecisionId,
+    traceId: trace.traceId,
+    runner,
+  });
+  await recordSpan(env, identity, {
+    traceId: trace.traceId,
+    name: "Run queued and tool-call record write",
+    layer: "d1",
+    startedAtMs: recordsStartedAtMs,
+    data: { runId: runIdentity.runId, workflowIntentId: runIdentity.workflowIntentId },
+  });
+
+  const executionStartedAtMs = Date.now();
+  const execution =
+    toolName === diagnosticPingToolName
+      ? await (async () => {
+          const pingInput = parsedInput as { label?: string };
+          const result = runDiagnosticPing(pingInput);
+          return {
+            result,
+            finished: await finishInlineConformanceToolRun(env, runIdentity, toolName, result),
+          };
+        })()
+      : toolName === artifactMetadataTestToolName
+        ? await (async () => {
+            const artifactInput = parsedInput as { label?: string };
+            const result = runArtifactMetadataTest(artifactInput);
+            const artifactId = conformanceArtifactId(runIdentity.runId);
+            const artifactData = {
+              source: "admin_conformance",
+              toolName,
+              label: artifactInput.label,
+              runner,
+              outputSummary: result.ok ? result.output.summary : undefined,
+            };
+            const artifact = {
+              id: artifactId,
+              kind: "report",
+              uri: `d1://control-plane/${runIdentity.runId}/artifact-metadata-test.json`,
+              title: "Artifact metadata test report",
+              mimeType: "application/json",
+              sizeBytes: JSON.stringify(artifactData).length,
+              data: artifactData,
+            };
+            return {
+              result,
+              finished: await finishInlineConformanceToolRun(env, runIdentity, toolName, result, {
+                artifact,
+              }),
+            };
+          })()
+        : await executeRunnerEcho(env, runIdentity, parsedInput as Record<string, unknown>, {
+            executionMode: policy.executionMode,
+            policyDecisionId,
+            traceId: trace.traceId,
+            callbackUrl: `${new URL(request.url).origin}/workbench/run-callbacks`,
+          });
+
+  await recordSpan(env, identity, {
+    traceId: trace.traceId,
+    name: toolName === runnerEchoToolName ? "Callback lifecycle readback" : "Tool completion write",
+    layer: "d1",
+    startedAtMs: executionStartedAtMs,
+    status: execution.result.ok ? "completed" : "failed",
+    data: {
+      runId: runIdentity.runId,
+      toolCallId: execution.finished.toolCallId,
+      artifactId: execution.finished.artifact?.id ?? null,
+    },
+  });
+  await finishToolTrace(env, identity, trace, {
+    status: execution.result.ok ? "completed" : "failed",
+    summary: conformanceResultSummary(execution.result),
+    data: {
+      runId: runIdentity.runId,
+      workflowIntentId: runIdentity.workflowIntentId,
+      toolCallId: execution.finished.toolCallId,
+      artifactId: execution.finished.artifact?.id ?? null,
+      toolName,
+      error: execution.result.ok ? undefined : execution.result.error,
+    },
+  });
+  if (toolName === runnerEchoToolName) {
+    await dispatchWorkbenchSessionEvent(env, identity, {
+      type: "trace.updated",
+      data: {
+        traceId: trace.traceId,
+        kind: trace.kind,
+        status: execution.result.ok ? "completed" : "failed",
+        runId: runIdentity.runId,
+      },
+    });
+  }
+
+  return json(
+    {
+      ok: execution.result.ok,
+      run: {
+        id: runIdentity.runId,
+        workflowIntentId: runIdentity.workflowIntentId,
+        status: execution.finished.runStatus ?? (execution.result.ok ? "completed" : "failed"),
+        execution: { mode: policy.executionMode, policy: config.policy },
+        policyDecisionId,
+        relation: relationEventData(runIdentity.relation),
+      },
+      toolCall: execution.finished.toolCall,
+      artifact: execution.finished.artifact,
+      error: execution.result.ok ? undefined : execution.result.error,
+      policyDecisionId,
+    },
+    { status: execution.result.ok ? 201 : 502 },
+  );
+};
+
 export const handleRunTool = async (
   request: Request,
   env: Env,
@@ -3345,6 +3573,13 @@ export const handleRunTool = async (
   const toolName = isRecord(body) && typeof body.toolName === "string" ? body.toolName : "";
   if (toolName === repoSnapshotToolName) {
     return handleRunRepoSnapshot(request, body, env, identity, incomingTrace);
+  }
+  if (
+    toolName === diagnosticPingToolName ||
+    toolName === runnerEchoToolName ||
+    toolName === artifactMetadataTestToolName
+  ) {
+    return handleRunConformanceTool(request, body, env, identity, toolName, incomingTrace);
   }
   const trace =
     toolName === urlInspectToolName

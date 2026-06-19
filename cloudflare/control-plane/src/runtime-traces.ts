@@ -15,6 +15,9 @@ export type RuntimeTraceKind =
   | "chat.agent.stream"
   | "tool.url.inspect"
   | "tool.repo.snapshot"
+  | "tool.diagnostic.ping"
+  | "tool.runner.echo"
+  | "tool.artifact.metadata.test"
   | "diagnostic.demo.inspect";
 
 export type RuntimeTraceStatus = "running" | "completed" | "failed" | "blocked";

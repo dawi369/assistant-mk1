@@ -45,7 +45,7 @@ export type DurableObjectNamespace = {
 
 export type Env = {
   DB: D1Database;
-  WorkbenchThreadChatAgent?: unknown;
+  WorkbenchThreadChatAgent?: DurableObjectNamespace;
   WorkbenchSessionAgent?: DurableObjectNamespace;
   CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN?: string;
   CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET?: string;

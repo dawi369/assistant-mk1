@@ -118,6 +118,9 @@ const boundedString = (value: unknown, field: string, maxLength: number) => {
   return trimmed;
 };
 
+const isAdminTestToolError = (value: unknown): value is AdminTestToolError =>
+  typeof value === "object" && value !== null && "code" in value;
+
 const readInputRecord = (
   toolName: AdminTestToolName,
   input: unknown,
@@ -143,7 +146,7 @@ export const validateDiagnosticPingInput = (
   const source = readInputRecord(diagnosticPingToolName, input);
   if ("code" in source) return source;
   const label = boundedString(source.label, "label", 80);
-  if (label && "code" in label) return label;
+  if (isAdminTestToolError(label)) return label;
   return label ? { label } : {};
 };
 
@@ -151,7 +154,7 @@ export const validateRunnerEchoInput = (input: unknown): RunnerEchoInput | Admin
   const source = readInputRecord(runnerEchoToolName, input);
   if ("code" in source) return source;
   const message = boundedString(source.message, "message", 160);
-  if (message && "code" in message) return message;
+  if (isAdminTestToolError(message)) return message;
   if (source.uppercase !== undefined && typeof source.uppercase !== "boolean") {
     return adminTestToolError("invalid_input", "uppercase must be a boolean when provided.");
   }
@@ -167,6 +170,6 @@ export const validateArtifactMetadataTestInput = (
   const source = readInputRecord(artifactMetadataTestToolName, input);
   if ("code" in source) return source;
   const label = boundedString(source.label, "label", 80);
-  if (label && "code" in label) return label;
+  if (isAdminTestToolError(label)) return label;
   return label ? { label } : {};
 };

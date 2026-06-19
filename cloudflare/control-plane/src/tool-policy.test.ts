@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import { repoSnapshotPolicy, repoSnapshotToolName, toolPolicyCatalog } from "./tool-policy";
+import {
+  artifactMetadataTestPolicy,
+  artifactMetadataTestToolName,
+  diagnosticPingPolicy,
+  diagnosticPingToolName,
+  repoSnapshotPolicy,
+  repoSnapshotToolName,
+  runnerEchoPolicy,
+  runnerEchoToolName,
+  toolPolicyCatalog,
+} from "./tool-policy";
 
 describe("tool policy catalog", () => {
   it("registers repo.snapshot as admin-visible and model-hidden by default", () => {
@@ -12,6 +22,39 @@ describe("tool policy catalog", () => {
       requiresApproval: false,
       status: "enabled",
       policyEditable: true,
+      mutationRisk: "read_only",
+    });
+  });
+
+  it("registers Admin conformance tools as dry-run-only and non-policy-editable", () => {
+    expect(toolPolicyCatalog[diagnosticPingToolName]).toMatchObject({
+      policyReference: diagnosticPingPolicy,
+      allowedExecutionModes: ["dry_run"],
+      adminVisible: true,
+      modelVisible: false,
+      requiresApproval: false,
+      status: "enabled",
+      policyEditable: false,
+      mutationRisk: "read_only",
+    });
+    expect(toolPolicyCatalog[runnerEchoToolName]).toMatchObject({
+      policyReference: runnerEchoPolicy,
+      allowedExecutionModes: ["dry_run"],
+      adminVisible: true,
+      modelVisible: false,
+      requiresApproval: false,
+      status: "enabled",
+      policyEditable: false,
+      mutationRisk: "read_only",
+    });
+    expect(toolPolicyCatalog[artifactMetadataTestToolName]).toMatchObject({
+      policyReference: artifactMetadataTestPolicy,
+      allowedExecutionModes: ["dry_run"],
+      adminVisible: true,
+      modelVisible: false,
+      requiresApproval: false,
+      status: "enabled",
+      policyEditable: false,
       mutationRisk: "read_only",
     });
   });

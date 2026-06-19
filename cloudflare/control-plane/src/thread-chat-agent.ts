@@ -6,6 +6,7 @@ import {
   streamText,
   type StreamTextOnFinishCallback,
   type ToolSet,
+  type UIMessage,
 } from "ai";
 import type { Connection, ConnectionContext } from "agents";
 
@@ -45,6 +46,19 @@ const getTokenFromBody = (body?: Record<string, unknown>) =>
 const getTraceIdFromBody = (body?: Record<string, unknown>) =>
   typeof body?.traceId === "string" && body.traceId.trim() ? body.traceId.trim() : undefined;
 
+const jsonResponse = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json; charset=utf-8" },
+  });
+
+const normalizeProgrammaticMessage = (message: unknown) => {
+  if (typeof message !== "string") return null;
+  const normalized = message.replace(/\r\n/g, "\n").trim();
+  if (!normalized || normalized.length > 8_000) return null;
+  return normalized;
+};
+
 const textFromContent = (content: unknown): string => {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
@@ -66,7 +80,13 @@ const summarizeMessages = (messages: readonly unknown[]) => {
     return role === "user" || role === "human";
   });
   const content =
-    firstUser && typeof firstUser === "object" && "content" in firstUser ? firstUser.content : "";
+    firstUser && typeof firstUser === "object"
+      ? "content" in firstUser
+        ? firstUser.content
+        : "parts" in firstUser
+          ? firstUser.parts
+          : ""
+      : "";
   const title = textFromContent(content).replace(/\s+/g, " ").trim();
   return {
     messageCount: messages.length,
@@ -90,6 +110,7 @@ type ConfigResolveResult = ResolvedAgentChatConfig & {
 export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
   maxPersistedMessages = 100;
   private agentConfigCache: ResolvedAgentChatConfig | null = null;
+  private programmaticSubmitBody: { id: string; body: Record<string, unknown> } | null = null;
 
   private getEnv() {
     return (this as unknown as { env: Env }).env;
@@ -141,7 +162,67 @@ export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
     return { ...resolved, cacheStatus: "miss" };
   }
 
+  private async handleProgrammaticSubmit(request: Request) {
+    if (this.programmaticSubmitBody) {
+      return jsonResponse({ ok: false, error: "Programmatic turn already in progress" }, 409);
+    }
+    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const message = normalizeProgrammaticMessage(body.message);
+    if (!message) {
+      return jsonResponse({ ok: false, error: "message must be non-empty bounded text" }, 400);
+    }
+
+    let claims: AgentConnectionClaims;
+    try {
+      claims = await this.verifyScopedClaims(getTokenFromBody(body));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Agent authentication failed";
+      return jsonResponse({ ok: false, error: message }, message.includes("scope") ? 403 : 401);
+    }
+    if (
+      (typeof body.threadId === "string" && body.threadId !== claims.threadId) ||
+      (typeof body.sessionId === "string" && body.sessionId !== claims.sessionId)
+    ) {
+      return jsonResponse({ ok: false, error: "Programmatic turn scope mismatch" }, 403);
+    }
+
+    const submitId = crypto.randomUUID();
+    const submitBody = {
+      id: submitId,
+      body: {
+        token: getTokenFromBody(body),
+        threadId: claims.threadId,
+        sessionId: claims.sessionId,
+        traceId: getTraceIdFromBody(body) ?? `trace-${crypto.randomUUID()}`,
+        source: "programmatic-materialize-turn",
+      },
+    };
+    const userMessage: UIMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      parts: [{ type: "text", text: message }],
+    };
+    this.programmaticSubmitBody = submitBody;
+    this.waitUntil(
+      (async () => {
+        try {
+          await this.saveMessages((messages) => [...messages, userMessage]);
+        } finally {
+          if (this.programmaticSubmitBody?.id === submitId) {
+            this.programmaticSubmitBody = null;
+          }
+        }
+      })(),
+    );
+
+    return jsonResponse({ ok: true, status: "accepted", threadId: claims.threadId });
+  }
+
   async fetch(request: Request) {
+    const url = new URL(request.url);
+    if (request.method === "POST" && url.pathname === "/internal/programmatic-submit") {
+      return this.handleProgrammaticSubmit(request);
+    }
     try {
       await this.verifyScopedClaims(getTokenFromRequest(request));
     } catch (error) {
@@ -168,15 +249,18 @@ export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
     onFinish: StreamTextOnFinishCallback<ToolSet>,
     options?: Parameters<AIChatAgent<Env>["onChatMessage"]>[1],
   ) {
+    const requestBody = (options?.body ?? this.programmaticSubmitBody?.body) as
+      | Record<string, unknown>
+      | undefined;
     const tokenVerifyStartedAtMs = Date.now();
-    const claims = await this.verifyScopedClaims(getTokenFromBody(options?.body));
+    const claims = await this.verifyScopedClaims(getTokenFromBody(requestBody));
     const tokenVerifyEndedAtMs = Date.now();
     if (!this.getEnv().OPENROUTER_API_KEY) throw new Error("OPENROUTER_API_KEY is not configured");
 
     const identity = claimsToIdentity(claims);
     const requestStartedAtMs = Date.now();
     const trace: RuntimeTraceContext = {
-      traceId: getTraceIdFromBody(options?.body) ?? `trace-${crypto.randomUUID()}`,
+      traceId: getTraceIdFromBody(requestBody) ?? `trace-${crypto.randomUUID()}`,
       kind: "chat.agent.stream",
       rootName: "Cloudflare Agent chat response",
       startedAtMs: requestStartedAtMs,

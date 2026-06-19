@@ -35,7 +35,15 @@ type ChatThreadListRow = ChatThreadRow & {
   agent_updated_at: string | null;
 };
 
-type CoordinatorAction = "get" | "list" | "create" | "activate" | "update" | "stream" | "broadcast";
+type CoordinatorAction =
+  | "get"
+  | "list"
+  | "create"
+  | "materializeTurn"
+  | "activate"
+  | "update"
+  | "stream"
+  | "broadcast";
 type ThreadListStatus = "active" | "archived";
 type ThreadMutationStatus = "active" | "archived" | "deleted";
 type SessionTransitionType =
@@ -57,6 +65,7 @@ type CoordinatorRequest = {
   refresh?: "threads";
   status?: ThreadListStatus;
   title?: string;
+  message?: string;
   update?: {
     title?: string;
     status?: ThreadMutationStatus;
@@ -83,7 +92,7 @@ type SessionContext = {
 
 type SessionSnapshot = {
   revision: number;
-  context: SessionContext;
+  context: SessionContext | null;
   workspace: {
     id: string;
     name: string;
@@ -99,11 +108,13 @@ type SessionResponseOptions = {
   partial?: boolean;
   threadsRefreshRecommended?: boolean;
   transition?: { type: SessionTransitionType; startedAt?: string };
+  materializedTurn?: { threadId: string; status: "accepted" };
 };
 
 const tokenTtlSeconds = 5 * 60;
 const sseHeartbeatMs = 15_000;
 const sseEncoder = new TextEncoder();
+const maxMaterializeTurnMessageLength = 8_000;
 
 const getRequiredSecret = (env: Env) => {
   const secret = env.WORKBENCH_AGENT_CONNECTION_SECRET?.trim();
@@ -154,6 +165,13 @@ const titleFromInput = (title: string | undefined) => {
   const trimmed = title.replace(/\s+/g, " ").trim();
   if (!trimmed) return null;
   return trimmed.length > 120 ? `${trimmed.slice(0, 117)}...` : trimmed;
+};
+
+const normalizeMaterializeMessage = (message: unknown) => {
+  if (typeof message !== "string") return null;
+  const normalized = message.replace(/\r\n/g, "\n").trim();
+  if (!normalized || normalized.length > maxMaterializeTurnMessageLength) return null;
+  return normalized;
 };
 
 const messageCount = (thread: ChatThreadRow) => {
@@ -422,16 +440,7 @@ const buildSnapshot = async (
     throw new Error("Agent is not active");
   }
 
-  if (!thread) {
-    const sessionId =
-      latestSession?.session_id ??
-      (await createChatSession(env, identity, { source: "cloudflare-agent-chat" }));
-    const created = await createThreadContext(env, identity, sessionId);
-    thread = created.thread;
-    agent = created.activeAgent;
-  }
-
-  if (thread.agent_id !== agent.id) {
+  if (thread && thread.agent_id !== agent.id) {
     const threadAgent = await selectAgent(env, thread.agent_id, identity.scope.workspaceId);
     if (!threadAgent || threadAgent.status !== "active") {
       throw new Error("Agent is not active");
@@ -439,23 +448,23 @@ const buildSnapshot = async (
     agent = threadAgent;
   }
 
-  const context = await sessionContext(
-    { ...identity, agentId: agent.id },
-    {
-      thread,
-      agent,
-      accountId: identity.accountId,
-      accountSource: identity.accountSource,
-    },
-  );
   const activeIdentity = { ...identity, agentId: agent.id };
-  const threads = await listWorkspaceThreads(env, activeIdentity, thread.thread_id);
-  const activeThread =
-    threads.find((candidate) => candidate.threadId === thread?.thread_id) ??
-    toThreadSummary(env, thread, {
-      activeThreadId: thread.thread_id,
-      activeAgentId: agent.id,
-    });
+  const threads = await listWorkspaceThreads(env, activeIdentity, thread?.thread_id);
+  const activeThread = thread
+    ? (threads.find((candidate) => candidate.threadId === thread.thread_id) ??
+      toThreadSummary(env, thread, {
+        activeThreadId: thread.thread_id,
+        activeAgentId: agent.id,
+      }))
+    : null;
+  const context = thread
+    ? await sessionContext(activeIdentity, {
+        thread,
+        agent,
+        accountId: identity.accountId,
+        accountSource: identity.accountSource,
+      })
+    : null;
 
   return {
     revision: input.revision,
@@ -481,21 +490,26 @@ const responseFromSnapshot = async (
   options: SessionResponseOptions = {},
 ) => {
   const expiresAtSeconds = Math.floor(Date.now() / 1000) + tokenTtlSeconds;
-  const token = await signAgentConnectionClaims(getRequiredSecret(env), {
-    v: 1,
-    exp: expiresAtSeconds,
-    nonce: crypto.randomUUID(),
-    userId: snapshot.context.userId,
-    accountId: snapshot.context.accountId,
-    accountSource: snapshot.context.accountSource,
-    workspaceId: snapshot.context.workspaceId,
-    agentId: snapshot.context.agentId,
-    agentUpdatedAt: snapshot.context.agentUpdatedAt,
-    threadId: snapshot.context.threadId,
-    sessionId: snapshot.context.sessionId,
-    instanceName: snapshot.context.instanceName,
-    runtime: "cloudflare-agent-chat",
-  });
+  const connection = snapshot.context
+    ? {
+        token: await signAgentConnectionClaims(getRequiredSecret(env), {
+          v: 1,
+          exp: expiresAtSeconds,
+          nonce: crypto.randomUUID(),
+          userId: snapshot.context.userId,
+          accountId: snapshot.context.accountId,
+          accountSource: snapshot.context.accountSource,
+          workspaceId: snapshot.context.workspaceId,
+          agentId: snapshot.context.agentId,
+          agentUpdatedAt: snapshot.context.agentUpdatedAt,
+          threadId: snapshot.context.threadId,
+          sessionId: snapshot.context.sessionId,
+          instanceName: snapshot.context.instanceName,
+          runtime: "cloudflare-agent-chat",
+        }),
+        expiresAt: new Date(expiresAtSeconds * 1000).toISOString(),
+      }
+    : null;
   return {
     ok: true,
     revision: snapshot.revision,
@@ -503,21 +517,24 @@ const responseFromSnapshot = async (
     activeAgent: snapshot.activeAgent,
     activeThread: snapshot.activeThread,
     threads: snapshot.threads,
-    connection: {
-      agentHost,
-      agentName: snapshot.context.agentName,
-      instanceName: snapshot.context.instanceName,
-      token,
-      expiresAt: new Date(expiresAtSeconds * 1000).toISOString(),
-      threadId: snapshot.context.threadId,
-      sessionId: snapshot.context.sessionId,
-      workspaceId: snapshot.context.workspaceId,
-      agentId: snapshot.context.agentId,
-    },
-    expiresAt: new Date(expiresAtSeconds * 1000).toISOString(),
+    connection: snapshot.context
+      ? {
+          agentHost,
+          agentName: snapshot.context.agentName,
+          instanceName: snapshot.context.instanceName,
+          token: connection!.token,
+          expiresAt: connection!.expiresAt,
+          threadId: snapshot.context.threadId,
+          sessionId: snapshot.context.sessionId,
+          workspaceId: snapshot.context.workspaceId,
+          agentId: snapshot.context.agentId,
+        }
+      : undefined,
+    expiresAt: connection?.expiresAt,
     partial: options.partial,
     threadsRefreshRecommended: options.threadsRefreshRecommended,
     transition: options.transition,
+    materializedTurn: options.materializedTurn,
   };
 };
 
@@ -528,6 +545,7 @@ const ensureCoordinatorRequest = (value: unknown): CoordinatorRequest | null => 
     candidate.action !== "get" &&
     candidate.action !== "list" &&
     candidate.action !== "create" &&
+    candidate.action !== "materializeTurn" &&
     candidate.action !== "activate" &&
     candidate.action !== "update" &&
     candidate.action !== "stream" &&
@@ -589,6 +607,48 @@ const appendThreadLifecycleEvent = (
   identity: AgentIdentity,
   input: Parameters<typeof toThreadLifecycleControlPlaneEvent>[0],
 ) => appendControlPlaneEvent(env, identity, toThreadLifecycleControlPlaneEvent(input));
+
+const clearActiveThread = async (env: Env, identity: AgentIdentity, sessionId: string) => {
+  const timestamp = new Date().toISOString();
+  await env.DB.prepare(
+    `UPDATE chat_sessions
+     SET active_thread_id = NULL,
+         last_seen_at = ?,
+         updated_at = ?
+     WHERE user_id = ? AND workspace_id = ? AND session_id = ?`,
+  )
+    .bind(timestamp, timestamp, identity.scope.userId, identity.scope.workspaceId, sessionId)
+    .run();
+};
+
+const submitProgrammaticTurn = async (
+  env: Env,
+  input: { context: SessionContext; token: string; message: string },
+) => {
+  if (!env.WorkbenchThreadChatAgent) {
+    return { ok: false, error: "WorkbenchThreadChatAgent binding is not configured", status: 500 };
+  }
+
+  const stub = env.WorkbenchThreadChatAgent.get(
+    env.WorkbenchThreadChatAgent.idFromName(input.context.instanceName),
+  );
+  const response = await stub.fetch("https://thread-agent.internal/internal/programmatic-submit", {
+    method: "POST",
+    body: JSON.stringify({
+      token: input.token,
+      message: input.message,
+      threadId: input.context.threadId,
+      sessionId: input.context.sessionId,
+    }),
+  });
+  if (response.ok) return { ok: true, status: response.status };
+  const body = (await response.json().catch(() => ({}))) as { error?: unknown };
+  return {
+    ok: false,
+    error: typeof body.error === "string" ? body.error : "Programmatic turn submit failed",
+    status: response.status,
+  };
+};
 
 export class WorkbenchSessionAgent {
   private snapshot: SessionSnapshot | null = null;
@@ -678,7 +738,7 @@ export class WorkbenchSessionAgent {
   private async createThread(input: CoordinatorRequest) {
     const startedAt = new Date().toISOString();
     const sessionId =
-      this.snapshot?.context.sessionId ??
+      this.snapshot?.context?.sessionId ??
       (await getLatestChatSession(this.env, input.identity.scope))?.session_id ??
       (await createChatSession(this.env, input.identity, { source: "cloudflare-agent-chat" }));
     const created = await createThreadContext(this.env, input.identity, sessionId, input.title);
@@ -728,6 +788,87 @@ export class WorkbenchSessionAgent {
       threadsRefreshRecommended: true,
       transition: { type: "create", startedAt },
     });
+  }
+
+  private async materializeTurn(input: CoordinatorRequest) {
+    const startedAt = new Date().toISOString();
+    const message = normalizeMaterializeMessage(input.message);
+    if (!message) {
+      return {
+        ok: false,
+        error: `message must be non-empty text under ${maxMaterializeTurnMessageLength} characters`,
+        status: 400,
+      };
+    }
+
+    const sessionId =
+      this.snapshot?.context?.sessionId ??
+      (await getLatestChatSession(this.env, input.identity.scope))?.session_id ??
+      (await createChatSession(this.env, input.identity, { source: "cloudflare-agent-chat" }));
+    const created = await createThreadContext(this.env, input.identity, sessionId, message);
+    const activeIdentity = { ...input.identity, agentId: created.activeAgent.id };
+    const activeThread = toActiveThreadSummary(
+      this.env,
+      created.thread,
+      created.activeAgent,
+      created.thread.thread_id,
+    );
+    const context = await sessionContext(activeIdentity, {
+      thread: created.thread,
+      agent: created.activeAgent,
+      accountId: input.identity.accountId,
+      accountSource: input.identity.accountSource,
+    });
+    this.snapshot = {
+      revision: this.nextRevision(),
+      context,
+      workspace:
+        this.snapshot?.workspace ??
+        (await workspaceSummary(this.env, input.identity.scope.workspaceId)),
+      activeAgent: toAgentSummary(this.env, created.activeAgent, created.activeAgent.id),
+      activeThread,
+      threads: mergeActiveThread(this.snapshot?.threads ?? [], activeThread),
+    };
+
+    const response = await responseFromSnapshot(this.env, input.agentHost!, this.snapshot, {
+      partial: true,
+      threadsRefreshRecommended: true,
+      transition: { type: "create", startedAt },
+      materializedTurn: { threadId: activeThread.threadId, status: "accepted" },
+    });
+    const token = response.connection?.token;
+    if (!token) {
+      return { ok: false, error: "Materialized Agent connection token was missing", status: 500 };
+    }
+    const submitted = await submitProgrammaticTurn(this.env, { context, token, message });
+    if (!submitted.ok) {
+      return {
+        ok: false,
+        error: submitted.error,
+        status: submitted.status,
+      };
+    }
+
+    await appendThreadLifecycleEvent(this.env, activeIdentity, {
+      transition: "create",
+      threadId: activeThread.threadId,
+      activeThreadId: activeThread.threadId,
+      nextStatus: activeThread.status,
+    });
+    this.broadcastEvent(
+      this.createEvent("session.thread.created", {
+        ...safeSnapshotData(this.snapshot),
+        transition: { type: "create", startedAt },
+      }),
+    );
+    this.broadcastEvent(
+      this.createEvent("admin.summary.invalidated", {
+        reason: "thread-created",
+        threadId: activeThread.threadId,
+      }),
+    );
+
+    return response;
   }
 
   private async updateThread(input: CoordinatorRequest) {
@@ -824,18 +965,9 @@ export class WorkbenchSessionAgent {
         activeThread = fallback;
         activeAgent = fallbackAgent;
       } else {
-        const sessionId =
-          latestSession?.session_id ??
-          (await createChatSession(this.env, input.identity, { source: "cloudflare-agent-chat" }));
-        const created = await createThreadContext(
-          this.env,
-          input.identity,
-          sessionId,
-          input.update.fallbackTitle,
-        );
-        snapshotIdentity = { ...input.identity, agentId: created.activeAgent.id };
-        activeThread = created.thread;
-        activeAgent = created.activeAgent;
+        if (latestSession?.session_id) {
+          await clearActiveThread(this.env, input.identity, latestSession.session_id);
+        }
       }
     }
 
@@ -849,18 +981,20 @@ export class WorkbenchSessionAgent {
     const updatedAgent =
       (await selectAgent(this.env, updatedThread.agent_id, input.identity.scope.workspaceId)) ??
       activeAgent;
+    const activeThreadId = this.snapshot.context?.threadId ?? null;
+    const activeAgentId = this.snapshot.context?.agentId ?? this.snapshot.activeAgent.id;
     const summarizedThread = updatedAgent
-      ? toActiveThreadSummary(this.env, updatedThread, updatedAgent, this.snapshot.context.threadId)
+      ? toActiveThreadSummary(this.env, updatedThread, updatedAgent, activeThreadId ?? "")
       : toThreadSummary(this.env, updatedThread, {
-          activeThreadId: this.snapshot.context.threadId,
-          activeAgentId: this.snapshot.context.agentId,
+          activeThreadId,
+          activeAgentId,
         });
     const transition = nextStatus ? transitionForStatus(nextStatus) : "rename";
     await appendThreadLifecycleEvent(this.env, snapshotIdentity, {
       transition,
       threadId,
-      activeThreadId: this.snapshot.context.threadId,
-      replacementThreadId: deactivatedActiveThread ? this.snapshot.context.threadId : undefined,
+      activeThreadId: activeThreadId ?? undefined,
+      replacementThreadId: deactivatedActiveThread ? (activeThreadId ?? undefined) : undefined,
       previousStatus: thread.status,
       nextStatus: updatedThread.status,
     });
@@ -1011,6 +1145,10 @@ export class WorkbenchSessionAgent {
       }
       if (input.action === "list") return json(await this.listThreads(input));
       if (input.action === "create") return json(await this.createThread(input));
+      if (input.action === "materializeTurn") {
+        const result = await this.materializeTurn(input);
+        return json(result, { status: "status" in result ? result.status : 200 });
+      }
       if (input.action === "update") {
         const result = await this.updateThread(input);
         return json(result, { status: "status" in result ? result.status : 200 });

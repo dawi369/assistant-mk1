@@ -9,6 +9,7 @@ import type {
 export type PendingSessionTransition =
   | { type: "initial" }
   | { type: "create" }
+  | { type: "materialize" }
   | { type: "activate"; threadId: string }
   | { type: "rename"; threadId: string }
   | { type: "archive"; threadId: string }
@@ -34,6 +35,45 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
 const isPendingThread = (threadId?: string) => Boolean(threadId?.startsWith("pending-thread-"));
+
+export const hasPendingActiveThread = (session: ChatSessionResponse | null) =>
+  Boolean(isPendingThread(session?.activeThread?.threadId));
+
+export const canCreateThreadFromSessionShell = (session: ChatSessionResponse | null) =>
+  Boolean(session?.workspace?.id && session.activeAgent?.id);
+
+export const enterLocalNewSession = (
+  session: ChatSessionResponse | null,
+): ChatSessionResponse | null =>
+  session
+    ? {
+        ...session,
+        activeThread: null,
+        connection: undefined,
+        expiresAt: undefined,
+        pending: undefined,
+        threads: (session.threads ?? []).map((thread) => ({ ...thread, isActive: false })),
+      }
+    : null;
+
+export const removeThreadsFromSession = (
+  session: ChatSessionResponse | null,
+  threadIds: ReadonlySet<string>,
+): ChatSessionResponse | null => {
+  if (!session || threadIds.size === 0) return session;
+  const activeRemoved = Boolean(
+    session.activeThread?.threadId && threadIds.has(session.activeThread.threadId),
+  );
+  return {
+    ...session,
+    activeThread: activeRemoved ? null : session.activeThread,
+    connection: activeRemoved ? undefined : session.connection,
+    expiresAt: activeRemoved ? undefined : session.expiresAt,
+    threads: (session.threads ?? [])
+      .filter((thread) => !threadIds.has(thread.threadId))
+      .map((thread) => (activeRemoved ? { ...thread, isActive: false } : thread)),
+  };
+};
 
 const visibleThreadStatuses = new Set<ChatThreadStatus>(["active"]);
 
@@ -123,16 +163,26 @@ export const mergeSession = (
   incoming: ChatSessionResponse,
 ): ChatSessionResponse => {
   if (!incoming.partial) return incoming;
+  const hasIncomingActiveThread = Object.prototype.hasOwnProperty.call(incoming, "activeThread");
+  const shouldReplaceThreads =
+    hasIncomingActiveThread && incoming.activeThread === null && Array.isArray(incoming.threads);
   return {
     ...incoming,
     workspace: incoming.workspace ?? current?.workspace ?? null,
     activeAgent: incoming.activeAgent ?? current?.activeAgent ?? null,
-    activeThread:
-      preserveDisplayTitle(
-        sanitizeThread(incoming.activeThread) ?? current?.activeThread ?? null,
-        current?.activeThread ?? undefined,
-      ) ?? null,
-    threads: mergeThreads(current?.threads ?? [], incoming.threads ?? []),
+    activeThread: hasIncomingActiveThread
+      ? (preserveDisplayTitle(
+          sanitizeThread(incoming.activeThread),
+          current?.activeThread ?? undefined,
+        ) ?? null)
+      : (current?.activeThread ?? null),
+    threads: shouldReplaceThreads
+      ? sortThreadsByCreation(
+          (incoming.threads ?? [])
+            .filter(isVisibleThread)
+            .map((thread) => ({ ...thread, isActive: false })),
+        )
+      : mergeThreads(current?.threads ?? [], incoming.threads ?? []),
   };
 };
 
@@ -164,7 +214,8 @@ export const sessionFromEvent = (event: WorkbenchSessionEvent): ChatSessionRespo
     : updatedThread
       ? [updatedThread]
       : undefined;
-  if (!data.workspace && !data.activeAgent && !data.activeThread && !eventThreads) {
+  const hasActiveThread = Object.prototype.hasOwnProperty.call(data, "activeThread");
+  if (!data.workspace && !data.activeAgent && !hasActiveThread && !eventThreads) {
     return null;
   }
 
@@ -174,7 +225,9 @@ export const sessionFromEvent = (event: WorkbenchSessionEvent): ChatSessionRespo
     partial: event.type !== "session.snapshot" && event.type !== "session.threads.refreshed",
     workspace: (data.workspace as ChatSessionResponse["workspace"]) ?? undefined,
     activeAgent: (data.activeAgent as ChatSessionResponse["activeAgent"]) ?? undefined,
-    activeThread: (data.activeThread as ChatSessionResponse["activeThread"]) ?? undefined,
+    activeThread: hasActiveThread
+      ? ((data.activeThread as ChatSessionResponse["activeThread"]) ?? null)
+      : undefined,
     threads: eventThreads,
     transition: isRecord(data.transition)
       ? (data.transition as ChatSessionResponse["transition"])

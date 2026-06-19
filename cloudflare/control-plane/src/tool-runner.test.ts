@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   repoSnapshotSandboxContract,
   runnerMetadataFor,
+  runnerEchoSandboxContract,
   urlInspectSandboxContract,
 } from "./tool-runner";
 
@@ -90,5 +91,34 @@ describe("tool runner sandbox contracts", () => {
       },
     });
     expect(JSON.stringify(sandbox)).not.toMatch(/token|secret|prompt|message/i);
+  });
+
+  it("builds a no-egress runner.echo sandbox contract without artifact promotion", () => {
+    const sandbox = runnerEchoSandboxContract({ maxRuntimeMs: 1_250 });
+
+    expect(sandbox).toEqual({
+      lifecycle: {
+        template: "runner-echo-v1",
+        setup: "per_invocation",
+        workspaceState: "none",
+        filesystem: "ephemeral",
+        artifactPromotion: "metadata_only",
+      },
+      network: {
+        egress: "none",
+        allowedSchemes: [],
+        allowedHosts: [],
+        deniedHosts: ["*"],
+        privateNetwork: "deny",
+        enforcement: "control_plane_and_runner",
+      },
+      limits: {
+        maxRuntimeMs: 1_250,
+        maxStdoutBytes: 4096,
+        maxStderrBytes: 4096,
+        maxArtifactBytes: 0,
+      },
+    });
+    expect(JSON.stringify(sandbox)).not.toMatch(/token|secret|prompt|command|path|url/i);
   });
 });

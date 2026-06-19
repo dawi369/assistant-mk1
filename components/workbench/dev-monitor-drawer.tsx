@@ -177,6 +177,7 @@ export function AdminPanel({
   const [isLoadingRunSnapshot, setIsLoadingRunSnapshot] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [isRunningTool, setIsRunningTool] = useState(false);
+  const [runningTestTool, setRunningTestTool] = useState<string | null>(null);
   const [updatingToolPolicy, setUpdatingToolPolicy] = useState<string | null>(null);
   const [updatingApprovalId, setUpdatingApprovalId] = useState<string | null>(null);
   const [isCreatingWorkspace, setIsCreatingWorkspace] = useState(false);
@@ -185,6 +186,8 @@ export function AdminPanel({
   const [activatingAgentId, setActivatingAgentId] = useState<string | null>(null);
   const [workspaceName, setWorkspaceName] = useState("");
   const [urlInspectTarget, setUrlInspectTarget] = useState("");
+  const [runnerEchoMessage, setRunnerEchoMessage] = useState("runner echo ok");
+  const [artifactTestLabel, setArtifactTestLabel] = useState("admin conformance");
   const [agentName, setAgentName] = useState("");
   const [agentDescription, setAgentDescription] = useState("");
   const [agentProfile, setAgentProfile] = useState<"default" | "analyst" | "operator">("analyst");
@@ -232,6 +235,11 @@ export function AdminPanel({
   const selectedHistoryRun =
     historyRuns.find((historyRun) => historyRun.id === selectedRunId) ?? null;
   const urlInspectTool = summary?.tools?.find((tool) => tool.name === "url.inspect") ?? null;
+  const diagnosticPingTool =
+    summary?.tools?.find((tool) => tool.name === "diagnostic.ping") ?? null;
+  const runnerEchoTool = summary?.tools?.find((tool) => tool.name === "runner.echo") ?? null;
+  const artifactMetadataTestTool =
+    summary?.tools?.find((tool) => tool.name === "artifact.metadata.test") ?? null;
   const pendingApprovals = approvalQueue.filter((approval) => approval.status === "requested");
   const decidedApprovals = approvalQueue.filter((approval) => approval.status !== "requested");
   const selectedApprovalPolicy = approvalDialog?.approval.currentPolicy;
@@ -462,6 +470,34 @@ export function AdminPanel({
       requestWorkbenchSummaryRefresh({ source: "event" });
     } finally {
       setIsRunningTool(false);
+    }
+  };
+
+  const runTestTool = async (
+    toolName: "diagnostic.ping" | "runner.echo" | "artifact.metadata.test",
+    input: Record<string, unknown> = {},
+  ) => {
+    setRunningTestTool(toolName);
+    setFetchError(null);
+    try {
+      await readJsonResponse<CloudflareToolRunResponse>(
+        await fetch(toolRunsPath, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            toolName,
+            executionMode: "dry_run",
+            input,
+          }),
+        }),
+        `Failed to run ${toolName}`,
+      );
+      requestWorkbenchSummaryRefresh({ source: "event" });
+    } catch (toolError) {
+      setFetchError(toolError instanceof Error ? toolError.message : `Failed to run ${toolName}`);
+      requestWorkbenchSummaryRefresh({ source: "event" });
+    } finally {
+      setRunningTestTool(null);
     }
   };
 
@@ -1836,6 +1872,111 @@ export function AdminPanel({
                       Read-only dry-run tool. Local, private, and metadata hosts are blocked.
                     </p>
                   </form>
+                </DetailsBlock>
+
+                <DetailsBlock title="Test Tools">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="min-w-0">
+                        <span className="block text-sm font-medium">Diagnostic ping</span>
+                        <span className="text-muted-foreground block text-xs">
+                          Cloudflare inline conformance check
+                        </span>
+                      </span>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={
+                          runningTestTool !== null ||
+                          !canManageAgents ||
+                          diagnosticPingTool?.permissionStatus === "disabled"
+                        }
+                        onClick={() => runTestTool("diagnostic.ping")}
+                      >
+                        {runningTestTool === "diagnostic.ping" ? (
+                          <Loader2Icon className="animate-spin" />
+                        ) : (
+                          <ActivityIcon />
+                        )}
+                        Ping
+                      </Button>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
+                        <input
+                          className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring min-w-0 rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                          value={runnerEchoMessage}
+                          onChange={(event) => setRunnerEchoMessage(event.target.value)}
+                          placeholder="runner echo ok"
+                          maxLength={160}
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={
+                            runningTestTool !== null ||
+                            !canManageAgents ||
+                            runnerEchoTool?.permissionStatus === "disabled"
+                          }
+                          onClick={() =>
+                            runTestTool("runner.echo", {
+                              message: runnerEchoMessage.trim() || "runner echo ok",
+                            })
+                          }
+                        >
+                          {runningTestTool === "runner.echo" ? (
+                            <Loader2Icon className="animate-spin" />
+                          ) : (
+                            <PlayIcon />
+                          )}
+                          Echo
+                        </Button>
+                      </div>
+                      <p className="text-muted-foreground text-xs">
+                        Fly runner path with signed callbacks and no network egress.
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
+                        <input
+                          className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring min-w-0 rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                          value={artifactTestLabel}
+                          onChange={(event) => setArtifactTestLabel(event.target.value)}
+                          placeholder="admin conformance"
+                          maxLength={80}
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={
+                            runningTestTool !== null ||
+                            !canManageAgents ||
+                            artifactMetadataTestTool?.permissionStatus === "disabled"
+                          }
+                          onClick={() =>
+                            runTestTool("artifact.metadata.test", {
+                              label: artifactTestLabel.trim() || "admin conformance",
+                            })
+                          }
+                        >
+                          {runningTestTool === "artifact.metadata.test" ? (
+                            <Loader2Icon className="animate-spin" />
+                          ) : (
+                            <FileTextIcon />
+                          )}
+                          Artifact
+                        </Button>
+                      </div>
+                      <p className="text-muted-foreground text-xs">
+                        Metadata-only artifact reference for history readback.
+                      </p>
+                    </div>
+                  </div>
                 </DetailsBlock>
 
                 <DetailsBlock title="Recent tool calls">

@@ -25,6 +25,7 @@ import { ArrowUpIcon, Loader2Icon, PaperclipIcon, RefreshCwIcon } from "lucide-r
 import { Button } from "@/components/ui/button";
 import { Thread } from "@/components/assistant-ui/thread";
 import { useWorkbenchComposerFocus } from "@/components/workbench/composer-focus-context";
+import { hasPendingActiveThread } from "@/lib/workbench/chat-session-state";
 import {
   type WorkbenchAgentConnection,
   useWorkbenchAgentConnection,
@@ -39,16 +40,54 @@ const toAgentHostOptions = (agentHost: string) => {
 };
 
 export function Assistant({ children }: { children?: ReactNode }) {
-  const { connection, error, retry, session } = useWorkbenchAgentConnection();
+  const {
+    connection,
+    error,
+    isLocalNewSession,
+    materializeTurn,
+    pending,
+    preloadNewSession,
+    retry,
+    session,
+  } = useWorkbenchAgentConnection();
   const [preRuntimeDraft, setPreRuntimeDraft] = useState("");
   const clearPreRuntimeDraft = useCallback(() => setPreRuntimeDraft(""), []);
+  const [isSubmittingLocalTurn, setIsSubmittingLocalTurn] = useState(false);
+  const handlePreRuntimeDraftChange = useCallback(
+    (nextDraft: string) => {
+      setPreRuntimeDraft(nextDraft);
+      if (isLocalNewSession && nextDraft.trim()) {
+        preloadNewSession("first-draft");
+      }
+    },
+    [isLocalNewSession, preloadNewSession],
+  );
+  const submitLocalTurn = useCallback(async () => {
+    if (!isLocalNewSession || isSubmittingLocalTurn || !preRuntimeDraft.trim()) return;
+    setIsSubmittingLocalTurn(true);
+    try {
+      await materializeTurn(preRuntimeDraft);
+      clearPreRuntimeDraft();
+    } finally {
+      setIsSubmittingLocalTurn(false);
+    }
+  }, [
+    clearPreRuntimeDraft,
+    isLocalNewSession,
+    isSubmittingLocalTurn,
+    materializeTurn,
+    preRuntimeDraft,
+  ]);
 
-  if (!connection) {
+  if (!connection || hasPendingActiveThread(session)) {
     return (
       <PreRuntimeDraftSurface
         draft={preRuntimeDraft}
         error={error}
-        onDraftChange={setPreRuntimeDraft}
+        isLocalNewSession={isLocalNewSession}
+        isSubmitting={isSubmittingLocalTurn || pending?.type === "materialize"}
+        onDraftChange={handlePreRuntimeDraftChange}
+        onSubmit={submitLocalTurn}
         onRetry={retry}
         session={session}
       />
@@ -154,25 +193,43 @@ function RuntimeDraftHandoff({ draft, onHydrated }: { draft: string; onHydrated:
 function PreRuntimeDraftSurface({
   draft,
   error,
+  isLocalNewSession,
+  isSubmitting,
   onDraftChange,
+  onSubmit,
   onRetry,
   session,
 }: {
   draft: string;
   error: string | null;
+  isLocalNewSession: boolean;
+  isSubmitting: boolean;
   onDraftChange: (draft: string) => void;
+  onSubmit: () => Promise<void>;
   onRetry: () => Promise<void>;
   session: ReturnType<typeof useWorkbenchAgentConnection>["session"];
 }) {
   const { registerComposerInput } = useWorkbenchComposerFocus();
   const activeThreadLabel = session?.activeThread?.title || session?.activeThread?.threadId;
   const hasCachedShell = session?.isStale === true;
-  const statusLabel = error ? "Connection failed" : "Connecting to Cloudflare Agent";
-  const statusDescription = error
-    ? error
-    : hasCachedShell
-      ? "Cached workspace is visible while the live Agent token refreshes."
-      : "You can start drafting while the Agent connection opens.";
+  const isCreatingThread = hasPendingActiveThread(session);
+  const visibleError = isLocalNewSession ? null : error;
+  const statusLabel = visibleError
+    ? "Connection failed"
+    : isLocalNewSession
+      ? null
+      : isCreatingThread
+        ? "Creating new chat"
+        : "Connecting to Cloudflare Agent";
+  const statusDescription = visibleError
+    ? visibleError
+    : isLocalNewSession
+      ? null
+      : isCreatingThread
+        ? "You can draft while Cloudflare creates the Agent session."
+        : hasCachedShell
+          ? "Cached workspace is visible while the live Agent token refreshes."
+          : "You can start drafting while the Agent connection opens.";
 
   return (
     <div
@@ -188,24 +245,28 @@ function PreRuntimeDraftSurface({
           <div className="my-auto flex grow flex-col">
             <div className="flex w-full grow flex-col items-center justify-center">
               <div className="fade-in slide-in-from-bottom-1 animate-in fill-mode-both flex size-full flex-col justify-center px-4 duration-200">
-                <div className="mb-4 flex items-center gap-2 text-xs text-muted-foreground">
-                  {error ? (
-                    <span className="size-2 rounded-full bg-destructive" />
-                  ) : (
-                    <Loader2Icon className="size-3.5 animate-spin" />
-                  )}
-                  <span>{statusLabel}</span>
-                </div>
+                {statusLabel ? (
+                  <div className="mb-4 flex items-center gap-2 text-xs text-muted-foreground">
+                    {visibleError ? (
+                      <span className="size-2 rounded-full bg-destructive" />
+                    ) : (
+                      <Loader2Icon className="size-3.5 animate-spin" />
+                    )}
+                    <span>{statusLabel}</span>
+                  </div>
+                ) : null}
                 <h1 className="text-2xl font-semibold">
                   {activeThreadLabel ? "Draft in your last chat" : "Hello there!"}
                 </h1>
-                <p className="text-muted-foreground mt-2 max-w-xl text-xl">{statusDescription}</p>
+                {statusDescription ? (
+                  <p className="text-muted-foreground mt-2 max-w-xl text-xl">{statusDescription}</p>
+                ) : null}
                 {activeThreadLabel ? (
                   <p className="text-muted-foreground/80 mt-3 max-w-xl text-xs">
                     Last active thread: {activeThreadLabel}
                   </p>
                 ) : null}
-                {error ? (
+                {visibleError ? (
                   <Button
                     type="button"
                     variant="outline"
@@ -221,17 +282,7 @@ function PreRuntimeDraftSurface({
             </div>
           </div>
 
-          <div className="bg-background sticky bottom-0 mt-auto flex flex-col gap-3 overflow-visible rounded-t-(--composer-radius) pb-4 md:pb-6">
-            <div className="mx-auto w-full max-w-(--thread-max-width)">
-              <div className="border-border bg-background/95 text-muted-foreground inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs shadow-xs backdrop-blur">
-                {error ? (
-                  <span className="size-2 rounded-full bg-destructive" />
-                ) : (
-                  <Loader2Icon className="size-3 animate-spin" />
-                )}
-                <span>{error ? "Transport unavailable" : "Transport warming up"}</span>
-              </div>
-            </div>
+          <div className="bg-background sticky bottom-0 mt-auto flex flex-col overflow-visible rounded-t-(--composer-radius) pb-4 md:pb-6">
             <div
               data-slot="aui_composer-shell"
               className="bg-background flex w-full flex-col gap-2 rounded-(--composer-radius) border p-(--composer-padding) shadow-xs transition-shadow"
@@ -240,6 +291,11 @@ function PreRuntimeDraftSurface({
                 ref={registerComposerInput}
                 value={draft}
                 onChange={(event) => onDraftChange(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter" || event.shiftKey) return;
+                  event.preventDefault();
+                  void onSubmit();
+                }}
                 placeholder="Draft a message..."
                 className="placeholder:text-muted-foreground/80 max-h-32 min-h-10 w-full resize-none bg-transparent px-1.75 py-1 text-sm outline-none"
                 rows={1}
@@ -253,7 +309,7 @@ function PreRuntimeDraftSurface({
                   size="icon"
                   className="size-8 rounded-full"
                   disabled
-                  aria-label="Attachments unavailable while connecting"
+                  aria-label="Attachments unavailable before the first message"
                 >
                   <PaperclipIcon className="size-4" />
                 </Button>
@@ -262,11 +318,22 @@ function PreRuntimeDraftSurface({
                   variant="default"
                   size="icon"
                   className="size-8 rounded-full"
-                  disabled
-                  aria-label="Send unavailable while connecting"
-                  title="Send is available when the Agent connection is ready"
+                  disabled={!isLocalNewSession || isSubmitting || !draft.trim()}
+                  aria-label={
+                    isLocalNewSession ? "Send message" : "Send unavailable while connecting"
+                  }
+                  title={
+                    isLocalNewSession
+                      ? "Create the chat and send this message"
+                      : "Send is available when the Agent connection is ready"
+                  }
+                  onClick={() => void onSubmit()}
                 >
-                  <ArrowUpIcon className="size-4" />
+                  {isSubmitting ? (
+                    <Loader2Icon className="size-4 animate-spin" />
+                  ) : (
+                    <ArrowUpIcon className="size-4" />
+                  )}
                 </Button>
               </div>
             </div>

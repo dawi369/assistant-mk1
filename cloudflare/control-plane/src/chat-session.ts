@@ -2,7 +2,7 @@ import { internalErrorResponse, json } from "./http";
 import { sessionCoordinatorName } from "./session-coordinator";
 import type { AgentIdentity, Env } from "./types";
 
-type SessionAction = "get" | "list" | "create" | "activate" | "update";
+type SessionAction = "get" | "list" | "create" | "materializeTurn" | "activate" | "update";
 type ThreadListStatus = "active" | "archived";
 type ThreadMutationStatus = "active" | "archived" | "deleted";
 
@@ -21,6 +21,7 @@ const coordinatorResponse = async (
     refresh?: "threads";
     status?: ThreadListStatus;
     title?: string;
+    message?: string;
     update?: {
       title?: string;
       status?: ThreadMutationStatus;
@@ -46,6 +47,7 @@ const coordinatorResponse = async (
       refresh: input.refresh,
       status: input.status,
       title: input.title,
+      message: input.message,
       update: input.update,
       agentHost: agentHostFromRequest(request),
     }),
@@ -117,6 +119,21 @@ export const handleCreateChatSessionThread = async (
   return coordinatorResponse(request, env, identity, {
     action: "create",
     title: typeof body.title === "string" ? body.title : undefined,
+  });
+};
+
+export const handleMaterializeChatSessionTurn = async (
+  request: Request,
+  env: Env,
+  identity: AgentIdentity,
+) => {
+  const body = (await request.json().catch(() => ({}))) as { message?: unknown };
+  if (typeof body.message !== "string") {
+    return json({ ok: false, error: "message is required" }, { status: 400 });
+  }
+  return coordinatorResponse(request, env, identity, {
+    action: "materializeTurn",
+    message: body.message,
   });
 };
 

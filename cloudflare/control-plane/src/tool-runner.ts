@@ -181,7 +181,11 @@ export type ToolRunnerInvocation = {
   traceId?: string | null;
 };
 
-export type ToolRunnerInvocationResponse = (UrlInspectResult | RepoSnapshotResult | RunnerEchoResult) & {
+export type ToolRunnerInvocationResponse = (
+  | UrlInspectResult
+  | RepoSnapshotResult
+  | RunnerEchoResult
+) & {
   runner?: ToolRunnerMetadata;
   metrics?: Record<string, unknown>;
 };

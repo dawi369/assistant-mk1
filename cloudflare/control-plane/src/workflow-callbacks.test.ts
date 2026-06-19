@@ -277,4 +277,36 @@ describe("workflow callback ingestion", () => {
     expect(toolCallInsert?.values).toContain("repo.snapshot");
     expect(JSON.stringify(toolCallInsert?.values)).toContain("repo-snapshot-v1");
   });
+
+  it("persists runner.echo tool-call metadata from callbacks", async () => {
+    const { env, statements } = createRecordingEnv({ workflowType: "tool.runner.echo" });
+    const result = await applyWorkflowCallbackPayload(env, {
+      event: "run.completed",
+      runId: "run-1",
+      workflowIntentId: "intent-1",
+      summary: "runner.echo completed.",
+      outputSummary: "Echoed 12 characters.",
+      toolCall: {
+        id: "run-1-tool-runner-echo",
+        toolId: "runner.echo",
+        status: "completed",
+        data: {
+          runner: { transport: "fly", adapterVersion: "runner-echo-v1", source: "admin" },
+          output: {
+            status: "ok",
+            summary: "Echoed 12 characters.",
+            length: 12,
+          },
+        },
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    const toolCallInsert = statements.find((statement) =>
+      statement.query.includes("INSERT INTO control_tool_calls"),
+    );
+    expect(toolCallInsert?.values).toContain("run-1-tool-runner-echo");
+    expect(toolCallInsert?.values).toContain("runner.echo");
+    expect(JSON.stringify(toolCallInsert?.values)).toContain("runner-echo-v1");
+  });
 });

@@ -31,7 +31,6 @@ export function ThreadHistorySidebar({
   disableThreadActions?: boolean;
 }) {
   const {
-    connection,
     session,
     threads,
     archivedThreads,
@@ -40,7 +39,8 @@ export function ThreadHistorySidebar({
     isInitialLoading,
     isLoadingArchivedThreads,
     archivedThreadsError,
-    createThread,
+    deletingThreadIds,
+    startNewSession,
     activateThread,
     renameThread,
     archiveThread,
@@ -52,11 +52,15 @@ export function ThreadHistorySidebar({
   const [archiveError, setArchiveError] = useState<string | null>(null);
   const { focusComposer } = useWorkbenchComposerFocus();
   const creatingThread = pending?.type === "create";
-  const isNavigatingThread = pending?.type === "activate" || pending?.type === "create";
+  const isNavigatingThread =
+    pending?.type === "activate" || pending?.type === "create" || pending?.type === "materialize";
   const isCached = session?.isStale === true;
-  const actionsDisabled = disableThreadActions || !connection || isCached;
+  const actionsDisabled = disableThreadActions || isCached;
+  const newChatDisabled = disableNewChat || pending?.type === "materialize";
   const threadItemsDisabled = actionsDisabled || isNavigatingThread;
-  const visibleThreads = view === "archived" ? archivedThreads : threads;
+  const visibleThreads = (view === "archived" ? archivedThreads : threads).filter(
+    (thread) => !deletingThreadIds.has(thread.threadId),
+  );
   const loadingArchived = view === "archived" && isLoadingArchivedThreads;
   const loadingInitialThreads = isInitialLoading && visibleThreads.length === 0;
   const visibleError =
@@ -101,12 +105,10 @@ export function ThreadHistorySidebar({
   };
 
   const handleCreateThread = async () => {
-    if (disableNewChat || creatingThread || actionsDisabled) return;
+    if (newChatDisabled) return;
     focusComposer();
-    await runThreadAction(async () => {
-      await createThread();
-      focusComposer();
-    }, "Failed to start chat");
+    startNewSession();
+    window.setTimeout(focusComposer, 0);
   };
 
   const handleActivateThread = async (threadId: string) => {
@@ -170,9 +172,9 @@ export function ThreadHistorySidebar({
             type="button"
             variant="ghost"
             size="icon-sm"
-            disabled={disableNewChat || creatingThread || actionsDisabled}
+            disabled={newChatDisabled}
             aria-label="New chat"
-            title={actionsDisabled ? "Connect to Cloudflare before starting a chat" : "New chat"}
+            title="New chat"
             onClick={() => void handleCreateThread()}
           >
             {creatingThread ? (

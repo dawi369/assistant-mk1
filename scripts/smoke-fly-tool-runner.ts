@@ -61,6 +61,30 @@ const repoSnapshotSandbox = () => ({
   },
 });
 
+const runnerEchoSandbox = () => ({
+  lifecycle: {
+    template: "runner-echo-v1",
+    setup: "per_invocation",
+    workspaceState: "none",
+    filesystem: "ephemeral",
+    artifactPromotion: "metadata_only",
+  },
+  network: {
+    egress: "none",
+    allowedSchemes: [],
+    allowedHosts: [],
+    deniedHosts: ["*"],
+    privateNetwork: "deny",
+    enforcement: "control_plane_and_runner",
+  },
+  limits: {
+    maxRuntimeMs: 5_000,
+    maxStdoutBytes: 4_096,
+    maxStderrBytes: 4_096,
+    maxArtifactBytes: 0,
+  },
+});
+
 const invocationBody = (
   runId = `cf-run-${suffix}`,
   input: { url: string } = { url: "https://example.com" },
@@ -107,6 +131,33 @@ const repoSnapshotInvocationBody = (runId = `cf-run-repo-snapshot-${suffix}`) =>
           url: runnerCallbackUrl,
           protocolVersion: "workflow-callback-v0",
           traceId: `cf-trace-repo-snapshot-${suffix}`,
+        }
+      : undefined,
+  });
+
+const runnerEchoInvocationBody = (runId = `cf-run-runner-echo-${suffix}`) =>
+  JSON.stringify({
+    scope,
+    agentId: `agent:${scope.workspaceId}:default`,
+    runId,
+    workflowIntentId: `cf-intent-runner-echo-${suffix}`,
+    toolName: "runner.echo",
+    execution: { mode: "dry_run", policy: "admin-conformance-runner-echo-v0" },
+    input: { message: "runner smoke", uppercase: true },
+    runner: {
+      transport: "fly",
+      adapterVersion: "runner-echo-v1",
+      source: "admin",
+      sandbox: runnerEchoSandbox(),
+    },
+    policyDecisionId: `cf-policy-runner-echo-${suffix}`,
+    source: "admin",
+    traceId: `cf-trace-runner-echo-${suffix}`,
+    callback: runnerCallbackUrl
+      ? {
+          url: runnerCallbackUrl,
+          protocolVersion: "workflow-callback-v0",
+          traceId: `cf-trace-runner-echo-${suffix}`,
         }
       : undefined,
   });
@@ -159,6 +210,15 @@ const signedRepoSnapshotFetch = (input?: { nonce?: string }) =>
     runId: `cf-run-repo-snapshot-${suffix}`,
     workflowIntentId: `cf-intent-repo-snapshot-${suffix}`,
     toolName: "repo.snapshot",
+    nonce: input?.nonce,
+  });
+
+const signedRunnerEchoFetch = (input?: { nonce?: string }) =>
+  signedFetch({
+    body: runnerEchoInvocationBody(),
+    runId: `cf-run-runner-echo-${suffix}`,
+    workflowIntentId: `cf-intent-runner-echo-${suffix}`,
+    toolName: "runner.echo",
     nonce: input?.nonce,
   });
 
@@ -224,6 +284,34 @@ runSmoke("Fly tool runner smoke", async () => {
     (runnerCallbackUrl && repoSnapshotBody.metrics?.callback?.status !== "completed")
   ) {
     throw new Error(`repo.snapshot response was unexpected: ${JSON.stringify(repoSnapshotBody)}`);
+  }
+
+  const runnerEcho = await signedRunnerEchoFetch({ nonce: `runner-echo-${suffix}` });
+  if (!runnerEcho.ok) {
+    throw new Error(`runner.echo runner request failed: ${runnerEcho.status}`);
+  }
+  const runnerEchoBody = (await runnerEcho.json()) as {
+    ok?: boolean;
+    output?: { status?: string; echoed?: string; length?: number };
+    runner?: {
+      transport?: string;
+      adapterVersion?: string;
+      sandbox?: { network?: { egress?: string; privateNetwork?: string } };
+    };
+    metrics?: { callback?: { status?: string } };
+  };
+  if (
+    !runnerEchoBody.ok ||
+    runnerEchoBody.output?.status !== "ok" ||
+    runnerEchoBody.output.echoed !== "RUNNER SMOKE" ||
+    runnerEchoBody.output.length !== "RUNNER SMOKE".length ||
+    runnerEchoBody.runner?.transport !== "fly" ||
+    runnerEchoBody.runner.adapterVersion !== "runner-echo-v1" ||
+    runnerEchoBody.runner.sandbox?.network?.egress !== "none" ||
+    runnerEchoBody.runner.sandbox.network.privateNetwork !== "deny" ||
+    (runnerCallbackUrl && runnerEchoBody.metrics?.callback?.status !== "completed")
+  ) {
+    throw new Error(`runner.echo response was unexpected: ${JSON.stringify(runnerEchoBody)}`);
   }
 
   const blockedEgress = await signedFetch({

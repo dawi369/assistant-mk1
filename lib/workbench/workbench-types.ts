@@ -440,6 +440,9 @@ export type RuntimeTrace = {
     | "chat.agent.stream"
     | "tool.url.inspect"
     | "tool.repo.snapshot"
+    | "tool.diagnostic.ping"
+    | "tool.runner.echo"
+    | "tool.artifact.metadata.test"
     | "diagnostic.demo.inspect";
   status: RuntimeTraceStatus;
   rootName: string;
@@ -666,6 +669,7 @@ export type ChatSessionResponse = {
     expiresAt?: string;
   };
   pending?: { type: "create" } | { type: "activate"; threadId: Id };
+  materializedTurn?: { threadId: Id; status: "accepted" };
   transition?: {
     type:
       | "initial"

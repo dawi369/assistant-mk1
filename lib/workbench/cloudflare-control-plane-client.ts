@@ -238,8 +238,15 @@ export const getArtifactHistory = (limit = 25) =>
     `/workbench/history/artifacts?limit=${encodeURIComponent(String(limit))}`,
   );
 
+export type RunnableAdminToolName =
+  | "url.inspect"
+  | "repo.snapshot"
+  | "diagnostic.ping"
+  | "runner.echo"
+  | "artifact.metadata.test";
+
 export const runCloudflareTool = (input: {
-  toolName: "url.inspect" | "repo.snapshot";
+  toolName: RunnableAdminToolName;
   executionMode?: "dry_run";
   input: { url: string } | Record<string, unknown>;
   parentRunId?: Id;
@@ -322,6 +329,12 @@ export const createChatSessionThread = (input?: { title?: string }) =>
   requestControlPlane<ChatSessionResponse>("/chat/session/threads", {
     method: "POST",
     body: input?.title ? JSON.stringify({ title: input.title }) : undefined,
+  });
+
+export const materializeChatSessionTurn = (input: { message: string }) =>
+  requestControlPlane<ChatSessionResponse>("/chat/session/materialize-turn", {
+    method: "POST",
+    body: JSON.stringify(input),
   });
 
 export const getChatSessionThreads = (input?: {

@@ -17,6 +17,13 @@ import {
 } from "../lib/workbench/control-plane-signing";
 import { inspectUrl, validateUrlInspectInput } from "../lib/workbench/url-inspect";
 import {
+  adminTestToolError,
+  runnerEchoToolName,
+  validateRunnerEchoInput,
+  type RunnerEchoOutput,
+  type RunnerEchoResult,
+} from "../lib/workbench/admin-test-tools";
+import {
   repoSnapshotError,
   repoSnapshotToolName,
   validateRepoSnapshotInput,
@@ -308,6 +315,8 @@ type WorkflowCallbackPayload = {
   output?: Record<string, unknown>;
 };
 
+type RunnerToolResult = RepoSnapshotResult | RunnerEchoResult;
+
 const repoSnapshotTimeoutMs = 10_000;
 const repoSnapshotMaxStdoutBytes = 64 * 1024;
 const repoSnapshotMaxStderrBytes = 8 * 1024;
@@ -554,16 +563,17 @@ const repoSnapshotCallbackData = (
     : undefined,
 });
 
-const callbackFailure = (message: string): RepoSnapshotResult => ({
-  ok: false,
-  error: repoSnapshotError("repo_snapshot_failed", message, true),
-});
+const callbackFailure = (toolName: string, message: string): RunnerToolResult =>
+  toolName === runnerEchoToolName
+    ? { ok: false, error: adminTestToolError("test_tool_failed", message, true) }
+    : { ok: false, error: repoSnapshotError("repo_snapshot_failed", message, true) };
 
 const postWorkflowCallback = async (
   invocation: ToolRunnerInvocation,
   payload: WorkflowCallbackPayload,
-): Promise<{ ok: true } | { ok: false; result: RepoSnapshotResult; status: number }> => {
+): Promise<{ ok: true } | { ok: false; result: RunnerToolResult; status: number }> => {
   if (!invocation.callback) return { ok: true };
+  const toolName = typeof invocation.toolName === "string" ? invocation.toolName : "";
   if (
     invocation.callback.protocolVersion !== "workflow-callback-v0" ||
     typeof invocation.callback.url !== "string" ||
@@ -572,7 +582,7 @@ const postWorkflowCallback = async (
     return {
       ok: false,
       status: 400,
-      result: callbackFailure("Runner callback context is invalid."),
+      result: callbackFailure(toolName, "Runner callback context is invalid."),
     };
   }
 
@@ -581,7 +591,10 @@ const postWorkflowCallback = async (
     return {
       ok: false,
       status: 500,
-      result: callbackFailure("Workbench callback signing is not configured for the runner."),
+      result: callbackFailure(
+        toolName,
+        "Workbench callback signing is not configured for the runner.",
+      ),
     };
   }
 
@@ -592,7 +605,7 @@ const postWorkflowCallback = async (
     return {
       ok: false,
       status: 400,
-      result: callbackFailure("Runner callback URL is invalid."),
+      result: callbackFailure(toolName, "Runner callback URL is invalid."),
     };
   }
 
@@ -601,7 +614,7 @@ const postWorkflowCallback = async (
     "content-type": "application/json",
     "x-assistant-mk1-run-id": payload.runId,
     "x-assistant-mk1-workflow-intent-id": payload.workflowIntentId,
-    "x-assistant-mk1-tool-name": repoSnapshotToolName,
+    "x-assistant-mk1-tool-name": toolName,
   };
   Object.assign(
     headers,
@@ -625,7 +638,7 @@ const postWorkflowCallback = async (
     return {
       ok: false,
       status: 502,
-      result: callbackFailure(`Callback delivery failed for ${payload.event}.`),
+      result: callbackFailure(toolName, `Callback delivery failed for ${payload.event}.`),
     };
   }
 
@@ -633,12 +646,47 @@ const postWorkflowCallback = async (
     return {
       ok: false,
       status: response.status >= 500 ? 502 : 500,
-      result: callbackFailure(`Callback ${payload.event} was rejected with ${response.status}.`),
+      result: callbackFailure(
+        toolName,
+        `Callback ${payload.event} was rejected with ${response.status}.`,
+      ),
     };
   }
 
   return { ok: true };
 };
+
+const runnerEchoToolCallId = (runId: string) => `${runId}-tool-runner-echo`;
+
+const runRunnerEcho = (input: unknown): RunnerEchoResult => {
+  const parsed = validateRunnerEchoInput(input);
+  if ("code" in parsed) return { ok: false, error: parsed };
+  const startedAt = Date.now();
+  const message = parsed.message ?? "runner echo ok";
+  const echoed = parsed.uppercase ? message.toUpperCase() : message;
+  const output: RunnerEchoOutput = {
+    status: "ok",
+    summary: `Runner echo completed: ${echoed}.`,
+    message,
+    echoed,
+    uppercase: parsed.uppercase === true,
+    length: echoed.length,
+    timingMs: Date.now() - startedAt,
+  };
+  return { ok: true, output };
+};
+
+const runnerEchoCallbackData = (
+  invocation: ToolRunnerInvocation,
+  output?: RunnerEchoOutput,
+): Record<string, unknown> => ({
+  runner: invocation.runner,
+  policyDecisionId:
+    typeof invocation.policyDecisionId === "string" ? invocation.policyDecisionId : undefined,
+  source: typeof invocation.source === "string" ? invocation.source : undefined,
+  timingMs: output?.timingMs,
+  length: output?.length,
+});
 
 const emitRepoSnapshotCallback = async (
   invocation: ToolRunnerInvocation,
@@ -740,15 +788,129 @@ const handleToolRunnerInvocation = async (
     json(response, 400, { ok: false, error: "request body must be JSON" });
     return;
   }
-  if (parsed.toolName !== "url.inspect" && parsed.toolName !== repoSnapshotToolName) {
+  if (
+    parsed.toolName !== "url.inspect" &&
+    parsed.toolName !== repoSnapshotToolName &&
+    parsed.toolName !== runnerEchoToolName
+  ) {
     json(response, 400, {
       ok: false,
       error: "unsupported tool",
       details: {
         code: "unsupported_tool",
-        message: "Only url.inspect and repo.snapshot are supported by this runner endpoint.",
+        message:
+          "Only url.inspect, repo.snapshot, and runner.echo are supported by this runner endpoint.",
         retryable: false,
         redacted: true,
+      },
+    });
+    return;
+  }
+
+  if (parsed.toolName === runnerEchoToolName) {
+    const network = isRecord(parsed.runner?.sandbox) ? parsed.runner.sandbox.network : null;
+    if (!isRecord(network) || network.egress !== "none" || network.privateNetwork !== "deny") {
+      json(response, 403, {
+        ok: false,
+        error: {
+          code: "sandbox_required",
+          message: "runner.echo requires a no-egress sandbox policy.",
+          retryable: false,
+          redacted: true,
+        },
+        runner: parsed.runner,
+      });
+      return;
+    }
+    const startedAt = Date.now();
+    const runId = typeof parsed.runId === "string" ? parsed.runId : "unknown-run";
+    const startedCallback = await emitRepoSnapshotCallback(parsed, {
+      event: "run.started",
+      sequence: 1,
+      summary: "runner.echo runner started.",
+      toolCall: {
+        id: runnerEchoToolCallId(runId),
+        toolId: runnerEchoToolName,
+        status: "running",
+        data: runnerEchoCallbackData(parsed),
+      },
+    });
+    if (!startedCallback.ok) {
+      json(response, startedCallback.status, {
+        ...startedCallback.result,
+        runner: parsed.runner,
+        metrics: {
+          transport: "fly",
+          durationMs: Date.now() - startedAt,
+          callback: { status: "failed", event: "run.started" },
+        },
+      });
+      return;
+    }
+
+    const result = runRunnerEcho(parsed.input);
+    const terminalCallback = await emitRepoSnapshotCallback(
+      parsed,
+      result.ok
+        ? {
+            event: "run.completed",
+            sequence: 2,
+            summary: result.output.summary,
+            outputSummary: result.output.summary,
+            output: {
+              status: result.output.status,
+              summary: result.output.summary,
+              length: result.output.length,
+              timingMs: result.output.timingMs,
+            },
+            toolCall: {
+              id: runnerEchoToolCallId(runId),
+              toolId: runnerEchoToolName,
+              status: "completed",
+              outputSummary: result.output.summary,
+              data: runnerEchoCallbackData(parsed, result.output),
+            },
+          }
+        : {
+            event: "run.failed",
+            sequence: 2,
+            summary: result.error.message,
+            error: result.error.message,
+            toolCall: {
+              id: runnerEchoToolCallId(runId),
+              toolId: runnerEchoToolName,
+              status: "failed",
+              outputSummary: result.error.message,
+              data: {
+                ...runnerEchoCallbackData(parsed),
+                errorCode: result.error.code,
+              },
+            },
+          },
+    );
+    if (!terminalCallback.ok) {
+      json(response, terminalCallback.status, {
+        ...terminalCallback.result,
+        runner: parsed.runner,
+        metrics: {
+          transport: "fly",
+          durationMs: Date.now() - startedAt,
+          callback: {
+            status: "failed",
+            event: result.ok ? "run.completed" : "run.failed",
+          },
+        },
+      });
+      return;
+    }
+
+    json(response, result.ok ? 200 : 502, {
+      ...result,
+      runner: parsed.runner,
+      metrics: {
+        transport: "fly",
+        durationMs: Date.now() - startedAt,
+        callback: parsed.callback ? { status: "completed" } : { status: "skipped" },
       },
     });
     return;

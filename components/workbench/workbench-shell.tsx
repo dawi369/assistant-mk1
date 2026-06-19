@@ -35,7 +35,7 @@ function WorkbenchShellContent() {
   const [adminAccess, setAdminAccess] = useState<{ isAdmin: boolean } | null>(null);
   const [adminNotice, setAdminNotice] = useState<string | null>(null);
   const { user, loading } = useAuth();
-  const { connection, createThread, isInitialLoading } = useWorkbenchAgentConnection();
+  const { connection, isInitialLoading, startNewSession } = useWorkbenchAgentConnection();
 
   useEffect(() => {
     if (loading) return;
@@ -81,9 +81,9 @@ function WorkbenchShellContent() {
         return;
       }
 
-      await createThread();
+      startNewSession();
     },
-    [createThread],
+    [startNewSession],
   );
 
   const slashCommands = useMemo(
@@ -121,7 +121,7 @@ function WorkbenchShellContent() {
             ) : null}
           </div>
           <ThreadHistorySidebar
-            disableNewChat={!connection}
+            disableNewChat={false}
             disableThreadActions={!connection || isInitialLoading}
           />
           <div className="absolute top-14 right-3 z-20 flex max-w-[calc(100vw-1.5rem)] flex-col items-end gap-2">
