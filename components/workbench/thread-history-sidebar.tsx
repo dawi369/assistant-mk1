@@ -50,7 +50,7 @@ export function ThreadHistorySidebar({
   } = useWorkbenchAgentConnection();
   const [view, setView] = useState<"active" | "archived">("active");
   const [archiveError, setArchiveError] = useState<string | null>(null);
-  const { focusComposer } = useWorkbenchComposerFocus();
+  const { focusComposerAfterInteraction } = useWorkbenchComposerFocus();
   const creatingThread = pending?.type === "create";
   const isNavigatingThread =
     pending?.type === "activate" || pending?.type === "create" || pending?.type === "materialize";
@@ -106,17 +106,16 @@ export function ThreadHistorySidebar({
 
   const handleCreateThread = async () => {
     if (newChatDisabled) return;
-    focusComposer();
     startNewSession();
-    window.setTimeout(focusComposer, 0);
+    focusComposerAfterInteraction();
   };
 
   const handleActivateThread = async (threadId: string) => {
     if (threadItemsDisabled || isNavigatingThread) return;
-    focusComposer();
+    focusComposerAfterInteraction();
     await runThreadAction(async () => {
       await activateThread(threadId);
-      focusComposer();
+      focusComposerAfterInteraction();
     }, "Failed to switch chat");
   };
 

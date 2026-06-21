@@ -16,7 +16,10 @@ import {
   type AssistantSlashCommandContext,
 } from "@/components/assistant-ui/slash-command-context";
 import { AuthButton } from "@/components/auth/auth-button";
-import { WorkbenchComposerFocusProvider } from "@/components/workbench/composer-focus-context";
+import {
+  useWorkbenchComposerFocus,
+  WorkbenchComposerFocusProvider,
+} from "@/components/workbench/composer-focus-context";
 import { AdminPanel } from "@/components/workbench/dev-monitor-drawer";
 import { ThreadHistorySidebar } from "@/components/workbench/thread-history-sidebar";
 import { WorkbenchAssistantEvents } from "@/components/workbench/workbench-assistant-events";
@@ -43,7 +46,9 @@ const adminTestToolInputs: Record<
 export function WorkbenchShell() {
   return (
     <ChatSessionProvider>
-      <WorkbenchShellContent />
+      <WorkbenchComposerFocusProvider>
+        <WorkbenchShellContent />
+      </WorkbenchComposerFocusProvider>
     </ChatSessionProvider>
   );
 }
@@ -54,6 +59,7 @@ function WorkbenchShellContent() {
   const [adminNotice, setAdminNotice] = useState<string | null>(null);
   const { user, loading } = useAuth();
   const { isInitialLoading, startNewSession } = useWorkbenchAgentConnection();
+  const { focusComposerAfterInteraction } = useWorkbenchComposerFocus();
 
   useEffect(() => {
     if (loading) return;
@@ -100,8 +106,9 @@ function WorkbenchShellContent() {
       }
 
       startNewSession();
+      focusComposerAfterInteraction();
     },
-    [startNewSession],
+    [focusComposerAfterInteraction, startNewSession],
   );
 
   const runAdminTestTool = useCallback(
@@ -135,10 +142,11 @@ function WorkbenchShellContent() {
         setAdminNotice(error instanceof Error ? error.message : `Failed to run ${toolName}`);
         requestWorkbenchSummaryRefresh({ source: "event" });
       } finally {
+        focusComposerAfterInteraction();
         window.setTimeout(() => setAdminNotice(null), 3000);
       }
     },
-    [adminAccess?.isAdmin],
+    [adminAccess?.isAdmin, focusComposerAfterInteraction],
   );
 
   const slashCommands = useMemo(() => {
@@ -191,26 +199,24 @@ function WorkbenchShellContent() {
 
   return (
     <div className="bg-background relative h-dvh overflow-hidden">
-      <WorkbenchComposerFocusProvider>
-        <AssistantSlashCommandProvider commands={slashCommands}>
-          <div className="absolute top-3 right-3 z-30 flex max-w-[calc(100vw-1.5rem)] flex-col items-end gap-2">
-            <AuthButton />
-            {adminNotice ? (
-              <div className="border-border bg-background/95 text-muted-foreground rounded-md border px-2.5 py-1.5 text-xs shadow-xs backdrop-blur">
-                {adminNotice}
-              </div>
-            ) : null}
-          </div>
-          <ThreadHistorySidebar disableNewChat={false} disableThreadActions={isInitialLoading} />
-          <div className="absolute top-14 right-3 z-20 flex max-w-[calc(100vw-1.5rem)] flex-col items-end gap-2">
-            <WorkbenchRuntimeHint onOpenAdmin={openAdmin} />
-          </div>
-          <Assistant>
-            <WorkbenchAssistantEvents />
-          </Assistant>
-          <AdminPanel open={adminOpen} onOpenChange={setAdminOpen} />
-        </AssistantSlashCommandProvider>
-      </WorkbenchComposerFocusProvider>
+      <AssistantSlashCommandProvider commands={slashCommands}>
+        <div className="absolute top-3 right-3 z-30 flex max-w-[calc(100vw-1.5rem)] flex-col items-end gap-2">
+          <AuthButton />
+          {adminNotice ? (
+            <div className="border-border bg-background/95 text-muted-foreground rounded-md border px-2.5 py-1.5 text-xs shadow-xs backdrop-blur">
+              {adminNotice}
+            </div>
+          ) : null}
+        </div>
+        <ThreadHistorySidebar disableNewChat={false} disableThreadActions={isInitialLoading} />
+        <div className="absolute top-14 right-3 z-20 flex max-w-[calc(100vw-1.5rem)] flex-col items-end gap-2">
+          <WorkbenchRuntimeHint onOpenAdmin={openAdmin} />
+        </div>
+        <Assistant>
+          <WorkbenchAssistantEvents />
+        </Assistant>
+        <AdminPanel open={adminOpen} onOpenChange={setAdminOpen} />
+      </AssistantSlashCommandProvider>
     </div>
   );
 }

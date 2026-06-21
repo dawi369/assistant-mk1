@@ -45,13 +45,13 @@ does not use `WORKBENCH_DEV_WORKSPACE_ID` or `WORKBENCH_DEV_AGENT_ID`;
 Cloudflare resolves the active workspace and active agent from D1, falling back
 to account/workspace defaults when no user preference exists.
 
-The `/langgraph` facade also stores tenant-scoped chat sessions, chat thread
-ownership, chat intents, policy decisions, and minimal chat run envelopes in
-D1. It also appends tenant-scoped control-plane events for session, thread,
-intent, policy, and run progress. Those events are available through snapshot
-routes and a short-lived SSE stream. This proves the dev multi-tenant,
-execution-policy, and observable-progress boundary without adding frontend
-auth, Durable Objects, queues, or transcript storage.
+Normal chat/session state is Cloudflare-owned. `WorkbenchSessionAgent` owns
+session snapshots, recent thread summaries, active-thread selection, and the
+short-lived session event stream. `WorkbenchThreadChatAgent` owns per-thread
+hot messages and streaming. D1 mirrors compact chat run, policy, trace,
+tool-runner, and event metadata for Admin visibility. The `/langgraph` facade
+remains for compatibility and explicit Fly/LangGraph delegation, not the normal
+chat path.
 
 ## Fly Configuration
 
@@ -60,6 +60,7 @@ Required secrets:
 - `OPENROUTER_API_KEY`
 - `OPENROUTER_MODEL`
 - `WORKBENCH_EXECUTOR_TOKEN`
+- `WORKBENCH_RUNNER_SIGNING_SECRET`
 - `WORKBENCH_CALLBACK_SIGNING_SECRET`
 - `LANGGRAPH_PROXY_TOKEN`
 

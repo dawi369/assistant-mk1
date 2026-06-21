@@ -192,6 +192,41 @@ export type ToolRunnerInvocationResponse = (
 
 const runnerInvocationPath = "/workbench/tool-runners/invocations";
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+const parsedRunnerErrorCode = (value: unknown) => {
+  if (!isRecord(value)) return undefined;
+  const error = isRecord(value.error) ? value.error : null;
+  const details = isRecord(value.details) ? value.details : null;
+  return typeof error?.code === "string"
+    ? error.code
+    : typeof details?.code === "string"
+      ? details.code
+      : undefined;
+};
+
+const parsedRunnerErrorMessage = (value: unknown) => {
+  if (!isRecord(value)) return undefined;
+  const error = isRecord(value.error) ? value.error : null;
+  const details = isRecord(value.details) ? value.details : null;
+  const source =
+    error && error.redacted === true
+      ? error
+      : details && details.redacted === true
+        ? details
+        : null;
+  return typeof source?.message === "string" && source.message ? source.message : undefined;
+};
+
+const safeRunnerDispatchErrorCode = (toolName: string, code?: string) => {
+  if (code === "runner_callback_signing_not_configured") return code;
+  if (code === "runner_request_failed") return code;
+  if (toolName === "repo.snapshot" && code === "repo_snapshot_failed") return code;
+  if (toolName === "runner.echo" && code === "test_tool_failed") return code;
+  return "runner_request_failed";
+};
+
 export const isFlyRunnerConfigured = (env: Env) =>
   env.WORKBENCH_RUNNER_TRANSPORT === flyRunnerTransport &&
   Boolean(env.WORKBENCH_RUNNER_URL?.trim()) &&
@@ -221,6 +256,7 @@ export const invokeFlyToolRunner = async (
   }
 
   const body = JSON.stringify(invocation);
+  const startedAtMs = Date.now();
   const url = new URL(endpoint);
   const pathWithQuery = `${url.pathname}${url.search}`;
   const headers: Record<string, string> = {
@@ -252,6 +288,16 @@ export const invokeFlyToolRunner = async (
       body,
     });
   } catch {
+    console.warn("tool_runner.dispatch_failed", {
+      component: "cloudflare-control-plane",
+      event: "runner.dispatch.failed",
+      toolName: invocation.toolName,
+      runId: invocation.runId,
+      workflowIntentId: invocation.workflowIntentId,
+      status: "network_error",
+      code: "runner_request_failed",
+      durationMs: Math.max(0, Math.round(Date.now() - startedAtMs)),
+    });
     return {
       ok: false,
       error: {
@@ -261,17 +307,36 @@ export const invokeFlyToolRunner = async (
         redacted: true,
       },
       runner: invocation.runner,
-      metrics: { status: "network_error" },
+      metrics: {
+        status: "network_error",
+        code: "runner_request_failed",
+        durationMs: Math.max(0, Math.round(Date.now() - startedAtMs)),
+      },
     };
   }
 
   const parsed = await response.json().catch(() => null);
   if (!response.ok) {
+    const runnerCode = parsedRunnerErrorCode(parsed);
+    const code = safeRunnerDispatchErrorCode(invocation.toolName, runnerCode);
+    const durationMs = Math.max(0, Math.round(Date.now() - startedAtMs));
+    const runnerMessage = parsedRunnerErrorMessage(parsed);
+    console.warn("tool_runner.dispatch_failed", {
+      component: "cloudflare-control-plane",
+      event: "runner.dispatch.failed",
+      toolName: invocation.toolName,
+      runId: invocation.runId,
+      workflowIntentId: invocation.workflowIntentId,
+      status: response.status,
+      code,
+      runnerCode,
+      durationMs,
+    });
     return {
       ok: false,
       error: {
-        code: "runner_request_failed",
-        message: `Fly runner request failed with ${response.status}.`,
+        code,
+        message: runnerMessage ?? `Fly runner request failed with ${response.status}.`,
         retryable: response.status >= 500,
         redacted: true,
       },
@@ -280,9 +345,11 @@ export const invokeFlyToolRunner = async (
         parsed && typeof parsed === "object" && !Array.isArray(parsed)
           ? {
               status: response.status,
-              code: (parsed as { details?: { code?: string } }).details?.code,
+              durationMs,
+              code,
+              runnerCode,
             }
-          : { status: response.status },
+          : { status: response.status, durationMs, code },
     };
   }
 

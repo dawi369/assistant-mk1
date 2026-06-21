@@ -1,13 +1,33 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  invokeFlyToolRunner,
   repoSnapshotSandboxContract,
   runnerMetadataFor,
   runnerEchoSandboxContract,
   urlInspectSandboxContract,
 } from "./tool-runner";
+import type { AgentIdentity, Env } from "./types";
+
+const identity = {
+  scope: {
+    userId: "user-1",
+    workspaceId: "workspace-1",
+  },
+  agentId: "agent-1",
+} as AgentIdentity;
+
+const env = {
+  WORKBENCH_RUNNER_URL: "https://runner.example.test/workbench/tool-runners/invocations",
+  WORKBENCH_RUNNER_SIGNING_SECRET: "runner-secret",
+} as Env;
 
 describe("tool runner sandbox contracts", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
   it("builds a compact url.inspect sandbox contract from policy constraints", () => {
     const sandbox = urlInspectSandboxContract({
       allowlist: ["Example.com", "*.example.org", ""],
@@ -120,5 +140,67 @@ describe("tool runner sandbox contracts", () => {
       },
     });
     expect(JSON.stringify(sandbox)).not.toMatch(/token|secret|prompt|command|path|url/i);
+  });
+
+  it("preserves typed Fly runner error codes in failed dispatch metrics", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json(
+          {
+            ok: false,
+            error: {
+              code: "runner_callback_signing_not_configured",
+              message: "Workbench callback signing is not configured for the runner.",
+              retryable: false,
+              redacted: true,
+            },
+          },
+          { status: 500 },
+        ),
+      ),
+    );
+
+    const result = await invokeFlyToolRunner(env, identity, {
+      toolName: "runner.echo",
+      runId: "run-1",
+      workflowIntentId: "intent-1",
+      scope: {
+        userId: "user-1",
+        workspaceId: "workspace-1",
+      },
+      agentId: "agent-1",
+      execution: {
+        mode: "dry_run",
+        policy: "admin-conformance-runner-echo-v0",
+      },
+      input: {
+        message: "runner echo ok",
+      },
+      runner: runnerMetadataFor(
+        {
+          toolName: "runner.echo",
+          adapterVersion: "runner-echo-v1",
+          supportedExecutionModes: ["dry_run"],
+          transport: "fly",
+        },
+        "admin",
+        "fly",
+        runnerEchoSandboxContract(),
+      ),
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("runner dispatch unexpectedly succeeded");
+    expect(result.error.code).toBe("runner_callback_signing_not_configured");
+    expect(result.error.message).toBe(
+      "Workbench callback signing is not configured for the runner.",
+    );
+    expect(result.metrics).toMatchObject({
+      status: 500,
+      code: "runner_callback_signing_not_configured",
+      runnerCode: "runner_callback_signing_not_configured",
+    });
   });
 });

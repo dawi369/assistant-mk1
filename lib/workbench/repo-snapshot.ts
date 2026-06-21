@@ -9,7 +9,9 @@ export type RepoSnapshotError = {
     | "invalid_input"
     | "repo_snapshot_failed"
     | "repo_snapshot_timeout"
-    | "repo_snapshot_unavailable";
+    | "repo_snapshot_unavailable"
+    | "runner_request_failed"
+    | "runner_callback_signing_not_configured";
   message: string;
   retryable: boolean;
   redacted: true;

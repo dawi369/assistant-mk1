@@ -53,17 +53,19 @@ workbench.
 
 - Default assistant-ui chat is the normal screen.
 - Normal chat uses Cloudflare Agents through `app/assistant.tsx`.
+- `/new` starts a local blank session immediately and only materializes a
+  Cloudflare thread when the first message is sent.
 - The runtime hint shows server-derived workspace, agent/profile, chat state,
   and error detail.
 - Recent chat state and active-thread switching are Cloudflare-owned.
-- `/new` creates a new thread without routing a command to the model.
 - `/admin` opens a server-gated Admin panel and is stripped before model send.
 - Admin leads with Cloudflare-derived runtime visibility: trace graph,
   waterfall, chat readiness, active workspace, active agent/profile, latest
   meaningful event, and important error.
 - Admin has secondary workspace/agent controls, behavior template import and
-  preview, tool registry visibility, `url.inspect`, `repo.snapshot`, approval
-  queue, and policy/model-exposure explanations.
+  preview, tool registry visibility, `url.inspect`, `repo.snapshot`,
+  Admin-only conformance tools, approval queue, and policy/model-exposure
+  explanations.
 - Cloudflare exposes backend execution and artifact history metadata through
   scoped workbench APIs. Admin can inspect recent runs and metadata-only
   artifacts; there is no blob artifact storage or polished customer-facing
@@ -73,8 +75,9 @@ workbench.
 
 ## Near-Term Milestones
 
-1. Make the connected workbench feel local-first: cached shell first, immediate
-   draft input, fast thread switching, and background Cloudflare reconciliation.
+1. Keep the connected workbench local-feeling: fast first paint, immediate
+   draft input, responsive thread switching, and background Cloudflare
+   reconciliation.
 2. Turn Admin-only execution and artifact history into a customer-facing
    workbench surface when the data model is stable enough.
 3. Expand agent behavior from template import/preview into editing, version
@@ -85,7 +88,8 @@ workbench.
    integrations without introducing a committed `Project` entity too early.
 6. Broaden read-only tool adapters beyond `url.inspect` and `repo.snapshot`
    while keeping mutation-capable tools behind the production gates.
-7. Move Fly/LangGraph producers onto the generic scoped callback path.
+7. Move the remaining Fly/LangGraph producers onto the generic scoped callback
+   path.
 8. Add generic managed-state, audit, and decision-record surfaces.
 
 ## Component Rules

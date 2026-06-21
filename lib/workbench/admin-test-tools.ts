@@ -13,7 +13,11 @@ export type AdminTestToolName =
   | typeof artifactMetadataTestToolName;
 
 export type AdminTestToolError = {
-  code: "invalid_input" | "test_tool_failed";
+  code:
+    | "invalid_input"
+    | "test_tool_failed"
+    | "runner_request_failed"
+    | "runner_callback_signing_not_configured";
   message: string;
   retryable: boolean;
   redacted: true;

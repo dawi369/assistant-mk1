@@ -25,6 +25,9 @@ scoped.
 - `WorkbenchSessionAgent` owns hot session snapshots, recent thread summaries,
   active-thread switching, signed per-thread Agent connection payloads, and the
   scoped live-session event stream.
+- New chat starts as a local blank session. D1/Cloudflare thread state is
+  created on first send through the materialize-turn path, then the browser
+  reconnects to the normal per-thread Agent runtime.
 - Fly/LangGraph remain available for graph-shaped workflows, the runtime
   gateway, and signed heavy tool execution. They are not the default path for a
   plain chat message.
@@ -33,23 +36,27 @@ scoped.
 - Read-only tools now include `url.inspect` and `repo.snapshot`, with
   Cloudflare-owned tool policy, runner metadata, artifacts, audit events,
   runtime traces, and model exposure controls.
+- Admin-only conformance tools now cover Cloudflare-inline ping,
+  callback-backed Fly runner echo, and metadata artifact creation. They are
+  model-hidden, dry-run-only, and non-policy-editable.
 - Vercel external signals now enter Cloudflare first. Cloudflare creates typed
   workflow intent, run, audit, and control-plane event records before
   delegating to LangGraph where needed.
 - Generic signed workflow callbacks are implemented at
   `POST /workbench/run-callbacks` for delegated work to report compact
   lifecycle/artifact metadata back into Cloudflare-owned D1 state.
-- Admin can read recent execution history, artifact metadata, and selected run
-  snapshots through Cloudflare-owned history APIs.
+- Admin can read recent execution history, artifact metadata, selected run
+  snapshots, compact/drawer summary projections, and recovered-vs-current error
+  state through Cloudflare-owned APIs.
 - The current dev schema is rebuildable. Keep the active schema in
   `cloudflare/control-plane/schema.sql` until the project explicitly introduces
   migrations and remote data retention.
 
 ## Active Next Targets
 
-1. Make the chat shell feel local-first: cached workspace/thread chrome,
-   immediate draft input, fast thread switching, and background reconciliation
-   with Cloudflare-owned truth.
+1. Keep reducing perceived latency in the chat shell: cached workspace/thread
+   chrome, immediate draft input, fast thread switching, first-send
+   materialization, and background reconciliation with Cloudflare-owned truth.
 2. Keep model-visible tools narrow and policy-gated; harden model-side tool
    rendering and approval explanations before broader model tool use.
 3. Expand read-only adapters beyond `url.inspect` and `repo.snapshot` only
@@ -107,8 +114,8 @@ tool and workbench work:
   behavior snapshots.
 - Cloudflare Agents normal-chat runtime, session coordinator, recent threads,
   runtime summaries, live events, and traces.
-- Admin visibility, tool registry exposure, `url.inspect`, durable tool policy,
-  approval lifecycle, and runner metadata.
+- Admin visibility, tool registry exposure, Admin conformance tools,
+  `url.inspect`, durable tool policy, approval lifecycle, and runner metadata.
 - `repo.snapshot` as the first serious read-only CLI/OSS adapter behind the
   shared policy/run/artifact/audit/trace model.
 - Cloudflare-first external-signal intent mirroring before LangGraph
@@ -118,4 +125,4 @@ tool and workbench work:
 - Admin execution history, artifact metadata history, and selected-run
   snapshots.
 - Runtime visibility trimming, Admin summary projection tiers, and a
-  responsive pre-runtime draft shell.
+  responsive local-new/pre-runtime draft shell.

@@ -5,6 +5,7 @@ import { createContext, useCallback, useContext, useMemo, useRef, type ReactNode
 type ComposerFocusContextValue = {
   registerComposerInput: (element: HTMLElement | null) => void;
   focusComposer: () => void;
+  focusComposerAfterInteraction: () => void;
 };
 
 const ComposerFocusContext = createContext<ComposerFocusContextValue | null>(null);
@@ -34,12 +35,18 @@ export function WorkbenchComposerFocusProvider({ children }: { children: ReactNo
     window.requestAnimationFrame(tryFocus);
   }, []);
 
+  const focusComposerAfterInteraction = useCallback(() => {
+    focusComposer();
+    window.setTimeout(focusComposer, 0);
+  }, [focusComposer]);
+
   const value = useMemo(
     () => ({
       registerComposerInput,
       focusComposer,
+      focusComposerAfterInteraction,
     }),
-    [focusComposer, registerComposerInput],
+    [focusComposer, focusComposerAfterInteraction, registerComposerInput],
   );
 
   return <ComposerFocusContext.Provider value={value}>{children}</ComposerFocusContext.Provider>;

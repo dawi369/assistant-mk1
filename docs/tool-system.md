@@ -237,7 +237,27 @@ Behavior:
   `d1://control-plane/{runId}/repo-snapshot-report.json`.
 - Is Admin-visible by default and model-hidden unless explicit policy enables
   model exposure for the current user/workspace/agent scope.
+- Uses the generic signed workflow callback lifecycle for canonical run,
+  tool-call, artifact, audit, event, and session-update writes. The Admin
+  `/tools/runs` facade still returns a synchronous-compatible completed/failed
+  response after callback-written state is read back.
 
 This adapter is the template for future read-only CLI/OSS tools: fixed inputs,
 fixed execution contract, structured output, policy before exposure, and
 Cloudflare-owned run/artifact/audit/trace records.
+
+## Admin Conformance Tools
+
+Admin conformance tools exercise the tool system without widening product risk:
+
+- `diagnostic.ping`: Cloudflare-inline deterministic probe for policy, run,
+  tool-call, audit, event, trace, and history plumbing.
+- `runner.echo`: signed Fly runner probe for runner dispatch and callback-owned
+  lifecycle. It has bounded string/options input and no artifact by default.
+- `artifact.metadata.test`: Cloudflare-inline metadata artifact creator that
+  writes a `d1://control-plane/{runId}/artifact-metadata-test.json` reference.
+
+These tools are owner/admin visible, model-hidden, dry-run-only,
+non-mutation-capable, and non-policy-editable. They should stay boring and
+deterministic; they exist to prove the control plane, not to become product
+features.

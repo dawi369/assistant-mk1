@@ -237,7 +237,7 @@ const ThreadSuggestionItem: FC = () => {
 
 const Composer: FC = () => {
   const commands = useAssistantSlashCommands();
-  const { registerComposerInput } = useWorkbenchComposerFocus();
+  const { focusComposerAfterInteraction, registerComposerInput } = useWorkbenchComposerFocus();
   const aui = useAui();
   const composerText = useAuiState((s) => s.composer.text);
   const isThreadRunning = useAuiState((s) => s.thread.isRunning);
@@ -262,6 +262,7 @@ const Composer: FC = () => {
     event.preventDefault();
     aui.thread().composer().setText("");
     void command.execute(commandContext);
+    focusComposerAfterInteraction();
   };
 
   return (
@@ -287,7 +288,11 @@ const Composer: FC = () => {
             <ComposerAction />
           </div>
         </ComposerPrimitive.AttachmentDropzone>
-        <ComposerSlashCommandPopover commands={commands} commandContext={commandContext} />
+        <ComposerSlashCommandPopover
+          commands={commands}
+          commandContext={commandContext}
+          onCommandExecuted={focusComposerAfterInteraction}
+        />
       </ComposerPrimitive.Root>
     </ComposerPrimitive.Unstable_TriggerPopoverRoot>
   );
@@ -300,13 +305,17 @@ const ComposerSlashCommandPopover: FC<{
     isLoadingThread: boolean;
     isThreadRunning: boolean;
   };
-}> = ({ commands, commandContext }) => {
+  onCommandExecuted: () => void;
+}> = ({ commands, commandContext, onCommandExecuted }) => {
   const slash = unstable_useSlashCommandAdapter({
     commands: commands.map((command) => ({
       id: command.id,
       label: command.label,
       description: command.description,
-      execute: () => command.execute(commandContext),
+      execute: () => {
+        void command.execute(commandContext);
+        onCommandExecuted();
+      },
     })),
     removeOnExecute: true,
   });

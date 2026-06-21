@@ -50,10 +50,11 @@ Current implemented layout:
 
 - Main thread region using assistant-ui.
 - Top-right auth controls.
-- `/new` composer command for creating a fresh Cloudflare-owned thread.
+- `/new` composer command for entering a local blank session.
 - `/admin` composer command for the flow-first Cloudflare-owned Admin panel.
-- Admin tool actions for read-only adapters, currently `url.inspect` and
-  `repo.snapshot`.
+- Admin tool actions for read-only adapters and conformance tools, currently
+  `url.inspect`, `repo.snapshot`, `diagnostic.ping`, `runner.echo`, and
+  `artifact.metadata.test`.
 - Admin diagnostic compatibility action for `demo.inspect`.
 - Cache-backed recent-chat sidebar for display-only workspace history. Cached
   rows can paint immediately, then reconcile with Cloudflare.
@@ -69,11 +70,12 @@ Target layout:
 The first screen should be the usable workbench, not a landing page.
 
 Thread transitions should not blank the whole app after the first successful
-Cloudflare Agent connection. `/new` or the sidebar may insert a pending local
-row named with the current time, and selecting an old thread may highlight the
-cached row immediately, but Cloudflare must still confirm the active
-thread/agent and mint the signed Agent token before the runtime actually
-switches.
+Cloudflare Agent connection. `/new` and the sidebar plus button enter a local
+blank session immediately, without creating a D1 thread or sidebar row. The
+first real send materializes the Cloudflare thread and starts the turn.
+Selecting an existing thread may highlight cached state immediately, but
+Cloudflare must still confirm the active thread/agent and mint the signed Agent
+token before the runtime actually switches.
 
 The workbench shell should paint before the Cloudflare Agent token is ready.
 Cached workspace/thread chrome can render immediately, the right-side runtime
@@ -276,8 +278,8 @@ Source:
 Implemented:
 
 - assistant-ui thread remains primary.
-- Fresh threads are created through the local `/new` composer command or the
-  recent-chats sidebar, not a permanent top-right app button.
+- Fresh chat starts through the local `/new` composer command or recent-chats
+  sidebar plus button. It stays unmaterialized until the first message is sent.
 - The normal shell includes a compact server-derived runtime hint for active
   workspace, active agent/profile, model, chat state, and quick access to
   Admin when the latest runtime state needs attention.
@@ -299,8 +301,14 @@ Implemented:
   approval-required, and kill-switch blocks inline.
 - `repo.snapshot` is available as a read-only runner-backed adapter with
   bounded options and metadata-only artifacts.
+- Admin Test Tools includes `diagnostic.ping`, `runner.echo`, and
+  `artifact.metadata.test` as model-hidden, dry-run-only conformance probes for
+  policy, runner, callback, artifact, history, and event plumbing.
 - Admin includes read-only execution history, artifact metadata history, and a
   selected-run snapshot drilldown.
+- Admin summary treats historical tool failures as history once a newer
+  completed control run proves the path recovered; stale errors remain
+  inspectable through history instead of pinning the global Details state.
 - `demo.inspect` remains a dev diagnostic action, not a product-level workflow.
 - The empty chat state stays default assistant-ui but includes practical
   starter prompts for readiness, project planning, agent behavior, and failure

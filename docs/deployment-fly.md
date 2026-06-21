@@ -15,9 +15,10 @@ Active runtime app:
 - Gateway proxies LangGraph traffic to `LANGGRAPH_UPSTREAM_URL`
 - Gateway serves signed workbench executor requests
 
-This split removes the Vercel -> Fly Next proxy -> LangGraph hop.
-Hosted chat traffic now reaches this gateway through the Cloudflare
-`/langgraph` facade.
+This split removes the old Vercel -> Fly Next proxy -> LangGraph hop. Normal
+hosted chat now runs through Cloudflare Agents. The Fly gateway remains for
+LangGraph compatibility paths, explicit workflow escalation, and signed tool
+runner work.
 
 ## Required Secrets
 

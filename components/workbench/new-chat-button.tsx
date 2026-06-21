@@ -1,6 +1,5 @@
 "use client";
 
-import { useAuiState } from "@assistant-ui/react";
 import { MessageSquarePlusIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -14,9 +13,10 @@ export function NewChatButton({
   className?: string;
   label?: string;
 }) {
-  const isRunning = useAuiState((state) => state.thread.isRunning);
-  const isLoadingThread = useAuiState((state) => state.threads.isLoading);
-  const { startNewSession } = useWorkbenchAgentConnection();
+  const { pending, session, startNewSession } = useWorkbenchAgentConnection();
+  const isRunning = session?.activeThread?.latestRunStatus === "running";
+  const isLoadingThread =
+    pending?.type === "initial" || pending?.type === "activate" || pending?.type === "materialize";
   const disabled = isRunning || isLoadingThread;
 
   const startNewChat = () => {

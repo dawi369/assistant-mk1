@@ -8,20 +8,20 @@ The current deployed flow is:
 
 ```text
 Browser -> Vercel Next.js frontend
-        -> Cloudflare Worker/D1 for workbench run control
-        -> Fly LangGraph runtime executor for demo.inspect callbacks
+        -> Cloudflare Worker/D1 for workbench run, session, and tool control
+        -> Fly runtime gateway for signed heavy execution/tool runners
 
 Browser -> Vercel Next.js /api proxy
-        -> Cloudflare /langgraph compatibility facade
-        -> Cloudflare-owned simple chat runtime for normal messages
-        -> Fly LangGraph runtime gateway only for explicit heavy escalation
+        -> Cloudflare Agents for normal chat
+        -> Cloudflare /langgraph compatibility facade only when needed
+        -> Fly LangGraph/runtime gateway for explicit heavy escalation
 ```
 
 Vercel owns frontend rendering and browser-facing API proxying. Cloudflare owns
-run control, tenant state, simple chat runtime, chat sessions, chat thread
-ownership, chat intents, chat policy decisions, and the control-plane activity
-feed plus event stream. Fly owns LangGraph workflow execution and signed
-executor work when Cloudflare escalates to heavy compute.
+run control, tenant state, Cloudflare Agents chat, chat sessions, chat thread
+ownership, chat intents, chat policy decisions, tool policy, callbacks, and the
+control-plane activity feed plus event stream. Fly owns LangGraph workflow
+execution and signed runner work when Cloudflare escalates to heavy compute.
 
 WorkOS AuthKit is the current hosted identity boundary. Vercel maps WorkOS
 identity into trusted headers; the browser never sends tenant scope directly.

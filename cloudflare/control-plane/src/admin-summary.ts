@@ -87,6 +87,20 @@ const latestFailedControlRun = (env: Env, scope: TenantScope) =>
             created_at, updated_at
      FROM control_runs
      WHERE user_id = ? AND workspace_id = ? AND status = 'failed'
+       AND NOT EXISTS (
+         SELECT 1
+         FROM control_runs newer
+         WHERE newer.user_id = control_runs.user_id
+           AND newer.workspace_id = control_runs.workspace_id
+           AND newer.status = 'completed'
+           AND (
+             newer.updated_at > control_runs.updated_at
+             OR (
+               newer.updated_at = control_runs.updated_at
+               AND newer.created_at > control_runs.created_at
+             )
+           )
+       )
      ORDER BY updated_at DESC, created_at DESC
      LIMIT 1`,
   )
@@ -102,6 +116,14 @@ const latestErrorEvent = (env: Env, scope: TenantScope) =>
        AND workspace_id = ?
        AND type NOT LIKE 'chat.%'
        AND (type LIKE '%failed%' OR type LIKE '%error%')
+       AND NOT EXISTS (
+         SELECT 1
+         FROM control_runs newer
+         WHERE newer.user_id = control_plane_events.user_id
+           AND newer.workspace_id = control_plane_events.workspace_id
+           AND newer.status = 'completed'
+           AND newer.updated_at > control_plane_events.created_at
+       )
      ORDER BY rowid DESC
      LIMIT 1`,
   )

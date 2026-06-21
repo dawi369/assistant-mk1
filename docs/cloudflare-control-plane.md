@@ -103,7 +103,8 @@ product/runtime state.
 Current v0 callback ingestion uses `POST /workbench/run-callbacks`. Producers
 sign the request with `WORKBENCH_CALLBACK_SIGNING_SECRET`; Cloudflare resolves
 tenant scope from the stored run, accepts compact lifecycle/artifact metadata,
-and emits `workflow.run.updated` plus Admin invalidation hints. The old
+and emits `workflow.run.updated` plus Admin invalidation hints. Callback-backed
+tool calls also emit `tool.run.updated`. The old
 `/internal/workbench/run-callbacks` route remains only as demo compatibility.
 
 ## Runtime Traces
@@ -112,12 +113,16 @@ D1 is the first-party runtime trace store. The Worker writes `runtime_traces`
 and `runtime_spans` for scoped chat/thread/tool operations so Admin can answer
 which service was hit and where latency accumulated.
 
-Current trace kinds:
+Current trace kinds include:
 
 - `chat.thread.create`
 - `chat.agent.stream`
 - `chat.run.stream` for legacy/simple-chat transition paths
 - `tool.url.inspect`
+- `tool.repo.snapshot`
+- `tool.runner.echo`
+- `tool.diagnostic.ping`
+- `tool.artifact.metadata.test`
 - `diagnostic.demo.inspect` when it can be attached without broad executor
   refactors
 
@@ -168,7 +173,23 @@ dry-run only, Admin-visible by default, model-hidden unless explicitly enabled
 by policy, and does not accept arbitrary shell commands or filesystem paths. It
 runs through the signed runner boundary with a fixed sandbox contract:
 ephemeral filesystem, no network egress, timeout, stdout/stderr limits,
-redaction, and metadata-only artifact promotion.
+redaction, and metadata-only artifact promotion. Its runner lifecycle is
+callback-owned: the Fly gateway posts `run.started`, `artifact.created`, and
+terminal callbacks, while `/tools/runs` remains synchronous-compatible for
+Admin.
+
+Admin conformance tools are intentionally product-safe probes:
+
+- `diagnostic.ping`: Cloudflare-inline policy/run/tool/audit/event trace probe.
+- `runner.echo`: signed Fly runner probe using the workflow callback lifecycle.
+- `artifact.metadata.test`: Cloudflare-inline metadata artifact probe.
+
+They are Admin-visible, model-hidden, dry-run-only, and not editable through
+tool policy.
+
+Admin summary `lastError` is recovery-aware. Historical failed runs and failed
+events remain in history, but they stop pinning the global Details state after
+a newer completed control run for the same workspace proves the path recovered.
 
 `demo.inspect` remains registered only as diagnostic compatibility for the
 original Cloudflare-owned run slice. It is not editable through Admin and

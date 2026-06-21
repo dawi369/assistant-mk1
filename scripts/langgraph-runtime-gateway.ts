@@ -563,10 +563,51 @@ const repoSnapshotCallbackData = (
     : undefined,
 });
 
-const callbackFailure = (toolName: string, message: string): RunnerToolResult =>
+const callbackFailure = (
+  toolName: string,
+  message: string,
+  input?: {
+    code?: "test_tool_failed" | "runner_callback_signing_not_configured";
+    retryable?: boolean;
+  },
+): RunnerToolResult =>
   toolName === runnerEchoToolName
-    ? { ok: false, error: adminTestToolError("test_tool_failed", message, true) }
-    : { ok: false, error: repoSnapshotError("repo_snapshot_failed", message, true) };
+    ? {
+        ok: false,
+        error: adminTestToolError(
+          input?.code ?? "test_tool_failed",
+          message,
+          input?.retryable ?? true,
+        ),
+      }
+    : {
+        ok: false,
+        error: repoSnapshotError(
+          input?.code === "runner_callback_signing_not_configured"
+            ? "runner_callback_signing_not_configured"
+            : "repo_snapshot_failed",
+          message,
+          input?.retryable ?? true,
+        ),
+      };
+
+const logCallbackFailure = (
+  invocation: ToolRunnerInvocation,
+  payload: WorkflowCallbackPayload,
+  input: { status: number | string; code: string; message: string },
+) => {
+  console.warn("runner.callback_failed", {
+    component: "langgraph-runtime-gateway",
+    event: "runner.callback.failed",
+    toolName: typeof invocation.toolName === "string" ? invocation.toolName : undefined,
+    runId: payload.runId,
+    workflowIntentId: payload.workflowIntentId,
+    callbackEvent: payload.event,
+    status: input.status,
+    code: input.code,
+    message: input.message,
+  });
+};
 
 const postWorkflowCallback = async (
   invocation: ToolRunnerInvocation,
@@ -588,13 +629,19 @@ const postWorkflowCallback = async (
 
   const secret = process.env.WORKBENCH_CALLBACK_SIGNING_SECRET?.trim();
   if (!secret) {
+    const message = "Workbench callback signing is not configured for the runner.";
+    logCallbackFailure(invocation, payload, {
+      status: 500,
+      code: "runner_callback_signing_not_configured",
+      message,
+    });
     return {
       ok: false,
       status: 500,
-      result: callbackFailure(
-        toolName,
-        "Workbench callback signing is not configured for the runner.",
-      ),
+      result: callbackFailure(toolName, message, {
+        code: "runner_callback_signing_not_configured",
+        retryable: false,
+      }),
     };
   }
 
@@ -635,6 +682,11 @@ const postWorkflowCallback = async (
       body,
     });
   } catch {
+    logCallbackFailure(invocation, payload, {
+      status: "network_error",
+      code: "callback_delivery_failed",
+      message: `Callback delivery failed for ${payload.event}.`,
+    });
     return {
       ok: false,
       status: 502,
@@ -643,6 +695,11 @@ const postWorkflowCallback = async (
   }
 
   if (!response.ok) {
+    logCallbackFailure(invocation, payload, {
+      status: response.status,
+      code: "callback_rejected",
+      message: `Callback ${payload.event} was rejected with ${response.status}.`,
+    });
     return {
       ok: false,
       status: response.status >= 500 ? 502 : 500,
