@@ -26,6 +26,7 @@ These files should stay aligned with code changes:
 - `agent-workbench.md`: product scope, Admin direction, and component rules.
 - `agent-profile-authoring.md`: behavior template authoring format and
   snapshot contract.
+- `agent-packs.md`: code-first local agent pack contract and current example.
 - `implementation-roadmap.md`: current baseline, active next targets,
   production gates, and deferred work.
 - `workbench-ui.md`: current UI baseline and target workbench surfaces.

@@ -2,7 +2,17 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
-import { agentBehaviorTemplates, createAgentBehaviorSnapshot } from "./agent-behavior-templates";
+import {
+  loadLocalAgentPacks,
+  localAgentPacks,
+  validateLocalAgentPacks,
+  type LocalAgentPackManifest,
+} from "../../../agent-packs";
+import {
+  agentBehaviorTemplates,
+  createAgentBehaviorSnapshot,
+  type AgentBehaviorTemplate,
+} from "./agent-behavior-templates";
 
 const promptFileByTemplateId = {
   "assistant-general": "assistant-general.xml",
@@ -14,13 +24,18 @@ const promptFileByTemplateId = {
 const readPromptDoc = (fileName: string) =>
   readFileSync(new URL(`../../../docs/prompts/${fileName}`, import.meta.url), "utf8").trim();
 
+const readPackPromptDoc = (fileName: string) =>
+  readFileSync(new URL(`../../../docs/agent-packs/${fileName}`, import.meta.url), "utf8").trim();
+
 const pokeSpecificFacts =
   /Poke|Interaction Company|Palo Alto|Spark Capital|General Catalyst|Bouncer|Recipes|Apple Messages|film\.poke\.com|poke\.com/i;
 
 describe("agent behavior authoring metadata", () => {
   it("marks built-in templates as non-editable XML snapshots", () => {
     expect(agentBehaviorTemplates).not.toHaveLength(0);
-    for (const template of agentBehaviorTemplates) {
+    for (const template of agentBehaviorTemplates.filter(
+      (item) => item.authoring.kind === "built_in_template",
+    )) {
       expect(template.version).toBe("2026-06-18");
       expect(template.authoring).toEqual({
         kind: "built_in_template",
@@ -30,6 +45,117 @@ describe("agent behavior authoring metadata", () => {
         snapshotOnCreate: true,
       });
     }
+  });
+
+  it("maps local agent packs into non-editable XML templates", () => {
+    expect(localAgentPacks).not.toHaveLength(0);
+    expect(loadLocalAgentPacks()).toHaveLength(localAgentPacks.length);
+
+    for (const pack of localAgentPacks) {
+      const template = agentBehaviorTemplates.find((item) => item.id === pack.templateId);
+      expect(template).toMatchObject({
+        id: pack.templateId,
+        name: pack.name,
+        profile: pack.profile,
+        version: pack.version,
+        format: "xml",
+        authoring: {
+          kind: "local_agent_pack",
+          source: "agent-pack",
+          packId: pack.id,
+          packVersion: pack.version,
+          codePath: pack.codePath,
+          promptPath: pack.promptPath,
+          snapshotOnCreate: true,
+        },
+        pack: {
+          id: pack.id,
+          capabilityLevel: pack.capabilityLevel,
+          codePath: pack.codePath,
+          promptPath: pack.promptPath,
+          tools: pack.tools.map((tool) => ({ ...tool, executionModes: [...tool.executionModes] })),
+          workflows: pack.workflows.map((workflow) => ({ ...workflow })),
+          ui: { ...pack.ui, inspectorSections: [...pack.ui.inspectorSections] },
+          risk: { ...pack.risk },
+        },
+      });
+    }
+  });
+
+  it("validates local pack id uniqueness and risk/tool consistency", () => {
+    const [firstPack] = localAgentPacks;
+    const duplicateTemplatePack = {
+      ...firstPack,
+      id: `${firstPack.id}-copy`,
+      prompt: firstPack.prompt,
+    } as LocalAgentPackManifest;
+    expect(() => validateLocalAgentPacks([firstPack, duplicateTemplatePack])).toThrow(
+      /templateId .* duplicate/,
+    );
+
+    const executeWithoutMutation = {
+      ...firstPack,
+      id: "unsafe-pack",
+      templateId: "pack-unsafe",
+      tools: [
+        {
+          ...firstPack.tools[0],
+          executionModes: ["execute"],
+        },
+      ],
+      risk: {
+        ...firstPack.risk,
+        externalMutation: false,
+        productionGate: "none",
+      },
+    } as LocalAgentPackManifest;
+    expect(() => validateLocalAgentPacks([executeWithoutMutation])).toThrow(
+      /cannot declare execute without externalMutation/,
+    );
+
+    const secretRequiringPack = {
+      ...firstPack,
+      id: "secret-pack",
+      templateId: "pack-secret",
+      risk: {
+        ...firstPack.risk,
+        requiresSecrets: true,
+      },
+    } as LocalAgentPackManifest;
+    expect(() => validateLocalAgentPacks([secretRequiringPack])).toThrow(/cannot require secrets/);
+  });
+
+  it("registers Baby Polymancer as a single-agent app seed", () => {
+    const template = agentBehaviorTemplates.find((item) => item.id === "pack-baby-polymancer") as
+      | AgentBehaviorTemplate
+      | undefined;
+    expect(template).toMatchObject({
+      id: "pack-baby-polymancer",
+      profile: "analyst",
+      pack: {
+        id: "baby-polymancer",
+        capabilityLevel: "single_agent_app",
+        risk: {
+          financialData: true,
+          externalMutation: false,
+          requiresSecrets: false,
+        },
+      },
+    });
+    expect(template?.pack?.tools.map((tool) => tool.id)).toEqual([
+      "polymarket.market.search",
+      "polymarket.market.snapshot",
+      "polymarket.orderbook.snapshot",
+    ]);
+    expect(template?.pack?.workflows).toEqual([
+      expect.objectContaining({
+        type: "polymancer.market_research",
+        engine: "langgraph",
+        status: "declared",
+      }),
+    ]);
+    expect(template?.prompt).toContain("Read-only market analysis only.");
+    expect(template?.prompt).toContain("Do not place orders");
   });
 
   it("copies authoring metadata into behavior snapshots", () => {
@@ -50,8 +176,18 @@ describe("agent behavior authoring metadata", () => {
   });
 
   it("keeps runtime templates aligned with checked-in prompt docs", () => {
-    for (const template of agentBehaviorTemplates) {
-      expect(template.prompt.trim()).toBe(readPromptDoc(promptFileByTemplateId[template.id]));
+    for (const [templateId, fileName] of Object.entries(promptFileByTemplateId)) {
+      const template = agentBehaviorTemplates.find((item) => item.id === templateId);
+      expect(template?.prompt.trim()).toBe(readPromptDoc(fileName));
+    }
+  });
+
+  it("keeps local agent packs aligned with checked-in pack prompt docs", () => {
+    for (const pack of localAgentPacks) {
+      const template = agentBehaviorTemplates.find((item) => item.id === pack.templateId);
+      expect(template?.prompt.trim()).toBe(
+        readPackPromptDoc(pack.promptPath.replace("docs/agent-packs/", "")),
+      );
     }
   });
 

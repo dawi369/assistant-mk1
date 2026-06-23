@@ -80,8 +80,9 @@ export const handleCreateAgent = async (request: Request, env: Env, identity: Ag
     return json(
       {
         ok: false,
-        error:
-          "Agent behavior template must be one of assistant-general, assistant-analyst, assistant-operator, or assistant-integrator",
+        error: `Agent behavior template must be one of ${agentBehaviorTemplates
+          .map((template) => template.id)
+          .join(", ")}`,
       },
       { status: 400 },
     );

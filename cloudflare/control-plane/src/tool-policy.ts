@@ -20,6 +20,12 @@ import {
   runnerEchoToolName,
 } from "../../../lib/workbench/admin-test-tools";
 import { repoSnapshotPolicy, repoSnapshotToolName } from "../../../lib/workbench/repo-snapshot";
+import {
+  polymarketMarketSearchToolName,
+  polymarketMarketSnapshotToolName,
+  polymarketOrderbookSnapshotToolName,
+  polymarketReadonlyPolicy,
+} from "../../../lib/workbench/polymarket-readonly";
 
 export const urlInspectToolName = "url.inspect";
 export const urlInspectPolicy = "tool-admin-readonly-v0";
@@ -34,6 +40,12 @@ export {
   runnerEchoToolName,
 };
 export { repoSnapshotPolicy, repoSnapshotToolName };
+export {
+  polymarketMarketSearchToolName,
+  polymarketMarketSnapshotToolName,
+  polymarketOrderbookSnapshotToolName,
+  polymarketReadonlyPolicy,
+};
 
 export type ToolPolicySurface =
   | "admin_list"
@@ -190,6 +202,51 @@ export const toolPolicyCatalog: Record<string, ToolPolicyCatalogEntry> = {
     constraints: {
       ...emptyConstraints(),
       maxArtifactBytes: 16 * 1024,
+    },
+  },
+  [polymarketMarketSearchToolName]: {
+    policyReference: polymarketReadonlyPolicy,
+    allowedExecutionModes: ["dry_run"],
+    adminVisible: true,
+    modelVisible: false,
+    requiresApproval: false,
+    status: "enabled",
+    policyEditable: true,
+    mutationRisk: "read_only",
+    constraints: {
+      ...emptyConstraints(),
+      maxRuntimeMs: 8_000,
+      maxArtifactBytes: 64 * 1024,
+    },
+  },
+  [polymarketMarketSnapshotToolName]: {
+    policyReference: polymarketReadonlyPolicy,
+    allowedExecutionModes: ["dry_run"],
+    adminVisible: true,
+    modelVisible: false,
+    requiresApproval: false,
+    status: "enabled",
+    policyEditable: true,
+    mutationRisk: "read_only",
+    constraints: {
+      ...emptyConstraints(),
+      maxRuntimeMs: 8_000,
+      maxArtifactBytes: 64 * 1024,
+    },
+  },
+  [polymarketOrderbookSnapshotToolName]: {
+    policyReference: polymarketReadonlyPolicy,
+    allowedExecutionModes: ["dry_run"],
+    adminVisible: true,
+    modelVisible: false,
+    requiresApproval: false,
+    status: "enabled",
+    policyEditable: true,
+    mutationRisk: "read_only",
+    constraints: {
+      ...emptyConstraints(),
+      maxRuntimeMs: 8_000,
+      maxArtifactBytes: 64 * 1024,
     },
   },
 };

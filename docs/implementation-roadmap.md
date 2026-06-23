@@ -36,6 +36,8 @@ scoped.
 - Read-only tools now include `url.inspect` and `repo.snapshot`, with
   Cloudflare-owned tool policy, runner metadata, artifacts, audit events,
   runtime traces, and model exposure controls.
+- Code-first local agent packs can be checked into `agent-packs/*`, surfaced as
+  behavior templates, and snapshotted into workspace-scoped agent records.
 - Admin-only conformance tools now cover Cloudflare-inline ping,
   callback-backed Fly runner echo, and metadata artifact creation. They are
   model-hidden, dry-run-only, and non-policy-editable.
@@ -61,8 +63,8 @@ scoped.
    rendering and approval explanations before broader model tool use.
 3. Expand read-only adapters beyond `url.inspect` and `repo.snapshot` only
    where they prove the common runner, policy, artifact, and audit model.
-4. Expand agent behavior from template import/preview into editing, version
-   history, approvals, and tool-specific configuration.
+4. Expand code-first agent packs from behavior snapshots into tool-specific
+   configuration, context assembly, smoke scenarios, and package verification.
 5. Promote execution history and artifact metadata from Admin-only visibility
    into a product-grade workbench surface.
 6. Add swappable domain context configuration for downstream apps, developer
@@ -112,6 +114,8 @@ tool and workbench work:
   behavior.
 - Workspace management, membership source of truth, agent routing, and agent
   behavior snapshots.
+- Local code-first agent pack v0 with `repo-analyst` as the first pack-backed
+  behavior template.
 - Cloudflare Agents normal-chat runtime, session coordinator, recent threads,
   runtime summaries, live events, and traces.
 - Admin visibility, tool registry exposure, Admin conformance tools,

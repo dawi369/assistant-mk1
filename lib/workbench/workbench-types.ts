@@ -514,21 +514,62 @@ export type AgentBehaviorConfig = {
 };
 
 export type AgentBehaviorAuthoringMetadata = {
-  kind?: "built_in_template" | string;
+  kind?: "built_in_template" | "local_agent_pack" | string;
   format?: "xml" | string;
-  source?: "cloudflare-control-plane" | string;
+  source?: "cloudflare-control-plane" | "agent-pack" | string;
   editable?: boolean;
   snapshotOnCreate?: boolean;
+  packId?: string;
+  packVersion?: string;
+  codePath?: string;
+  promptPath?: string;
+};
+
+export type AgentPackTemplateMetadata = {
+  id: string;
+  capabilityLevel: "template" | "single_agent_app" | string;
+  codePath: string;
+  promptPath: string;
+  tools: Array<{
+    id: string;
+    required?: boolean;
+    executionModes?: string[];
+    modelVisibleDefault?: boolean;
+    purpose?: string;
+  }>;
+  workflows: Array<{
+    type: string;
+    engine?: "cloudflare" | "langgraph" | string;
+    status?: "declared" | string;
+    description?: string;
+  }>;
+  ui: {
+    primarySurface?: "chat" | "workbench" | "admin" | string;
+    inspectorSections?: string[];
+    configurationMode?: "code" | "ui_future" | string;
+  };
+  risk: {
+    financialData?: boolean;
+    externalMutation?: boolean;
+    requiresSecrets?: boolean;
+    productionGate?: string;
+  };
+  context: string[];
+  smokeScenarios: Array<{
+    id: string;
+    prompt: string;
+  }>;
 };
 
 export type AgentBehaviorTemplate = {
-  id: "assistant-general" | "assistant-analyst" | "assistant-operator" | "assistant-integrator";
+  id: string;
   name: string;
   description: string;
   profile: "default" | "analyst" | "operator";
   version: string;
   format: "xml";
   authoring?: AgentBehaviorAuthoringMetadata;
+  pack?: AgentPackTemplateMetadata;
   prompt: string;
 };
 

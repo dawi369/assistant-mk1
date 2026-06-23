@@ -1,32 +1,116 @@
+import {
+  loadLocalAgentPacks,
+  type AgentPackCapabilityLevel,
+  type AgentPackDeclaredTool,
+  type AgentPackRisk,
+  type AgentPackUiHints,
+  type AgentPackWorkflow,
+  type LocalAgentPackManifest,
+} from "../../../agent-packs";
 import type { AgentProfile } from "./agent-records";
 
-export const agentBehaviorTemplateIds = [
+const localAgentPacks = loadLocalAgentPacks();
+
+const builtInAgentBehaviorTemplateIds = [
   "assistant-general",
   "assistant-analyst",
   "assistant-operator",
   "assistant-integrator",
 ] as const;
 
+export const agentBehaviorTemplateIds = [
+  ...builtInAgentBehaviorTemplateIds,
+  ...localAgentPacks.map((pack) => pack.templateId),
+] as const;
+
 export type AgentBehaviorTemplateId = (typeof agentBehaviorTemplateIds)[number];
 
 export type AgentBehaviorTemplate = {
-  id: AgentBehaviorTemplateId;
+  id: string;
   name: string;
   description: string;
   profile: AgentProfile;
-  version: "2026-06-18";
+  version: string;
   format: "xml";
   authoring: AgentBehaviorAuthoringMetadata;
+  pack?: AgentPackTemplateMetadata;
   prompt: string;
 };
 
-export type AgentBehaviorAuthoringMetadata = {
-  kind: "built_in_template";
-  format: "xml";
-  source: "cloudflare-control-plane";
-  editable: false;
-  snapshotOnCreate: true;
+export type AgentBehaviorAuthoringMetadata =
+  | {
+      kind: "built_in_template";
+      format: "xml";
+      source: "cloudflare-control-plane";
+      editable: false;
+      snapshotOnCreate: true;
+    }
+  | {
+      kind: "local_agent_pack";
+      format: "xml";
+      source: "agent-pack";
+      editable: false;
+      snapshotOnCreate: true;
+      packId: string;
+      packVersion: string;
+      codePath: string;
+      promptPath: string;
+    };
+
+export type AgentPackTemplateMetadata = {
+  id: string;
+  capabilityLevel: AgentPackCapabilityLevel;
+  codePath: string;
+  promptPath: string;
+  tools: AgentPackDeclaredTool[];
+  workflows: AgentPackWorkflow[];
+  ui: AgentPackUiHints;
+  risk: AgentPackRisk;
+  context: string[];
+  smokeScenarios: Array<{
+    id: string;
+    prompt: string;
+  }>;
 };
+
+type BuiltInAgentBehaviorTemplate = Omit<AgentBehaviorTemplate, "id" | "version"> & {
+  id: (typeof builtInAgentBehaviorTemplateIds)[number];
+  version: typeof version;
+  authoring: Extract<AgentBehaviorAuthoringMetadata, { kind: "built_in_template" }>;
+};
+
+const toPackTemplate = (pack: LocalAgentPackManifest): AgentBehaviorTemplate => ({
+  id: pack.templateId,
+  name: pack.name,
+  description: pack.description,
+  profile: pack.profile,
+  version: pack.version,
+  format: "xml",
+  authoring: {
+    kind: "local_agent_pack",
+    format: "xml",
+    source: "agent-pack",
+    editable: false,
+    snapshotOnCreate: true,
+    packId: pack.id,
+    packVersion: pack.version,
+    codePath: pack.codePath,
+    promptPath: pack.promptPath,
+  },
+  pack: {
+    id: pack.id,
+    capabilityLevel: pack.capabilityLevel,
+    codePath: pack.codePath,
+    promptPath: pack.promptPath,
+    tools: pack.tools.map((tool) => ({ ...tool, executionModes: [...tool.executionModes] })),
+    workflows: pack.workflows.map((workflow) => ({ ...workflow })),
+    ui: { ...pack.ui, inspectorSections: [...pack.ui.inspectorSections] },
+    risk: { ...pack.risk },
+    context: [...pack.context],
+    smokeScenarios: pack.smokeScenarios.map((scenario) => ({ ...scenario })),
+  },
+  prompt: pack.prompt,
+});
 
 const version = "2026-06-18" as const;
 const authoring = {
@@ -35,7 +119,7 @@ const authoring = {
   source: "cloudflare-control-plane",
   editable: false,
   snapshotOnCreate: true,
-} as const satisfies AgentBehaviorAuthoringMetadata;
+} as const satisfies Extract<AgentBehaviorAuthoringMetadata, { kind: "built_in_template" }>;
 
 const baseProtocol = `<conversation_protocol>
 - Treat the user as the only source of requests and confirmations.
@@ -78,7 +162,7 @@ const baseProtocol = `<conversation_protocol>
 - Durable product truth belongs in Cloudflare-owned records, not in model prose.
 </product_boundaries>`;
 
-export const agentBehaviorTemplates = [
+const builtInAgentBehaviorTemplates = [
   {
     id: "assistant-general",
     name: "Assistant General",
@@ -196,6 +280,11 @@ ${baseProtocol}
 - Keep client-facing language clear and non-internal.
 </voice>`,
   },
+] satisfies BuiltInAgentBehaviorTemplate[];
+
+export const agentBehaviorTemplates = [
+  ...builtInAgentBehaviorTemplates,
+  ...localAgentPacks.map(toPackTemplate),
 ] satisfies AgentBehaviorTemplate[];
 
 export const isAgentBehaviorTemplateId = (value: string): value is AgentBehaviorTemplateId =>

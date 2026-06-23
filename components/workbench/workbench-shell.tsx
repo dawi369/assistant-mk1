@@ -5,6 +5,7 @@ import { useAuth } from "@workos-inc/authkit-nextjs/components";
 import {
   ActivityIcon,
   FileTextIcon,
+  HistoryIcon,
   MessageSquarePlusIcon,
   PlayIcon,
   ShieldCheckIcon,
@@ -23,6 +24,7 @@ import {
 import { AdminPanel } from "@/components/workbench/dev-monitor-drawer";
 import { ThreadHistorySidebar } from "@/components/workbench/thread-history-sidebar";
 import { WorkbenchAssistantEvents } from "@/components/workbench/workbench-assistant-events";
+import { WorkbenchHistoryPanel } from "@/components/workbench/workbench-history-panel";
 import { WorkbenchRuntimeHint } from "@/components/workbench/workbench-runtime-hint";
 import { requestWorkbenchSummaryRefresh } from "@/lib/workbench/admin-summary-events";
 import {
@@ -55,6 +57,7 @@ export function WorkbenchShell() {
 
 function WorkbenchShellContent() {
   const [adminOpen, setAdminOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [adminAccess, setAdminAccess] = useState<{ isAdmin: boolean } | null>(null);
   const [adminNotice, setAdminNotice] = useState<string | null>(null);
   const { user, loading } = useAuth();
@@ -159,6 +162,13 @@ function WorkbenchShellContent() {
         execute: startNewChat,
       },
       {
+        id: "history",
+        label: "History",
+        description: "Inspect recent scoped runs and artifacts.",
+        icon: HistoryIcon,
+        execute: () => setHistoryOpen(true),
+      },
+      {
         id: "admin",
         label: "Admin",
         description: adminAccess?.isAdmin
@@ -215,6 +225,7 @@ function WorkbenchShellContent() {
         <Assistant>
           <WorkbenchAssistantEvents />
         </Assistant>
+        <WorkbenchHistoryPanel open={historyOpen} onOpenChange={setHistoryOpen} />
         <AdminPanel open={adminOpen} onOpenChange={setAdminOpen} />
       </AssistantSlashCommandProvider>
     </div>

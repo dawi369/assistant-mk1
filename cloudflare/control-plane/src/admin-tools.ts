@@ -36,6 +36,19 @@ import {
   type RepoSnapshotResult,
 } from "../../../lib/workbench/repo-snapshot";
 import {
+  isPolymarketReadonlyToolName,
+  polymarketMarketSearchToolName,
+  polymarketMarketSnapshotToolName,
+  polymarketOrderbookSnapshotToolName,
+  polymarketReadonlyAdapterVersion,
+  polymarketReadonlyPolicy,
+  runPolymarketReadonlyTool,
+  validatePolymarketMarketSearchInput,
+  validatePolymarketMarketSnapshotInput,
+  validatePolymarketOrderbookSnapshotInput,
+  type PolymarketReadonlyResult,
+} from "../../../lib/workbench/polymarket-readonly";
+import {
   finishTrace,
   recordIncomingRequestSpans,
   recordSpan,
@@ -103,6 +116,9 @@ const repoSnapshotWorkflowType = "tool.repo.snapshot";
 const diagnosticPingWorkflowType = "tool.diagnostic.ping";
 const runnerEchoWorkflowType = "tool.runner.echo";
 const artifactMetadataTestWorkflowType = "tool.artifact.metadata.test";
+const polymarketMarketSearchWorkflowType = "tool.polymarket.market.search";
+const polymarketMarketSnapshotWorkflowType = "tool.polymarket.market.snapshot";
+const polymarketOrderbookSnapshotWorkflowType = "tool.polymarket.orderbook.snapshot";
 
 type ToolRunIdentity = AgentIdentity & {
   runId: string;
@@ -113,6 +129,7 @@ type ToolRunIdentity = AgentIdentity & {
 };
 
 type UrlInspectRunSource = "admin" | "approval" | "model";
+type InlineToolResult = AdminTestToolResult | PolymarketReadonlyResult;
 
 const urlInspectAdapter: ToolAdapterMetadata = {
   toolName: urlInspectToolName,
@@ -152,6 +169,27 @@ const runnerEchoAdapter: ToolAdapterMetadata = {
 const artifactMetadataTestAdapter: ToolAdapterMetadata = {
   toolName: artifactMetadataTestToolName,
   adapterVersion: "artifact-metadata-test-v1",
+  supportedExecutionModes: ["dry_run"],
+  transport: cloudflareInlineRunnerTransport,
+};
+
+const polymarketMarketSearchAdapter: ToolAdapterMetadata = {
+  toolName: polymarketMarketSearchToolName,
+  adapterVersion: polymarketReadonlyAdapterVersion,
+  supportedExecutionModes: ["dry_run"],
+  transport: cloudflareInlineRunnerTransport,
+};
+
+const polymarketMarketSnapshotAdapter: ToolAdapterMetadata = {
+  toolName: polymarketMarketSnapshotToolName,
+  adapterVersion: polymarketReadonlyAdapterVersion,
+  supportedExecutionModes: ["dry_run"],
+  transport: cloudflareInlineRunnerTransport,
+};
+
+const polymarketOrderbookSnapshotAdapter: ToolAdapterMetadata = {
+  toolName: polymarketOrderbookSnapshotToolName,
+  adapterVersion: polymarketReadonlyAdapterVersion,
   supportedExecutionModes: ["dry_run"],
   transport: cloudflareInlineRunnerTransport,
 };
@@ -222,6 +260,39 @@ const toolSummaries = [
     requiresSecrets: false,
     mutationRisk: "read_only",
     runner: runnerMetadataFor(artifactMetadataTestAdapter, "admin"),
+  },
+  {
+    name: polymarketMarketSearchToolName,
+    description: "Search public Polymarket markets using bounded no-auth market data.",
+    kind: "native",
+    family: "finance",
+    status: "available",
+    supportedExecutionModes: ["dry_run"],
+    requiresSecrets: false,
+    mutationRisk: "read_only",
+    runner: runnerMetadataFor(polymarketMarketSearchAdapter, "admin"),
+  },
+  {
+    name: polymarketMarketSnapshotToolName,
+    description: "Read compact public Polymarket market metadata and outcome pricing.",
+    kind: "native",
+    family: "finance",
+    status: "available",
+    supportedExecutionModes: ["dry_run"],
+    requiresSecrets: false,
+    mutationRisk: "read_only",
+    runner: runnerMetadataFor(polymarketMarketSnapshotAdapter, "admin"),
+  },
+  {
+    name: polymarketOrderbookSnapshotToolName,
+    description: "Read compact public Polymarket CLOB order book depth for a token id.",
+    kind: "native",
+    family: "finance",
+    status: "available",
+    supportedExecutionModes: ["dry_run"],
+    requiresSecrets: false,
+    mutationRisk: "read_only",
+    runner: runnerMetadataFor(polymarketOrderbookSnapshotAdapter, "admin"),
   },
 ] as const;
 
@@ -1484,6 +1555,42 @@ const ensureRepoSnapshotCallbackState = async (
 };
 
 const conformanceToolConfig = (toolName: string) => {
+  if (toolName === polymarketMarketSearchToolName) {
+    return {
+      workflowType: polymarketMarketSearchWorkflowType,
+      displayName: "Polymarket market search",
+      inputSummary: "Search public Polymarket markets",
+      policy: polymarketReadonlyPolicy,
+      runner: runnerMetadataFor(polymarketMarketSearchAdapter, "admin"),
+      traceKind: "tool.polymarket.market.search" as const,
+      traceRootName: "Polymarket market search",
+      traceSummary: "Run read-only public Polymarket market search.",
+    };
+  }
+  if (toolName === polymarketMarketSnapshotToolName) {
+    return {
+      workflowType: polymarketMarketSnapshotWorkflowType,
+      displayName: "Polymarket market snapshot",
+      inputSummary: "Read public Polymarket market metadata",
+      policy: polymarketReadonlyPolicy,
+      runner: runnerMetadataFor(polymarketMarketSnapshotAdapter, "admin"),
+      traceKind: "tool.polymarket.market.snapshot" as const,
+      traceRootName: "Polymarket market snapshot",
+      traceSummary: "Run read-only public Polymarket market snapshot.",
+    };
+  }
+  if (toolName === polymarketOrderbookSnapshotToolName) {
+    return {
+      workflowType: polymarketOrderbookSnapshotWorkflowType,
+      displayName: "Polymarket order book snapshot",
+      inputSummary: "Read public Polymarket CLOB order book",
+      policy: polymarketReadonlyPolicy,
+      runner: runnerMetadataFor(polymarketOrderbookSnapshotAdapter, "admin"),
+      traceKind: "tool.polymarket.orderbook.snapshot" as const,
+      traceRootName: "Polymarket order book snapshot",
+      traceSummary: "Run read-only public Polymarket order book snapshot.",
+    };
+  }
   if (toolName === diagnosticPingToolName) {
     return {
       workflowType: diagnosticPingWorkflowType,
@@ -1732,17 +1839,17 @@ const readConformanceFinishedState = async (
   };
 };
 
-const conformanceResultSummary = (result: AdminTestToolResult) =>
+const conformanceResultSummary = (result: InlineToolResult) =>
   result.ok ? result.output.summary : result.error.message;
 
-const conformanceResultData = (result: AdminTestToolResult, runner?: ToolRunnerMetadata) =>
+const conformanceResultData = (result: InlineToolResult, runner?: ToolRunnerMetadata) =>
   result.ok ? { output: result.output, runner } : { error: result.error, runner };
 
 const finishInlineConformanceToolRun = async (
   env: Env,
   identity: ToolRunIdentity,
   toolName: string,
-  result: DiagnosticPingResult | ArtifactMetadataTestResult,
+  result: DiagnosticPingResult | ArtifactMetadataTestResult | PolymarketReadonlyResult,
   input?: {
     artifact?: {
       id: string;
@@ -3422,7 +3529,13 @@ const handleRunConformanceTool = async (
       ? validateDiagnosticPingInput(rawInput)
       : toolName === runnerEchoToolName
         ? validateRunnerEchoInput(rawInput)
-        : validateArtifactMetadataTestInput(rawInput);
+        : toolName === artifactMetadataTestToolName
+          ? validateArtifactMetadataTestInput(rawInput)
+          : toolName === polymarketMarketSearchToolName
+            ? validatePolymarketMarketSearchInput(rawInput)
+            : toolName === polymarketMarketSnapshotToolName
+              ? validatePolymarketMarketSnapshotInput(rawInput)
+              : validatePolymarketOrderbookSnapshotInput(rawInput);
   if ("code" in parsedInput) {
     await finishToolTrace(env, identity, trace, {
       status: "failed",
@@ -3499,12 +3612,52 @@ const handleRunConformanceTool = async (
               }),
             };
           })()
-        : await executeRunnerEcho(env, runIdentity, parsedInput as Record<string, unknown>, {
-            executionMode: policy.executionMode,
-            policyDecisionId,
-            traceId: trace.traceId,
-            callbackUrl: `${new URL(request.url).origin}/workbench/run-callbacks`,
-          });
+        : isPolymarketReadonlyToolName(toolName)
+          ? await (async () => {
+              const result = await runPolymarketReadonlyTool(
+                toolName,
+                parsedInput as Parameters<typeof runPolymarketReadonlyTool>[1],
+              );
+              const artifactData = result.ok
+                ? {
+                    source: "polymarket_public_readonly",
+                    toolName,
+                    output: result.output,
+                    runner,
+                  }
+                : {
+                    source: "polymarket_public_readonly",
+                    toolName,
+                    error: result.error,
+                    runner,
+                  };
+              const artifact = result.ok
+                ? {
+                    id: `${runIdentity.runId}-polymarket-readonly`,
+                    kind: "market_data",
+                    uri: `d1://control-plane/${runIdentity.runId}/${toolName.replaceAll(
+                      ".",
+                      "-",
+                    )}.json`,
+                    title: config.displayName,
+                    mimeType: "application/json",
+                    sizeBytes: JSON.stringify(artifactData).length,
+                    data: artifactData,
+                  }
+                : null;
+              return {
+                result,
+                finished: await finishInlineConformanceToolRun(env, runIdentity, toolName, result, {
+                  artifact,
+                }),
+              };
+            })()
+          : await executeRunnerEcho(env, runIdentity, parsedInput as Record<string, unknown>, {
+              executionMode: policy.executionMode,
+              policyDecisionId,
+              traceId: trace.traceId,
+              callbackUrl: `${new URL(request.url).origin}/workbench/run-callbacks`,
+            });
 
   await recordSpan(env, identity, {
     traceId: trace.traceId,
@@ -3577,7 +3730,8 @@ export const handleRunTool = async (
   if (
     toolName === diagnosticPingToolName ||
     toolName === runnerEchoToolName ||
-    toolName === artifactMetadataTestToolName
+    toolName === artifactMetadataTestToolName ||
+    isPolymarketReadonlyToolName(toolName)
   ) {
     return handleRunConformanceTool(request, body, env, identity, toolName, incomingTrace);
   }

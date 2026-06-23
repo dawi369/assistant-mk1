@@ -1384,11 +1384,14 @@ export function AdminPanel({
                     <select
                       className="border-input bg-background ring-offset-background focus-visible:ring-ring w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
                       value={agentBehaviorTemplateId}
-                      onChange={(event) =>
-                        setAgentBehaviorTemplateId(
-                          event.target.value as AgentBehaviorTemplate["id"],
-                        )
-                      }
+                      onChange={(event) => {
+                        const nextTemplateId = event.target.value as AgentBehaviorTemplate["id"];
+                        const nextTemplate = behaviorTemplates.find(
+                          (template) => template.id === nextTemplateId,
+                        );
+                        setAgentBehaviorTemplateId(nextTemplateId);
+                        if (nextTemplate?.profile) setAgentProfile(nextTemplate.profile);
+                      }}
                     >
                       {behaviorTemplates.length === 0 ? (
                         <option value={agentBehaviorTemplateId}>
@@ -1425,6 +1428,72 @@ export function AdminPanel({
                               "cloudflare-control-plane",
                           ].join(" / ")}
                         />
+                        {selectedBehaviorTemplate.pack ? (
+                          <>
+                            <StatusRow
+                              label="Pack files"
+                              value={[
+                                selectedBehaviorTemplate.pack.codePath,
+                                selectedBehaviorTemplate.pack.promptPath,
+                              ].join(" / ")}
+                            />
+                            <StatusRow
+                              label="Pack level"
+                              value={selectedBehaviorTemplate.pack.capabilityLevel}
+                            />
+                            <StatusRow
+                              label="Pack tools"
+                              value={
+                                selectedBehaviorTemplate.pack.tools.length
+                                  ? selectedBehaviorTemplate.pack.tools
+                                      .map((tool) => tool.id)
+                                      .join(", ")
+                                  : "No declared tools"
+                              }
+                            />
+                            <StatusRow
+                              label="Pack workflows"
+                              value={
+                                selectedBehaviorTemplate.pack.workflows.length
+                                  ? selectedBehaviorTemplate.pack.workflows
+                                      .map(
+                                        (workflow) =>
+                                          `${workflow.type} (${workflow.engine ?? "engine"} / ${
+                                            workflow.status ?? "status"
+                                          })`,
+                                      )
+                                      .join(", ")
+                                  : "No declared workflows"
+                              }
+                            />
+                            <StatusRow
+                              label="Pack risk"
+                              value={[
+                                selectedBehaviorTemplate.pack.risk.financialData
+                                  ? "financial-data"
+                                  : "no-financial-data",
+                                selectedBehaviorTemplate.pack.risk.externalMutation
+                                  ? "mutation"
+                                  : "read-only",
+                                selectedBehaviorTemplate.pack.risk.requiresSecrets
+                                  ? "secrets"
+                                  : "no-secrets",
+                                `gate: ${
+                                  selectedBehaviorTemplate.pack.risk.productionGate ?? "none"
+                                }`,
+                              ].join(" / ")}
+                            />
+                            <StatusRow
+                              label="Pack UI"
+                              value={[
+                                selectedBehaviorTemplate.pack.ui.primarySurface ?? "chat",
+                                selectedBehaviorTemplate.pack.ui.configurationMode ?? "code",
+                                selectedBehaviorTemplate.pack.ui.inspectorSections?.join(", ") ??
+                                  "no sections",
+                              ].join(" / ")}
+                            />
+                          </>
+                        ) : null}
                         <pre className="bg-muted/50 max-h-48 overflow-auto rounded-md p-3 text-xs whitespace-pre-wrap">
                           {selectedBehaviorTemplate.prompt}
                         </pre>

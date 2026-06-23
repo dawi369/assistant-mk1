@@ -8,8 +8,8 @@ and multi-user isolation.
 The target audience is broader than internal use:
 
 - personal/operator use for my own agent workflows
-- developer use, where another dev can run, configure, extend, and eventually
-  buy the workbench as a serious OSS/commercial tool
+- developer use, where another dev can define agents in code, run, configure,
+  extend, and eventually buy the workbench as a serious OSS/commercial tool
 - business integration use, where a willing company gets scoped agents inside
   its workflows, permissions, data, approvals, and audit boundaries
 
@@ -80,8 +80,9 @@ workbench.
    reconciliation.
 2. Turn Admin-only execution and artifact history into a customer-facing
    workbench surface when the data model is stable enough.
-3. Expand agent behavior from template import/preview into editing, version
-   history, approvals, and tool-specific configuration.
+3. Expand code-first agent packs from template import/preview into
+   tool-specific configuration, context assembly, smoke scenarios, and package
+   verification.
 4. Harden model-side tool rendering and approval explanations before broader
    model-visible tool use.
 5. Add swappable domain context configuration for downstream apps and customer

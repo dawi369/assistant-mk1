@@ -5,6 +5,8 @@ import {
   artifactMetadataTestToolName,
   diagnosticPingPolicy,
   diagnosticPingToolName,
+  polymarketMarketSearchToolName,
+  polymarketReadonlyPolicy,
   repoSnapshotPolicy,
   repoSnapshotToolName,
   runnerEchoPolicy,
@@ -55,6 +57,19 @@ describe("tool policy catalog", () => {
       requiresApproval: false,
       status: "enabled",
       policyEditable: false,
+      mutationRisk: "read_only",
+    });
+  });
+
+  it("registers Polymarket readonly tools as admin-visible and model-hidden", () => {
+    expect(toolPolicyCatalog[polymarketMarketSearchToolName]).toMatchObject({
+      policyReference: polymarketReadonlyPolicy,
+      allowedExecutionModes: ["dry_run"],
+      adminVisible: true,
+      modelVisible: false,
+      requiresApproval: false,
+      status: "enabled",
+      policyEditable: true,
       mutationRisk: "read_only",
     });
   });

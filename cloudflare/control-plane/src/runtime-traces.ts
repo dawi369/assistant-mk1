@@ -18,6 +18,9 @@ export type RuntimeTraceKind =
   | "tool.diagnostic.ping"
   | "tool.runner.echo"
   | "tool.artifact.metadata.test"
+  | "tool.polymarket.market.search"
+  | "tool.polymarket.market.snapshot"
+  | "tool.polymarket.orderbook.snapshot"
   | "diagnostic.demo.inspect";
 
 export type RuntimeTraceStatus = "running" | "completed" | "failed" | "blocked";
