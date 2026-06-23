@@ -21,6 +21,7 @@ export const validateLocalAgentPack = (pack: LocalAgentPackManifest) => {
     ["name", pack.name],
     ["description", pack.description],
     ["version", pack.version],
+    ["folderPath", pack.folderPath],
     ["codePath", pack.codePath],
     ["promptPath", pack.promptPath],
     ["prompt", pack.prompt],

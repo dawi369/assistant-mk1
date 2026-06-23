@@ -25,7 +25,7 @@ const readPromptDoc = (fileName: string) =>
   readFileSync(new URL(`../../../docs/prompts/${fileName}`, import.meta.url), "utf8").trim();
 
 const readPackPromptDoc = (fileName: string) =>
-  readFileSync(new URL(`../../../docs/agent-packs/${fileName}`, import.meta.url), "utf8").trim();
+  readFileSync(new URL(`../../../${fileName}`, import.meta.url), "utf8").trim();
 
 const pokeSpecificFacts =
   /Poke|Interaction Company|Palo Alto|Spark Capital|General Catalyst|Bouncer|Recipes|Apple Messages|film\.poke\.com|poke\.com/i;
@@ -64,6 +64,7 @@ describe("agent behavior authoring metadata", () => {
           source: "agent-pack",
           packId: pack.id,
           packVersion: pack.version,
+          folderPath: pack.folderPath,
           codePath: pack.codePath,
           promptPath: pack.promptPath,
           snapshotOnCreate: true,
@@ -71,6 +72,7 @@ describe("agent behavior authoring metadata", () => {
         pack: {
           id: pack.id,
           capabilityLevel: pack.capabilityLevel,
+          folderPath: pack.folderPath,
           codePath: pack.codePath,
           promptPath: pack.promptPath,
           tools: pack.tools.map((tool) => ({ ...tool, executionModes: [...tool.executionModes] })),
@@ -185,9 +187,7 @@ describe("agent behavior authoring metadata", () => {
   it("keeps local agent packs aligned with checked-in pack prompt docs", () => {
     for (const pack of localAgentPacks) {
       const template = agentBehaviorTemplates.find((item) => item.id === pack.templateId);
-      expect(template?.prompt.trim()).toBe(
-        readPackPromptDoc(pack.promptPath.replace("docs/agent-packs/", "")),
-      );
+      expect(template?.prompt.trim()).toBe(readPackPromptDoc(pack.promptPath));
     }
   });
 

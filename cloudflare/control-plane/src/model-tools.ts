@@ -1,6 +1,7 @@
 import { jsonSchema, tool, type ToolSet } from "ai";
 
-import { selectMembership } from "./authz-store";
+import { selectAgent, selectMembership } from "./authz-store";
+import { resolveAgentBehaviorConfig } from "./agent-records";
 import { dispatchWorkbenchSessionEvent } from "./session-coordinator";
 import {
   executeUrlInspectRunner,
@@ -89,6 +90,13 @@ export const hasModelVisibleToolCandidate = async (
   const cacheKey = modelToolCandidateCacheKey(identity, toolName);
   const nowMs = Date.now();
   if (readNegativeModelToolCandidateCache(cacheKey, nowMs)) return false;
+
+  const agent = await selectAgent(env, identity.agentId, identity.scope.workspaceId);
+  const pack = resolveAgentBehaviorConfig(agent).pack;
+  if (pack && !pack.tools.some((tool) => tool.id === toolName)) {
+    rememberNegativeModelToolCandidate(cacheKey, nowMs);
+    return false;
+  }
 
   const permission = await env.DB.prepare(
     `SELECT status, data_json

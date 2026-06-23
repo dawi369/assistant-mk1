@@ -243,7 +243,10 @@ export type RunnableAdminToolName =
   | "repo.snapshot"
   | "diagnostic.ping"
   | "runner.echo"
-  | "artifact.metadata.test";
+  | "artifact.metadata.test"
+  | "polymarket.market.search"
+  | "polymarket.market.snapshot"
+  | "polymarket.orderbook.snapshot";
 
 export const runCloudflareTool = (input: {
   toolName: RunnableAdminToolName;
@@ -255,6 +258,18 @@ export const runCloudflareTool = (input: {
     method: "POST",
     body: JSON.stringify(input),
   });
+
+export const runPolymancerMarketResearch = (input: {
+  executionMode?: "dry_run";
+  input: Record<string, unknown>;
+}) =>
+  requestControlPlane<CloudflareToolRunResponse & { report?: unknown }>(
+    "/workflows/polymancer/market-research",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
 
 export const updateCloudflareToolPolicy = (input: {
   toolName: "url.inspect" | "repo.snapshot";

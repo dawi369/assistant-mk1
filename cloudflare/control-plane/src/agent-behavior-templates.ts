@@ -53,6 +53,7 @@ export type AgentBehaviorAuthoringMetadata =
       snapshotOnCreate: true;
       packId: string;
       packVersion: string;
+      folderPath: string;
       codePath: string;
       promptPath: string;
     };
@@ -60,6 +61,7 @@ export type AgentBehaviorAuthoringMetadata =
 export type AgentPackTemplateMetadata = {
   id: string;
   capabilityLevel: AgentPackCapabilityLevel;
+  folderPath: string;
   codePath: string;
   promptPath: string;
   tools: AgentPackDeclaredTool[];
@@ -94,12 +96,14 @@ const toPackTemplate = (pack: LocalAgentPackManifest): AgentBehaviorTemplate => 
     snapshotOnCreate: true,
     packId: pack.id,
     packVersion: pack.version,
+    folderPath: pack.folderPath,
     codePath: pack.codePath,
     promptPath: pack.promptPath,
   },
   pack: {
     id: pack.id,
     capabilityLevel: pack.capabilityLevel,
+    folderPath: pack.folderPath,
     codePath: pack.codePath,
     promptPath: pack.promptPath,
     tools: pack.tools.map((tool) => ({ ...tool, executionModes: [...tool.executionModes] })),
@@ -304,7 +308,7 @@ export const agentBehaviorTemplateForProfile = (profile: AgentProfile): AgentBeh
   return "assistant-general";
 };
 
-export const getAgentBehaviorTemplate = (id: AgentBehaviorTemplateId) =>
+export const getAgentBehaviorTemplate = (id: AgentBehaviorTemplateId): AgentBehaviorTemplate =>
   agentBehaviorTemplates.find((template) => template.id === id) ?? agentBehaviorTemplates[0];
 
 export const createAgentBehaviorSnapshot = (
@@ -318,10 +322,12 @@ export const createAgentBehaviorSnapshot = (
     source: "template-snapshot" as const,
     format: "xml" as const,
     authoring: template.authoring,
+    ...(template.pack ? { pack: template.pack } : {}),
     prompt: template.prompt,
     createdFrom: {
       templateId: template.id,
       templateVersion: template.version,
+      ...(template.pack ? { packId: template.pack.id, packVersion: template.version } : {}),
     },
   };
 };

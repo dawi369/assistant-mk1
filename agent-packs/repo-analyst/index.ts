@@ -1,4 +1,4 @@
-import type { LocalAgentPackManifest } from "./types";
+import type { LocalAgentPackManifest } from "../types";
 
 export const repoAnalystPrompt = `<identity>
 You are Repo Analyst, a code-first Assistant-mk1 agent pack for understanding a software repository. You help a developer or operator inspect architecture, conventions, current implementation state, and safe next steps from checked-in files and exposed read-only tools.
@@ -46,8 +46,9 @@ export const repoAnalystPack = {
   version: "2026-06-22",
   capabilityLevel: "template",
   format: "xml",
-  codePath: "agent-packs/repo-analyst.ts",
-  promptPath: "docs/agent-packs/repo-analyst.xml",
+  folderPath: "agent-packs/repo-analyst",
+  codePath: "agent-packs/repo-analyst/index.ts",
+  promptPath: "agent-packs/repo-analyst/prompt.xml",
   tools: [
     {
       id: "repo.snapshot",

@@ -47,6 +47,7 @@ import {
   handleLatestChatSession,
 } from "./langgraph-facade";
 import { handleExternalSignal } from "./external-signals";
+import { handlePolymancerMarketResearch } from "./polymancer-workflows";
 import {
   getTraceId,
   handleGetRuntimeTrace,
@@ -144,6 +145,10 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
 
   if (request.method === "POST" && url.pathname === "/external-signals") {
     return handleExternalSignal(request, env, identity);
+  }
+
+  if (request.method === "POST" && url.pathname === "/workflows/polymancer/market-research") {
+    return handlePolymancerMarketResearch(request, env, identity);
   }
 
   if (request.method === "POST" && url.pathname === "/tools/policy") {

@@ -1,4 +1,4 @@
-import type { LocalAgentPackManifest } from "./types";
+import type { LocalAgentPackManifest } from "../types";
 
 export const babyPolymancerPrompt = `<identity>
 You are Baby Polymancer, a code-first Assistant-mk1 reference agent pack for read-only Polymarket market research. You help users understand public market structure, pricing, liquidity, order book shape, and research questions using only public no-auth market data.
@@ -44,8 +44,9 @@ export const babyPolymancerPack = {
   version: "2026-06-22",
   capabilityLevel: "single_agent_app",
   format: "xml",
-  codePath: "agent-packs/baby-polymancer.ts",
-  promptPath: "docs/agent-packs/baby-polymancer.xml",
+  folderPath: "agent-packs/baby-polymancer",
+  codePath: "agent-packs/baby-polymancer/index.ts",
+  promptPath: "agent-packs/baby-polymancer/prompt.xml",
   tools: [
     {
       id: "polymarket.market.search",

@@ -193,6 +193,14 @@ export type ToolSummary = {
     constraints?: ToolSummary["policyConstraints"];
   };
   capability?: DynamicCapabilityDecision;
+  packScope?: {
+    activePackId?: string;
+    declared: boolean;
+    required?: boolean;
+    modelVisibleDefault?: boolean;
+    executionModes?: string[];
+    purpose?: string;
+  };
   latestApprovalRequest?: {
     id?: Id;
     status?: string;
@@ -510,6 +518,7 @@ export type AgentBehaviorConfig = {
   format?: "xml";
   templateId?: string;
   authoring?: AgentBehaviorAuthoringMetadata;
+  pack?: AgentPackTemplateMetadata;
   preview?: string;
 };
 
@@ -521,6 +530,7 @@ export type AgentBehaviorAuthoringMetadata = {
   snapshotOnCreate?: boolean;
   packId?: string;
   packVersion?: string;
+  folderPath?: string;
   codePath?: string;
   promptPath?: string;
 };
@@ -528,6 +538,7 @@ export type AgentBehaviorAuthoringMetadata = {
 export type AgentPackTemplateMetadata = {
   id: string;
   capabilityLevel: "template" | "single_agent_app" | string;
+  folderPath: string;
   codePath: string;
   promptPath: string;
   tools: Array<{

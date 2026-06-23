@@ -14,6 +14,9 @@ const runnableTools = new Set<RunnableAdminToolName>([
   "diagnostic.ping",
   "runner.echo",
   "artifact.metadata.test",
+  "polymarket.market.search",
+  "polymarket.market.snapshot",
+  "polymarket.orderbook.snapshot",
 ]);
 
 export async function POST(request: NextRequest) {
@@ -60,6 +63,23 @@ export async function POST(request: NextRequest) {
       toolName === "diagnostic.ping" ||
       toolName === "runner.echo" ||
       toolName === "artifact.metadata.test"
+    ) {
+      return NextResponse.json(
+        await runCloudflareTool({
+          toolName,
+          executionMode: body.executionMode === "dry_run" ? "dry_run" : undefined,
+          input:
+            body.input && typeof body.input === "object" && !Array.isArray(body.input)
+              ? body.input
+              : {},
+        }),
+        { status: 201 },
+      );
+    }
+    if (
+      toolName === "polymarket.market.search" ||
+      toolName === "polymarket.market.snapshot" ||
+      toolName === "polymarket.orderbook.snapshot"
     ) {
       return NextResponse.json(
         await runCloudflareTool({

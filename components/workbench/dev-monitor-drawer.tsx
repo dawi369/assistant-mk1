@@ -1431,6 +1431,10 @@ export function AdminPanel({
                         {selectedBehaviorTemplate.pack ? (
                           <>
                             <StatusRow
+                              label="Pack folder"
+                              value={selectedBehaviorTemplate.pack.folderPath}
+                            />
+                            <StatusRow
                               label="Pack files"
                               value={[
                                 selectedBehaviorTemplate.pack.codePath,
@@ -1527,6 +1531,12 @@ export function AdminPanel({
                                 behavior: {agent.behavior.templateId ?? agent.behavior.profile} /{" "}
                                 {agent.behavior.version}
                               </span>
+                              {agent.behavior.pack ? (
+                                <span className="text-muted-foreground block truncate text-xs">
+                                  pack: {agent.behavior.pack.id} /{" "}
+                                  {agent.behavior.pack.capabilityLevel}
+                                </span>
+                              ) : null}
                             </span>
                             {agent.isActive ? (
                               <StatusPill status="active" tone="completed" />
@@ -1770,6 +1780,13 @@ export function AdminPanel({
                                   {tool.connectionAuth.approvalOrder ?? "policy"}
                                 </span>
                               ) : null}
+                              {tool.packScope ? (
+                                <span className="text-muted-foreground block text-xs">
+                                  pack: {tool.packScope.activePackId ?? "none"} /{" "}
+                                  {tool.packScope.declared ? "declared" : "not declared"}
+                                  {tool.packScope.purpose ? ` / ${tool.packScope.purpose}` : ""}
+                                </span>
+                              ) : null}
                             </span>
                             <span className="flex shrink-0 flex-col items-end gap-1">
                               <StatusPill
@@ -1788,6 +1805,12 @@ export function AdminPanel({
                                 status={tool.modelVisible ? "Model" : "Not model-visible"}
                                 tone={tool.modelVisible ? "completed" : undefined}
                               />
+                              {tool.packScope ? (
+                                <StatusPill
+                                  status={tool.packScope.declared ? "Pack tool" : "Registry only"}
+                                  tone={tool.packScope.declared ? "completed" : undefined}
+                                />
+                              ) : null}
                             </span>
                           </div>
                           <p className="text-muted-foreground mt-2 text-xs">{tool.reason}</p>
@@ -2275,6 +2298,54 @@ export function AdminPanel({
                   <StatusRow label="Source" value={summary?.activeAgent?.behavior.source} />
                   <StatusRow label="Format" value={summary?.activeAgent?.behavior.format} />
                   <StatusRow label="Template" value={summary?.activeAgent?.behavior.templateId} />
+                  <StatusRow label="Pack" value={summary?.activeAgent?.behavior.pack?.id} />
+                  <StatusRow
+                    label="Pack level"
+                    value={summary?.activeAgent?.behavior.pack?.capabilityLevel}
+                  />
+                  <StatusRow
+                    label="Pack folder"
+                    value={summary?.activeAgent?.behavior.pack?.folderPath}
+                  />
+                  <StatusRow
+                    label="Declared tools"
+                    value={
+                      summary?.activeAgent?.behavior.pack?.tools.length
+                        ? summary.activeAgent.behavior.pack.tools.map((tool) => tool.id).join(", ")
+                        : undefined
+                    }
+                  />
+                  <StatusRow
+                    label="Declared workflows"
+                    value={
+                      summary?.activeAgent?.behavior.pack?.workflows.length
+                        ? summary.activeAgent.behavior.pack.workflows
+                            .map((workflow) => `${workflow.type} (${workflow.engine})`)
+                            .join(", ")
+                        : undefined
+                    }
+                  />
+                  <StatusRow
+                    label="Risk posture"
+                    value={
+                      summary?.activeAgent?.behavior.pack
+                        ? [
+                            summary.activeAgent.behavior.pack.risk.financialData
+                              ? "financial-data"
+                              : "no-financial-data",
+                            summary.activeAgent.behavior.pack.risk.externalMutation
+                              ? "mutation"
+                              : "read-only",
+                            summary.activeAgent.behavior.pack.risk.requiresSecrets
+                              ? "secrets"
+                              : "no-secrets",
+                            `gate: ${
+                              summary.activeAgent.behavior.pack.risk.productionGate ?? "none"
+                            }`,
+                          ].join(" / ")
+                        : undefined
+                    }
+                  />
                   <StatusRow
                     label="Authoring"
                     value={

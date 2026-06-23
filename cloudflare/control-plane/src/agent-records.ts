@@ -3,6 +3,7 @@ import { createId, toJson, type AgentRow, type Env } from "./types";
 import {
   createAgentBehaviorSnapshot,
   type AgentBehaviorAuthoringMetadata,
+  type AgentPackTemplateMetadata,
   type AgentBehaviorTemplateId,
 } from "./agent-behavior-templates";
 
@@ -34,6 +35,7 @@ export type AgentBehaviorConfig = {
   format?: "xml";
   templateId?: string;
   authoring?: AgentBehaviorAuthoringMetadata;
+  pack?: AgentPackTemplateMetadata;
   preview?: string;
 };
 
@@ -118,6 +120,10 @@ const readBehaviorSnapshot = (row: AgentRow | null) => {
       record.authoring && typeof record.authoring === "object" && !Array.isArray(record.authoring)
         ? (record.authoring as AgentBehaviorAuthoringMetadata)
         : undefined,
+    pack:
+      record.pack && typeof record.pack === "object" && !Array.isArray(record.pack)
+        ? (record.pack as AgentPackTemplateMetadata)
+        : undefined,
     prompt: record.prompt,
   };
 };
@@ -140,6 +146,7 @@ export const resolveAgentBehaviorConfig = (
       format: "xml",
       templateId: snapshot.templateId,
       authoring: snapshot.authoring,
+      pack: snapshot.pack,
       ...(options?.includePreview ? { preview: snapshot.prompt } : {}),
     };
   }

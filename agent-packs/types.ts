@@ -41,6 +41,7 @@ export type LocalAgentPackManifest = {
   version: string;
   capabilityLevel: AgentPackCapabilityLevel;
   format: "xml";
+  folderPath: string;
   codePath: string;
   promptPath: string;
   tools: readonly AgentPackDeclaredTool[];

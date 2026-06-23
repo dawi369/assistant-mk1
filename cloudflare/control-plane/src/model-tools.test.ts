@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { hasModelVisibleToolCandidate, resetModelToolCandidateCacheForTests } from "./model-tools";
 import { urlInspectToolName } from "./tool-policy";
+import { createAgentBehaviorSnapshot } from "./agent-behavior-templates";
 import type { AgentIdentity, Env } from "./types";
 
 const identity = {
@@ -14,8 +15,31 @@ const identity = {
   },
 } as AgentIdentity;
 
-const envWithPermission = (permission: { status: string; data_json: string } | null) => {
-  const first = vi.fn(() => Promise.resolve(permission));
+const agentWithBehavior = (behavior?: unknown) => ({
+  id: identity.agentId,
+  workspace_id: identity.scope.workspaceId,
+  name: "Test agent",
+  description: null,
+  status: "active",
+  is_default: 0,
+  created_by_user_id: identity.scope.userId,
+  data_json: JSON.stringify({
+    profile: "analyst",
+    ...(behavior ? { behavior } : {}),
+  }),
+  created_at: "2026-06-23T00:00:00.000Z",
+  updated_at: "2026-06-23T00:00:00.000Z",
+});
+
+const envWithPermission = (
+  permission: { status: string; data_json: string } | null,
+  agent = null as ReturnType<typeof agentWithBehavior> | null,
+) => {
+  let firstCallCount = 0;
+  const first = vi.fn(() => {
+    firstCallCount += 1;
+    return Promise.resolve(firstCallCount % 2 === 1 ? agent : permission);
+  });
   const bind = vi.fn(() => ({ first }));
   const prepare = vi.fn(() => ({ bind }));
   return {
@@ -55,6 +79,28 @@ describe("model tool exposure fast path", () => {
     );
   });
 
+  it("allows model exposure only when the active pack declares the tool", async () => {
+    const permission = {
+      status: "enabled",
+      data_json: JSON.stringify({ modelVisible: true, requiresApproval: false }),
+    };
+    const repoAnalyst = envWithPermission(
+      permission,
+      agentWithBehavior(createAgentBehaviorSnapshot("analyst", "pack-repo-analyst")),
+    );
+    const babyPolymancer = envWithPermission(
+      permission,
+      agentWithBehavior(createAgentBehaviorSnapshot("analyst", "pack-baby-polymancer")),
+    );
+
+    await expect(
+      hasModelVisibleToolCandidate(repoAnalyst.env, identity, urlInspectToolName),
+    ).resolves.toBe(true);
+    await expect(
+      hasModelVisibleToolCandidate(babyPolymancer.env, identity, urlInspectToolName),
+    ).resolves.toBe(false);
+  });
+
   it("rejects disabled or approval-gated permissions from the fast path", async () => {
     const disabled = envWithPermission({
       status: "disabled",
@@ -85,7 +131,7 @@ describe("model tool exposure fast path", () => {
       false,
     );
 
-    expect(prepare).toHaveBeenCalledTimes(1);
+    expect(prepare).toHaveBeenCalledTimes(2);
   });
 
   it("expires the negative candidate cache", async () => {
@@ -101,7 +147,7 @@ describe("model tool exposure fast path", () => {
       false,
     );
 
-    expect(prepare).toHaveBeenCalledTimes(2);
+    expect(prepare).toHaveBeenCalledTimes(4);
   });
 
   it("does not cache positive candidate checks", async () => {
@@ -117,6 +163,6 @@ describe("model tool exposure fast path", () => {
       true,
     );
 
-    expect(prepare).toHaveBeenCalledTimes(2);
+    expect(prepare).toHaveBeenCalledTimes(4);
   });
 });

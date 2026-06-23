@@ -1,4 +1,5 @@
-import { selectMembership } from "./authz-store";
+import { selectAgent, selectMembership } from "./authz-store";
+import { resolveAgentBehaviorConfig } from "./agent-records";
 import { appendControlPlaneEvent } from "./control-plane-events";
 import { appendControlAudit } from "./demo-run-store";
 import { isRecord, json, parseDataJson, parseJson } from "./http";
@@ -364,6 +365,15 @@ const capabilityForTool = (
 ): DynamicCapabilityDecision | undefined =>
   decisions.find((decision) => decision.kind === "tool" && decision.capabilityId === toolName);
 
+const resolveActivePackToolDeclarations = async (env: Env, identity: AgentIdentity) => {
+  const agent = await selectAgent(env, identity.agentId, identity.scope.workspaceId);
+  const pack = resolveAgentBehaviorConfig(agent).pack;
+  return {
+    pack,
+    declarations: new Map((pack?.tools ?? []).map((tool) => [tool.id, tool] as const)),
+  };
+};
+
 const readLatestApprovalRequest = async (env: Env, identity: AgentIdentity, toolName: string) =>
   env.DB.prepare(
     `SELECT id, user_id, workspace_id, agent_id, workflow_intent_id, run_id, tool_id, status,
@@ -413,6 +423,7 @@ export const resolveToolSummaries = async (
   capabilityContext: DynamicCapabilityContext = readDynamicCapabilityContext(),
 ) => {
   const membership = await selectMembership(env, identity.scope.userId, identity.scope.workspaceId);
+  const packScope = await resolveActivePackToolDeclarations(env, identity);
   const capabilityDecisions = await resolveDynamicToolCapabilities(
     env,
     identity,
@@ -440,6 +451,7 @@ export const resolveToolSummaries = async (
           ? permissionData.killSwitchReason
           : undefined;
       const capability = capabilityForTool(capabilityDecisions, tool.name);
+      const packTool = packScope.declarations.get(tool.name);
 
       const reason =
         adminPolicy.decision === "allow"
@@ -470,6 +482,16 @@ export const resolveToolSummaries = async (
         adminPolicy: toPolicySummary(adminPolicy),
         modelExposurePolicy: toPolicySummary(modelPolicy),
         capability,
+        packScope: packScope.pack
+          ? {
+              activePackId: packScope.pack.id,
+              declared: Boolean(packTool),
+              required: packTool?.required,
+              modelVisibleDefault: packTool?.modelVisibleDefault,
+              executionModes: packTool ? [...packTool.executionModes] : undefined,
+              purpose: packTool?.purpose,
+            }
+          : undefined,
         latestApprovalRequest: latestApprovalRequest
           ? toApprovalRequestSummary(latestApprovalRequest)
           : undefined,
