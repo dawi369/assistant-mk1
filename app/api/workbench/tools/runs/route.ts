@@ -17,6 +17,9 @@ const runnableTools = new Set<RunnableAdminToolName>([
   "polymarket.market.search",
   "polymarket.market.snapshot",
   "polymarket.orderbook.snapshot",
+  "swordfish.runtime.overview",
+  "swordfish.symbol.snapshot",
+  "swordfish.bars.range",
 ]);
 
 export async function POST(request: NextRequest) {
@@ -79,7 +82,10 @@ export async function POST(request: NextRequest) {
     if (
       toolName === "polymarket.market.search" ||
       toolName === "polymarket.market.snapshot" ||
-      toolName === "polymarket.orderbook.snapshot"
+      toolName === "polymarket.orderbook.snapshot" ||
+      toolName === "swordfish.runtime.overview" ||
+      toolName === "swordfish.symbol.snapshot" ||
+      toolName === "swordfish.bars.range"
     ) {
       return NextResponse.json(
         await runCloudflareTool({

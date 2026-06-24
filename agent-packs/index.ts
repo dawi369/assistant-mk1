@@ -1,9 +1,10 @@
 import { babyPolymancerPack } from "./baby-polymancer";
+import { babySwordfishPack } from "./baby-swordfish";
 import { repoAnalystPack } from "./repo-analyst";
 
 import type { LocalAgentPackManifest } from "./types";
 
-export const localAgentPacks = [repoAnalystPack, babyPolymancerPack] as const;
+export const localAgentPacks = [repoAnalystPack, babyPolymancerPack, babySwordfishPack] as const;
 
 export type {
   AgentPackCapabilityLevel,

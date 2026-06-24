@@ -21,6 +21,9 @@ export type RuntimeTraceKind =
   | "tool.polymarket.market.search"
   | "tool.polymarket.market.snapshot"
   | "tool.polymarket.orderbook.snapshot"
+  | "tool.swordfish.runtime.overview"
+  | "tool.swordfish.symbol.snapshot"
+  | "tool.swordfish.bars.range"
   | "diagnostic.demo.inspect";
 
 export type RuntimeTraceStatus = "running" | "completed" | "failed" | "blocked";

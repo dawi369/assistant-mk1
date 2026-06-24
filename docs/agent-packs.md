@@ -51,6 +51,12 @@ market search, market snapshot, and CLOB order book snapshot tools, plus a
 future LangGraph workflow intent. It does not declare trading, wallet auth,
 secrets, private positions, or mutation-capable tools.
 
+`agent-packs/baby-swordfish/index.ts` defines `pack-baby-swordfish`, a read-only
+single-agent app seed for public Swordfish runtime and market-data research. It
+declares runtime overview, symbol snapshot, and recent bars tools, plus a future
+LangGraph workflow intent. It does not declare `HUB_API_KEY`, Railway tokens,
+Massive credentials, admin endpoints, direct provider access, or mutation tools.
+
 The current Baby Polymancer workflow route is
 `POST /api/workbench/workflows/polymancer/market-research`. The Cloudflare
 Worker endpoint is `POST /workflows/polymancer/market-research`. It requires
@@ -58,11 +64,28 @@ the active agent to be created from `baby-polymancer`, runs public read-only
 market search/snapshot/order book steps, and writes one compact market research
 artifact into the normal run/history tables.
 
+The current Baby Swordfish workflow route is
+`POST /api/workbench/workflows/swordfish/runtime-research`. The Cloudflare
+Worker endpoint is `POST /workflows/swordfish/runtime-research`. It requires the
+active agent to be created from `baby-swordfish`, runs public read-only runtime
+overview/symbol snapshot/recent bars steps, and writes one compact runtime
+research artifact into the normal run/history tables.
+
 Tool availability is pack-scoped for model exposure: a tool must be both
 policy-visible and declared by the active pack before it can be exposed to the
 model. Admin can still inspect globally registered tools, but each summary
 marks whether the tool is declared by the active pack or only present in the
 registry.
+
+## Switching Agents
+
+The main workbench shell exposes `/agents` as a lightweight switching surface.
+Any active workspace member can activate an existing active agent. Admin users
+can also create and activate missing demo agents from checked-in pack templates.
+
+The Admin drawer remains the detailed diagnostics/configuration surface. The
+workbench panel is intentionally limited to active agent identity, pack metadata,
+declared tools, declared workflows, risk posture, and demo-pack creation.
 
 ## Adding A Pack
 

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { hasModelVisibleToolCandidate, resetModelToolCandidateCacheForTests } from "./model-tools";
-import { urlInspectToolName } from "./tool-policy";
+import { swordfishRuntimeOverviewToolName, urlInspectToolName } from "./tool-policy";
 import { createAgentBehaviorSnapshot } from "./agent-behavior-templates";
 import type { AgentIdentity, Env } from "./types";
 
@@ -92,12 +92,22 @@ describe("model tool exposure fast path", () => {
       permission,
       agentWithBehavior(createAgentBehaviorSnapshot("analyst", "pack-baby-polymancer")),
     );
+    const babySwordfish = envWithPermission(
+      permission,
+      agentWithBehavior(createAgentBehaviorSnapshot("analyst", "pack-baby-swordfish")),
+    );
 
     await expect(
       hasModelVisibleToolCandidate(repoAnalyst.env, identity, urlInspectToolName),
     ).resolves.toBe(true);
     await expect(
       hasModelVisibleToolCandidate(babyPolymancer.env, identity, urlInspectToolName),
+    ).resolves.toBe(false);
+    await expect(
+      hasModelVisibleToolCandidate(babySwordfish.env, identity, swordfishRuntimeOverviewToolName),
+    ).resolves.toBe(true);
+    await expect(
+      hasModelVisibleToolCandidate(repoAnalyst.env, identity, swordfishRuntimeOverviewToolName),
     ).resolves.toBe(false);
   });
 

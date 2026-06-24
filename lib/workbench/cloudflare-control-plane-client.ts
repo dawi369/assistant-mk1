@@ -246,7 +246,10 @@ export type RunnableAdminToolName =
   | "artifact.metadata.test"
   | "polymarket.market.search"
   | "polymarket.market.snapshot"
-  | "polymarket.orderbook.snapshot";
+  | "polymarket.orderbook.snapshot"
+  | "swordfish.runtime.overview"
+  | "swordfish.symbol.snapshot"
+  | "swordfish.bars.range";
 
 export const runCloudflareTool = (input: {
   toolName: RunnableAdminToolName;
@@ -265,6 +268,18 @@ export const runPolymancerMarketResearch = (input: {
 }) =>
   requestControlPlane<CloudflareToolRunResponse & { report?: unknown }>(
     "/workflows/polymancer/market-research",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
+
+export const runSwordfishRuntimeResearch = (input: {
+  executionMode?: "dry_run";
+  input: Record<string, unknown>;
+}) =>
+  requestControlPlane<CloudflareToolRunResponse & { report?: unknown }>(
+    "/workflows/swordfish/runtime-research",
     {
       method: "POST",
       body: JSON.stringify(input),

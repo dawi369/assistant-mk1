@@ -62,6 +62,7 @@ Cloudflare authorization boundary in `tenancy.md`.
 Reference app docs are stress tests for the framework, not product identity:
 
 - `reference-apps/polymancer.md`
+- `reference-apps/swordfish.md`
 - `reference-apps/deployment-agent.md`
 - `reference-apps/personal-job-agent.md`
 - `decisions/ADR-0002-polymancer-reference-target.md`

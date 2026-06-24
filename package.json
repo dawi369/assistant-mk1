@@ -46,6 +46,7 @@
     "smoke:cloudflare-chat-threads": "tsx scripts/smoke-cloudflare-chat-threads.ts",
     "smoke:cloudflare-history": "tsx scripts/smoke-cloudflare-history.ts",
     "smoke:polymarket-readonly": "tsx scripts/smoke-polymarket-readonly.ts",
+    "smoke:swordfish-readonly": "tsx scripts/smoke-swordfish-readonly.ts",
     "smoke:cloudflare-workbench-run": "tsx scripts/smoke-cloudflare-workbench-run.ts",
     "smoke:cloudflare-workflow-callback-auth": "tsx scripts/smoke-cloudflare-workflow-callback-auth.ts",
     "smoke:cloudflare-langgraph-facade": "tsx scripts/smoke-cloudflare-langgraph-facade.ts",

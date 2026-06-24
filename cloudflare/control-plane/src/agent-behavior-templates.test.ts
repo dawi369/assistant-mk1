@@ -160,6 +160,39 @@ describe("agent behavior authoring metadata", () => {
     expect(template?.prompt).toContain("Do not place orders");
   });
 
+  it("registers Baby Swordfish as a single-agent app seed", () => {
+    const template = agentBehaviorTemplates.find((item) => item.id === "pack-baby-swordfish") as
+      | AgentBehaviorTemplate
+      | undefined;
+    expect(template).toMatchObject({
+      id: "pack-baby-swordfish",
+      profile: "analyst",
+      pack: {
+        id: "baby-swordfish",
+        capabilityLevel: "single_agent_app",
+        risk: {
+          financialData: true,
+          externalMutation: false,
+          requiresSecrets: false,
+        },
+      },
+    });
+    expect(template?.pack?.tools.map((tool) => tool.id)).toEqual([
+      "swordfish.runtime.overview",
+      "swordfish.symbol.snapshot",
+      "swordfish.bars.range",
+    ]);
+    expect(template?.pack?.workflows).toEqual([
+      expect.objectContaining({
+        type: "swordfish.runtime_research",
+        engine: "langgraph",
+        status: "declared",
+      }),
+    ]);
+    expect(template?.prompt).toContain("Read-only Swordfish runtime");
+    expect(template?.prompt).toContain("Never construct or call Swordfish /admin routes");
+  });
+
   it("copies authoring metadata into behavior snapshots", () => {
     const snapshot = createAgentBehaviorSnapshot("operator", "assistant-operator");
 

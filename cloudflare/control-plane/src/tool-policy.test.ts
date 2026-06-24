@@ -11,6 +11,8 @@ import {
   repoSnapshotToolName,
   runnerEchoPolicy,
   runnerEchoToolName,
+  swordfishReadonlyPolicy,
+  swordfishRuntimeOverviewToolName,
   toolPolicyCatalog,
 } from "./tool-policy";
 
@@ -64,6 +66,19 @@ describe("tool policy catalog", () => {
   it("registers Polymarket readonly tools as admin-visible and model-hidden", () => {
     expect(toolPolicyCatalog[polymarketMarketSearchToolName]).toMatchObject({
       policyReference: polymarketReadonlyPolicy,
+      allowedExecutionModes: ["dry_run"],
+      adminVisible: true,
+      modelVisible: false,
+      requiresApproval: false,
+      status: "enabled",
+      policyEditable: true,
+      mutationRisk: "read_only",
+    });
+  });
+
+  it("registers Swordfish readonly tools as admin-visible and model-hidden", () => {
+    expect(toolPolicyCatalog[swordfishRuntimeOverviewToolName]).toMatchObject({
+      policyReference: swordfishReadonlyPolicy,
       allowedExecutionModes: ["dry_run"],
       adminVisible: true,
       modelVisible: false,

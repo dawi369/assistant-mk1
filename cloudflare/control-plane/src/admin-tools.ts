@@ -50,6 +50,19 @@ import {
   type PolymarketReadonlyResult,
 } from "../../../lib/workbench/polymarket-readonly";
 import {
+  isSwordfishReadonlyToolName,
+  runSwordfishReadonlyTool,
+  swordfishBarsRangeToolName,
+  swordfishReadonlyAdapterVersion,
+  swordfishReadonlyPolicy,
+  swordfishRuntimeOverviewToolName,
+  swordfishSymbolSnapshotToolName,
+  validateSwordfishBarsRangeInput,
+  validateSwordfishRuntimeOverviewInput,
+  validateSwordfishSymbolSnapshotInput,
+  type SwordfishReadonlyResult,
+} from "../../../lib/workbench/swordfish-readonly";
+import {
   finishTrace,
   recordIncomingRequestSpans,
   recordSpan,
@@ -120,6 +133,9 @@ const artifactMetadataTestWorkflowType = "tool.artifact.metadata.test";
 const polymarketMarketSearchWorkflowType = "tool.polymarket.market.search";
 const polymarketMarketSnapshotWorkflowType = "tool.polymarket.market.snapshot";
 const polymarketOrderbookSnapshotWorkflowType = "tool.polymarket.orderbook.snapshot";
+const swordfishRuntimeOverviewWorkflowType = "tool.swordfish.runtime.overview";
+const swordfishSymbolSnapshotWorkflowType = "tool.swordfish.symbol.snapshot";
+const swordfishBarsRangeWorkflowType = "tool.swordfish.bars.range";
 
 type ToolRunIdentity = AgentIdentity & {
   runId: string;
@@ -130,7 +146,7 @@ type ToolRunIdentity = AgentIdentity & {
 };
 
 type UrlInspectRunSource = "admin" | "approval" | "model";
-type InlineToolResult = AdminTestToolResult | PolymarketReadonlyResult;
+type InlineToolResult = AdminTestToolResult | PolymarketReadonlyResult | SwordfishReadonlyResult;
 
 const urlInspectAdapter: ToolAdapterMetadata = {
   toolName: urlInspectToolName,
@@ -191,6 +207,27 @@ const polymarketMarketSnapshotAdapter: ToolAdapterMetadata = {
 const polymarketOrderbookSnapshotAdapter: ToolAdapterMetadata = {
   toolName: polymarketOrderbookSnapshotToolName,
   adapterVersion: polymarketReadonlyAdapterVersion,
+  supportedExecutionModes: ["dry_run"],
+  transport: cloudflareInlineRunnerTransport,
+};
+
+const swordfishRuntimeOverviewAdapter: ToolAdapterMetadata = {
+  toolName: swordfishRuntimeOverviewToolName,
+  adapterVersion: swordfishReadonlyAdapterVersion,
+  supportedExecutionModes: ["dry_run"],
+  transport: cloudflareInlineRunnerTransport,
+};
+
+const swordfishSymbolSnapshotAdapter: ToolAdapterMetadata = {
+  toolName: swordfishSymbolSnapshotToolName,
+  adapterVersion: swordfishReadonlyAdapterVersion,
+  supportedExecutionModes: ["dry_run"],
+  transport: cloudflareInlineRunnerTransport,
+};
+
+const swordfishBarsRangeAdapter: ToolAdapterMetadata = {
+  toolName: swordfishBarsRangeToolName,
+  adapterVersion: swordfishReadonlyAdapterVersion,
   supportedExecutionModes: ["dry_run"],
   transport: cloudflareInlineRunnerTransport,
 };
@@ -294,6 +331,39 @@ const toolSummaries = [
     requiresSecrets: false,
     mutationRisk: "read_only",
     runner: runnerMetadataFor(polymarketOrderbookSnapshotAdapter, "admin"),
+  },
+  {
+    name: swordfishRuntimeOverviewToolName,
+    description: "Read public Swordfish runtime health, open ticker, symbols, and snapshot count.",
+    kind: "native",
+    family: "finance",
+    status: "available",
+    supportedExecutionModes: ["dry_run"],
+    requiresSecrets: false,
+    mutationRisk: "read_only",
+    runner: runnerMetadataFor(swordfishRuntimeOverviewAdapter, "admin"),
+  },
+  {
+    name: swordfishSymbolSnapshotToolName,
+    description: "Read a compact public Swordfish futures symbol snapshot.",
+    kind: "native",
+    family: "finance",
+    status: "available",
+    supportedExecutionModes: ["dry_run"],
+    requiresSecrets: false,
+    mutationRisk: "read_only",
+    runner: runnerMetadataFor(swordfishSymbolSnapshotAdapter, "admin"),
+  },
+  {
+    name: swordfishBarsRangeToolName,
+    description: "Read a bounded public Swordfish bar range for a futures symbol.",
+    kind: "native",
+    family: "finance",
+    status: "available",
+    supportedExecutionModes: ["dry_run"],
+    requiresSecrets: false,
+    mutationRisk: "read_only",
+    runner: runnerMetadataFor(swordfishBarsRangeAdapter, "admin"),
   },
 ] as const;
 
@@ -1613,6 +1683,42 @@ const conformanceToolConfig = (toolName: string) => {
       traceSummary: "Run read-only public Polymarket order book snapshot.",
     };
   }
+  if (toolName === swordfishRuntimeOverviewToolName) {
+    return {
+      workflowType: swordfishRuntimeOverviewWorkflowType,
+      displayName: "Swordfish runtime overview",
+      inputSummary: "Read public Swordfish runtime overview",
+      policy: swordfishReadonlyPolicy,
+      runner: runnerMetadataFor(swordfishRuntimeOverviewAdapter, "admin"),
+      traceKind: "tool.swordfish.runtime.overview" as const,
+      traceRootName: "Swordfish runtime overview",
+      traceSummary: "Run read-only public Swordfish runtime overview.",
+    };
+  }
+  if (toolName === swordfishSymbolSnapshotToolName) {
+    return {
+      workflowType: swordfishSymbolSnapshotWorkflowType,
+      displayName: "Swordfish symbol snapshot",
+      inputSummary: "Read public Swordfish symbol snapshot",
+      policy: swordfishReadonlyPolicy,
+      runner: runnerMetadataFor(swordfishSymbolSnapshotAdapter, "admin"),
+      traceKind: "tool.swordfish.symbol.snapshot" as const,
+      traceRootName: "Swordfish symbol snapshot",
+      traceSummary: "Run read-only public Swordfish symbol snapshot.",
+    };
+  }
+  if (toolName === swordfishBarsRangeToolName) {
+    return {
+      workflowType: swordfishBarsRangeWorkflowType,
+      displayName: "Swordfish bars range",
+      inputSummary: "Read public Swordfish bars range",
+      policy: swordfishReadonlyPolicy,
+      runner: runnerMetadataFor(swordfishBarsRangeAdapter, "admin"),
+      traceKind: "tool.swordfish.bars.range" as const,
+      traceRootName: "Swordfish bars range",
+      traceSummary: "Run read-only public Swordfish bars range.",
+    };
+  }
   if (toolName === diagnosticPingToolName) {
     return {
       workflowType: diagnosticPingWorkflowType,
@@ -1871,7 +1977,7 @@ const finishInlineConformanceToolRun = async (
   env: Env,
   identity: ToolRunIdentity,
   toolName: string,
-  result: DiagnosticPingResult | ArtifactMetadataTestResult | PolymarketReadonlyResult,
+  result: InlineToolResult,
   input?: {
     artifact?: {
       id: string;
@@ -3557,7 +3663,13 @@ const handleRunConformanceTool = async (
             ? validatePolymarketMarketSearchInput(rawInput)
             : toolName === polymarketMarketSnapshotToolName
               ? validatePolymarketMarketSnapshotInput(rawInput)
-              : validatePolymarketOrderbookSnapshotInput(rawInput);
+              : toolName === polymarketOrderbookSnapshotToolName
+                ? validatePolymarketOrderbookSnapshotInput(rawInput)
+                : toolName === swordfishRuntimeOverviewToolName
+                  ? validateSwordfishRuntimeOverviewInput(rawInput)
+                  : toolName === swordfishSymbolSnapshotToolName
+                    ? validateSwordfishSymbolSnapshotInput(rawInput)
+                    : validateSwordfishBarsRangeInput(rawInput);
   if ("code" in parsedInput) {
     await finishToolTrace(env, identity, trace, {
       status: "failed",
@@ -3674,12 +3786,58 @@ const handleRunConformanceTool = async (
                 }),
               };
             })()
-          : await executeRunnerEcho(env, runIdentity, parsedInput as Record<string, unknown>, {
-              executionMode: policy.executionMode,
-              policyDecisionId,
-              traceId: trace.traceId,
-              callbackUrl: `${new URL(request.url).origin}/workbench/run-callbacks`,
-            });
+          : isSwordfishReadonlyToolName(toolName)
+            ? await (async () => {
+                const result = await runSwordfishReadonlyTool(
+                  toolName,
+                  parsedInput as Parameters<typeof runSwordfishReadonlyTool>[1],
+                );
+                const artifactData = result.ok
+                  ? {
+                      source: "swordfish_public_readonly",
+                      toolName,
+                      output: result.output,
+                      runner,
+                    }
+                  : {
+                      source: "swordfish_public_readonly",
+                      toolName,
+                      error: result.error,
+                      runner,
+                    };
+                const artifact = result.ok
+                  ? {
+                      id: `${runIdentity.runId}-swordfish-readonly`,
+                      kind: "market_data",
+                      uri: `d1://control-plane/${runIdentity.runId}/${toolName.replaceAll(
+                        ".",
+                        "-",
+                      )}.json`,
+                      title: config.displayName,
+                      mimeType: "application/json",
+                      sizeBytes: JSON.stringify(artifactData).length,
+                      data: artifactData,
+                    }
+                  : null;
+                return {
+                  result,
+                  finished: await finishInlineConformanceToolRun(
+                    env,
+                    runIdentity,
+                    toolName,
+                    result,
+                    {
+                      artifact,
+                    },
+                  ),
+                };
+              })()
+            : await executeRunnerEcho(env, runIdentity, parsedInput as Record<string, unknown>, {
+                executionMode: policy.executionMode,
+                policyDecisionId,
+                traceId: trace.traceId,
+                callbackUrl: `${new URL(request.url).origin}/workbench/run-callbacks`,
+              });
 
   await recordSpan(env, identity, {
     traceId: trace.traceId,

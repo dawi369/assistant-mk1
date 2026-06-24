@@ -11,7 +11,7 @@ import {
 import { upsertActiveAgentPreference } from "./authz";
 import { selectAgent, selectMembership, selectWorkspaceAgents } from "./authz-store";
 import { isRecord, json, parseJson } from "./http";
-import { requireAdminMembership } from "./membership-policy";
+import { requireActiveMembership, requireAdminMembership } from "./membership-policy";
 import type { AgentIdentity, Env } from "./types";
 
 const agentNameMaxLength = 80;
@@ -128,8 +128,8 @@ export const handleActivateAgent = async (env: Env, identity: AgentIdentity, age
     identity.scope.userId,
     identity.scope.workspaceId,
   );
-  const adminError = requireAdminMembership(currentMembership);
-  if (adminError) return adminError;
+  const membershipError = requireActiveMembership(currentMembership);
+  if (membershipError) return membershipError;
 
   const agent = await selectAgent(env, agentId, identity.scope.workspaceId);
   if (!agent) {

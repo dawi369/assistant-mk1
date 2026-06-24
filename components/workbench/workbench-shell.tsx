@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@workos-inc/authkit-nextjs/components";
 import {
   ActivityIcon,
+  BotIcon,
   FileTextIcon,
   HistoryIcon,
   MessageSquarePlusIcon,
@@ -23,6 +24,7 @@ import {
 } from "@/components/workbench/composer-focus-context";
 import { AdminPanel } from "@/components/workbench/dev-monitor-drawer";
 import { ThreadHistorySidebar } from "@/components/workbench/thread-history-sidebar";
+import { WorkbenchAgentsPanel } from "@/components/workbench/workbench-agents-panel";
 import { WorkbenchAssistantEvents } from "@/components/workbench/workbench-assistant-events";
 import { WorkbenchHistoryPanel } from "@/components/workbench/workbench-history-panel";
 import { WorkbenchRuntimeHint } from "@/components/workbench/workbench-runtime-hint";
@@ -57,6 +59,7 @@ export function WorkbenchShell() {
 
 function WorkbenchShellContent() {
   const [adminOpen, setAdminOpen] = useState(false);
+  const [agentsOpen, setAgentsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [adminAccess, setAdminAccess] = useState<{ isAdmin: boolean } | null>(null);
   const [adminNotice, setAdminNotice] = useState<string | null>(null);
@@ -162,6 +165,13 @@ function WorkbenchShellContent() {
         execute: startNewChat,
       },
       {
+        id: "agents",
+        label: "Agents",
+        description: "Switch active pack-backed agents.",
+        icon: BotIcon,
+        execute: () => setAgentsOpen(true),
+      },
+      {
         id: "history",
         label: "History",
         description: "Inspect recent scoped runs and artifacts.",
@@ -225,6 +235,7 @@ function WorkbenchShellContent() {
         <Assistant>
           <WorkbenchAssistantEvents />
         </Assistant>
+        <WorkbenchAgentsPanel open={agentsOpen} onOpenChange={setAgentsOpen} />
         <WorkbenchHistoryPanel open={historyOpen} onOpenChange={setHistoryOpen} />
         <AdminPanel open={adminOpen} onOpenChange={setAdminOpen} />
       </AssistantSlashCommandProvider>

@@ -26,6 +26,12 @@ import {
   polymarketOrderbookSnapshotToolName,
   polymarketReadonlyPolicy,
 } from "../../../lib/workbench/polymarket-readonly";
+import {
+  swordfishBarsRangeToolName,
+  swordfishReadonlyPolicy,
+  swordfishRuntimeOverviewToolName,
+  swordfishSymbolSnapshotToolName,
+} from "../../../lib/workbench/swordfish-readonly";
 
 export const urlInspectToolName = "url.inspect";
 export const urlInspectPolicy = "tool-admin-readonly-v0";
@@ -45,6 +51,12 @@ export {
   polymarketMarketSnapshotToolName,
   polymarketOrderbookSnapshotToolName,
   polymarketReadonlyPolicy,
+};
+export {
+  swordfishBarsRangeToolName,
+  swordfishReadonlyPolicy,
+  swordfishRuntimeOverviewToolName,
+  swordfishSymbolSnapshotToolName,
 };
 
 export type ToolPolicySurface =
@@ -236,6 +248,51 @@ export const toolPolicyCatalog: Record<string, ToolPolicyCatalogEntry> = {
   },
   [polymarketOrderbookSnapshotToolName]: {
     policyReference: polymarketReadonlyPolicy,
+    allowedExecutionModes: ["dry_run"],
+    adminVisible: true,
+    modelVisible: false,
+    requiresApproval: false,
+    status: "enabled",
+    policyEditable: true,
+    mutationRisk: "read_only",
+    constraints: {
+      ...emptyConstraints(),
+      maxRuntimeMs: 8_000,
+      maxArtifactBytes: 64 * 1024,
+    },
+  },
+  [swordfishRuntimeOverviewToolName]: {
+    policyReference: swordfishReadonlyPolicy,
+    allowedExecutionModes: ["dry_run"],
+    adminVisible: true,
+    modelVisible: false,
+    requiresApproval: false,
+    status: "enabled",
+    policyEditable: true,
+    mutationRisk: "read_only",
+    constraints: {
+      ...emptyConstraints(),
+      maxRuntimeMs: 8_000,
+      maxArtifactBytes: 64 * 1024,
+    },
+  },
+  [swordfishSymbolSnapshotToolName]: {
+    policyReference: swordfishReadonlyPolicy,
+    allowedExecutionModes: ["dry_run"],
+    adminVisible: true,
+    modelVisible: false,
+    requiresApproval: false,
+    status: "enabled",
+    policyEditable: true,
+    mutationRisk: "read_only",
+    constraints: {
+      ...emptyConstraints(),
+      maxRuntimeMs: 8_000,
+      maxArtifactBytes: 64 * 1024,
+    },
+  },
+  [swordfishBarsRangeToolName]: {
+    policyReference: swordfishReadonlyPolicy,
     allowedExecutionModes: ["dry_run"],
     adminVisible: true,
     modelVisible: false,
