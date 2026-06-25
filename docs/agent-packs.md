@@ -92,10 +92,57 @@ declared tools, declared workflows, risk posture, and demo-pack creation.
 1. Add a folder under `agent-packs/<pack-id>/`.
 2. Add `index.ts` and `prompt.xml` inside that folder.
 3. Export the manifest from `agent-packs/index.ts`.
-4. Keep the pack read-only unless the production mutation gates are satisfied.
-5. Run `pnpm test:unit -- agent-behavior-templates`, `pnpm typecheck`, and
-   `pnpm lint`.
+4. Run `pnpm agent-packs:validate`.
+5. Inspect the runtime binding shape with
+   `pnpm agent-packs:inspect --pack <pack-id>`.
+6. Run the local pack smoke with `pnpm agent-packs:smoke --pack <pack-id>`.
+7. Create or activate the pack-backed agent from `/agents` in the workbench.
+8. Keep the pack read-only unless the production mutation gates are satisfied.
+9. Run `pnpm test:unit -- agent-behavior-templates agent-packs`,
+   `pnpm typecheck`, and `pnpm lint`.
 
 Packs should express reusable agent behavior and expected capabilities. They
 must not smuggle tenant scope, secrets, raw credentials, or customer-specific
 policy decisions into prompt text.
+
+## Developer Loop
+
+Agent pack authoring is intentionally file-first:
+
+```bash
+pnpm agent-packs:validate
+pnpm agent-packs:inspect --pack baby-polymancer
+pnpm agent-packs:smoke --pack baby-polymancer
+```
+
+`agent-packs:validate` checks the local manifest contract, one-folder-per-pack
+provenance, prompt parity, declared tool and workflow ids, risk posture, and
+smoke scenario metadata. Use `--json` when wiring this into CI or another
+automation.
+
+`agent-packs:inspect --pack <pack-id>` prints the customer-facing pack identity
+plus runtime binding status. Tool bindings are checked against the Cloudflare
+tool policy catalog. Workflow bindings are checked against the known
+Worker/Vercel route map. Missing bindings are reported as warnings so a
+developer can declare future workflows before implementing them.
+
+`agent-packs:smoke --pack <pack-id>` stays local in v1. It verifies that the
+pack maps into behavior templates and that agent creation would snapshot the
+same pack prompt and provenance. If a pack has a known live read-only smoke,
+the command prints the exact optional command instead of calling external
+services automatically.
+
+## Golden Pack Checklist
+
+- One folder per agent under `agent-packs/<pack-id>/`.
+- `index.ts` contains the manifest and `prompt.xml` mirrors the manifest prompt.
+- Prompt includes an `<identity>` section and no inline secrets or credentials.
+- Declared tools have stable ids, purposes, and allowed execution modes.
+- Declared workflows have stable intent types and future route bindings when
+  implemented.
+- Risk posture is explicit: financial data, mutation, secrets, and production
+  gate.
+- Smoke scenarios describe the first local checks an operator or developer
+  should run.
+- UI hints keep future UI authoring possible, but code/files remain the source
+  of truth in this slice.

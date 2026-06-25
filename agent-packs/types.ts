@@ -1,5 +1,5 @@
-import type { AgentProfile } from "@/cloudflare/control-plane/src/agent-records";
-import type { ExecutionMode } from "@/cloudflare/control-plane/src/types";
+import type { AgentProfile } from "../cloudflare/control-plane/src/agent-records";
+import type { ExecutionMode } from "../cloudflare/control-plane/src/types";
 
 export type AgentPackCapabilityLevel = "template" | "single_agent_app";
 
