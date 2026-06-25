@@ -179,6 +179,13 @@ function WorkbenchShellContent() {
         execute: () => setHistoryOpen(true),
       },
       {
+        id: "run",
+        label: "Run workflow",
+        description: "Run the active pack's declared read-only workflow.",
+        icon: PlayIcon,
+        execute: () => setAgentsOpen(true),
+      },
+      {
         id: "admin",
         label: "Admin",
         description: adminAccess?.isAdmin
@@ -235,7 +242,11 @@ function WorkbenchShellContent() {
         <Assistant>
           <WorkbenchAssistantEvents />
         </Assistant>
-        <WorkbenchAgentsPanel open={agentsOpen} onOpenChange={setAgentsOpen} />
+        <WorkbenchAgentsPanel
+          open={agentsOpen}
+          onOpenChange={setAgentsOpen}
+          onOpenHistory={() => setHistoryOpen(true)}
+        />
         <WorkbenchHistoryPanel open={historyOpen} onOpenChange={setHistoryOpen} />
         <AdminPanel open={adminOpen} onOpenChange={setAdminOpen} />
       </AssistantSlashCommandProvider>

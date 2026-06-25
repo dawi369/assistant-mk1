@@ -82,10 +82,15 @@ registry.
 The main workbench shell exposes `/agents` as a lightweight switching surface.
 Any active workspace member can activate an existing active agent. Admin users
 can also create and activate missing demo agents from checked-in pack templates.
+For packs with known read-only workflow bindings, `/agents` also exposes a
+small workflow runner for the active pack. `/run` opens the same surface as a
+shortcut. Workflow execution stays dry-run-only in this slice and writes normal
+run/history/artifact metadata through the existing routes.
 
 The Admin drawer remains the detailed diagnostics/configuration surface. The
 workbench panel is intentionally limited to active agent identity, pack metadata,
-declared tools, declared workflows, risk posture, and demo-pack creation.
+declared tools, declared workflows, risk posture, demo-pack creation, and
+read-only workflow launch.
 
 ## Adding A Pack
 
@@ -97,9 +102,12 @@ declared tools, declared workflows, risk posture, and demo-pack creation.
    `pnpm agent-packs:inspect --pack <pack-id>`.
 6. Run the local pack smoke with `pnpm agent-packs:smoke --pack <pack-id>`.
 7. Create or activate the pack-backed agent from `/agents` in the workbench.
-8. Keep the pack read-only unless the production mutation gates are satisfied.
-9. Run `pnpm test:unit -- agent-behavior-templates agent-packs`,
-   `pnpm typecheck`, and `pnpm lint`.
+8. Run a declared read-only workflow from `/agents` or `/run` when the pack has
+   a known runtime binding.
+9. Inspect the resulting run and report artifact from `/history`.
+10. Keep the pack read-only unless the production mutation gates are satisfied.
+11. Run `pnpm test:unit -- agent-behavior-templates agent-packs`,
+    `pnpm typecheck`, and `pnpm lint`.
 
 Packs should express reusable agent behavior and expected capabilities. They
 must not smuggle tenant scope, secrets, raw credentials, or customer-specific
@@ -131,6 +139,11 @@ pack maps into behavior templates and that agent creation would snapshot the
 same pack prompt and provenance. If a pack has a known live read-only smoke,
 the command prints the exact optional command instead of calling external
 services automatically.
+
+After local validation, use `/agents` to activate the pack-backed agent and run
+its declared read-only workflow. `/run` opens the same runner directly. The
+runner only calls known same-origin workflow bindings, always sends
+`executionMode: "dry_run"`, and links the resulting run back to `/history`.
 
 ## Golden Pack Checklist
 
