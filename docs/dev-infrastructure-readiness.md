@@ -53,6 +53,22 @@ tool-runner, and event metadata for Admin visibility. The `/langgraph` facade
 remains for compatibility and explicit Fly/LangGraph delegation, not the normal
 chat path.
 
+## Toolchain And CI
+
+- Package manager: `pnpm@10.33.0`, pinned in `package.json`.
+- pnpm project settings live in `pnpm-workspace.yaml`. pnpm v11 no longer reads
+  the legacy `package.json` `pnpm` settings field, so overrides and run checks
+  belong in the workspace file.
+- `verifyDepsBeforeRun: warn` keeps normal `pnpm <script>` commands usable in
+  non-TTY agent sessions even when local `node_modules` metadata is stale.
+- GitHub Actions verification lives in `.github/workflows/verify.yml` and runs
+  a clean install, agent-pack validation, focused workflow/tool-policy tests,
+  typecheck, lint, and build on push/PR.
+
+If local commands warn that `node_modules` is out of sync, a deliberate
+`pnpm install` refreshes the local metadata. Do not run install just to silence
+the warning during unrelated repo analysis.
+
 ## Fly Configuration
 
 Required secrets:
@@ -191,7 +207,8 @@ During the current pre-production framework phase, destructive remote dev D1
 rebuilds are welcome when they keep the live schema aligned with the checked-in
 control-plane contract. Treat `assistant_mk1_dev` as disposable validation
 state until the project explicitly introduces a migration system and promotes
-remote data retention to a requirement.
+remote data retention to a requirement. The production gate for that handoff is
+tracked in `docs/migrations-and-retention.md`.
 
 Only run `d1 create` when `assistant_mk1_dev` is missing. After creation, copy
 the returned `database_id` into `cloudflare/control-plane/wrangler.jsonc`.

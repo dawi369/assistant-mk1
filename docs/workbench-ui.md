@@ -4,9 +4,9 @@ Assistant-mk1 is an operator workbench built around chat, not a generic chatbot
 wrapper. The UI should make long-running agent work inspectable without hiding
 the underlying state.
 
-Document status: the current UI is default assistant-ui chat plus a
-command-accessed Admin panel. The surfaces below describe the target workbench
-as runtime data matures.
+Document status: the current UI is default assistant-ui chat plus local
+commands for `/new`, `/agents`, `/run`, `/history`, and server-gated `/admin`.
+The surfaces below describe the target workbench as runtime data matures.
 
 ## Assistant-UI Leverage Map
 
@@ -51,6 +51,11 @@ Current implemented layout:
 - Main thread region using assistant-ui.
 - Top-right auth controls.
 - `/new` composer command for entering a local blank session.
+- `/agents` composer command for active agent switching and declared pack
+  workflow runs.
+- `/run` composer command as a shortcut into the active pack workflow panel.
+- `/history` composer command and runtime-hint action for scoped runs,
+  selected-run summaries, tool calls, and metadata-only artifacts.
 - `/admin` composer command for the flow-first Cloudflare-owned Admin panel.
 - Admin tool actions for read-only adapters and conformance tools, currently
   `url.inspect`, `repo.snapshot`, `diagnostic.ping`, `runner.echo`, and
@@ -64,7 +69,9 @@ Target layout:
 - Compact run/status strip near the thread when chat/workflow state needs a
   customer-visible status surface.
 - Collapsible workbench/admin panel for inspectable runtime state.
-- Artifact/history drawer or tab.
+- Artifact/history drawer or tab. The current `/history` drawer is the first
+  product-facing version; it intentionally exposes metadata summaries before
+  blob previews or deletion/export controls.
 - Tool/policy panel for enabled tools and recent calls.
 
 The first screen should be the usable workbench, not a landing page.
@@ -282,7 +289,15 @@ Implemented:
   sidebar plus button. It stays unmaterialized until the first message is sent.
 - The normal shell includes a compact server-derived runtime hint for active
   workspace, active agent/profile, model, chat state, and quick access to
-  Admin when the latest runtime state needs attention.
+  History plus Admin details when the latest runtime state needs attention.
+- The `/agents` panel switches pack-backed agents, creates pack-backed agents
+  for admins, shows declared tools/workflows/risk, and runs the active pack's
+  read-only workflow through bounded preset fields.
+- `/run` opens the same workflow runner so pack execution remains one surface
+  instead of a separate runtime page.
+- The `/history` drawer shows recent scoped runs, selected-run summaries, tool
+  call details, child runs, audit events, and metadata-only artifacts outside
+  Admin.
 - Admin opens as a flow-first panel from the local `/admin` composer command:
   a Cloudflare-owned request map/waterfall, chat readiness, active workspace,
   active agent/profile, latest meaningful event, and important errors are shown
@@ -305,7 +320,8 @@ Implemented:
   `artifact.metadata.test` as model-hidden, dry-run-only conformance probes for
   policy, runner, callback, artifact, history, and event plumbing.
 - Admin includes read-only execution history, artifact metadata history, and a
-  selected-run snapshot drilldown.
+  selected-run snapshot drilldown for diagnostics; the normal `/history`
+  surface covers the product-facing read path.
 - Admin summary treats historical tool failures as history once a newer
   completed control run proves the path recovered; stale errors remain
   inspectable through history instead of pinning the global Details state.
@@ -318,7 +334,8 @@ Next UI targets:
 
 - Customer-facing run/status strip only when a real workflow produces state
   richer than the compact chat hint.
-- Product-grade artifact/history surfaces beyond the Admin drawer.
+- Richer artifact/history surfaces beyond metadata summaries: previews,
+  filters, export/delete behavior, and R2-backed blobs after retention gates.
 - Chat-side approval display through assistant-ui tool rendering when a
   model-side workflow needs approve/deny/resume.
 - Broader policy visibility for durable limits, cooldowns, richer approvals,

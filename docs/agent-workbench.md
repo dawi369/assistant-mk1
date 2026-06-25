@@ -13,9 +13,10 @@ The target audience is broader than internal use:
 - business integration use, where a willing company gets scoped agents inside
   its workflows, permissions, data, approvals, and audit boundaries
 
-Document status: the shipped surface is assistant-ui chat plus a
-command-accessed Admin panel. The broader surfaces below are direction, not a
-claim that every UI exists today.
+Document status: the shipped surface is assistant-ui chat plus local workbench
+commands for `/new`, `/agents`, `/run`, `/history`, and server-gated `/admin`.
+The broader surfaces below are direction, not a claim that every UI exists
+today.
 
 ## Product Scope
 
@@ -58,6 +59,14 @@ workbench.
 - The runtime hint shows server-derived workspace, agent/profile, chat state,
   and error detail.
 - Recent chat state and active-thread switching are Cloudflare-owned.
+- `/agents` opens the pack-backed agent/workflow panel. `/run` is a shortcut to
+  the same panel and runs only declared read-only workflows for the active pack.
+- Baby Polymancer and Baby Swordfish have current pack workflow bindings that
+  create Cloudflare-owned workflow intents, runs, tool calls, artifacts, audit
+  events, and history entries through a shared lifecycle helper.
+- `/history` opens the product-facing workbench history drawer for recent
+  scoped runs, selected-run summaries, tool calls, and metadata-only artifacts.
+  The runtime hint also links directly to this surface.
 - `/admin` opens a server-gated Admin panel and is stripped before model send.
 - Admin leads with Cloudflare-derived runtime visibility: trace graph,
   waterfall, chat readiness, active workspace, active agent/profile, latest
@@ -67,9 +76,9 @@ workbench.
   Admin-only conformance tools, approval queue, and policy/model-exposure
   explanations.
 - Cloudflare exposes backend execution and artifact history metadata through
-  scoped workbench APIs. Admin can inspect recent runs and metadata-only
-  artifacts; there is no blob artifact storage or polished customer-facing
-  history product yet.
+  scoped workbench APIs. The normal `/history` surface can inspect recent runs
+  and metadata-only artifacts; Admin remains the deeper diagnostic surface.
+  There is no blob artifact storage yet.
 - The diagnostic `demo.inspect` path exists only as compatibility coverage for
   the original Cloudflare-owned run slice. It should not shape the product.
 
@@ -78,9 +87,11 @@ workbench.
 1. Keep the connected workbench local-feeling: fast first paint, immediate
    draft input, responsive thread switching, and background Cloudflare
    reconciliation.
-2. Turn Admin-only execution and artifact history into a customer-facing
-   workbench surface when the data model is stable enough.
-3. Expand code-first agent packs from template import/preview into
+2. Expand `/history` from metadata summaries into richer artifact previews,
+   filtering, export/delete behavior, and blob-backed storage once migration
+   and retention gates exist.
+3. Expand code-first agent packs from template import/preview and the current
+   Polymancer/Swordfish workflow bindings into
    tool-specific configuration, context assembly, smoke scenarios, and package
    verification.
 4. Harden model-side tool rendering and approval explanations before broader

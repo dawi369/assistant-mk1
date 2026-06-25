@@ -1,10 +1,12 @@
 import { selectAgent } from "./authz-store";
-import { appendControlPlaneEvent } from "./control-plane-events";
-import { appendControlAudit } from "./demo-run-store";
 import { isRecord, json, parseJson } from "./http";
 import { resolveAgentBehaviorConfig } from "./agent-records";
-import { buildControlRunRelation, toControlRunRelationEventData } from "./run-relations";
-import { createId, toJson, type AgentIdentity, type Env, type ExecutionMode } from "./types";
+import {
+  finishPackWorkflowRun,
+  recordPackWorkflowToolCall,
+  startPackWorkflowRun,
+} from "./pack-workflow-lifecycle";
+import type { AgentIdentity, Env, ExecutionMode } from "./types";
 import {
   polymarketMarketSearchToolName,
   polymarketMarketSnapshotToolName,
@@ -22,9 +24,6 @@ import {
 const workflowType = "polymancer.market_research";
 const workflowPolicy = "polymancer-market-research-readonly-v0";
 const babyPolymancerPackId = "baby-polymancer";
-
-const toolCallId = (runId: string, toolName: string) =>
-  `${runId}-tool-${toolName.replaceAll(".", "-")}`;
 
 const workflowError = (code: string, message: string, status = 400) =>
   json(
@@ -86,278 +85,6 @@ const requireBabyPolymancerPack = async (env: Env, identity: AgentIdentity) => {
       };
 };
 
-const insertWorkflowStart = async (
-  env: Env,
-  identity: AgentIdentity,
-  input: {
-    toolInput: Record<string, unknown>;
-    executionMode: ExecutionMode;
-  },
-) => {
-  const timestamp = new Date().toISOString();
-  const workflowIntentId = createId("cf-intent");
-  const runId = createId("cf-run");
-  const builtRelation = buildControlRunRelation({ runId });
-  if (!builtRelation.ok) throw new Error(builtRelation.reason);
-  const relation = builtRelation.relation;
-  const relationData = toControlRunRelationEventData(relation);
-  const execution = { mode: input.executionMode, policy: workflowPolicy };
-
-  await env.DB.prepare(
-    `INSERT INTO control_workflow_intents (
-       id, user_id, workspace_id, agent_id, stage, type, execution_json, payload_json,
-       status, created_at, updated_at
-     )
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  )
-    .bind(
-      workflowIntentId,
-      identity.scope.userId,
-      identity.scope.workspaceId,
-      identity.agentId,
-      "analyze",
-      workflowType,
-      toJson(execution),
-      toJson({ input: input.toolInput }),
-      "running",
-      timestamp,
-      timestamp,
-    )
-    .run();
-
-  await env.DB.prepare(
-    `INSERT INTO control_runs (
-       id, user_id, workspace_id, agent_id, workflow_intent_id, status, execution_json,
-       stage, engine, heartbeat_at, last_event_at, data_json, created_at, updated_at
-     )
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  )
-    .bind(
-      runId,
-      identity.scope.userId,
-      identity.scope.workspaceId,
-      identity.agentId,
-      workflowIntentId,
-      "running",
-      toJson(execution),
-      "analyze",
-      "langgraph-declared",
-      timestamp,
-      timestamp,
-      toJson({
-        displayName: "Polymancer market research",
-        workflowType,
-        source: "agent-pack",
-        packId: babyPolymancerPackId,
-        relation,
-      }),
-      timestamp,
-      timestamp,
-    )
-    .run();
-
-  await appendControlAudit(env, {
-    ...identity,
-    runId,
-    workflowIntentId,
-    action: "intent.created",
-    summary: "Created Polymancer market research workflow intent.",
-    targetType: "workflowIntent",
-    targetId: workflowIntentId,
-    data: { relation: relationData },
-  });
-  await appendControlPlaneEvent(env, identity, {
-    type: "workflow.intent.created",
-    summary: "Created Polymancer market research workflow intent.",
-    targetType: "workflowIntent",
-    targetId: workflowIntentId,
-    data: { runId, workflowIntentId, workflowType, relation: relationData },
-  });
-
-  return { runId, workflowIntentId, relation };
-};
-
-const insertToolCall = async (
-  env: Env,
-  identity: AgentIdentity,
-  input: {
-    runId: string;
-    workflowIntentId: string;
-    toolName: string;
-    status: "completed" | "failed";
-    inputSummary: string;
-    outputSummary: string;
-    data: Record<string, unknown>;
-  },
-) => {
-  const timestamp = new Date().toISOString();
-  const id = toolCallId(input.runId, input.toolName);
-  await env.DB.prepare(
-    `INSERT INTO control_tool_calls (
-       id, user_id, workspace_id, agent_id, workflow_intent_id, run_id, tool_id, status,
-       input_summary, output_summary, artifact_refs_json, data_json, started_at, finished_at,
-       created_at
-     )
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  )
-    .bind(
-      id,
-      identity.scope.userId,
-      identity.scope.workspaceId,
-      identity.agentId,
-      input.workflowIntentId,
-      input.runId,
-      input.toolName,
-      input.status,
-      input.inputSummary,
-      input.outputSummary,
-      "[]",
-      toJson(input.data),
-      timestamp,
-      timestamp,
-      timestamp,
-    )
-    .run();
-  return id;
-};
-
-const finishWorkflow = async (
-  env: Env,
-  identity: AgentIdentity,
-  input: {
-    runId: string;
-    workflowIntentId: string;
-    ok: boolean;
-    summary: string;
-    artifact?: {
-      id: string;
-      kind: string;
-      uri: string;
-      title: string;
-      mimeType: string;
-      sizeBytes: number;
-      data: Record<string, unknown>;
-    };
-    data: Record<string, unknown>;
-  },
-) => {
-  const timestamp = new Date().toISOString();
-  const artifactRef = input.artifact
-    ? {
-        id: input.artifact.id,
-        kind: input.artifact.kind,
-        uri: input.artifact.uri,
-        title: input.artifact.title,
-        mimeType: input.artifact.mimeType,
-      }
-    : null;
-
-  if (input.artifact) {
-    await env.DB.prepare(
-      `INSERT INTO control_artifacts (
-         id, user_id, workspace_id, kind, uri, title, mime_type, size_bytes, data_json, created_at
-       )
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-      .bind(
-        input.artifact.id,
-        identity.scope.userId,
-        identity.scope.workspaceId,
-        input.artifact.kind,
-        input.artifact.uri,
-        input.artifact.title,
-        input.artifact.mimeType,
-        input.artifact.sizeBytes,
-        toJson(input.artifact.data),
-        timestamp,
-      )
-      .run();
-
-    const artifactRef = {
-      id: input.artifact.id,
-      kind: input.artifact.kind,
-      uri: input.artifact.uri,
-      title: input.artifact.title,
-      mimeType: input.artifact.mimeType,
-    };
-    await env.DB.prepare(
-      `UPDATE control_tool_calls
-       SET artifact_refs_json = ?
-       WHERE user_id = ? AND workspace_id = ? AND run_id = ?`,
-    )
-      .bind(toJson([artifactRef]), identity.scope.userId, identity.scope.workspaceId, input.runId)
-      .run();
-  }
-
-  await env.DB.batch([
-    env.DB.prepare(
-      `UPDATE control_runs
-       SET status = ?, last_event_at = ?, completed_at = ?, failed_at = ?, data_json = ?,
-           updated_at = ?
-       WHERE user_id = ? AND workspace_id = ? AND id = ?`,
-    ).bind(
-      input.ok ? "completed" : "failed",
-      timestamp,
-      input.ok ? timestamp : null,
-      input.ok ? null : timestamp,
-      toJson({
-        summary: input.summary,
-        ...input.data,
-        artifactIds: artifactRef ? [artifactRef.id] : [],
-      }),
-      timestamp,
-      identity.scope.userId,
-      identity.scope.workspaceId,
-      input.runId,
-    ),
-    env.DB.prepare(
-      `UPDATE control_workflow_intents
-       SET status = ?, updated_at = ?
-       WHERE user_id = ? AND workspace_id = ? AND id = ?`,
-    ).bind(
-      input.ok ? "completed" : "failed",
-      timestamp,
-      identity.scope.userId,
-      identity.scope.workspaceId,
-      input.workflowIntentId,
-    ),
-  ]);
-
-  await appendControlAudit(env, {
-    ...identity,
-    runId: input.runId,
-    workflowIntentId: input.workflowIntentId,
-    action: input.ok ? "run.completed" : "run.failed",
-    summary: input.summary,
-    targetType: "run",
-    targetId: input.runId,
-    data: input.data,
-  });
-  if (artifactRef) {
-    await appendControlAudit(env, {
-      ...identity,
-      runId: input.runId,
-      workflowIntentId: input.workflowIntentId,
-      action: "artifact.created",
-      summary: "Created Polymancer market research artifact.",
-      targetType: "artifact",
-      targetId: artifactRef.id,
-    });
-  }
-  await appendControlPlaneEvent(env, identity, {
-    type: input.ok ? "workflow.run.completed" : "workflow.run.failed",
-    summary: input.summary,
-    targetType: "run",
-    targetId: input.runId,
-    data: {
-      runId: input.runId,
-      workflowIntentId: input.workflowIntentId,
-      workflowType,
-      artifactId: artifactRef?.id,
-    },
-  });
-};
-
 const runSnapshotFromSearch = async (input: PolymarketMarketSearchInput) => {
   const search = await runPolymarketMarketSearch(input);
   if (!search.ok) return { ok: false as const, search };
@@ -384,16 +111,21 @@ export const handlePolymancerMarketResearch = async (
   const parsed = readInput(parseJson(await request.text()));
   if (!parsed.ok) return parsed.response;
 
-  const workflow = await insertWorkflowStart(env, identity, {
+  const workflow = await startPackWorkflowRun(env, identity, {
+    workflowType,
+    policyReference: workflowPolicy,
+    displayName: "Polymancer market research",
+    packId: babyPolymancerPackId,
     toolInput: isRecord(parsed.searchInput ?? parsed.snapshotInput)
       ? (parsed.searchInput ?? parsed.snapshotInput)
       : {},
     executionMode: parsed.mode,
+    intentCreatedSummary: "Created Polymancer market research workflow intent.",
   });
 
   const searchResult = parsed.searchInput ? await runSnapshotFromSearch(parsed.searchInput) : null;
   if (searchResult?.search) {
-    await insertToolCall(env, identity, {
+    await recordPackWorkflowToolCall(env, identity, {
       ...workflow,
       toolName: polymarketMarketSearchToolName,
       status: searchResult.search.ok ? "completed" : "failed",
@@ -420,8 +152,9 @@ export const handlePolymancerMarketResearch = async (
       snapshot && !snapshot.ok
         ? snapshot.error.message
         : (searchResult?.error ?? "Market snapshot could not be created.");
-    await finishWorkflow(env, identity, {
+    await finishPackWorkflowRun(env, identity, {
       ...workflow,
+      workflowType,
       ok: false,
       summary,
       data: { error: summary },
@@ -429,7 +162,7 @@ export const handlePolymancerMarketResearch = async (
     return json({ ok: false, error: summary, run: workflow }, { status: 502 });
   }
 
-  await insertToolCall(env, identity, {
+  await recordPackWorkflowToolCall(env, identity, {
     ...workflow,
     toolName: polymarketMarketSnapshotToolName,
     status: "completed",
@@ -442,7 +175,7 @@ export const handlePolymancerMarketResearch = async (
   const orderbookInput: PolymarketOrderbookSnapshotInput | null = tokenId ? { tokenId } : null;
   const orderbook = orderbookInput ? await runPolymarketOrderbookSnapshot(orderbookInput) : null;
   if (orderbook) {
-    await insertToolCall(env, identity, {
+    await recordPackWorkflowToolCall(env, identity, {
       ...workflow,
       toolName: polymarketOrderbookSnapshotToolName,
       status: orderbook.ok ? "completed" : "failed",
@@ -483,11 +216,13 @@ export const handlePolymancerMarketResearch = async (
     data: artifactData,
   };
 
-  await finishWorkflow(env, identity, {
+  await finishPackWorkflowRun(env, identity, {
     ...workflow,
+    workflowType,
     ok: true,
     summary: report.summary,
     artifact,
+    artifactCreatedSummary: "Created Polymancer market research artifact.",
     data: {
       packId: babyPolymancerPackId,
       workflowType,

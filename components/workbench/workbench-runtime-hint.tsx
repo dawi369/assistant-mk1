@@ -9,6 +9,7 @@ import {
   Building2Icon,
   CloudIcon,
   CpuIcon,
+  HistoryIcon,
   MessageSquareIcon,
 } from "lucide-react";
 
@@ -18,7 +19,13 @@ import { useAdminSummaryResource } from "@/lib/workbench/use-admin-summary-resou
 import { useWorkbenchAgentConnection } from "@/lib/workbench/use-agent-connection";
 import { cn } from "@/lib/utils";
 
-export function WorkbenchRuntimeHint({ onOpenAdmin }: { onOpenAdmin: () => void }) {
+export function WorkbenchRuntimeHint({
+  onOpenAdmin,
+  onOpenHistory,
+}: {
+  onOpenAdmin: () => void;
+  onOpenHistory: () => void;
+}) {
   const { summary, error: summaryError, refreshSummary, clearSummary } = useAdminSummaryResource();
   const { user, loading } = useAuth();
   const {
@@ -82,17 +89,28 @@ export function WorkbenchRuntimeHint({ onOpenAdmin }: { onOpenAdmin: () => void 
         <span className={cn("rounded-md border px-2 py-0.5 font-medium", statusClassName)}>
           {liveRuntime.chatLabel}
         </span>
-        {hasError ? (
+        <span className="flex shrink-0 items-center gap-1">
           <Button
             variant="ghost"
             size="sm"
-            className="text-destructive hover:text-destructive h-6 shrink-0 gap-1 px-1.5 text-xs"
-            onClick={onOpenAdmin}
+            className="h-6 gap-1 px-1.5 text-xs"
+            onClick={onOpenHistory}
           >
-            <AlertCircleIcon className="size-3.5" />
-            Details
+            <HistoryIcon className="size-3.5" />
+            History
           </Button>
-        ) : null}
+          {hasError ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-destructive hover:text-destructive h-6 gap-1 px-1.5 text-xs"
+              onClick={onOpenAdmin}
+            >
+              <AlertCircleIcon className="size-3.5" />
+              Details
+            </Button>
+          ) : null}
+        </span>
       </div>
       <RuntimeHintRow
         icon={CloudIcon}

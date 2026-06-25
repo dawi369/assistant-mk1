@@ -29,6 +29,8 @@ These files should stay aligned with code changes:
 - `agent-packs.md`: code-first local agent pack contract and current example.
 - `implementation-roadmap.md`: current baseline, active next targets,
   production gates, and deferred work.
+- `migrations-and-retention.md`: current D1 reset boundary and the retained
+  data migration/retention gate.
 - `workbench-ui.md`: current UI baseline and target workbench surfaces.
 - `dev-infrastructure-readiness.md`: local/remote setup, smoke commands, and
   resource checklist.

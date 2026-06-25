@@ -38,6 +38,13 @@ scoped.
   runtime traces, and model exposure controls.
 - Code-first local agent packs can be checked into `agent-packs/*`, surfaced as
   behavior templates, and snapshotted into workspace-scoped agent records.
+- `/agents` is the main pack/workflow surface, `/run` is a shortcut into the
+  same panel, and active Polymancer/Swordfish pack workflows use shared
+  lifecycle helpers for workflow intents, runs, tool calls, artifact metadata,
+  audit, and events.
+- `/history` is a normal workbench surface for scoped execution history,
+  selected-run summaries, and metadata-only artifacts. Admin still carries
+  deeper diagnostics.
 - Admin-only conformance tools now cover Cloudflare-inline ping,
   callback-backed Fly runner echo, and metadata artifact creation. They are
   model-hidden, dry-run-only, and non-policy-editable.
@@ -52,7 +59,11 @@ scoped.
   state through Cloudflare-owned APIs.
 - The current dev schema is rebuildable. Keep the active schema in
   `cloudflare/control-plane/schema.sql` until the project explicitly introduces
-  migrations and remote data retention.
+  migrations and remote data retention. The migration/retention gate is now
+  tracked in `docs/migrations-and-retention.md`.
+- The repo now has a GitHub Actions verification gate for clean installs,
+  agent-pack validation, focused workflow/tool-policy tests, typecheck, lint,
+  and build.
 
 ## Active Next Targets
 
@@ -63,10 +74,12 @@ scoped.
    rendering and approval explanations before broader model tool use.
 3. Expand read-only adapters beyond `url.inspect` and `repo.snapshot` only
    where they prove the common runner, policy, artifact, and audit model.
-4. Expand code-first agent packs from behavior snapshots into tool-specific
-   configuration, context assembly, smoke scenarios, and package verification.
-5. Promote execution history and artifact metadata from Admin-only visibility
-   into a product-grade workbench surface.
+4. Expand code-first agent packs from behavior snapshots into more workflow
+   bindings, tool-specific configuration, context assembly, smoke scenarios,
+   and package verification.
+5. Keep promoting execution history and artifact metadata from read-only
+   metadata into richer product surfaces: previews, filters, export/delete
+   behavior, and artifact blob storage when retention gates exist.
 6. Add swappable domain context configuration for downstream apps, developer
    installs, and business integrations without introducing a committed
    `Project` entity.
@@ -79,6 +92,8 @@ scoped.
 
 Mutation-capable tools stay blocked until the platform has:
 
+- A non-destructive D1 migration path and retention policy for any table or
+  artifact class the tool needs to preserve.
 - WorkOS-backed customer/workspace administration beyond the current pre-user
   defaults.
 - Cloudflare-owned membership and tool authorization for customer-facing roles.

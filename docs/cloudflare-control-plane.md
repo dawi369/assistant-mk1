@@ -43,6 +43,9 @@ other server-side execution services.
 The current D1 schema is early-dev and rebuildable. Keep the active schema in
 `cloudflare/control-plane/schema.sql`; it intentionally starts by dropping dev
 tables. Rebuild local or remote D1 only when deliberately resetting dev state.
+The migration and retained-data gate is tracked in
+`docs/migrations-and-retention.md`; do not treat remote D1 as durable customer
+history until that gate is implemented.
 
 ## Tenant Boundary
 
@@ -153,7 +156,9 @@ metadata reads for execution and artifact history:
 
 These endpoints expose run summaries, tool-call counts, compact stored run
 snapshots, and metadata-only artifacts. They do not provide blob/R2 storage,
-raw logs, prompts, secrets, or customer-facing UI yet.
+raw logs, prompts, or secrets. The `/history` workbench surface and workflow
+handoff now make this product-visible metadata available outside Admin, while
+Admin still carries the deeper diagnostic details.
 
 ## Tools And Policy
 

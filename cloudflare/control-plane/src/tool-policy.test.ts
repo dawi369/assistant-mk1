@@ -88,4 +88,11 @@ describe("tool policy catalog", () => {
       mutationRisk: "read_only",
     });
   });
+
+  it("keeps every currently registered tool dry-run-only", () => {
+    for (const [toolName, policy] of Object.entries(toolPolicyCatalog)) {
+      expect(policy.mutationRisk, toolName).toBe("read_only");
+      expect(policy.allowedExecutionModes, toolName).toEqual(["dry_run"]);
+    }
+  });
 });

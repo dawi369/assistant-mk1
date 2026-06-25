@@ -96,6 +96,7 @@ export function WorkbenchHistoryPanel({
     () => runs.find((run) => run.id === selectedRunId) ?? null,
     [runs, selectedRunId],
   );
+  const latestArtifact = artifacts.at(0) ?? null;
 
   const loadHistory = useCallback(async () => {
     setIsLoadingHistory(true);
@@ -157,10 +158,10 @@ export function WorkbenchHistoryPanel({
             <span>
               <DialogTitle className="flex items-center gap-2 text-base">
                 <HistoryIcon className="text-muted-foreground size-4" />
-                History
+                Workbench History
               </DialogTitle>
               <DialogDescription>
-                Recent scoped runs and metadata artifacts for this workspace.
+                Scoped workflow runs, tool calls, and artifact metadata for this workspace.
               </DialogDescription>
             </span>
             <Button
@@ -177,7 +178,7 @@ export function WorkbenchHistoryPanel({
         </DialogHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
             <StatusRow
               label="Recent runs"
               value={isLoadingHistory ? "Loading" : String(runs.length)}
@@ -194,6 +195,12 @@ export function WorkbenchHistoryPanel({
               label="Selected"
               value={selectedRun ? runHistoryTitle(selectedRun) : "No run selected"}
               compact
+            />
+            <StatusRow
+              label="Latest artifact"
+              value={latestArtifact?.title ?? "None"}
+              compact
+              tone={latestArtifact ? "ok" : "muted"}
             />
           </div>
 

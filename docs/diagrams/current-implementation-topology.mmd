@@ -14,9 +14,10 @@ flowchart LR
     nextApp["Next.js app"]
     authKit["WorkOS AuthKit session"]
     assistantUi["assistant-ui thread"]
+    slashSurfaces["/agents /run /history"]
     agentConnection["agent connection route"]
     signalApi["external-signals API"]
-    workbenchApi["workbench API routes"]
+    workbenchApi["workbench API facades"]
   end
 
   subgraph sg_cf["Cloudflare / Worker Control Plane"]
@@ -24,12 +25,15 @@ flowchart LR
     worker["control-plane Worker"]
     scopeResolver["WorkOS scope resolver"]
     authz["workspace + agent authz"]
-    agentContext["agent thread context"]
-    threadAgent["AIChatAgent DO"]
+    sessionAgent["WorkbenchSessionAgent DO"]
+    threadAgent["WorkbenchThreadChatAgent DO"]
     workbenchControl["workspace/agent/admin APIs"]
-    eventFeed["event feed + runtime summary"]
-    demoRuns["demo run APIs"]
+    packWorkflows["pack workflow routes"]
+    toolPolicy["tool registry + policy"]
+    historyApi["history/artifact APIs"]
+    sessionEvents["session event stream"]
     callback["run callback endpoint"]
+    demoRuns["demo compatibility APIs"]
   end
 
   subgraph sg_fly["Fly.io / LangGraph Execution"]
@@ -37,66 +41,79 @@ flowchart LR
     gateway["runtime gateway"]
     langgraph["LangGraph server"]
     agentGraph["backend/agent.ts"]
-    executor["signed demo executor"]
+    runner["signed tool runner"]
   end
 
   subgraph sg_data["Durable Data Plane"]
     direction TB
     d1Identity["D1 users/workspaces/agents"]
     d1Chat["D1 chat state"]
-    d1Control["D1 runs/events/artifacts"]
-    durableObject["DO SQLite chat messages"]
+    d1Control["D1 runs/tools/artifacts/audit"]
+    durableObject["DO SQLite hot messages"]
     r2["R2 artifacts planned"]
+    migrations["D1 migrations planned"]
     workflowState["workflow checkpoints planned"]
   end
 
   subgraph sg_sidecar["External sidecars"]
     direction TB
     externalTriggers["external triggers"]
+    readonlySources["public read-only data"]
     openrouter["OpenRouter provider"]
   end
 
   nextApp -- "renders" --> assistantUi
   nextApp -- "hosted sign-in" --> authKit
+  assistantUi -- "local command" --> slashSurfaces
+  slashSurfaces -- "workbench action" --> workbenchApi
   assistantUi -- "agent connection" --> agentConnection
-  agentConnection -- "trusted identity" --> worker
   authKit -- "server identity" --> agentConnection
+  authKit -- "server identity" --> workbenchApi
+  agentConnection -- "trusted identity" --> worker
+  workbenchApi -- "trusted headers" --> worker
   worker -- "resolve scope" --> scopeResolver
   scopeResolver -- "membership + active agent" --> authz
-  authz -- "active thread" --> agentContext
-  agentContext -- "short-lived token" --> agentConnection
+  authz -- "session snapshot + token" --> sessionAgent
+  authz -- "workbench action" --> workbenchControl
+  sessionAgent -- "short-lived token" --> agentConnection
   assistantUi -- "WebSocket chat" --> threadAgent
   threadAgent -- "model call" --> openrouter
   threadAgent -- "hot messages" --> durableObject
   threadAgent -- "run/trace mirror" --> d1Control
-  agentContext -- "session/thread write" --> d1Chat
+  sessionAgent -- "thread/session mirror" --> d1Chat
+  sessionAgent -- "browser hints" --> sessionEvents
+  sessionEvents -- "live updates" --> assistantUi
+
+  workbenchControl -- "workspace + agent write" --> d1Identity
+  workbenchControl -- "tool/policy action" --> toolPolicy
+  workbenchControl -- "run pack workflow" --> packWorkflows
+  workbenchControl -- "history read" --> historyApi
+  packWorkflows -- "public dry-run read" --> readonlySources
+  packWorkflows -- "canonical write" --> d1Control
+  toolPolicy -- "canonical write" --> d1Control
+  historyApi -- "canonical read" --> d1Control
+  toolPolicy -- "signed runner dispatch" --> runner
+  runner -- "progress callback" --> callback
+  callback -- "canonical write" --> d1Control
+  callback -- "session hint" --> sessionEvents
+  workbenchControl -- "diagnostic read" --> demoRuns
+  demoRuns -- "canonical write" --> d1Control
+
+  externalTriggers -- "trusted ingress" --> signalApi
+  signalApi -- "control-plane start" --> worker
+  worker -- "typed intent/run write" --> d1Control
   worker -. "fallback/escalation proxy" .-> gateway
   gateway -- "LangGraph API" --> langgraph
   langgraph -- "loads graph" --> agentGraph
   agentGraph -- "model call" --> openrouter
 
-  externalTriggers -- "trusted ingress" --> signalApi
-  signalApi -- "staging LangGraph request" --> gateway
-
-  nextApp -- "workbench action" --> workbenchApi
-  workbenchApi -- "trusted headers" --> worker
-  authKit -- "server identity" --> workbenchApi
-  authz -- "admin/workspace/agent action" --> workbenchControl
-  workbenchControl -- "workspace + agent write" --> d1Identity
-  workbenchControl -- "summary/events read" --> eventFeed
-  eventFeed -- "canonical read" --> d1Control
-  workbenchControl -- "start/read run" --> demoRuns
-  demoRuns -- "canonical write" --> d1Control
-  demoRuns -- "signed dispatch" --> executor
-  executor -- "progress callback" --> callback
-  callback -- "canonical write" --> d1Control
-
   worker -. "planned storage" .-> r2
+  worker -. "planned migration gate" .-> migrations
   langgraph -. "planned checkpoints" .-> workflowState
 
-  class nextApp,authKit,assistantUi,agentConnection,signalApi,workbenchApi vercel
-  class worker,scopeResolver,authz,agentContext,threadAgent,workbenchControl,eventFeed,demoRuns,callback cloudflare
-  class gateway,langgraph,agentGraph,executor fly
+  class nextApp,authKit,assistantUi,slashSurfaces,agentConnection,signalApi,workbenchApi vercel
+  class worker,scopeResolver,authz,sessionAgent,threadAgent,workbenchControl,packWorkflows,toolPolicy,historyApi,sessionEvents,callback,demoRuns cloudflare
+  class gateway,langgraph,agentGraph,runner fly
   class d1Identity,d1Chat,d1Control,durableObject data
-  class r2,workflowState planned
-  class externalTriggers,openrouter sidecar
+  class r2,migrations,workflowState planned
+  class externalTriggers,readonlySources,openrouter sidecar

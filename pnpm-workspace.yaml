@@ -1,3 +1,8 @@
+# pnpm v11 reads project settings here, not from the package.json pnpm field.
 minimumReleaseAgeExclude:
   - "@esbuild/*"
   - esbuild
+verifyDepsBeforeRun: warn
+overrides:
+  esbuild: 0.28.1
+  shell-quote: 1.8.4

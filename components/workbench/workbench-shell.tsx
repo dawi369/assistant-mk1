@@ -237,7 +237,10 @@ function WorkbenchShellContent() {
         </div>
         <ThreadHistorySidebar disableNewChat={false} disableThreadActions={isInitialLoading} />
         <div className="absolute top-14 right-3 z-20 flex max-w-[calc(100vw-1.5rem)] flex-col items-end gap-2">
-          <WorkbenchRuntimeHint onOpenAdmin={openAdmin} />
+          <WorkbenchRuntimeHint
+            onOpenAdmin={openAdmin}
+            onOpenHistory={() => setHistoryOpen(true)}
+          />
         </div>
         <Assistant>
           <WorkbenchAssistantEvents />
