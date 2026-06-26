@@ -31,6 +31,7 @@ import {
 } from "@/lib/workbench/chat-session-state";
 import { sessionEventShouldRefreshAdminSummary } from "@/lib/workbench/session-event-refresh-policy";
 import type {
+  AgentSwitchTarget,
   AgentSummary,
   ChatSessionResponse,
   ChatThreadSummary,
@@ -176,11 +177,7 @@ type ChatSessionContextValue = {
   preloadNewSession: (source: SessionWarmupSource) => void;
   stageNewSession: (source: SessionStageSource) => Promise<ChatSessionResponse | null>;
   materializeTurn: (message: string) => Promise<void>;
-  switchAgent: (
-    agentId: string,
-    target: "current_thread" | "new_thread",
-    threadId?: string,
-  ) => Promise<void>;
+  switchAgent: (agentId: string, target: AgentSwitchTarget, threadId?: string) => Promise<void>;
   activateThread: (threadId: string) => Promise<void>;
   renameThread: (threadId: string, title: string) => Promise<void>;
   archiveThread: (threadId: string) => Promise<void>;
@@ -609,7 +606,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
   );
 
   const switchAgent = useCallback(
-    async (agentId: string, target: "current_thread" | "new_thread", threadId?: string) => {
+    async (agentId: string, target: AgentSwitchTarget, threadId?: string) => {
       const normalizedAgentId = agentId.trim();
       if (!normalizedAgentId) return;
       setPending({ type: "agent_handoff", agentId: normalizedAgentId });

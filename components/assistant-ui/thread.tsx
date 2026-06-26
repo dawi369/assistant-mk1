@@ -63,7 +63,7 @@ import {
   RefreshCwIcon,
   SquareIcon,
 } from "lucide-react";
-import { useCallback, type FC, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, type FC, type FormEvent } from "react";
 
 export const Thread: FC = () => {
   return (
@@ -269,6 +269,7 @@ const Composer: FC = () => {
   const commands = useAssistantSlashCommands();
   const { focusComposerAfterInteraction, registerComposerInput } = useWorkbenchComposerFocus();
   const aui = useAui();
+  const composerRootRef = useRef<HTMLFormElement | null>(null);
   const composerText = useAuiState((s) => s.composer.text);
   const isThreadRunning = useAuiState((s) => s.thread.isRunning);
   const isLoadingThread = useAuiState((s) => s.threads.isLoading);
@@ -295,9 +296,26 @@ const Composer: FC = () => {
     focusComposerAfterInteraction();
   };
 
+  useEffect(() => {
+    if (!isSlashNavigationDraft(composerText, commands)) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (composerRootRef.current?.contains(target)) return;
+
+      aui.composer().setText("");
+      focusComposerAfterInteraction();
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () => document.removeEventListener("pointerdown", handlePointerDown, true);
+  }, [aui, commands, composerText, focusComposerAfterInteraction]);
+
   return (
     <ComposerPrimitive.Unstable_TriggerPopoverRoot>
       <ComposerPrimitive.Root
+        ref={composerRootRef}
         className="aui-composer-root relative flex w-full flex-col"
         onSubmit={executeExactSlashCommand}
       >
@@ -326,6 +344,18 @@ const Composer: FC = () => {
       </ComposerPrimitive.Root>
     </ComposerPrimitive.Unstable_TriggerPopoverRoot>
   );
+};
+
+const isSlashNavigationDraft = (text: string, commands: readonly AssistantSlashCommand[]) => {
+  const draft = text.trim();
+  if (!draft.startsWith("/") || draft !== text || /\s/.test(draft)) return false;
+  const query = draft.slice(1).toLowerCase();
+  if (!query) return true;
+  return commands.some((command) => {
+    const id = command.id.toLowerCase();
+    const label = command.label.toLowerCase().replace(/\s+/g, "-");
+    return id.startsWith(query) || label.startsWith(query);
+  });
 };
 
 const ComposerSlashCommandPopover: FC<{

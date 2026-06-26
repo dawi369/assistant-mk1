@@ -24,7 +24,10 @@ import {
 } from "@/components/workbench/composer-focus-context";
 import { AdminPanel } from "@/components/workbench/dev-monitor-drawer";
 import { ThreadHistorySidebar } from "@/components/workbench/thread-history-sidebar";
-import { WorkbenchAgentsPanel } from "@/components/workbench/workbench-agents-panel";
+import {
+  WorkbenchAgentsPanel,
+  type AgentPanelEntryMode,
+} from "@/components/workbench/workbench-agents-panel";
 import { WorkbenchAssistantEvents } from "@/components/workbench/workbench-assistant-events";
 import { WorkbenchHistoryPanel } from "@/components/workbench/workbench-history-panel";
 import { WorkbenchRuntimeHint } from "@/components/workbench/workbench-runtime-hint";
@@ -60,6 +63,7 @@ export function WorkbenchShell() {
 function WorkbenchShellContent() {
   const [adminOpen, setAdminOpen] = useState(false);
   const [agentsOpen, setAgentsOpen] = useState(false);
+  const [agentsEntryMode, setAgentsEntryMode] = useState<AgentPanelEntryMode>("switch");
   const [historyOpen, setHistoryOpen] = useState(false);
   const [adminAccess, setAdminAccess] = useState<{ isAdmin: boolean } | null>(null);
   const [adminNotice, setAdminNotice] = useState<string | null>(null);
@@ -206,7 +210,20 @@ function WorkbenchShellContent() {
         label: "Agents",
         description: "Switch active pack-backed agents.",
         icon: BotIcon,
-        execute: () => setAgentsOpen(true),
+        execute: () => {
+          setAgentsEntryMode("switch");
+          setAgentsOpen(true);
+        },
+      },
+      {
+        id: "run",
+        label: "Run workflow",
+        description: "Run the active pack's declared read-only workflow.",
+        icon: PlayIcon,
+        execute: () => {
+          setAgentsEntryMode("workflow");
+          setAgentsOpen(true);
+        },
       },
       {
         id: "history",
@@ -214,13 +231,6 @@ function WorkbenchShellContent() {
         description: "Inspect recent scoped runs and artifacts.",
         icon: HistoryIcon,
         execute: () => setHistoryOpen(true),
-      },
-      {
-        id: "run",
-        label: "Run workflow",
-        description: "Run the active pack's declared read-only workflow.",
-        icon: PlayIcon,
-        execute: () => setAgentsOpen(true),
       },
       {
         id: "admin",
@@ -283,6 +293,7 @@ function WorkbenchShellContent() {
           <WorkbenchAssistantEvents />
         </Assistant>
         <WorkbenchAgentsPanel
+          entryMode={agentsEntryMode}
           open={agentsOpen}
           onOpenChange={handleAgentsOpenChange}
           onOpenHistory={openHistoryFromAgents}

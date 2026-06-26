@@ -2,8 +2,12 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { toWorkbenchApiError } from "@/lib/workbench/api-errors";
 import { switchChatSessionAgent } from "@/lib/workbench/cloudflare-control-plane-client";
+import type { AgentSwitchTarget } from "@/lib/workbench/workbench-types";
 
 export const runtime = "nodejs";
+
+const normalizeAgentSwitchTarget = (target: unknown): AgentSwitchTarget =>
+  target === "new_thread" ? "new_thread" : "current_thread";
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,7 +22,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       await switchChatSessionAgent({
         agentId: body.agentId,
-        target: body.target === "new_thread" ? "new_thread" : "current_thread",
+        target: normalizeAgentSwitchTarget(body.target),
         threadId: typeof body.threadId === "string" ? body.threadId : undefined,
       }),
     );

@@ -681,6 +681,8 @@ export type ChatThreadSummary = {
   messageCount?: number;
 };
 
+export type AgentSwitchTarget = "current_thread" | "new_thread";
+
 export type AgentHandoffSummary = {
   id: Id;
   threadId?: Id;
@@ -688,7 +690,7 @@ export type AgentHandoffSummary = {
   fromAgentName?: string;
   toAgentId: Id;
   toAgentName: string;
-  target: "current_thread" | "new_thread";
+  target: AgentSwitchTarget;
   createdAt: string;
 };
 

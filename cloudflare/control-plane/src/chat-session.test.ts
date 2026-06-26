@@ -83,6 +83,27 @@ describe("chat session switch agent handler", () => {
     });
   });
 
+  it("forwards new-thread agent switches to the session coordinator", async () => {
+    const { env, requests } = createEnv();
+
+    await handleSwitchChatSessionAgent(
+      new Request("https://control.test/chat/session/agent-switch", {
+        method: "POST",
+        body: JSON.stringify({
+          agentId: "agent-b",
+          target: "new_thread",
+        }),
+      }),
+      env,
+      identity,
+    );
+
+    expect(requests[0]).toMatchObject({
+      action: "switchAgent",
+      agentSwitch: { agentId: "agent-b", target: "new_thread" },
+    });
+  });
+
   it("normalizes unknown switch targets to current-thread handoffs", async () => {
     const { env, requests } = createEnv();
 

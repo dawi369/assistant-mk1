@@ -6,6 +6,7 @@ import {
 } from "@/lib/workbench/admin-summary-projection";
 import { signFacadeRequest } from "@/lib/workbench/control-plane-signing";
 import type {
+  AgentSwitchTarget,
   AgentSummary,
   CloudflareAgentBehaviorTemplatesResponse,
   CloudflareAdminSummaryResponse,
@@ -374,7 +375,7 @@ export const materializeChatSessionTurn = (input: { message: string }) =>
 
 export const switchChatSessionAgent = (input: {
   agentId: Id;
-  target: "current_thread" | "new_thread";
+  target: AgentSwitchTarget;
   threadId?: Id;
 }) =>
   requestControlPlane<ChatSessionResponse>("/chat/session/agent-switch", {

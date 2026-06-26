@@ -144,6 +144,9 @@ const sseEncoder = new TextEncoder();
 const maxMaterializeTurnMessageLength = 8_000;
 const maxAgentHandoffHistory = 20;
 
+const normalizeAgentSwitchTarget = (target: unknown): AgentSwitchTarget =>
+  target === "new_thread" ? "new_thread" : "current_thread";
+
 const getRequiredSecret = (env: Env) => {
   const secret = env.WORKBENCH_AGENT_CONNECTION_SECRET?.trim();
   if (!secret) throw new Error("WORKBENCH_AGENT_CONNECTION_SECRET is not configured");
@@ -646,6 +649,18 @@ const safeSnapshotData = (snapshot: SessionSnapshot) => ({
   activeThread: snapshot.activeThread,
   threads: snapshot.threads,
   agentHandoff: snapshot.agentHandoff ?? null,
+});
+
+const agentHandoffTransition = (startedAt: string) =>
+  ({ type: "agent_handoff", startedAt }) satisfies SessionResponseOptions["transition"];
+
+const safeAgentSwitchData = (
+  snapshot: SessionSnapshot,
+  input: { startedAt: string; agentHandoff?: AgentHandoffSummary | null },
+) => ({
+  ...safeSnapshotData(snapshot),
+  transition: agentHandoffTransition(input.startedAt),
+  agentHandoff: input.agentHandoff ?? null,
 });
 
 const safeThreadData = (snapshot: SessionSnapshot, thread: ReturnType<typeof toThreadSummary>) => ({
@@ -1320,7 +1335,7 @@ export class WorkbenchSessionAgent {
   private async switchAgent(input: CoordinatorRequest) {
     const startedAt = new Date().toISOString();
     const agentId = input.agentSwitch?.agentId?.trim();
-    const target = input.agentSwitch?.target ?? "current_thread";
+    const target = normalizeAgentSwitchTarget(input.agentSwitch?.target);
     if (!agentId) return { ok: false, error: "agentId is required", status: 400 };
 
     const targetAgent = await selectAgent(this.env, agentId, input.identity.scope.workspaceId);
@@ -1358,17 +1373,10 @@ export class WorkbenchSessionAgent {
         activeAgent: targetAgent,
       });
       this.broadcastEvent(
-        this.createEvent("session.agent.handoff", {
-          ...safeSnapshotData(this.snapshot),
-          transition: { type: "agent_handoff", startedAt },
-          agentHandoff: {
-            id: createId("cf-agent-handoff"),
-            toAgentId: targetAgent.id,
-            toAgentName: targetAgent.name,
-            target,
-            createdAt: startedAt,
-          } satisfies AgentHandoffSummary,
-        }),
+        this.createEvent(
+          "session.agent.handoff",
+          safeAgentSwitchData(this.snapshot, { startedAt }),
+        ),
       );
       this.broadcastEvent(
         this.createEvent("admin.summary.invalidated", {
@@ -1379,7 +1387,7 @@ export class WorkbenchSessionAgent {
       return responseFromSnapshot(this.env, input.agentHost!, this.snapshot, {
         partial: true,
         threadsRefreshRecommended: true,
-        transition: { type: "agent_handoff", startedAt },
+        transition: agentHandoffTransition(startedAt),
         agentHandoff: null,
       });
     }
@@ -1388,6 +1396,16 @@ export class WorkbenchSessionAgent {
     const thread = await getOwnedChatThread(this.env, input.identity.scope, activeThreadId);
     if (!thread || thread.status !== "active") {
       return { ok: false, error: "Thread not found", status: 404 };
+    }
+    if (thread.agent_id === targetAgent.id) {
+      this.snapshot = await buildSnapshot(this.env, activeIdentity, {
+        revision: this.nextRevision(),
+        activeThread: thread,
+        activeAgent: targetAgent,
+      });
+      return responseFromSnapshot(this.env, input.agentHost!, this.snapshot, {
+        partial: true,
+      });
     }
     const runningRun = await getLatestRunningChatRun(
       this.env,
@@ -1485,11 +1503,10 @@ export class WorkbenchSessionAgent {
       data: { agentHandoff: handoff },
     });
     this.broadcastEvent(
-      this.createEvent("session.agent.handoff", {
-        ...safeSnapshotData(this.snapshot),
-        transition: { type: "agent_handoff", startedAt },
-        agentHandoff: handoff,
-      }),
+      this.createEvent(
+        "session.agent.handoff",
+        safeAgentSwitchData(this.snapshot, { startedAt, agentHandoff: handoff }),
+      ),
     );
     this.broadcastEvent(
       this.createEvent("admin.summary.invalidated", {
@@ -1501,7 +1518,7 @@ export class WorkbenchSessionAgent {
     return responseFromSnapshot(this.env, input.agentHost!, this.snapshot, {
       partial: true,
       threadsRefreshRecommended: true,
-      transition: { type: "agent_handoff", startedAt },
+      transition: agentHandoffTransition(startedAt),
       agentHandoff: handoff,
     });
   }

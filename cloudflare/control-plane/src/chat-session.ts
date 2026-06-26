@@ -15,6 +15,9 @@ type AgentSwitchTarget = "current_thread" | "new_thread";
 type ThreadListStatus = "active" | "archived";
 type ThreadMutationStatus = "active" | "archived" | "deleted";
 
+const normalizeAgentSwitchTarget = (target: unknown): AgentSwitchTarget =>
+  target === "new_thread" ? "new_thread" : "current_thread";
+
 const agentHostFromRequest = (request: Request) => {
   const url = new URL(request.url);
   return url.origin;
@@ -218,7 +221,7 @@ export const handleSwitchChatSessionAgent = async (
     threadId: typeof body.threadId === "string" ? body.threadId : undefined,
     agentSwitch: {
       agentId: body.agentId,
-      target: body.target === "new_thread" ? "new_thread" : "current_thread",
+      target: normalizeAgentSwitchTarget(body.target),
     },
   });
 };
