@@ -207,6 +207,68 @@ describe("chat-session-state", () => {
     ).toBe(true);
   });
 
+  it("merges current-thread agent handoffs and refreshes a same-thread connection", () => {
+    const nextAgent = agent("agent-b");
+    const handoff = {
+      id: "handoff-1",
+      threadId: "thread-a",
+      fromAgentId: "agent-a",
+      fromAgentName: "Agent A",
+      toAgentId: "agent-b",
+      toAgentName: "Agent B",
+      target: "current_thread" as const,
+      createdAt: "2026-06-13T00:02:00.000Z",
+    };
+    const handedOffThread = thread("thread-a", true, nextAgent, {
+      agentHandoff: handoff,
+      updatedAt: handoff.createdAt,
+    });
+    const handoffEvent = event("session.agent.handoff", {
+      workspace,
+      activeAgent: nextAgent,
+      activeThread: handedOffThread,
+      threads: [handedOffThread],
+      agentHandoff: handoff,
+      transition: { type: "agent_handoff", startedAt: handoff.createdAt },
+    });
+
+    const incoming = sessionFromEvent(handoffEvent);
+    const merged = mergeSession(
+      session({
+        connection: {
+          agentHost: "https://agent.example.com",
+          agentName: "WorkbenchThreadChatAgent",
+          instanceName: "thread-a",
+          token: "token-a",
+          threadId: "thread-a",
+          workspaceId: workspace.id,
+          agentId: "agent-a",
+        },
+      }),
+      incoming!,
+    );
+
+    expect(merged.activeAgent?.id).toBe("agent-b");
+    expect(merged.activeThread?.threadId).toBe("thread-a");
+    expect(merged.activeThread?.agentId).toBe("agent-b");
+    expect(merged.agentHandoff).toEqual(handoff);
+    expect(merged.activeThread?.agentHandoff).toEqual(handoff);
+    expect(
+      sessionEventRequiresConnectionRefresh(handoffEvent, merged, {
+        threadId: "thread-a",
+        agentId: "agent-a",
+        workspaceId: workspace.id,
+      }),
+    ).toBe(true);
+    expect(
+      sessionEventRequiresConnectionRefresh(handoffEvent, merged, {
+        threadId: "thread-a",
+        agentId: "agent-b",
+        workspaceId: workspace.id,
+      }),
+    ).toBe(false);
+  });
+
   it("merges a thread rename without changing thread identity", () => {
     const renamedThread = thread("thread-a", true, agent("agent-a"), {
       title: "Renamed chat",

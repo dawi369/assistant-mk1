@@ -6,6 +6,7 @@ type ComposerFocusContextValue = {
   registerComposerInput: (element: HTMLElement | null) => void;
   focusComposer: () => void;
   focusComposerAfterInteraction: () => void;
+  focusComposerAfterOverlayClose: () => void;
 };
 
 const ComposerFocusContext = createContext<ComposerFocusContextValue | null>(null);
@@ -40,13 +41,26 @@ export function WorkbenchComposerFocusProvider({ children }: { children: ReactNo
     window.setTimeout(focusComposer, 0);
   }, [focusComposer]);
 
+  const focusComposerAfterOverlayClose = useCallback(() => {
+    focusComposer();
+    window.setTimeout(focusComposer, 0);
+    window.setTimeout(focusComposer, 80);
+    window.setTimeout(focusComposer, 180);
+  }, [focusComposer]);
+
   const value = useMemo(
     () => ({
       registerComposerInput,
       focusComposer,
       focusComposerAfterInteraction,
+      focusComposerAfterOverlayClose,
     }),
-    [focusComposer, focusComposerAfterInteraction, registerComposerInput],
+    [
+      focusComposer,
+      focusComposerAfterInteraction,
+      focusComposerAfterOverlayClose,
+      registerComposerInput,
+    ],
   );
 
   return <ComposerFocusContext.Provider value={value}>{children}</ComposerFocusContext.Provider>;

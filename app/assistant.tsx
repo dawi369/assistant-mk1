@@ -109,7 +109,7 @@ export function Assistant({ children }: { children?: ReactNode }) {
 
   return (
     <AgentRuntime
-      key={connection.threadId ?? connection.instanceName}
+      key={`${connection.threadId ?? connection.instanceName}:${connection.agentId ?? "agent"}`}
       connection={connection}
       draft={preRuntimeDraft}
       queuedDraft={queuedFirstSendDraft}

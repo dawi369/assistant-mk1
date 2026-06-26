@@ -9,7 +9,9 @@ type SessionAction =
   | "stageThread"
   | "materializeTurn"
   | "activate"
-  | "update";
+  | "update"
+  | "switchAgent";
+type AgentSwitchTarget = "current_thread" | "new_thread";
 type ThreadListStatus = "active" | "archived";
 type ThreadMutationStatus = "active" | "archived" | "deleted";
 
@@ -34,6 +36,10 @@ const coordinatorResponse = async (
       status?: ThreadMutationStatus;
       fallbackTitle?: string;
     };
+    agentSwitch?: {
+      agentId?: string;
+      target?: AgentSwitchTarget;
+    };
   },
 ) => {
   if (!env.WorkbenchSessionAgent) {
@@ -56,6 +62,7 @@ const coordinatorResponse = async (
       title: input.title,
       message: input.message,
       update: input.update,
+      agentSwitch: input.agentSwitch,
       agentHost: agentHostFromRequest(request),
     }),
   });
@@ -189,6 +196,29 @@ export const handleUpdateChatSessionThread = async (
           ? body.status
           : undefined,
       fallbackTitle: typeof body.fallbackTitle === "string" ? body.fallbackTitle : undefined,
+    },
+  });
+};
+
+export const handleSwitchChatSessionAgent = async (
+  request: Request,
+  env: Env,
+  identity: AgentIdentity,
+) => {
+  const body = (await request.json().catch(() => ({}))) as {
+    agentId?: unknown;
+    target?: unknown;
+    threadId?: unknown;
+  };
+  if (typeof body.agentId !== "string" || !body.agentId.trim()) {
+    return json({ ok: false, error: "agentId is required" }, { status: 400 });
+  }
+  return coordinatorResponse(request, env, identity, {
+    action: "switchAgent",
+    threadId: typeof body.threadId === "string" ? body.threadId : undefined,
+    agentSwitch: {
+      agentId: body.agentId,
+      target: body.target === "new_thread" ? "new_thread" : "current_thread",
     },
   });
 };

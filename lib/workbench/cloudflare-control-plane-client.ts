@@ -372,6 +372,16 @@ export const materializeChatSessionTurn = (input: { message: string }) =>
     body: JSON.stringify(input),
   });
 
+export const switchChatSessionAgent = (input: {
+  agentId: Id;
+  target: "current_thread" | "new_thread";
+  threadId?: Id;
+}) =>
+  requestControlPlane<ChatSessionResponse>("/chat/session/agent-switch", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+
 export const getChatSessionThreads = (input?: {
   status?: Extract<ChatThreadStatus, "active" | "archived">;
 }) =>

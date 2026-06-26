@@ -38,6 +38,7 @@ import type {
 } from "@/lib/workbench/workbench-types";
 
 const sessionPath = "/api/workbench/chat-session";
+const agentSwitchPath = "/api/workbench/chat-session/agent-switch";
 const tokenRefreshSkewMs = 60_000;
 const minimumRefreshDelayMs = 5_000;
 const cacheTtlMs = 12 * 60 * 60 * 1000;
@@ -175,6 +176,11 @@ type ChatSessionContextValue = {
   preloadNewSession: (source: SessionWarmupSource) => void;
   stageNewSession: (source: SessionStageSource) => Promise<ChatSessionResponse | null>;
   materializeTurn: (message: string) => Promise<void>;
+  switchAgent: (
+    agentId: string,
+    target: "current_thread" | "new_thread",
+    threadId?: string,
+  ) => Promise<void>;
   activateThread: (threadId: string) => Promise<void>;
   renameThread: (threadId: string, title: string) => Promise<void>;
   archiveThread: (threadId: string) => Promise<void>;
@@ -205,6 +211,7 @@ const sessionEventTypes: WorkbenchSessionEvent["type"][] = [
   "session.snapshot",
   "session.thread.created",
   "session.thread.activated",
+  "session.agent.handoff",
   "session.thread.updated",
   "session.threads.refreshed",
   "chat.run.started",
@@ -601,6 +608,55 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
     [applySession, scheduleThreadRefresh],
   );
 
+  const switchAgent = useCallback(
+    async (agentId: string, target: "current_thread" | "new_thread", threadId?: string) => {
+      const normalizedAgentId = agentId.trim();
+      if (!normalizedAgentId) return;
+      setPending({ type: "agent_handoff", agentId: normalizedAgentId });
+      try {
+        setError(null);
+        const response = await fetch(agentSwitchPath, {
+          method: "POST",
+          cache: "no-store",
+          body: JSON.stringify({
+            agentId: normalizedAgentId,
+            target,
+            threadId,
+          }),
+        });
+        const nextSession = (await response.json().catch(() => ({}))) as ChatSessionResponse & {
+          error?: string;
+        };
+        if (!response.ok || !nextSession.ok) {
+          throw new Error(nextSession.error ?? "Failed to switch agent");
+        }
+        if (target === "new_thread") {
+          localNewSessionRef.current = true;
+          setLocalNewSession(true);
+          connectionRef.current = null;
+          setConnection(null);
+          applySession(nextSession, { preserveLocalNew: true });
+        } else {
+          localNewSessionRef.current = false;
+          setLocalNewSession(false);
+          applySession(nextSession);
+        }
+        requestWorkbenchSummaryRefresh({ source: "event" });
+        if (nextSession.threadsRefreshRecommended) {
+          scheduleThreadRefresh("post-action");
+        }
+      } catch (nextError) {
+        const errorMessage =
+          nextError instanceof Error ? nextError.message : "Failed to switch agent";
+        setError(errorMessage);
+        throw nextError;
+      } finally {
+        setPending(null);
+      }
+    },
+    [applySession, scheduleThreadRefresh],
+  );
+
   const restoreOptimisticDelete = useCallback((threadId: string) => {
     const rollback = deleteRollbacksRef.current.get(threadId);
     if (!rollback) return;
@@ -939,6 +995,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
       preloadNewSession,
       stageNewSession,
       materializeTurn,
+      switchAgent,
       activateThread: (threadId: string) =>
         loadSession({
           action: "activate",
@@ -977,6 +1034,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
     stageNewSession,
     startNewSession,
     materializeTurn,
+    switchAgent,
     archivedThreads,
     pending,
     session,

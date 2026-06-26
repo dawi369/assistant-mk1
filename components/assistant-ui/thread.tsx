@@ -33,6 +33,7 @@ import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useWorkbenchAgentConnection } from "@/lib/workbench/use-agent-connection";
 import {
   ActionBarMorePrimitive,
   ActionBarPrimitive,
@@ -50,6 +51,7 @@ import {
 } from "@assistant-ui/react";
 import {
   ArrowDownIcon,
+  ArrowRightLeftIcon,
   ArrowUpIcon,
   CheckIcon,
   ChevronLeftIcon,
@@ -87,6 +89,8 @@ export const Thread: FC = () => {
             <ThreadPrimitive.Messages>{() => <ThreadMessage />}</ThreadPrimitive.Messages>
           </div>
 
+          <ThreadAgentHandoffMarker />
+
           <ThreadPrimitive.ViewportFooter className="aui-thread-viewport-footer bg-background sticky bottom-0 mt-auto flex flex-col gap-4 overflow-visible rounded-t-(--composer-radius) pb-4 md:pb-6">
             <ThreadScrollToBottom />
             <Composer />
@@ -94,6 +98,32 @@ export const Thread: FC = () => {
         </div>
       </ThreadPrimitive.Viewport>
     </ThreadPrimitive.Root>
+  );
+};
+
+const ThreadAgentHandoffMarker: FC = () => {
+  const { session } = useWorkbenchAgentConnection();
+  const handoff = session?.agentHandoff ?? session?.activeThread?.agentHandoff ?? null;
+  const activeThreadId = session?.activeThread?.threadId;
+
+  if (!handoff || handoff.target !== "current_thread") return null;
+  if (handoff.threadId && activeThreadId && handoff.threadId !== activeThreadId) return null;
+
+  const fromAgent = handoff.fromAgentName ?? "previous agent";
+
+  return (
+    <div
+      data-slot="workbench_agent-handoff-marker"
+      className="mb-8 flex justify-center px-2 empty:hidden"
+    >
+      <div className="border-border bg-muted/50 text-muted-foreground inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1.5 text-xs">
+        <ArrowRightLeftIcon className="size-3.5 shrink-0" />
+        <span className="truncate">
+          Switched from {fromAgent} to {handoff.toAgentName}. Future replies use{" "}
+          {handoff.toAgentName} tools and behavior.
+        </span>
+      </div>
+    </div>
   );
 };
 

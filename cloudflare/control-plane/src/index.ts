@@ -30,6 +30,7 @@ import {
   handleStageChatSessionThread,
   handleListChatSessionThreads,
   handleMaterializeChatSessionTurn,
+  handleSwitchChatSessionAgent,
   handleUpdateChatSessionThread,
 } from "./chat-session";
 import { handleGetChatThread, handleListChatThreads } from "./chat-threads";
@@ -217,6 +218,10 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
 
   if (request.method === "POST" && url.pathname === "/chat/session/materialize-turn") {
     return handleMaterializeChatSessionTurn(request, env, identity);
+  }
+
+  if (request.method === "POST" && url.pathname === "/chat/session/agent-switch") {
+    return handleSwitchChatSessionAgent(request, env, identity);
   }
 
   const activateChatSessionThreadMatch = url.pathname.match(

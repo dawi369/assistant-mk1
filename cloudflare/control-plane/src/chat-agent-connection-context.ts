@@ -7,8 +7,9 @@ import {
   storeChatThread,
   touchChatSession,
 } from "./chat-boundary-store";
+import { parseDataJson } from "./http";
 import { recordSpan, startTrace, finishTrace } from "./runtime-traces";
-import { createId, type AgentIdentity, type Env } from "./types";
+import { createId, type AgentIdentity, type ChatThreadRow, type Env } from "./types";
 
 const encoder = new TextEncoder();
 
@@ -20,13 +21,23 @@ const sha256Hex = async (value: string) => {
 export const deriveThreadAgentInstanceName = async (input: {
   userId: string;
   workspaceId: string;
-  agentId: string;
   threadId: string;
 }) => {
-  const hash = await sha256Hex(
-    `${input.userId}:${input.workspaceId}:${input.agentId}:${input.threadId}`,
-  );
+  const hash = await sha256Hex(`${input.userId}:${input.workspaceId}:${input.threadId}`);
   return `thread-${hash.slice(0, 48)}`;
+};
+
+export const resolveThreadAgentInstanceName = async (
+  thread: Pick<ChatThreadRow, "upstream_json" | "thread_id" | "user_id" | "workspace_id">,
+) => {
+  const upstream = parseDataJson(thread.upstream_json);
+  const stored = typeof upstream.instanceName === "string" ? upstream.instanceName.trim() : "";
+  if (stored) return stored;
+  return deriveThreadAgentInstanceName({
+    userId: thread.user_id,
+    workspaceId: thread.workspace_id,
+    threadId: thread.thread_id,
+  });
 };
 
 export const getOrCreateThreadAgentConnectionContext = async (
@@ -56,10 +67,10 @@ export const getOrCreateThreadAgentConnectionContext = async (
     requestedThreadId && !options?.fresh
       ? await getOwnedChatThread(env, identity.scope, requestedThreadId)
       : null;
-  if (requestedThreadId && (!requestedThread || requestedThread.agent_id !== identity.agentId)) {
+  if (requestedThreadId && !requestedThread) {
     await finishTrace(env, identity, trace, {
       status: "failed",
-      summary: "Requested Agent chat thread was not found for this workspace and agent.",
+      summary: "Requested Agent chat thread was not found for this workspace.",
       data: { runtime: "cloudflare-agent-chat", threadId: requestedThreadId },
     });
     return null;
@@ -94,12 +105,13 @@ export const getOrCreateThreadAgentConnectionContext = async (
 
   const activeAgent = await selectAgent(env, identity.agentId, identity.scope.workspaceId);
   const agentMetadata = toAgentRuntimeMetadata(env, activeAgent, identity.agentId);
-  const instanceName = await deriveThreadAgentInstanceName({
-    userId: identity.scope.userId,
-    workspaceId: identity.scope.workspaceId,
-    agentId: identity.agentId,
-    threadId,
-  });
+  const instanceName = requestedThread
+    ? await resolveThreadAgentInstanceName(requestedThread)
+    : await deriveThreadAgentInstanceName({
+        userId: identity.scope.userId,
+        workspaceId: identity.scope.workspaceId,
+        threadId,
+      });
 
   const threadStartedAtMs = Date.now();
   if (!requestedThread) {

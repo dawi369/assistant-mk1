@@ -2,6 +2,7 @@ export type WorkbenchSessionEventType =
   | "session.snapshot"
   | "session.thread.created"
   | "session.thread.activated"
+  | "session.agent.handoff"
   | "session.thread.updated"
   | "session.threads.refreshed"
   | "chat.run.started"

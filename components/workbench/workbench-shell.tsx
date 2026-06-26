@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@workos-inc/authkit-nextjs/components";
 import {
   ActivityIcon,
@@ -65,7 +65,9 @@ function WorkbenchShellContent() {
   const [adminNotice, setAdminNotice] = useState<string | null>(null);
   const { user, loading } = useAuth();
   const { isInitialLoading, startNewSession } = useWorkbenchAgentConnection();
-  const { focusComposerAfterInteraction } = useWorkbenchComposerFocus();
+  const { focusComposerAfterInteraction, focusComposerAfterOverlayClose } =
+    useWorkbenchComposerFocus();
+  const skipNextAgentsCloseFocusRef = useRef(false);
 
   useEffect(() => {
     if (loading) return;
@@ -154,6 +156,41 @@ function WorkbenchShellContent() {
     },
     [adminAccess?.isAdmin, focusComposerAfterInteraction],
   );
+
+  const handleAgentsOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      setAgentsOpen(nextOpen);
+      if (!nextOpen) {
+        if (skipNextAgentsCloseFocusRef.current) {
+          skipNextAgentsCloseFocusRef.current = false;
+          return;
+        }
+        focusComposerAfterOverlayClose();
+      }
+    },
+    [focusComposerAfterOverlayClose],
+  );
+
+  const handleHistoryOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      setHistoryOpen(nextOpen);
+      if (!nextOpen) focusComposerAfterOverlayClose();
+    },
+    [focusComposerAfterOverlayClose],
+  );
+
+  const handleAdminOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      setAdminOpen(nextOpen);
+      if (!nextOpen) focusComposerAfterOverlayClose();
+    },
+    [focusComposerAfterOverlayClose],
+  );
+
+  const openHistoryFromAgents = useCallback(() => {
+    skipNextAgentsCloseFocusRef.current = true;
+    setHistoryOpen(true);
+  }, []);
 
   const slashCommands = useMemo(() => {
     const commands = [
@@ -247,11 +284,11 @@ function WorkbenchShellContent() {
         </Assistant>
         <WorkbenchAgentsPanel
           open={agentsOpen}
-          onOpenChange={setAgentsOpen}
-          onOpenHistory={() => setHistoryOpen(true)}
+          onOpenChange={handleAgentsOpenChange}
+          onOpenHistory={openHistoryFromAgents}
         />
-        <WorkbenchHistoryPanel open={historyOpen} onOpenChange={setHistoryOpen} />
-        <AdminPanel open={adminOpen} onOpenChange={setAdminOpen} />
+        <WorkbenchHistoryPanel open={historyOpen} onOpenChange={handleHistoryOpenChange} />
+        <AdminPanel open={adminOpen} onOpenChange={handleAdminOpenChange} />
       </AssistantSlashCommandProvider>
     </div>
   );

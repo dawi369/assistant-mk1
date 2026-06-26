@@ -2,14 +2,18 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  ArrowRightLeftIcon,
   BotIcon,
   CheckCircle2Icon,
   FileTextIcon,
   Loader2Icon,
+  MessageSquarePlusIcon,
   PlayIcon,
   PlusIcon,
+  PackageIcon,
   RefreshCwIcon,
   ShieldAlertIcon,
+  XIcon,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -26,6 +30,7 @@ import {
   resolvePackWorkflowBinding,
   type PackWorkflowBinding,
 } from "@/lib/workbench/pack-workflow-bindings";
+import { useWorkbenchAgentConnection } from "@/lib/workbench/use-agent-connection";
 import type {
   AgentBehaviorTemplate,
   AgentSummary,
@@ -86,6 +91,16 @@ export function WorkbenchAgentsPanel({
     response: CloudflareToolRunResponse;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pendingAgent, setPendingAgent] = useState<AgentSummary | null>(null);
+  const [busySwitchTarget, setBusySwitchTarget] = useState<"current_thread" | "new_thread" | null>(
+    null,
+  );
+  const {
+    isLocalNewSession,
+    pending: sessionPending,
+    session,
+    switchAgent,
+  } = useWorkbenchAgentConnection();
 
   const loadAgents = useCallback(async () => {
     setLoading(true);
@@ -122,10 +137,16 @@ export function WorkbenchAgentsPanel({
     if (open) void loadAgents();
   }, [loadAgents, open]);
 
+  const currentThread = session?.activeThread ?? null;
+  const hasCurrentThread = Boolean(currentThread && !isLocalNewSession);
+  const sessionActiveAgent = session?.activeAgent ?? null;
+  const effectiveActiveAgentId = sessionActiveAgent?.id ?? activeAgentId;
   const activeAgent = useMemo(
     () =>
-      agents.find((agent) => agent.id === activeAgentId) ?? agents.find((agent) => agent.isActive),
-    [activeAgentId, agents],
+      agents.find((agent) => agent.id === effectiveActiveAgentId) ??
+      sessionActiveAgent ??
+      agents.find((agent) => agent.isActive),
+    [effectiveActiveAgentId, sessionActiveAgent, agents],
   );
   const activePack = activeAgent?.behavior.pack ?? null;
   const packTemplates = useMemo(() => templates.filter((template) => template.pack), [templates]);
@@ -144,25 +165,36 @@ export function WorkbenchAgentsPanel({
     }));
   };
 
-  const activateAgent = async (agent: AgentSummary) => {
+  const switchToAgent = async (agent: AgentSummary, target: "current_thread" | "new_thread") => {
     setBusyAgentId(agent.id);
+    setBusySwitchTarget(target);
     setError(null);
     try {
-      const response = await fetch(`${agentsPath}/${encodeURIComponent(agent.id)}/activate`, {
-        method: "POST",
-      });
-      const body = await readJsonResponse<CloudflareAgentMutationResponse>(
-        response,
-        "Failed to activate agent",
+      await switchAgent(
+        agent.id,
+        target,
+        target === "current_thread" ? currentThread?.threadId : undefined,
       );
-      setActiveAgentId(body.activeAgentId ?? agent.id);
+      setActiveAgentId(agent.id);
+      setPendingAgent(null);
       await loadAgents();
       requestWorkbenchSummaryRefresh({ source: "event" });
-    } catch (activateError) {
-      setError(activateError instanceof Error ? activateError.message : "Failed to activate agent");
+      onOpenChange(false);
+    } catch (switchError) {
+      setError(switchError instanceof Error ? switchError.message : "Failed to switch agent");
     } finally {
       setBusyAgentId(null);
+      setBusySwitchTarget(null);
     }
+  };
+
+  const selectAgent = (agent: AgentSummary) => {
+    if (agent.status !== "active") return;
+    if (hasCurrentThread && agent.id !== effectiveActiveAgentId) {
+      setPendingAgent(agent);
+      return;
+    }
+    void switchToAgent(agent, "new_thread");
   };
 
   const createDemoAgent = async (template: AgentBehaviorTemplate) => {
@@ -180,7 +212,15 @@ export function WorkbenchAgentsPanel({
           activate: true,
         }),
       });
-      await readJsonResponse<CloudflareAgentMutationResponse>(response, "Failed to create agent");
+      const body = await readJsonResponse<CloudflareAgentMutationResponse>(
+        response,
+        "Failed to create agent",
+      );
+      const createdAgent = body.agent ?? null;
+      if (createdAgent?.id) {
+        await switchAgent(createdAgent.id, "new_thread");
+        setActiveAgentId(createdAgent.id);
+      }
       await loadAgents();
       requestWorkbenchSummaryRefresh({ source: "event" });
     } catch (createError) {
@@ -221,8 +261,8 @@ export function WorkbenchAgentsPanel({
   };
 
   const openHistory = () => {
-    onOpenChange(false);
     onOpenHistory?.();
+    onOpenChange(false);
   };
 
   return (
@@ -234,27 +274,11 @@ export function WorkbenchAgentsPanel({
             Agents
           </DialogTitle>
           <DialogDescription>
-            Switch active pack-backed agents and inspect their declared tools, workflows, and risk.
+            Switch the active chat agent or choose the default agent for your next chat.
           </DialogDescription>
         </DialogHeader>
 
         <div className="min-h-0 space-y-4 overflow-auto p-5">
-          <div className="flex items-center justify-between gap-3">
-            <div className="text-sm">
-              <span className="text-muted-foreground">Active</span>{" "}
-              <span className="font-medium">{activeAgent?.name ?? "No active agent"}</span>
-            </div>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => void loadAgents()}
-              disabled={loading}
-            >
-              {loading ? <Loader2Icon className="animate-spin" /> : <RefreshCwIcon />}
-              Refresh
-            </Button>
-          </div>
-
           {error ? (
             <div className="border-destructive/40 bg-destructive/10 text-destructive rounded-md border px-3 py-2 text-sm">
               {error}
@@ -263,12 +287,288 @@ export function WorkbenchAgentsPanel({
 
           <section className="space-y-2">
             <h3 className="flex items-center gap-2 text-sm font-medium">
+              <MessageSquarePlusIcon className="text-muted-foreground size-4" />
+              Active chat context
+            </h3>
+            <div className="border-border rounded-md border p-3 text-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-muted-foreground text-xs">
+                    {hasCurrentThread ? "Current thread" : "Next chat default"}
+                  </p>
+                  <p className="truncate font-medium">
+                    {hasCurrentThread
+                      ? currentThread?.title || currentThread?.threadId
+                      : "Blank chat composer"}
+                  </p>
+                </div>
+                <span className="bg-muted text-muted-foreground rounded px-2 py-1 text-xs">
+                  {hasCurrentThread ? "handoff available" : "new chat"}
+                </span>
+              </div>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <ContextField label="Agent" value={activeAgent?.name ?? "No active agent"} />
+                <ContextField
+                  label="Model / profile"
+                  value={
+                    activeAgent ? `${activeAgent.runtime.model} / ${activeAgent.profile}` : "None"
+                  }
+                />
+                <ContextField
+                  label="Pack"
+                  value={
+                    activePack
+                      ? `${activePack.id} / ${activePack.capabilityLevel}`
+                      : "No pack attached"
+                  }
+                />
+                <ContextField
+                  label="Workflows"
+                  value={
+                    activePack?.workflows.length
+                      ? activePack.workflows.map((workflow) => workflow.type).join(", ")
+                      : "None"
+                  }
+                />
+              </div>
+            </div>
+          </section>
+
+          <section className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="flex items-center gap-2 text-sm font-medium">
+                <ArrowRightLeftIcon className="text-muted-foreground size-4" />
+                Available agents
+              </h3>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void loadAgents()}
+                disabled={loading}
+              >
+                {loading ? <Loader2Icon className="animate-spin" /> : <RefreshCwIcon />}
+                Refresh
+              </Button>
+            </div>
+            {loading && !agents.length ? (
+              <p className="text-muted-foreground text-sm">Loading agents.</p>
+            ) : agents.length ? (
+              <ol className="space-y-2">
+                {agents.map((agent) => {
+                  const isCurrentAgent = agent.id === effectiveActiveAgentId;
+                  const pack = agent.behavior.pack;
+                  const showConfirmation = pendingAgent?.id === agent.id;
+                  const isBusy =
+                    busyAgentId === agent.id ||
+                    (sessionPending?.type === "agent_handoff" &&
+                      sessionPending.agentId === agent.id);
+                  const isThreadRunning = currentThread?.latestRunStatus === "running";
+
+                  return (
+                    <li key={agent.id} className="border-border rounded-md border p-3 text-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="truncate font-medium">{agent.name}</span>
+                            {isCurrentAgent ? (
+                              <span className="bg-muted text-muted-foreground inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs">
+                                <CheckCircle2Icon className="size-3" />
+                                {hasCurrentThread ? "current" : "default"}
+                              </span>
+                            ) : null}
+                            {agent.status !== "active" ? (
+                              <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-xs">
+                                {agent.status}
+                              </span>
+                            ) : null}
+                          </div>
+                          <p className="text-muted-foreground mt-1 text-xs">
+                            {agent.profile} / {agent.runtime.model}
+                          </p>
+                          {pack ? (
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-xs">
+                                pack: {pack.id}
+                              </span>
+                              <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-xs">
+                                {pack.capabilityLevel}
+                              </span>
+                              <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-xs">
+                                tools: {pack.tools.length}
+                              </span>
+                              <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-xs">
+                                workflows: {pack.workflows.length}
+                              </span>
+                            </div>
+                          ) : (
+                            <p className="text-muted-foreground mt-1 text-xs">
+                              behavior: {agent.behavior.templateId ?? agent.behavior.profile}
+                            </p>
+                          )}
+                          {pack ? (
+                            <p className="text-muted-foreground mt-2 text-xs">
+                              risk: {packRiskLabel(pack)}
+                            </p>
+                          ) : null}
+                        </div>
+                        <Button
+                          size="sm"
+                          variant={isCurrentAgent ? "secondary" : "outline"}
+                          disabled={isCurrentAgent || isBusy || agent.status !== "active"}
+                          onClick={() => selectAgent(agent)}
+                        >
+                          {isBusy && !busySwitchTarget ? (
+                            <Loader2Icon className="animate-spin" />
+                          ) : null}
+                          {isCurrentAgent
+                            ? hasCurrentThread
+                              ? "Current"
+                              : "Default"
+                            : hasCurrentThread
+                              ? "Switch"
+                              : "Use"}
+                        </Button>
+                      </div>
+
+                      {showConfirmation ? (
+                        <div className="border-border bg-muted/30 mt-3 rounded-md border p-3">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="min-w-0">
+                              <p className="font-medium">Continue this chat with {agent.name}?</p>
+                              <p className="text-muted-foreground mt-1 text-xs">
+                                Existing messages stay in context. Future replies use this
+                                agent&apos;s tools and behavior.
+                              </p>
+                              {isThreadRunning ? (
+                                <p className="text-destructive mt-2 text-xs">
+                                  Wait for the current response before switching this chat.
+                                </p>
+                              ) : null}
+                            </div>
+                            <div className="flex shrink-0 flex-wrap items-center gap-2">
+                              <Button
+                                size="sm"
+                                disabled={isThreadRunning || isBusy}
+                                onClick={() => void switchToAgent(agent, "current_thread")}
+                              >
+                                {isBusy && busySwitchTarget === "current_thread" ? (
+                                  <Loader2Icon className="animate-spin" />
+                                ) : null}
+                                Continue this chat
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={isBusy}
+                                onClick={() => void switchToAgent(agent, "new_thread")}
+                              >
+                                {isBusy && busySwitchTarget === "new_thread" ? (
+                                  <Loader2Icon className="animate-spin" />
+                                ) : null}
+                                Start new chat
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="size-8"
+                                aria-label="Cancel agent switch"
+                                onClick={() => setPendingAgent(null)}
+                              >
+                                <XIcon className="size-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ol>
+            ) : (
+              <p className="text-muted-foreground text-sm">No workspace agents loaded.</p>
+            )}
+
+            <div className="border-border mt-4 border-t pt-4">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <h4 className="flex items-center gap-2 text-sm font-medium">
+                  <PackageIcon className="text-muted-foreground size-4" />
+                  Pack templates
+                </h4>
+                {!isAdmin ? (
+                  <span className="text-muted-foreground inline-flex items-center gap-1 text-xs">
+                    <ShieldAlertIcon className="size-3" />
+                    creation is admin-only
+                  </span>
+                ) : null}
+              </div>
+              {packTemplates.length ? (
+                <ol className="space-y-2">
+                  {packTemplates.map((template) => {
+                    const pack = template.pack;
+                    if (!pack) return null;
+                    const existing = agents.find((agent) => agent.behavior.pack?.id === pack.id);
+                    return (
+                      <li key={template.id} className="border-border rounded-md border p-3 text-sm">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 space-y-1">
+                            <p className="truncate font-medium">{template.name}</p>
+                            <p className="text-muted-foreground text-xs">{pack.id}</p>
+                            <p className="text-muted-foreground text-xs">
+                              tools: {packToolLabel(pack)}
+                            </p>
+                            <p className="text-muted-foreground text-xs">
+                              workflows: {packWorkflowLabel(pack)}
+                            </p>
+                            <p className="text-muted-foreground text-xs">
+                              risk: {packRiskLabel(pack)}
+                            </p>
+                          </div>
+                          {existing ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={
+                                existing.id === effectiveActiveAgentId ||
+                                busyAgentId === existing.id
+                              }
+                              onClick={() => selectAgent(existing)}
+                            >
+                              {existing.id === effectiveActiveAgentId ? "Current" : "Use"}
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={!isAdmin || busyTemplateId === template.id}
+                              onClick={() => void createDemoAgent(template)}
+                            >
+                              {busyTemplateId === template.id ? (
+                                <Loader2Icon className="animate-spin" />
+                              ) : (
+                                <PlusIcon />
+                              )}
+                              Create
+                            </Button>
+                          )}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ol>
+              ) : (
+                <p className="text-muted-foreground text-sm">No pack templates loaded.</p>
+              )}
+            </div>
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="flex items-center gap-2 text-sm font-medium">
               <PlayIcon className="text-muted-foreground size-4" />
-              Runnable workflows
+              Active pack workflow runner
             </h3>
             {!activePack ? (
               <p className="text-muted-foreground text-sm">
-                Activate a pack-backed agent to run declared read-only workflows.
+                Select a pack-backed agent to run declared read-only workflows.
               </p>
             ) : activeWorkflowBindings.length ? (
               <ol className="space-y-2">
@@ -388,129 +688,18 @@ export function WorkbenchAgentsPanel({
               </p>
             )}
           </section>
-
-          <section className="space-y-2">
-            <h3 className="text-sm font-medium">Workspace agents</h3>
-            {loading && !agents.length ? (
-              <p className="text-muted-foreground text-sm">Loading agents.</p>
-            ) : agents.length ? (
-              <ol className="space-y-2">
-                {agents.map((agent) => (
-                  <li key={agent.id} className="border-border rounded-md border p-3 text-sm">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="truncate font-medium">{agent.name}</span>
-                          {agent.id === activeAgentId || agent.isActive ? (
-                            <span className="bg-muted text-muted-foreground inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs">
-                              <CheckCircle2Icon className="size-3" />
-                              active
-                            </span>
-                          ) : null}
-                        </div>
-                        <p className="text-muted-foreground mt-1 text-xs">
-                          {agent.profile} / {agent.runtime.model}
-                        </p>
-                        {agent.behavior.pack ? (
-                          <p className="text-muted-foreground mt-1 text-xs">
-                            pack: {agent.behavior.pack.id} / {agent.behavior.pack.capabilityLevel}
-                          </p>
-                        ) : (
-                          <p className="text-muted-foreground mt-1 text-xs">
-                            behavior: {agent.behavior.templateId ?? agent.behavior.profile}
-                          </p>
-                        )}
-                      </div>
-                      {agent.id === activeAgentId || agent.isActive ? null : (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={busyAgentId === agent.id || agent.status !== "active"}
-                          onClick={() => void activateAgent(agent)}
-                        >
-                          {busyAgentId === agent.id ? (
-                            <Loader2Icon className="animate-spin" />
-                          ) : null}
-                          Make active
-                        </Button>
-                      )}
-                    </div>
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <p className="text-muted-foreground text-sm">No workspace agents loaded.</p>
-            )}
-          </section>
-
-          <section className="space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <h3 className="text-sm font-medium">Pack templates</h3>
-              {!isAdmin ? (
-                <span className="text-muted-foreground inline-flex items-center gap-1 text-xs">
-                  <ShieldAlertIcon className="size-3" />
-                  creation is admin-only
-                </span>
-              ) : null}
-            </div>
-            {packTemplates.length ? (
-              <ol className="space-y-2">
-                {packTemplates.map((template) => {
-                  const pack = template.pack;
-                  if (!pack) return null;
-                  const existing = agents.find((agent) => agent.behavior.pack?.id === pack.id);
-                  return (
-                    <li key={template.id} className="border-border rounded-md border p-3 text-sm">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0 space-y-1">
-                          <p className="truncate font-medium">{template.name}</p>
-                          <p className="text-muted-foreground text-xs">{pack.id}</p>
-                          <p className="text-muted-foreground text-xs">
-                            tools: {packToolLabel(pack)}
-                          </p>
-                          <p className="text-muted-foreground text-xs">
-                            workflows: {packWorkflowLabel(pack)}
-                          </p>
-                          <p className="text-muted-foreground text-xs">
-                            risk: {packRiskLabel(pack)}
-                          </p>
-                        </div>
-                        {existing ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={existing.id === activeAgentId || busyAgentId === existing.id}
-                            onClick={() => void activateAgent(existing)}
-                          >
-                            {existing.id === activeAgentId ? "Active" : "Use"}
-                          </Button>
-                        ) : (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={!isAdmin || busyTemplateId === template.id}
-                            onClick={() => void createDemoAgent(template)}
-                          >
-                            {busyTemplateId === template.id ? (
-                              <Loader2Icon className="animate-spin" />
-                            ) : (
-                              <PlusIcon />
-                            )}
-                            Create
-                          </Button>
-                        )}
-                      </div>
-                    </li>
-                  );
-                })}
-              </ol>
-            ) : (
-              <p className="text-muted-foreground text-sm">No pack templates loaded.</p>
-            )}
-          </section>
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ContextField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="bg-muted/40 rounded-md px-2.5 py-2">
+      <p className="text-muted-foreground text-xs">{label}</p>
+      <p className="mt-0.5 truncate text-sm font-medium">{value}</p>
+    </div>
   );
 }
 

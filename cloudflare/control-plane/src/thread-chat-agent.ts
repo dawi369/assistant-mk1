@@ -21,9 +21,10 @@ import {
 import { claimsToIdentity, verifyAgentConnectionToken } from "./agent-connection-token";
 import type { AgentConnectionClaims } from "./agent-connection-token";
 import { selectAgent } from "./authz-store";
-import { deriveThreadAgentInstanceName } from "./chat-agent-connection-context";
+import { resolveThreadAgentInstanceName } from "./chat-agent-connection-context";
 import {
   createAgentChatRunStartMirror,
+  getOwnedChatThread,
   promoteDraftChatThread,
   updateChatRun,
   updateChatThreadUpstream,
@@ -128,12 +129,13 @@ export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
 
   private async verifyScopedClaims(token: string) {
     const claims = await verifyAgentConnectionToken(getRequiredSecret(this.getEnv()), token);
-    const expectedInstanceName = await deriveThreadAgentInstanceName({
-      userId: claims.userId,
-      workspaceId: claims.workspaceId,
-      agentId: claims.agentId,
-      threadId: claims.threadId,
-    });
+    const thread = await getOwnedChatThread(
+      this.getEnv(),
+      { userId: claims.userId, workspaceId: claims.workspaceId },
+      claims.threadId,
+    );
+    if (!thread) throw new Error("Agent token thread not found");
+    const expectedInstanceName = await resolveThreadAgentInstanceName(thread);
     if (claims.instanceName !== expectedInstanceName || claims.instanceName !== this.name) {
       throw new Error("Agent token scope mismatch");
     }

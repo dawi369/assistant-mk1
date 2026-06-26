@@ -2,7 +2,10 @@ import { toAgentSummary, toAgentRuntimeMetadata } from "./agent-records";
 import { signAgentConnectionClaims } from "./agent-connection-token";
 import { upsertActiveAgentPreference } from "./authz";
 import { selectAgent, selectWorkspace } from "./authz-store";
-import { deriveThreadAgentInstanceName } from "./chat-agent-connection-context";
+import {
+  deriveThreadAgentInstanceName,
+  resolveThreadAgentInstanceName,
+} from "./chat-agent-connection-context";
 import {
   createChatSession,
   getLatestChatSession,
@@ -43,15 +46,18 @@ type CoordinatorAction =
   | "materializeTurn"
   | "activate"
   | "update"
+  | "switchAgent"
   | "stream"
   | "broadcast";
 type ThreadListStatus = "active" | "archived";
 type ThreadMutationStatus = "active" | "archived" | "deleted";
+type AgentSwitchTarget = "current_thread" | "new_thread";
 type MaterializedThreadStatus = "active" | "draft";
 type SessionTransitionType =
   | "initial"
   | "create"
   | "activate"
+  | "agent_handoff"
   | "rename"
   | "archive"
   | "restore"
@@ -72,6 +78,10 @@ type CoordinatorRequest = {
     title?: string;
     status?: ThreadMutationStatus;
     fallbackTitle?: string;
+  };
+  agentSwitch?: {
+    agentId?: string;
+    target?: AgentSwitchTarget;
   };
   event?: Partial<WorkbenchSessionEvent> & {
     type?: WorkbenchSessionEventType;
@@ -104,6 +114,7 @@ type SessionSnapshot = {
   activeAgent: ReturnType<typeof toAgentSummary>;
   activeThread: ReturnType<typeof toThreadSummary> | null;
   threads: Array<ReturnType<typeof toThreadSummary>>;
+  agentHandoff?: AgentHandoffSummary | null;
 };
 
 type SessionResponseOptions = {
@@ -112,6 +123,18 @@ type SessionResponseOptions = {
   transition?: { type: SessionTransitionType; startedAt?: string };
   stagedThread?: { threadId: string; sessionId: string; expiresAt: string; status: "draft" };
   materializedTurn?: { threadId: string; status: "accepted" };
+  agentHandoff?: AgentHandoffSummary | null;
+};
+
+type AgentHandoffSummary = {
+  id: string;
+  threadId?: string;
+  fromAgentId?: string;
+  fromAgentName?: string;
+  toAgentId: string;
+  toAgentName: string;
+  target: AgentSwitchTarget;
+  createdAt: string;
 };
 
 const tokenTtlSeconds = 5 * 60;
@@ -119,6 +142,7 @@ const stagedThreadTtlMs = 30 * 60 * 1000;
 const sseHeartbeatMs = 15_000;
 const sseEncoder = new TextEncoder();
 const maxMaterializeTurnMessageLength = 8_000;
+const maxAgentHandoffHistory = 20;
 
 const getRequiredSecret = (env: Env) => {
   const secret = env.WORKBENCH_AGENT_CONNECTION_SECRET?.trim();
@@ -186,6 +210,43 @@ const messageCount = (thread: ChatThreadRow) => {
   return Array.isArray(upstream.messages) ? upstream.messages.length : 0;
 };
 
+const isAgentHandoffSummary = (value: unknown): value is AgentHandoffSummary => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const candidate = value as Partial<AgentHandoffSummary>;
+  return (
+    typeof candidate.id === "string" &&
+    typeof candidate.toAgentId === "string" &&
+    typeof candidate.toAgentName === "string" &&
+    (candidate.target === "current_thread" || candidate.target === "new_thread") &&
+    typeof candidate.createdAt === "string"
+  );
+};
+
+const agentHandoffsFromThread = (thread: ChatThreadRow): AgentHandoffSummary[] => {
+  const upstream = parseDataJson(thread.upstream_json);
+  if (!Array.isArray(upstream.agentHandoffs)) return [];
+  return upstream.agentHandoffs.filter(isAgentHandoffSummary).slice(-maxAgentHandoffHistory);
+};
+
+const latestAgentHandoff = (thread: ChatThreadRow): AgentHandoffSummary | null => {
+  const handoffs = agentHandoffsFromThread(thread);
+  return handoffs.at(-1) ?? null;
+};
+
+const appendAgentHandoffToUpstream = (
+  upstream: Record<string, unknown>,
+  handoff: AgentHandoffSummary,
+) => ({
+  ...upstream,
+  agentHandoff: handoff,
+  agentHandoffs: [
+    ...(Array.isArray(upstream.agentHandoffs)
+      ? upstream.agentHandoffs.filter(isAgentHandoffSummary)
+      : []),
+    handoff,
+  ].slice(-maxAgentHandoffHistory),
+});
+
 const rowAgent = (row: ChatThreadListRow): AgentRow | null => {
   if (!row.agent_name || !row.agent_status) return null;
   return {
@@ -220,6 +281,7 @@ const toThreadSummary = (
     updatedAt: thread.updated_at,
     lastSeenAt: thread.last_seen_at,
     isActive: input.activeThreadId === thread.thread_id,
+    agentHandoff: latestAgentHandoff(thread),
     latestRunStatus:
       input.latestRunStatus ??
       ("latest_run_status" in maybeListRow
@@ -338,7 +400,6 @@ const createThreadContext = async (
   const instanceName = await deriveThreadAgentInstanceName({
     userId: identity.scope.userId,
     workspaceId: identity.scope.workspaceId,
-    agentId: identity.agentId,
     threadId,
   });
   const upstream = {
@@ -417,12 +478,7 @@ const sessionContext = async (
   input: { thread: ChatThreadRow; agent: AgentRow; accountId?: string; accountSource?: string },
 ): Promise<SessionContext> => ({
   agentName: "workbench-thread-chat-agent",
-  instanceName: await deriveThreadAgentInstanceName({
-    userId: identity.scope.userId,
-    workspaceId: identity.scope.workspaceId,
-    agentId: input.agent.id,
-    threadId: input.thread.thread_id,
-  }),
+  instanceName: await resolveThreadAgentInstanceName(input.thread),
   userId: identity.scope.userId,
   threadId: input.thread.thread_id,
   sessionId: input.thread.session_id,
@@ -493,6 +549,7 @@ const buildSnapshot = async (
     activeAgent: toAgentSummary(env, agent, agent.id),
     activeThread,
     threads,
+    agentHandoff: activeThread?.agentHandoff ?? null,
   };
 };
 
@@ -530,6 +587,7 @@ const responseFromSnapshot = async (
     activeAgent: snapshot.activeAgent,
     activeThread: snapshot.activeThread,
     threads: snapshot.threads,
+    agentHandoff: options.agentHandoff ?? snapshot.agentHandoff ?? null,
     connection: snapshot.context
       ? {
           agentHost,
@@ -563,6 +621,7 @@ const ensureCoordinatorRequest = (value: unknown): CoordinatorRequest | null => 
     candidate.action !== "materializeTurn" &&
     candidate.action !== "activate" &&
     candidate.action !== "update" &&
+    candidate.action !== "switchAgent" &&
     candidate.action !== "stream" &&
     candidate.action !== "broadcast"
   ) {
@@ -586,6 +645,7 @@ const safeSnapshotData = (snapshot: SessionSnapshot) => ({
   activeAgent: snapshot.activeAgent,
   activeThread: snapshot.activeThread,
   threads: snapshot.threads,
+  agentHandoff: snapshot.agentHandoff ?? null,
 });
 
 const safeThreadData = (snapshot: SessionSnapshot, thread: ReturnType<typeof toThreadSummary>) => ({
@@ -633,6 +693,32 @@ const clearActiveThread = async (env: Env, identity: AgentIdentity, sessionId: s
      WHERE user_id = ? AND workspace_id = ? AND session_id = ?`,
   )
     .bind(timestamp, timestamp, identity.scope.userId, identity.scope.workspaceId, sessionId)
+    .run();
+};
+
+const updateChatSessionAgent = async (
+  env: Env,
+  identity: AgentIdentity,
+  input: { sessionId: string; agentId: string; activeThreadId?: string | null },
+) => {
+  const timestamp = new Date().toISOString();
+  await env.DB.prepare(
+    `UPDATE chat_sessions
+     SET agent_id = ?,
+         active_thread_id = ?,
+         last_seen_at = ?,
+         updated_at = ?
+     WHERE user_id = ? AND workspace_id = ? AND session_id = ?`,
+  )
+    .bind(
+      input.agentId,
+      input.activeThreadId ?? null,
+      timestamp,
+      timestamp,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      input.sessionId,
+    )
     .run();
 };
 
@@ -1231,6 +1317,195 @@ export class WorkbenchSessionAgent {
     });
   }
 
+  private async switchAgent(input: CoordinatorRequest) {
+    const startedAt = new Date().toISOString();
+    const agentId = input.agentSwitch?.agentId?.trim();
+    const target = input.agentSwitch?.target ?? "current_thread";
+    if (!agentId) return { ok: false, error: "agentId is required", status: 400 };
+
+    const targetAgent = await selectAgent(this.env, agentId, input.identity.scope.workspaceId);
+    if (!targetAgent) return { ok: false, error: "Agent not found", status: 404 };
+    if (targetAgent.status !== "active") {
+      return { ok: false, error: "Agent is not active", status: 403 };
+    }
+
+    const activeIdentity = { ...input.identity, agentId: targetAgent.id };
+    const latestSession = await getLatestChatSession(this.env, input.identity.scope);
+    const activeThreadId =
+      target === "current_thread"
+        ? (input.threadId?.trim() ??
+          this.snapshot?.activeThread?.threadId ??
+          latestSession?.active_thread_id ??
+          "")
+        : "";
+
+    if (target === "new_thread") {
+      await upsertActiveAgentPreference(this.env, {
+        userId: input.identity.scope.userId,
+        workspaceId: input.identity.scope.workspaceId,
+        agentId: targetAgent.id,
+        reason: "agent-selected-new-thread",
+      });
+      if (latestSession?.session_id) {
+        await updateChatSessionAgent(this.env, input.identity, {
+          sessionId: latestSession.session_id,
+          agentId: targetAgent.id,
+          activeThreadId: null,
+        });
+      }
+      this.snapshot = await buildSnapshot(this.env, activeIdentity, {
+        revision: this.nextRevision(),
+        activeAgent: targetAgent,
+      });
+      this.broadcastEvent(
+        this.createEvent("session.agent.handoff", {
+          ...safeSnapshotData(this.snapshot),
+          transition: { type: "agent_handoff", startedAt },
+          agentHandoff: {
+            id: createId("cf-agent-handoff"),
+            toAgentId: targetAgent.id,
+            toAgentName: targetAgent.name,
+            target,
+            createdAt: startedAt,
+          } satisfies AgentHandoffSummary,
+        }),
+      );
+      this.broadcastEvent(
+        this.createEvent("admin.summary.invalidated", {
+          reason: "agent-selected-new-thread",
+          agentId: targetAgent.id,
+        }),
+      );
+      return responseFromSnapshot(this.env, input.agentHost!, this.snapshot, {
+        partial: true,
+        threadsRefreshRecommended: true,
+        transition: { type: "agent_handoff", startedAt },
+        agentHandoff: null,
+      });
+    }
+
+    if (!activeThreadId) return { ok: false, error: "No active thread to continue", status: 400 };
+    const thread = await getOwnedChatThread(this.env, input.identity.scope, activeThreadId);
+    if (!thread || thread.status !== "active") {
+      return { ok: false, error: "Thread not found", status: 404 };
+    }
+    const runningRun = await getLatestRunningChatRun(
+      this.env,
+      input.identity.scope,
+      thread.thread_id,
+    );
+    if (runningRun) {
+      return { ok: false, error: "Thread has a running chat response", status: 409 };
+    }
+    await upsertActiveAgentPreference(this.env, {
+      userId: input.identity.scope.userId,
+      workspaceId: input.identity.scope.workspaceId,
+      agentId: targetAgent.id,
+      reason: "agent-handoff",
+    });
+
+    const fromAgent = await selectAgent(
+      this.env,
+      thread.agent_id,
+      input.identity.scope.workspaceId,
+    );
+    const handoff: AgentHandoffSummary = {
+      id: createId("cf-agent-handoff"),
+      threadId: thread.thread_id,
+      fromAgentId: fromAgent?.id,
+      fromAgentName: fromAgent?.name,
+      toAgentId: targetAgent.id,
+      toAgentName: targetAgent.name,
+      target,
+      createdAt: startedAt,
+    };
+    const upstream = appendAgentHandoffToUpstream(
+      {
+        ...parseDataJson(thread.upstream_json),
+        instanceName: await resolveThreadAgentInstanceName(thread),
+        agent: toAgentRuntimeMetadata(this.env, targetAgent, targetAgent.id),
+      },
+      handoff,
+    );
+    const timestamp = new Date().toISOString();
+    await this.env.DB.batch([
+      this.env.DB.prepare(
+        `UPDATE chat_threads
+         SET agent_id = ?,
+             upstream_json = ?,
+             updated_at = ?,
+             last_seen_at = ?
+         WHERE user_id = ? AND workspace_id = ? AND thread_id = ?`,
+      ).bind(
+        targetAgent.id,
+        toJson(upstream),
+        timestamp,
+        timestamp,
+        input.identity.scope.userId,
+        input.identity.scope.workspaceId,
+        thread.thread_id,
+      ),
+      this.env.DB.prepare(
+        `UPDATE chat_sessions
+         SET agent_id = ?,
+             active_thread_id = ?,
+             last_seen_at = ?,
+             updated_at = ?
+         WHERE user_id = ? AND workspace_id = ? AND session_id = ?`,
+      ).bind(
+        targetAgent.id,
+        thread.thread_id,
+        timestamp,
+        timestamp,
+        input.identity.scope.userId,
+        input.identity.scope.workspaceId,
+        thread.session_id,
+      ),
+    ]);
+
+    const updatedThread: ChatThreadRow = {
+      ...thread,
+      agent_id: targetAgent.id,
+      upstream_json: toJson(upstream),
+      updated_at: timestamp,
+      last_seen_at: timestamp,
+    };
+    this.snapshot = await buildSnapshot(this.env, activeIdentity, {
+      revision: this.nextRevision(),
+      activeThread: updatedThread,
+      activeAgent: targetAgent,
+    });
+    this.snapshot.agentHandoff = handoff;
+
+    await appendControlPlaneEvent(this.env, activeIdentity, {
+      type: "session.agent.handoff",
+      summary: `Switched agent from ${fromAgent?.name ?? "Unknown agent"} to ${targetAgent.name}.`,
+      targetType: "chat_thread",
+      targetId: thread.thread_id,
+      data: { agentHandoff: handoff },
+    });
+    this.broadcastEvent(
+      this.createEvent("session.agent.handoff", {
+        ...safeSnapshotData(this.snapshot),
+        transition: { type: "agent_handoff", startedAt },
+        agentHandoff: handoff,
+      }),
+    );
+    this.broadcastEvent(
+      this.createEvent("admin.summary.invalidated", {
+        reason: "agent-handoff",
+        threadId: thread.thread_id,
+        agentId: targetAgent.id,
+      }),
+    );
+    return responseFromSnapshot(this.env, input.agentHost!, this.snapshot, {
+      partial: true,
+      threadsRefreshRecommended: true,
+      transition: { type: "agent_handoff", startedAt },
+      agentHandoff: handoff,
+    });
+  }
+
   private async stream(input: CoordinatorRequest) {
     const snapshot = await this.ensureSnapshot(input);
     const clientId = createId("cf-session-client");
@@ -1304,6 +1579,10 @@ export class WorkbenchSessionAgent {
       }
       if (input.action === "activate") {
         const result = await this.activateThread(input);
+        return json(result, { status: "status" in result ? result.status : 200 });
+      }
+      if (input.action === "switchAgent") {
+        const result = await this.switchAgent(input);
         return json(result, { status: "status" in result ? result.status : 200 });
       }
       return json(await this.getSession(input));

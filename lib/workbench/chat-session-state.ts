@@ -10,6 +10,7 @@ export type PendingSessionTransition =
   | { type: "initial" }
   | { type: "create" }
   | { type: "materialize" }
+  | { type: "agent_handoff"; agentId: string }
   | { type: "activate"; threadId: string }
   | { type: "rename"; threadId: string }
   | { type: "archive"; threadId: string }
@@ -226,7 +227,14 @@ export const sessionFromEvent = (event: WorkbenchSessionEvent): ChatSessionRespo
       ? [updatedThread]
       : undefined;
   const hasActiveThread = Object.prototype.hasOwnProperty.call(data, "activeThread");
-  if (!data.workspace && !data.activeAgent && !hasActiveThread && !eventThreads) {
+  const hasAgentHandoff = Object.prototype.hasOwnProperty.call(data, "agentHandoff");
+  if (
+    !data.workspace &&
+    !data.activeAgent &&
+    !hasActiveThread &&
+    !eventThreads &&
+    !hasAgentHandoff
+  ) {
     return null;
   }
 
@@ -238,6 +246,9 @@ export const sessionFromEvent = (event: WorkbenchSessionEvent): ChatSessionRespo
     activeAgent: (data.activeAgent as ChatSessionResponse["activeAgent"]) ?? undefined,
     activeThread: hasActiveThread
       ? ((data.activeThread as ChatSessionResponse["activeThread"]) ?? null)
+      : undefined,
+    agentHandoff: hasAgentHandoff
+      ? ((data.agentHandoff as ChatSessionResponse["agentHandoff"]) ?? null)
       : undefined,
     threads: eventThreads,
     transition: isRecord(data.transition)
@@ -289,7 +300,11 @@ export const sessionEventRequiresConnectionRefresh = (
   session: ChatSessionResponse | null,
   connection: SessionConnectionSnapshot,
 ) => {
-  if (event.type !== "session.thread.created" && event.type !== "session.thread.activated") {
+  if (
+    event.type !== "session.thread.created" &&
+    event.type !== "session.thread.activated" &&
+    event.type !== "session.agent.handoff"
+  ) {
     if (event.type !== "session.thread.updated") return false;
     const transition = isRecord(event.data.transition) ? event.data.transition : null;
     if (transition?.type !== "archive" && transition?.type !== "delete") return false;

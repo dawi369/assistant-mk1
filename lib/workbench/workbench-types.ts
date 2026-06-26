@@ -676,8 +676,20 @@ export type ChatThreadSummary = {
   updatedAt?: string;
   lastSeenAt?: string;
   isActive: boolean;
+  agentHandoff?: AgentHandoffSummary | null;
   latestRunStatus?: string;
   messageCount?: number;
+};
+
+export type AgentHandoffSummary = {
+  id: Id;
+  threadId?: Id;
+  fromAgentId?: Id;
+  fromAgentName?: string;
+  toAgentId: Id;
+  toAgentName: string;
+  target: "current_thread" | "new_thread";
+  createdAt: string;
 };
 
 export type ChatThreadStatus = "active" | "archived" | "deleted" | "draft";
@@ -709,6 +721,7 @@ export type ChatSessionResponse = {
   activeAgent?: AgentSummary | null;
   activeThread?: ChatThreadSummary | null;
   threads?: ChatThreadSummary[];
+  agentHandoff?: AgentHandoffSummary | null;
   connection?: {
     agentHost?: string;
     agentName?: string;
@@ -733,6 +746,7 @@ export type ChatSessionResponse = {
       | "initial"
       | "create"
       | "activate"
+      | "agent_handoff"
       | "rename"
       | "archive"
       | "restore"
@@ -750,6 +764,7 @@ export type WorkbenchSessionEvent = {
     | "session.snapshot"
     | "session.thread.created"
     | "session.thread.activated"
+    | "session.agent.handoff"
     | "session.thread.updated"
     | "session.threads.refreshed"
     | "chat.run.started"
