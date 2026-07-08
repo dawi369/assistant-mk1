@@ -1,7 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
+  CheckIcon,
+  ClipboardIcon,
+  ExternalLinkIcon,
   FileTextIcon,
   HistoryIcon,
   Loader2Icon,
@@ -19,10 +22,21 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  CopyId,
   EmptyPanelText,
   StatusPill,
   StatusRow,
 } from "@/components/workbench/dev-monitor-primitives";
+import {
+  buildArtifactPreview,
+  filterHistoryRuns,
+  historyFilters,
+  isOpenableArtifactUri,
+  resolveFocusedRunId,
+  type HistoryFilter,
+  type HistoryFocusRequest,
+} from "@/lib/workbench/history-surface";
+import { cn } from "@/lib/utils";
 import type {
   ArtifactSummary,
   CloudflareArtifactHistoryResponse,
@@ -77,26 +91,45 @@ const summaryDetail = (run: ExecutionHistoryRunSummary) =>
 
 export function WorkbenchHistoryPanel({
   open,
+  focus,
   onOpenChange,
+  onCloseAutoFocus,
+  onFocusConsumed,
 }: {
   open: boolean;
+  focus?: HistoryFocusRequest | null;
   onOpenChange: (open: boolean) => void;
+  onCloseAutoFocus?: (event: Event) => void;
+  onFocusConsumed?: () => void;
 }) {
   const [runs, setRuns] = useState<ExecutionHistoryRunSummary[]>([]);
   const [artifacts, setArtifacts] = useState<ArtifactSummary[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [selectedRunSnapshot, setSelectedRunSnapshot] =
     useState<CloudflareOwnedDemoRunSnapshot | null>(null);
+  const [activeFilter, setActiveFilter] = useState<HistoryFilter>("all");
+  const [highlightedRunId, setHighlightedRunId] = useState<string | null>(null);
+  const [highlightedArtifactId, setHighlightedArtifactId] = useState<string | null>(null);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isLoadingRun, setIsLoadingRun] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
+  const selectedRunIdRef = useRef<string | null>(null);
 
   const selectedRun = useMemo(
     () => runs.find((run) => run.id === selectedRunId) ?? null,
     [runs, selectedRunId],
   );
-  const latestArtifact = artifacts.at(0) ?? null;
+  const filteredRuns = useMemo(() => filterHistoryRuns(runs, activeFilter), [activeFilter, runs]);
+  const selectedRunArtifacts = useMemo(() => {
+    if (!selectedRun?.artifactIds?.length) return [];
+    const artifactIds = new Set(selectedRun.artifactIds);
+    return artifacts.filter((artifact) => artifactIds.has(artifact.id));
+  }, [artifacts, selectedRun?.artifactIds]);
+
+  useEffect(() => {
+    selectedRunIdRef.current = selectedRunId;
+  }, [selectedRunId]);
 
   const loadHistory = useCallback(async () => {
     setIsLoadingHistory(true);
@@ -116,10 +149,14 @@ export function WorkbenchHistoryPanel({
           "Failed to load artifact history",
         ),
       ]);
-      setRuns(runsBody.runs ?? []);
-      setArtifacts(artifactsBody.artifacts ?? []);
+      const nextRuns = runsBody.runs ?? [];
+      const nextArtifacts = artifactsBody.artifacts ?? [];
+      setRuns(nextRuns);
+      setArtifacts(nextArtifacts);
+      return { runs: nextRuns, artifacts: nextArtifacts };
     } catch (error) {
       setHistoryError(error instanceof Error ? error.message : "Failed to load history");
+      return null;
     } finally {
       setIsLoadingHistory(false);
     }
@@ -147,12 +184,45 @@ export function WorkbenchHistoryPanel({
   }, []);
 
   useEffect(() => {
-    if (open) void loadHistory();
-  }, [loadHistory, open]);
+    if (!open) return;
+
+    let cancelled = false;
+    const refresh = async () => {
+      const loaded = await loadHistory();
+      if (cancelled || !loaded) return;
+
+      const runId = focus
+        ? resolveFocusedRunId(loaded.runs, focus)
+        : (selectedRunIdRef.current ?? loaded.runs[0]?.id ?? null);
+      if (runId) {
+        setHighlightedRunId(focus ? runId : null);
+        void inspectRun(runId);
+      }
+
+      setHighlightedArtifactId(focus?.artifactId ?? null);
+      if (focus) onFocusConsumed?.();
+    };
+
+    void refresh();
+    return () => {
+      cancelled = true;
+    };
+  }, [focus, inspectRun, loadHistory, onFocusConsumed, open]);
+
+  const closeFromOverlay = (event: { preventDefault: () => void }) => {
+    event.preventDefault();
+    onOpenChange(false);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="top-0 right-0 left-auto flex h-dvh max-h-dvh w-full max-w-xl translate-x-0 translate-y-0 flex-col gap-0 rounded-none border-y-0 border-r-0 p-0 sm:max-w-xl">
+      <DialogContent
+        className="top-0 right-0 left-auto flex h-dvh max-h-dvh w-full max-w-xl translate-x-0 translate-y-0 flex-col gap-0 rounded-none border-y-0 border-r-0 p-0 sm:max-w-xl"
+        onCloseAutoFocus={onCloseAutoFocus}
+        onOverlayMouseDown={closeFromOverlay}
+        onOverlayPointerDown={closeFromOverlay}
+        onOverlayTouchStart={closeFromOverlay}
+      >
         <DialogHeader className="border-border border-b px-5 py-4">
           <div className="flex items-start justify-between gap-4 pr-8">
             <span>
@@ -186,6 +256,12 @@ export function WorkbenchHistoryPanel({
               tone={runs.length ? "ok" : "muted"}
             />
             <StatusRow
+              label="Visible"
+              value={isLoadingHistory ? "Loading" : String(filteredRuns.length)}
+              compact
+              tone={filteredRuns.length ? "ok" : "muted"}
+            />
+            <StatusRow
               label="Artifacts"
               value={isLoadingHistory ? "Loading" : String(artifacts.length)}
               compact
@@ -195,12 +271,6 @@ export function WorkbenchHistoryPanel({
               label="Selected"
               value={selectedRun ? runHistoryTitle(selectedRun) : "No run selected"}
               compact
-            />
-            <StatusRow
-              label="Latest artifact"
-              value={latestArtifact?.title ?? "None"}
-              compact
-              tone={latestArtifact ? "ok" : "muted"}
             />
           </div>
 
@@ -214,12 +284,35 @@ export function WorkbenchHistoryPanel({
           ) : null}
 
           <HistorySection icon={HistoryIcon} title="Recent Runs">
+            <div className="mb-3 flex flex-wrap gap-1">
+              {historyFilters.map((filter) => (
+                <Button
+                  key={filter.id}
+                  type="button"
+                  size="sm"
+                  variant={activeFilter === filter.id ? "secondary" : "ghost"}
+                  onClick={() => setActiveFilter(filter.id)}
+                >
+                  {filter.label}
+                </Button>
+              ))}
+            </div>
             {isLoadingHistory && !runs.length ? (
               <EmptyPanelText>Loading execution history.</EmptyPanelText>
-            ) : runs.length ? (
+            ) : filteredRuns.length ? (
               <ol className="space-y-2">
-                {runs.map((run) => (
-                  <li key={run.id} className="border-border rounded-md border p-3 text-sm">
+                {filteredRuns.map((run) => (
+                  <li
+                    key={run.id}
+                    className={cn(
+                      "border-border rounded-md border p-3 text-sm",
+                      highlightedRunId === run.id
+                        ? "border-primary/40 bg-primary/5 shadow-xs"
+                        : selectedRunId === run.id
+                          ? "bg-muted/40"
+                          : "",
+                    )}
+                  >
                     <div className="flex items-start justify-between gap-3">
                       <span className="min-w-0">
                         <span className="block truncate font-medium">{runHistoryTitle(run)}</span>
@@ -249,13 +342,15 @@ export function WorkbenchHistoryPanel({
                           ) : (
                             <SearchIcon />
                           )}
-                          Inspect
+                          {selectedRunId === run.id ? "Selected" : "Inspect"}
                         </Button>
                       </span>
                     </div>
                   </li>
                 ))}
               </ol>
+            ) : runs.length ? (
+              <EmptyPanelText>No runs match the current filter.</EmptyPanelText>
             ) : (
               <EmptyPanelText>
                 Run a tool, callback, or workflow to populate execution history.
@@ -269,19 +364,11 @@ export function WorkbenchHistoryPanel({
             ) : artifacts.length ? (
               <ol className="space-y-2">
                 {artifacts.map((artifact) => (
-                  <li key={artifact.id} className="border-border rounded-md border p-3 text-sm">
-                    <p className="truncate font-medium">{artifact.title ?? "Metadata artifact"}</p>
-                    <p className="text-muted-foreground text-xs">
-                      {artifact.kind ?? "artifact"} / {artifact.mimeType ?? "metadata"} /{" "}
-                      {formatBytes(artifact.sizeBytes) ?? "size unknown"}
-                    </p>
-                    <p className="text-muted-foreground/80 text-xs">
-                      {formatAge(artifact.createdAt)}
-                    </p>
-                    <p className="text-muted-foreground mt-2 break-all text-xs">
-                      {artifact.uri ?? "metadata-only artifact"}
-                    </p>
-                  </li>
+                  <ArtifactPreviewCard
+                    key={artifact.id}
+                    artifact={artifact}
+                    highlighted={highlightedArtifactId === artifact.id}
+                  />
                 ))}
               </ol>
             ) : (
@@ -301,7 +388,12 @@ export function WorkbenchHistoryPanel({
                 <p className="text-destructive font-medium">{runError}</p>
               </div>
             ) : selectedRunSnapshot ? (
-              <SelectedRunSummary snapshot={selectedRunSnapshot} />
+              <SelectedRunSummary
+                snapshot={selectedRunSnapshot}
+                run={selectedRun}
+                artifacts={selectedRunArtifacts}
+                highlightedArtifactId={highlightedArtifactId}
+              />
             ) : (
               <EmptyPanelText>No details returned for this run.</EmptyPanelText>
             )}
@@ -332,14 +424,50 @@ function HistorySection({
   );
 }
 
-function SelectedRunSummary({ snapshot }: { snapshot: CloudflareOwnedDemoRunSnapshot }) {
+type PreviewableArtifact = ArtifactSummary | CloudflareOwnedDemoRunSnapshot["artifacts"][number];
+
+function SelectedRunSummary({
+  snapshot,
+  run,
+  artifacts,
+  highlightedArtifactId,
+}: {
+  snapshot: CloudflareOwnedDemoRunSnapshot;
+  run: ExecutionHistoryRunSummary | null;
+  artifacts: ArtifactSummary[];
+  highlightedArtifactId?: string | null;
+}) {
+  const snapshotArtifacts = snapshot.artifacts ?? [];
+  const artifactMap = new Map<string, PreviewableArtifact>();
+  for (const artifact of snapshotArtifacts) artifactMap.set(artifact.id, artifact);
+  for (const artifact of artifacts) artifactMap.set(artifact.id, artifact);
+  const previewArtifacts = Array.from(artifactMap.values());
+  const runId = run?.id ?? snapshot.run?.id;
+  const workflowIntentId =
+    run?.workflowIntentId ?? snapshot.run?.workflowIntentId ?? snapshot.intent?.id;
+
   return (
     <div className="space-y-3">
+      {run?.summary ? (
+        <p className="text-muted-foreground rounded-md border px-3 py-2 text-sm">{run.summary}</p>
+      ) : null}
+
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <StatusRow label="Status" value={snapshot.run?.status} compact />
+        <StatusRow label="Status" value={run?.status ?? snapshot.run?.status} compact />
+        <StatusRow
+          label="Stage"
+          value={run?.stage ?? snapshot.run?.stage ?? snapshot.intent?.stage}
+          compact
+        />
+        <StatusRow label="Engine" value={run?.engine} compact />
         <StatusRow label="Intent" value={snapshot.intent?.type} compact />
-        <StatusRow label="Stage" value={snapshot.run?.stage ?? snapshot.intent?.stage} compact />
         <StatusRow label="Tool calls" value={String(snapshot.toolCalls.length)} compact />
+        <StatusRow label="Artifacts" value={String(previewArtifacts.length)} compact />
+      </div>
+
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <CopyId label="Run id" value={runId} />
+        <CopyId label="Workflow intent id" value={workflowIntentId} />
       </div>
 
       <SummaryList
@@ -352,15 +480,24 @@ function SelectedRunSummary({ snapshot }: { snapshot: CloudflareOwnedDemoRunSnap
           status: toolCall.status,
         }))}
       />
-      <SummaryList
-        title="Artifacts"
-        empty="No artifacts attached to this run."
-        items={snapshot.artifacts.slice(0, 6).map((artifact) => ({
-          key: artifact.id,
-          title: artifact.title ?? "Metadata artifact",
-          detail: artifact.uri ?? "metadata-only artifact",
-        }))}
-      />
+
+      <div>
+        <h3 className="mb-2 text-xs font-semibold">Artifacts</h3>
+        {previewArtifacts.length ? (
+          <ol className="space-y-2">
+            {previewArtifacts.slice(0, 6).map((artifact) => (
+              <ArtifactPreviewCard
+                key={artifact.id}
+                artifact={artifact}
+                highlighted={highlightedArtifactId === artifact.id}
+              />
+            ))}
+          </ol>
+        ) : (
+          <EmptyPanelText>No artifacts attached to this run.</EmptyPanelText>
+        )}
+      </div>
+
       <SummaryList
         title="Decisions"
         empty="No decisions attached to this run."
@@ -392,6 +529,102 @@ function SelectedRunSummary({ snapshot }: { snapshot: CloudflareOwnedDemoRunSnap
         }))}
       />
     </div>
+  );
+}
+
+function ArtifactPreviewCard({
+  artifact,
+  highlighted,
+}: {
+  artifact: PreviewableArtifact;
+  highlighted?: boolean;
+}) {
+  const [copiedUri, setCopiedUri] = useState(false);
+  const preview = buildArtifactPreview(artifact);
+  const sizeBytes = "sizeBytes" in artifact ? formatBytes(artifact.sizeBytes) : undefined;
+  const createdAt = "createdAt" in artifact ? formatAge(artifact.createdAt) : undefined;
+  const kind = "kind" in artifact ? artifact.kind : undefined;
+  const uri = artifact.uri;
+  const openable = isOpenableArtifactUri(uri);
+
+  const copyUri = async () => {
+    if (!uri) return;
+    await navigator.clipboard.writeText(uri);
+    setCopiedUri(true);
+    window.setTimeout(() => setCopiedUri(false), 1200);
+  };
+
+  const openUri = () => {
+    if (!openable || !uri) return;
+    window.open(uri, "_blank", "noopener,noreferrer");
+  };
+
+  return (
+    <li
+      className={cn(
+        "border-border rounded-md border p-3 text-sm",
+        highlighted ? "border-primary/40 bg-primary/5 shadow-xs" : "",
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <span className="min-w-0">
+          <span className="block truncate font-medium">{preview.title}</span>
+          <span className="text-muted-foreground text-xs">
+            {[
+              kind ?? "artifact",
+              artifact.mimeType ?? "metadata",
+              sizeBytes ?? "size unknown",
+              createdAt,
+            ]
+              .filter(Boolean)
+              .join(" / ")}
+          </span>
+        </span>
+        <span className="flex shrink-0 items-center gap-1">
+          <Button type="button" variant="ghost" size="icon-xs" onClick={copyUri} disabled={!uri}>
+            {copiedUri ? <CheckIcon /> : <ClipboardIcon />}
+            <span className="sr-only">Copy artifact URI</span>
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            onClick={openUri}
+            disabled={!openable}
+          >
+            <ExternalLinkIcon />
+            <span className="sr-only">Open artifact URI</span>
+          </Button>
+        </span>
+      </div>
+
+      <div className="mt-2 space-y-1">
+        {preview.lines.slice(0, 3).map((line, index) => (
+          <p
+            key={`${artifact.id}-line-${index}`}
+            className="text-muted-foreground text-xs break-words"
+          >
+            {line}
+          </p>
+        ))}
+      </div>
+
+      <div className="mt-3 space-y-2">
+        <CopyId label="Artifact id" value={artifact.id} />
+        <CopyId label="Artifact URI" value={uri} />
+      </div>
+
+      {preview.json ? (
+        <details className="mt-3">
+          <summary className="text-muted-foreground hover:text-foreground cursor-pointer text-xs">
+            Metadata JSON
+          </summary>
+          <pre className="bg-muted mt-2 max-h-44 overflow-auto rounded-md p-2 text-xs whitespace-pre-wrap">
+            {preview.json}
+          </pre>
+        </details>
+      ) : null}
+    </li>
   );
 }
 

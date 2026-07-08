@@ -34,7 +34,6 @@ import {
   formatDuration,
   LiveRequestMap,
 } from "@/components/workbench/dev-monitor-sections";
-import { useWorkbenchComposerFocus } from "@/components/workbench/composer-focus-context";
 import { NewChatButton } from "@/components/workbench/new-chat-button";
 import { Button } from "@/components/ui/button";
 import {
@@ -50,6 +49,14 @@ import {
   type WorkbenchSummaryRefreshSource,
 } from "@/lib/workbench/admin-summary-events";
 import { deriveRuntimeState } from "@/lib/workbench/chat-runtime-live-state";
+import {
+  resolvePackToolCapabilities,
+  type PackToolCapability,
+} from "@/lib/workbench/pack-capabilities";
+import {
+  resolvePackWorkflowBinding,
+  type ResolvedPackWorkflowBinding,
+} from "@/lib/workbench/pack-workflow-bindings";
 import { useAdminSummaryResource } from "@/lib/workbench/use-admin-summary-resource";
 import { useWorkbenchAgentConnection } from "@/lib/workbench/use-agent-connection";
 import type {
@@ -145,11 +152,12 @@ const snapshotDisplayJson = (snapshot: CloudflareOwnedDemoRunSnapshot) => ({
 export function AdminPanel({
   open,
   onOpenChange,
+  onCloseAutoFocus,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onCloseAutoFocus?: (event: Event) => void;
 }) {
-  const { focusComposer } = useWorkbenchComposerFocus();
   const {
     connection,
     error,
@@ -309,6 +317,15 @@ export function AdminPanel({
         ? "Snapshot failed"
         : (selectedRunSnapshot?.run?.status ?? selectedHistoryRun?.status ?? "Selected")
     : "No run selected";
+  const activePack = summary?.activeAgent?.behavior.pack ?? null;
+  const activePackCapabilities = useMemo(
+    () => resolvePackToolCapabilities(activePack, summary?.tools ?? []),
+    [activePack, summary?.tools],
+  );
+  const activePackWorkflows = useMemo(
+    () => activePack?.workflows.map((workflow) => resolvePackWorkflowBinding(workflow)) ?? [],
+    [activePack],
+  );
 
   const loadApprovals = async () => {
     setIsLoadingApprovals(true);
@@ -677,16 +694,21 @@ export function AdminPanel({
     );
   };
 
+  const closeFromOverlay = (event: { preventDefault: () => void }) => {
+    event.preventDefault();
+    onOpenChange(false);
+  };
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
           className="grid h-[min(85vh,56rem)] w-[min(80vw,72rem)] max-w-[calc(100vw-2rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-[min(80vw,72rem)]"
           aria-describedby="admin-panel-description"
-          onCloseAutoFocus={(event) => {
-            event.preventDefault();
-            focusComposer();
-          }}
+          onCloseAutoFocus={onCloseAutoFocus}
+          onOverlayMouseDown={closeFromOverlay}
+          onOverlayPointerDown={closeFromOverlay}
+          onOverlayTouchStart={closeFromOverlay}
         >
           <DialogHeader className="border-border border-b px-5 py-4">
             <DialogTitle className="flex items-center gap-2 text-base">
@@ -1595,6 +1617,14 @@ export function AdminPanel({
                     compact
                   />
                 </div>
+
+                <DetailsBlock title="Active agent pack" defaultOpen={Boolean(activePack)}>
+                  <ActiveAgentPackDetails
+                    pack={activePack}
+                    capabilities={activePackCapabilities}
+                    workflows={activePackWorkflows}
+                  />
+                </DetailsBlock>
 
                 <DetailsBlock title="Approval queue" defaultOpen>
                   {isLoadingApprovals && !approvalQueue.length ? (
@@ -2537,5 +2567,112 @@ export function AdminPanel({
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+function ActiveAgentPackDetails({
+  pack,
+  capabilities,
+  workflows,
+}: {
+  pack: NonNullable<AgentBehaviorTemplate["pack"]> | null;
+  capabilities: PackToolCapability[];
+  workflows: ResolvedPackWorkflowBinding[];
+}) {
+  if (!pack) {
+    return <EmptyPanelText>The active agent does not declare a pack.</EmptyPanelText>;
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <StatusRow label="Pack" value={pack.id} compact tone="ok" />
+        <StatusRow label="Level" value={pack.capabilityLevel} compact />
+        <StatusRow
+          label="Risk"
+          value={[
+            pack.risk.financialData ? "financial-data" : "no-financial-data",
+            pack.risk.externalMutation ? "mutation-capable" : "read-only",
+            pack.risk.requiresSecrets ? "secrets" : "no-secrets",
+          ].join(" / ")}
+          compact
+        />
+        <StatusRow label="Gate" value={pack.risk.productionGate ?? "none"} compact />
+      </div>
+
+      <div className="space-y-2">
+        <p className="text-muted-foreground text-xs font-medium">Declared tools</p>
+        {capabilities.length ? (
+          <ol className="space-y-2">
+            {capabilities.map((capability) => (
+              <li key={capability.id} className="border-border rounded-md border p-3 text-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">{capability.id}</span>
+                    {capability.purpose ? (
+                      <span className="text-muted-foreground mt-1 block text-xs">
+                        {capability.purpose}
+                      </span>
+                    ) : null}
+                    <span className="text-muted-foreground mt-1 block text-xs">
+                      {(capability.executionModes.length
+                        ? capability.executionModes
+                        : ["declared"]
+                      ).join(", ")}{" "}
+                      / {capability.mutationRisk ?? "read_only"}
+                    </span>
+                  </span>
+                  <span className="flex shrink-0 flex-col items-end gap-1">
+                    <StatusPill
+                      status={capability.modelVisible ? "Model-visible" : "Model-hidden"}
+                      tone={capability.modelVisible ? "completed" : undefined}
+                    />
+                    <StatusPill
+                      status={capability.registered ? "Registered" : "Declared"}
+                      tone={capability.registered ? "completed" : undefined}
+                    />
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <EmptyPanelText>No declared pack tools.</EmptyPanelText>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <p className="text-muted-foreground text-xs font-medium">Declared workflows</p>
+        {workflows.length ? (
+          <ol className="space-y-2">
+            {workflows.map((workflow) => (
+              <li
+                key={workflow.workflow.type}
+                className="border-border rounded-md border p-3 text-sm"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">{workflow.workflow.type}</span>
+                    <span className="text-muted-foreground mt-1 block text-xs">
+                      {workflow.workflow.description}
+                    </span>
+                    <span className="text-muted-foreground mt-1 block text-xs">
+                      {workflow.workflow.engine ?? "workflow"} /{" "}
+                      {workflow.workflow.status ?? "declared"}
+                    </span>
+                  </span>
+                  <StatusPill
+                    status={workflow.runnable ? "Slash action" : "Declared only"}
+                    tone={workflow.runnable ? "completed" : undefined}
+                  />
+                </div>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <EmptyPanelText>No declared pack workflows.</EmptyPanelText>
+        )}
+      </div>
+    </div>
   );
 }

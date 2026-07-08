@@ -5,9 +5,10 @@ Last updated: 2026-06-25
 ## Purpose
 
 Show the current hosted implementation topology of assistant-mk1 after WorkOS,
-Cloudflare Agent chat, workspace/agent routing, `/agents`, `/run`, `/history`,
-read-only tools, pack workflows, callbacks, and control-plane event visibility
-landed. This diagram is an overview only: it should help a maintainer see the
+Cloudflare Agent chat, workspace/agent routing, `/agents`, active-agent slash
+actions, `/history`, read-only tools, pack workflows, callbacks, and
+control-plane event visibility landed. This diagram is an overview only: it
+should help a maintainer see the
 active Vercel frontend, Cloudflare Worker control-plane slice, Fly
 LangGraph/runtime executor, and durable data boundary without recreating every
 detailed architecture view.
@@ -43,9 +44,10 @@ agent to update adjacent docs or code without needing the old graph generator.
   trusted headers sent from Vercel to Cloudflare
 - `app/assistant.tsx`: frontend assistant-ui runtime integration seam
 - `components/workbench/workbench-shell.tsx`: local commands for `/new`,
-  `/agents`, `/run`, `/history`, `/admin`, and Admin dry-run probes
-- `components/workbench/workbench-agents-panel.tsx`: pack-backed agent switcher
-  and active pack workflow runner
+  `/agents`, active-agent slash actions, `/history`, `/admin`, and Admin
+  dry-run probes
+- `components/workbench/workbench-agents-panel.tsx`: compact agent picker and
+  same-thread handoff confirmation
 - `components/workbench/workbench-history-panel.tsx`: workbench history drawer
   for scoped runs, selected-run summaries, and metadata-only artifacts
 - `components/workbench/workbench-runtime-hint.tsx`: compact runtime state and
@@ -98,8 +100,9 @@ agent to update adjacent docs or code without needing the old graph generator.
 Use four visibly separated pillars plus one sidecar cluster:
 
 - `Vercel / Frontend`: Next.js app, WorkOS AuthKit session, assistant-ui
-  thread, `/agents`/`/run`/`/history` local workbench surfaces, Agent
-  connection route, `external-signals` API, and workbench API facades.
+  thread, `/agents`, active-agent slash actions, `/history` local workbench
+  surfaces, Agent connection route, `external-signals` API, and workbench API
+  facades.
 - `Cloudflare / Worker Control Plane`: control-plane Worker, WorkOS scope
   resolver, workspace and agent authorization, `WorkbenchSessionAgent`,
   `WorkbenchThreadChatAgent`, workspace/agent/admin APIs, pack workflow routes,

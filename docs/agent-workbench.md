@@ -14,9 +14,9 @@ The target audience is broader than internal use:
   its workflows, permissions, data, approvals, and audit boundaries
 
 Document status: the shipped surface is assistant-ui chat plus local workbench
-commands for `/new`, `/agents`, `/run`, `/history`, and server-gated `/admin`.
-The broader surfaces below are direction, not a claim that every UI exists
-today.
+commands for `/new`, `/agents`, active-agent slash actions, `/history`, and
+server-gated `/admin`. The broader surfaces below are direction, not a claim
+that every UI exists today.
 
 ## Product Scope
 
@@ -59,8 +59,8 @@ workbench.
 - The runtime hint shows server-derived workspace, agent/profile, chat state,
   and error detail.
 - Recent chat state and active-thread switching are Cloudflare-owned.
-- `/agents` opens the pack-backed agent/workflow panel. `/run` is a shortcut to
-  the same panel and runs only declared read-only workflows for the active pack.
+- `/agents` opens a compact agent picker. Active-agent pack workflows populate
+  the `/` composer menu when they have a safe dry-run binding.
 - Baby Polymancer and Baby Swordfish have current pack workflow bindings that
   create Cloudflare-owned workflow intents, runs, tool calls, artifacts, audit
   events, and history entries through a shared lifecycle helper.
@@ -72,9 +72,9 @@ workbench.
   waterfall, chat readiness, active workspace, active agent/profile, latest
   meaningful event, and important error.
 - Admin has secondary workspace/agent controls, behavior template import and
-  preview, tool registry visibility, `url.inspect`, `repo.snapshot`,
-  Admin-only conformance tools, approval queue, and policy/model-exposure
-  explanations.
+  preview, active pack details, tool registry visibility, `url.inspect`,
+  `repo.snapshot`, Admin-only conformance tools, approval queue, and
+  policy/model-exposure explanations.
 - Cloudflare exposes backend execution and artifact history metadata through
   scoped workbench APIs. The normal `/history` surface can inspect recent runs
   and metadata-only artifacts; Admin remains the deeper diagnostic surface.

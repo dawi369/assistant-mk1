@@ -5,8 +5,9 @@ wrapper. The UI should make long-running agent work inspectable without hiding
 the underlying state.
 
 Document status: the current UI is default assistant-ui chat plus local
-commands for `/new`, `/agents`, `/run`, `/history`, and server-gated `/admin`.
-The surfaces below describe the target workbench as runtime data matures.
+commands for `/new`, `/agents`, active-agent slash actions, `/history`, and
+server-gated `/admin`. The surfaces below describe the target workbench as
+runtime data matures.
 
 ## Assistant-UI Leverage Map
 
@@ -51,9 +52,9 @@ Current implemented layout:
 - Main thread region using assistant-ui.
 - Top-right auth controls.
 - `/new` composer command for entering a local blank session.
-- `/agents` composer command for active agent switching and declared pack
-  workflow runs.
-- `/run` composer command as a shortcut into the active pack workflow panel.
+- `/agents` composer command for active agent selection only.
+- Active-agent pack workflows populate the `/` composer menu as runnable slash
+  actions when a safe binding exists.
 - `/history` composer command and runtime-hint action for scoped runs,
   selected-run summaries, tool calls, and metadata-only artifacts.
 - `/admin` composer command for the flow-first Cloudflare-owned Admin panel.
@@ -290,11 +291,12 @@ Implemented:
 - The normal shell includes a compact server-derived runtime hint for active
   workspace, active agent/profile, model, chat state, and quick access to
   History plus Admin details when the latest runtime state needs attention.
-- The `/agents` panel switches pack-backed agents, creates pack-backed agents
-  for admins, shows declared tools/workflows/risk, and runs the active pack's
-  read-only workflow through bounded preset fields.
-- `/run` opens the same workflow runner so pack execution remains one surface
-  instead of a separate runtime page.
+- The `/agents` panel is a compact roster for choosing the active agent. When a
+  chat is open, selecting another agent asks whether to continue the current
+  chat or start a new chat.
+- Active pack workflow bindings appear directly in the `/` composer menu. Baby
+  Polymancer currently exposes Market research through this path while its raw
+  Polymarket tools stay model-hidden by default.
 - The `/history` drawer shows recent scoped runs, selected-run summaries, tool
   call details, child runs, audit events, and metadata-only artifacts outside
   Admin.
@@ -305,9 +307,10 @@ Implemented:
 - Admin supports name-only workspace create/switch, test agent creation,
   and active-agent switching for the current workspace as secondary management
   controls.
-- Workspace/agent management, tool registry/run controls, diagnostic runs, raw
-  ids, external WorkOS signals, recent Cloudflare events, and diagnostic
-  internals stay available in collapsible Manage or Advanced details.
+- Workspace/agent management, pack details, declared tools/workflows, tool
+  registry/run controls, diagnostic runs, raw ids, external WorkOS signals,
+  recent Cloudflare events, and diagnostic internals stay available in
+  collapsible Manage, Tools, or Advanced details.
 - Admin Tools includes a scoped approval queue for `url.inspect`, confirmation
   dialogs for approve/deny, policy-state warnings, and compact latest-approval
   cross-references on tool summaries.

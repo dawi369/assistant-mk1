@@ -50,13 +50,23 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  onOverlayMouseDown,
+  onOverlayPointerDown,
+  onOverlayTouchStart,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean;
+  onOverlayMouseDown?: React.MouseEventHandler<HTMLDivElement>;
+  onOverlayPointerDown?: React.PointerEventHandler<HTMLDivElement>;
+  onOverlayTouchStart?: React.TouchEventHandler<HTMLDivElement>;
 }) {
   return (
     <DialogPortal data-slot="dialog-portal">
-      <DialogOverlay />
+      <DialogOverlay
+        onMouseDown={onOverlayMouseDown}
+        onPointerDown={onOverlayPointerDown}
+        onTouchStart={onOverlayTouchStart}
+      />
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(

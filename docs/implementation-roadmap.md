@@ -38,10 +38,10 @@ scoped.
   runtime traces, and model exposure controls.
 - Code-first local agent packs can be checked into `agent-packs/*`, surfaced as
   behavior templates, and snapshotted into workspace-scoped agent records.
-- `/agents` is the main pack/workflow surface, `/run` is a shortcut into the
-  same panel, and active Polymancer/Swordfish pack workflows use shared
-  lifecycle helpers for workflow intents, runs, tool calls, artifact metadata,
-  audit, and events.
+- `/agents` is the compact agent picker. Active Polymancer/Swordfish pack
+  workflows populate the `/` composer menu as dry-run slash actions and use
+  shared lifecycle helpers for workflow intents, runs, tool calls, artifact
+  metadata, audit, and events.
 - `/history` is a normal workbench surface for scoped execution history,
   selected-run summaries, and metadata-only artifacts. Admin still carries
   deeper diagnostics.

@@ -267,7 +267,8 @@ const ThreadSuggestionItem: FC = () => {
 
 const Composer: FC = () => {
   const commands = useAssistantSlashCommands();
-  const { focusComposerAfterInteraction, registerComposerInput } = useWorkbenchComposerFocus();
+  const { focusComposerAfterInteraction, focusComposerAfterOverlayClose, registerComposerInput } =
+    useWorkbenchComposerFocus();
   const aui = useAui();
   const composerRootRef = useRef<HTMLFormElement | null>(null);
   const composerText = useAuiState((s) => s.composer.text);
@@ -299,18 +300,25 @@ const Composer: FC = () => {
   useEffect(() => {
     if (!isSlashNavigationDraft(composerText, commands)) return;
 
-    const handlePointerDown = (event: PointerEvent) => {
+    const handleOutsideInteraction = (event: MouseEvent | PointerEvent | TouchEvent) => {
       const target = event.target;
       if (!(target instanceof Node)) return;
       if (composerRootRef.current?.contains(target)) return;
 
+      event.preventDefault();
       aui.composer().setText("");
-      focusComposerAfterInteraction();
+      focusComposerAfterOverlayClose();
     };
 
-    document.addEventListener("pointerdown", handlePointerDown, true);
-    return () => document.removeEventListener("pointerdown", handlePointerDown, true);
-  }, [aui, commands, composerText, focusComposerAfterInteraction]);
+    document.addEventListener("pointerdown", handleOutsideInteraction, true);
+    document.addEventListener("mousedown", handleOutsideInteraction, true);
+    document.addEventListener("touchstart", handleOutsideInteraction, true);
+    return () => {
+      document.removeEventListener("pointerdown", handleOutsideInteraction, true);
+      document.removeEventListener("mousedown", handleOutsideInteraction, true);
+      document.removeEventListener("touchstart", handleOutsideInteraction, true);
+    };
+  }, [aui, commands, composerText, focusComposerAfterOverlayClose]);
 
   return (
     <ComposerPrimitive.Unstable_TriggerPopoverRoot>

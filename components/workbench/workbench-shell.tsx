@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@workos-inc/authkit-nextjs/components";
 import {
   ActivityIcon,
@@ -24,19 +24,21 @@ import {
 } from "@/components/workbench/composer-focus-context";
 import { AdminPanel } from "@/components/workbench/dev-monitor-drawer";
 import { ThreadHistorySidebar } from "@/components/workbench/thread-history-sidebar";
-import {
-  WorkbenchAgentsPanel,
-  type AgentPanelEntryMode,
-} from "@/components/workbench/workbench-agents-panel";
+import { WorkbenchAgentsPanel } from "@/components/workbench/workbench-agents-panel";
 import { WorkbenchAssistantEvents } from "@/components/workbench/workbench-assistant-events";
 import { WorkbenchHistoryPanel } from "@/components/workbench/workbench-history-panel";
 import { WorkbenchRuntimeHint } from "@/components/workbench/workbench-runtime-hint";
 import { requestWorkbenchSummaryRefresh } from "@/lib/workbench/admin-summary-events";
+import { resolveAgentSlashWorkflowActions } from "@/lib/workbench/agent-slash-actions";
+import type { HistoryFocusRequest } from "@/lib/workbench/history-surface";
 import {
   ChatSessionProvider,
   useWorkbenchAgentConnection,
 } from "@/lib/workbench/use-agent-connection";
+import { buildPackWorkflowRequest } from "@/lib/workbench/pack-workflow-bindings";
 import type { RunnableAdminToolName } from "@/lib/workbench/cloudflare-control-plane-client";
+import type { AgentSlashWorkflowAction } from "@/lib/workbench/agent-slash-actions";
+import type { CloudflareToolRunResponse } from "@/lib/workbench/workbench-types";
 
 const adminAccessPath = "/api/workbench/admin-access";
 const toolRunsPath = "/api/workbench/tools/runs";
@@ -63,15 +65,14 @@ export function WorkbenchShell() {
 function WorkbenchShellContent() {
   const [adminOpen, setAdminOpen] = useState(false);
   const [agentsOpen, setAgentsOpen] = useState(false);
-  const [agentsEntryMode, setAgentsEntryMode] = useState<AgentPanelEntryMode>("switch");
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyFocus, setHistoryFocus] = useState<HistoryFocusRequest | null>(null);
   const [adminAccess, setAdminAccess] = useState<{ isAdmin: boolean } | null>(null);
   const [adminNotice, setAdminNotice] = useState<string | null>(null);
   const { user, loading } = useAuth();
-  const { isInitialLoading, startNewSession } = useWorkbenchAgentConnection();
+  const { isInitialLoading, session, startNewSession } = useWorkbenchAgentConnection();
   const { focusComposerAfterInteraction, focusComposerAfterOverlayClose } =
     useWorkbenchComposerFocus();
-  const skipNextAgentsCloseFocusRef = useRef(false);
 
   useEffect(() => {
     if (loading) return;
@@ -161,16 +162,54 @@ function WorkbenchShellContent() {
     [adminAccess?.isAdmin, focusComposerAfterInteraction],
   );
 
+  const runPackWorkflowAction = useCallback(
+    async (action: AgentSlashWorkflowAction) => {
+      const request = buildPackWorkflowRequest(
+        action.binding.workflowType,
+        action.binding.defaultInput,
+      );
+      if (!request) return;
+
+      setAdminNotice(`Running ${action.label}...`);
+      try {
+        const response = await fetch(action.binding.route, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(request),
+        });
+        const body = (await response.json().catch(() => ({}))) as CloudflareToolRunResponse & {
+          error?: unknown;
+        };
+        if (!response.ok || body.ok === false) {
+          throw new Error(
+            typeof body.error === "string" ? body.error : `Failed to run ${action.label}`,
+          );
+        }
+        const status = body.run?.status ?? (body.ok ? "accepted" : "submitted");
+        setHistoryFocus({
+          runId: body.run?.id,
+          artifactId: body.artifact?.id,
+          label: action.label,
+          createdAt: Date.now(),
+        });
+        setHistoryOpen(true);
+        setAdminNotice(`${action.label} ${status}. Opening History.`);
+        requestWorkbenchSummaryRefresh({ source: "event" });
+      } catch (error) {
+        setAdminNotice(error instanceof Error ? error.message : `Failed to run ${action.label}`);
+        requestWorkbenchSummaryRefresh({ source: "event" });
+      } finally {
+        focusComposerAfterInteraction();
+        window.setTimeout(() => setAdminNotice(null), 3500);
+      }
+    },
+    [focusComposerAfterInteraction],
+  );
+
   const handleAgentsOpenChange = useCallback(
     (nextOpen: boolean) => {
       setAgentsOpen(nextOpen);
-      if (!nextOpen) {
-        if (skipNextAgentsCloseFocusRef.current) {
-          skipNextAgentsCloseFocusRef.current = false;
-          return;
-        }
-        focusComposerAfterOverlayClose();
-      }
+      if (!nextOpen) focusComposerAfterOverlayClose();
     },
     [focusComposerAfterOverlayClose],
   );
@@ -178,10 +217,17 @@ function WorkbenchShellContent() {
   const handleHistoryOpenChange = useCallback(
     (nextOpen: boolean) => {
       setHistoryOpen(nextOpen);
-      if (!nextOpen) focusComposerAfterOverlayClose();
+      if (!nextOpen) {
+        setHistoryFocus(null);
+        focusComposerAfterOverlayClose();
+      }
     },
     [focusComposerAfterOverlayClose],
   );
+
+  const handleHistoryFocusConsumed = useCallback(() => {
+    setHistoryFocus(null);
+  }, []);
 
   const handleAdminOpenChange = useCallback(
     (nextOpen: boolean) => {
@@ -191,10 +237,18 @@ function WorkbenchShellContent() {
     [focusComposerAfterOverlayClose],
   );
 
-  const openHistoryFromAgents = useCallback(() => {
-    skipNextAgentsCloseFocusRef.current = true;
-    setHistoryOpen(true);
-  }, []);
+  const handlePanelCloseAutoFocus = useCallback(
+    (event: Event) => {
+      event.preventDefault();
+      focusComposerAfterOverlayClose();
+    },
+    [focusComposerAfterOverlayClose],
+  );
+
+  const workflowSlashActions = useMemo(
+    () => resolveAgentSlashWorkflowActions(session?.activeAgent?.behavior.pack),
+    [session?.activeAgent?.behavior.pack],
+  );
 
   const slashCommands = useMemo(() => {
     const commands = [
@@ -208,23 +262,19 @@ function WorkbenchShellContent() {
       {
         id: "agents",
         label: "Agents",
-        description: "Switch active pack-backed agents.",
+        description: "Pick the active chat agent.",
         icon: BotIcon,
         execute: () => {
-          setAgentsEntryMode("switch");
           setAgentsOpen(true);
         },
       },
-      {
-        id: "run",
-        label: "Run workflow",
-        description: "Run the active pack's declared read-only workflow.",
+      ...workflowSlashActions.map((action) => ({
+        id: action.id,
+        label: action.label,
+        description: action.description,
         icon: PlayIcon,
-        execute: () => {
-          setAgentsEntryMode("workflow");
-          setAgentsOpen(true);
-        },
-      },
+        execute: () => runPackWorkflowAction(action),
+      })),
       {
         id: "history",
         label: "History",
@@ -269,7 +319,14 @@ function WorkbenchShellContent() {
         execute: () => runAdminTestTool("artifact.metadata.test"),
       },
     ];
-  }, [adminAccess?.isAdmin, openAdmin, runAdminTestTool, startNewChat]);
+  }, [
+    adminAccess?.isAdmin,
+    openAdmin,
+    runAdminTestTool,
+    runPackWorkflowAction,
+    startNewChat,
+    workflowSlashActions,
+  ]);
 
   return (
     <div className="bg-background relative h-dvh overflow-hidden">
@@ -293,13 +350,22 @@ function WorkbenchShellContent() {
           <WorkbenchAssistantEvents />
         </Assistant>
         <WorkbenchAgentsPanel
-          entryMode={agentsEntryMode}
           open={agentsOpen}
           onOpenChange={handleAgentsOpenChange}
-          onOpenHistory={openHistoryFromAgents}
+          onCloseAutoFocus={handlePanelCloseAutoFocus}
         />
-        <WorkbenchHistoryPanel open={historyOpen} onOpenChange={handleHistoryOpenChange} />
-        <AdminPanel open={adminOpen} onOpenChange={handleAdminOpenChange} />
+        <WorkbenchHistoryPanel
+          open={historyOpen}
+          focus={historyFocus}
+          onOpenChange={handleHistoryOpenChange}
+          onCloseAutoFocus={handlePanelCloseAutoFocus}
+          onFocusConsumed={handleHistoryFocusConsumed}
+        />
+        <AdminPanel
+          open={adminOpen}
+          onOpenChange={handleAdminOpenChange}
+          onCloseAutoFocus={handlePanelCloseAutoFocus}
+        />
       </AssistantSlashCommandProvider>
     </div>
   );

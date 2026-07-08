@@ -27,9 +27,13 @@ export function WorkbenchComposerFocusProvider({ children }: { children: ReactNo
       const input = inputRef.current;
       if (input && document.contains(input)) {
         input.focus({ preventScroll: true });
+        if (input instanceof HTMLTextAreaElement || input instanceof HTMLInputElement) {
+          const cursorIndex = input.value.length;
+          input.setSelectionRange(cursorIndex, cursorIndex);
+        }
         return;
       }
-      if (performance.now() - startedAt < 1500) {
+      if (performance.now() - startedAt < 2500) {
         window.requestAnimationFrame(tryFocus);
       }
     };
@@ -39,6 +43,8 @@ export function WorkbenchComposerFocusProvider({ children }: { children: ReactNo
   const focusComposerAfterInteraction = useCallback(() => {
     focusComposer();
     window.setTimeout(focusComposer, 0);
+    window.setTimeout(focusComposer, 60);
+    window.setTimeout(focusComposer, 160);
   }, [focusComposer]);
 
   const focusComposerAfterOverlayClose = useCallback(() => {
@@ -46,6 +52,8 @@ export function WorkbenchComposerFocusProvider({ children }: { children: ReactNo
     window.setTimeout(focusComposer, 0);
     window.setTimeout(focusComposer, 80);
     window.setTimeout(focusComposer, 180);
+    window.setTimeout(focusComposer, 320);
+    window.setTimeout(focusComposer, 600);
   }, [focusComposer]);
 
   const value = useMemo(
