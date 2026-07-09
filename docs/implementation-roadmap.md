@@ -39,12 +39,12 @@ scoped.
 - Code-first local agent packs can be checked into `agent-packs/*`, surfaced as
   behavior templates, and snapshotted into workspace-scoped agent records.
 - `/agents` is the compact agent picker. Active Polymancer/Swordfish pack
-  workflows populate the `/` composer menu as dry-run slash actions and use
-  shared lifecycle helpers for workflow intents, runs, tool calls, artifact
+  workflows populate the `/` composer menu as typed dry-run slash actions and
+  use shared lifecycle helpers for workflow intents, runs, tool calls, artifact
   metadata, audit, and events.
 - `/history` is a normal workbench surface for scoped execution history,
-  selected-run summaries, and metadata-only artifacts. Admin still carries
-  deeper diagnostics.
+  searchable selected-run summaries, and metadata-only artifacts. Admin still
+  carries deeper diagnostics.
 - Admin-only conformance tools now cover Cloudflare-inline ping,
   callback-backed Fly runner echo, and metadata artifact creation. They are
   model-hidden, dry-run-only, and non-policy-editable.

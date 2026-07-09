@@ -16,7 +16,6 @@ import {
   Reasoning,
   ReasoningContent,
   ReasoningRoot,
-  ReasoningText,
   ReasoningTrigger,
 } from "@/components/assistant-ui/reasoning";
 import {
@@ -508,9 +507,7 @@ const AssistantMessage: FC = () => {
                 return (
                   <ReasoningRoot defaultOpen={running}>
                     <ReasoningTrigger active={running} />
-                    <ReasoningContent aria-busy={running}>
-                      <ReasoningText>{children}</ReasoningText>
-                    </ReasoningContent>
+                    <ReasoningContent aria-busy={running} />
                   </ReasoningRoot>
                 );
               }

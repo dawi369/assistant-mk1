@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildPackWorkflowRequest,
+  fieldDefinitionsForPackWorkflow,
   packWorkflowBindings,
   resolvePackWorkflowBinding,
 } from "./pack-workflow-bindings";
@@ -117,5 +118,26 @@ describe("pack workflow bindings", () => {
     expect(packWorkflowBindings["swordfish.runtime_research"].requiredPackId).toBe(
       "baby-swordfish",
     );
+  });
+
+  it("describes workflow fields for the operator run dialog", () => {
+    expect(
+      fieldDefinitionsForPackWorkflow(packWorkflowBindings["polymancer.market_research"]),
+    ).toEqual([
+      expect.objectContaining({
+        name: "query",
+        kind: "text",
+        label: "Market query",
+      }),
+    ]);
+    expect(
+      fieldDefinitionsForPackWorkflow(packWorkflowBindings["swordfish.runtime_research"]),
+    ).toEqual([
+      expect.objectContaining({ name: "symbol", kind: "text" }),
+      expect.objectContaining({ name: "tf", kind: "select" }),
+      expect.objectContaining({ name: "lookbackMinutes", kind: "number", max: 1440 }),
+      expect.objectContaining({ name: "maxBars", kind: "number", max: 200 }),
+      expect.objectContaining({ name: "includeBars", kind: "checkbox" }),
+    ]);
   });
 });

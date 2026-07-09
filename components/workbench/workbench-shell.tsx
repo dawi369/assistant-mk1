@@ -7,6 +7,7 @@ import {
   BotIcon,
   FileTextIcon,
   HistoryIcon,
+  Loader2Icon,
   MessageSquarePlusIcon,
   PlayIcon,
   ShieldCheckIcon,
@@ -18,6 +19,14 @@ import {
   type AssistantSlashCommandContext,
 } from "@/components/assistant-ui/slash-command-context";
 import { AuthButton } from "@/components/auth/auth-button";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   useWorkbenchComposerFocus,
   WorkbenchComposerFocusProvider,
@@ -35,7 +44,11 @@ import {
   ChatSessionProvider,
   useWorkbenchAgentConnection,
 } from "@/lib/workbench/use-agent-connection";
-import { buildPackWorkflowRequest } from "@/lib/workbench/pack-workflow-bindings";
+import {
+  buildPackWorkflowRequest,
+  fieldDefinitionsForPackWorkflow,
+  type PackWorkflowFieldDefinition,
+} from "@/lib/workbench/pack-workflow-bindings";
 import type { RunnableAdminToolName } from "@/lib/workbench/cloudflare-control-plane-client";
 import type { AgentSlashWorkflowAction } from "@/lib/workbench/agent-slash-actions";
 import type { CloudflareToolRunResponse } from "@/lib/workbench/workbench-types";
@@ -69,6 +82,9 @@ function WorkbenchShellContent() {
   const [historyFocus, setHistoryFocus] = useState<HistoryFocusRequest | null>(null);
   const [adminAccess, setAdminAccess] = useState<{ isAdmin: boolean } | null>(null);
   const [adminNotice, setAdminNotice] = useState<string | null>(null);
+  const [workflowAction, setWorkflowAction] = useState<AgentSlashWorkflowAction | null>(null);
+  const [workflowInput, setWorkflowInput] = useState<Record<string, string | boolean>>({});
+  const [isWorkflowRunning, setIsWorkflowRunning] = useState(false);
   const { user, loading } = useAuth();
   const { isInitialLoading, session, startNewSession } = useWorkbenchAgentConnection();
   const { focusComposerAfterInteraction, focusComposerAfterOverlayClose } =
@@ -162,14 +178,23 @@ function WorkbenchShellContent() {
     [adminAccess?.isAdmin, focusComposerAfterInteraction],
   );
 
+  const openPackWorkflowAction = useCallback((action: AgentSlashWorkflowAction) => {
+    const defaults = Object.fromEntries(
+      Object.entries(action.binding.defaultInput).map(([key, value]) => [
+        key,
+        typeof value === "boolean" ? value : String(value),
+      ]),
+    ) as Record<string, string | boolean>;
+    setWorkflowInput(defaults);
+    setWorkflowAction(action);
+  }, []);
+
   const runPackWorkflowAction = useCallback(
-    async (action: AgentSlashWorkflowAction) => {
-      const request = buildPackWorkflowRequest(
-        action.binding.workflowType,
-        action.binding.defaultInput,
-      );
+    async (action: AgentSlashWorkflowAction, input: Record<string, unknown>) => {
+      const request = buildPackWorkflowRequest(action.binding.workflowType, input);
       if (!request) return;
 
+      setIsWorkflowRunning(true);
       setAdminNotice(`Running ${action.label}...`);
       try {
         const response = await fetch(action.binding.route, {
@@ -194,17 +219,37 @@ function WorkbenchShellContent() {
         });
         setHistoryOpen(true);
         setAdminNotice(`${action.label} ${status}. Opening History.`);
+        setWorkflowAction(null);
         requestWorkbenchSummaryRefresh({ source: "event" });
       } catch (error) {
         setAdminNotice(error instanceof Error ? error.message : `Failed to run ${action.label}`);
         requestWorkbenchSummaryRefresh({ source: "event" });
       } finally {
+        setIsWorkflowRunning(false);
         focusComposerAfterInteraction();
         window.setTimeout(() => setAdminNotice(null), 3500);
       }
     },
     [focusComposerAfterInteraction],
   );
+
+  const handleWorkflowInputChange = useCallback((name: string, value: string | boolean) => {
+    setWorkflowInput((current) => ({ ...current, [name]: value }));
+  }, []);
+
+  const handleWorkflowDialogOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      if (nextOpen || isWorkflowRunning) return;
+      setWorkflowAction(null);
+      focusComposerAfterOverlayClose();
+    },
+    [focusComposerAfterOverlayClose, isWorkflowRunning],
+  );
+
+  const submitWorkflowDialog = useCallback(() => {
+    if (!workflowAction || isWorkflowRunning) return;
+    void runPackWorkflowAction(workflowAction, workflowInput);
+  }, [isWorkflowRunning, runPackWorkflowAction, workflowAction, workflowInput]);
 
   const handleAgentsOpenChange = useCallback(
     (nextOpen: boolean) => {
@@ -273,7 +318,7 @@ function WorkbenchShellContent() {
         label: action.label,
         description: action.description,
         icon: PlayIcon,
-        execute: () => runPackWorkflowAction(action),
+        execute: () => openPackWorkflowAction(action),
       })),
       {
         id: "history",
@@ -322,8 +367,8 @@ function WorkbenchShellContent() {
   }, [
     adminAccess?.isAdmin,
     openAdmin,
+    openPackWorkflowAction,
     runAdminTestTool,
-    runPackWorkflowAction,
     startNewChat,
     workflowSlashActions,
   ]);
@@ -366,7 +411,161 @@ function WorkbenchShellContent() {
           onOpenChange={handleAdminOpenChange}
           onCloseAutoFocus={handlePanelCloseAutoFocus}
         />
+        <WorkflowRunDialog
+          action={workflowAction}
+          input={workflowInput}
+          isRunning={isWorkflowRunning}
+          onInputChange={handleWorkflowInputChange}
+          onOpenChange={handleWorkflowDialogOpenChange}
+          onSubmit={submitWorkflowDialog}
+        />
       </AssistantSlashCommandProvider>
     </div>
+  );
+}
+
+function WorkflowRunDialog({
+  action,
+  input,
+  isRunning,
+  onInputChange,
+  onOpenChange,
+  onSubmit,
+}: {
+  action: AgentSlashWorkflowAction | null;
+  input: Record<string, string | boolean>;
+  isRunning: boolean;
+  onInputChange: (name: string, value: string | boolean) => void;
+  onOpenChange: (open: boolean) => void;
+  onSubmit: () => void;
+}) {
+  const fields = useMemo(
+    () => (action ? fieldDefinitionsForPackWorkflow(action.binding) : []),
+    [action],
+  );
+
+  const closeFromOverlay = (event: { preventDefault: () => void }) => {
+    event.preventDefault();
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={Boolean(action)} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="grid w-[min(92vw,32rem)] max-w-[calc(100vw-2rem)] gap-0 overflow-hidden p-0 sm:max-w-[min(92vw,32rem)]"
+        onOverlayMouseDown={closeFromOverlay}
+        onOverlayPointerDown={closeFromOverlay}
+        onOverlayTouchStart={closeFromOverlay}
+      >
+        <DialogHeader className="border-border border-b px-5 py-4">
+          <DialogTitle className="flex items-center gap-2 text-base">
+            <PlayIcon className="text-muted-foreground size-4" />
+            {action?.label ?? "Run workflow"}
+          </DialogTitle>
+          <DialogDescription>{action?.description ?? "Run a pack workflow."}</DialogDescription>
+        </DialogHeader>
+
+        <form
+          className="space-y-4 p-5"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSubmit();
+          }}
+        >
+          <div className="bg-muted/40 text-muted-foreground rounded-md px-3 py-2 text-xs">
+            Runs as a bounded dry-run and opens History when the report is ready.
+          </div>
+
+          {fields.map((field) => (
+            <WorkflowField
+              key={field.name}
+              field={field}
+              value={input[field.name]}
+              disabled={isRunning}
+              onChange={onInputChange}
+            />
+          ))}
+
+          <div className="flex flex-wrap justify-end gap-2 pt-1">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isRunning}
+              onClick={() => onOpenChange(false)}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={!action || isRunning}>
+              {isRunning ? <Loader2Icon className="animate-spin" /> : <PlayIcon />}
+              Run dry-run
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function WorkflowField({
+  field,
+  value,
+  disabled,
+  onChange,
+}: {
+  field: PackWorkflowFieldDefinition;
+  value: string | boolean | undefined;
+  disabled: boolean;
+  onChange: (name: string, value: string | boolean) => void;
+}) {
+  const stringValue = typeof value === "string" ? value : "";
+
+  if (field.kind === "checkbox") {
+    return (
+      <label className="border-border flex items-start gap-3 rounded-md border p-3 text-sm">
+        <input
+          type="checkbox"
+          className="mt-0.5 size-4"
+          checked={value !== false}
+          disabled={disabled}
+          onChange={(event) => onChange(field.name, event.target.checked)}
+        />
+        <span>
+          <span className="block font-medium">{field.label}</span>
+          <span className="text-muted-foreground block text-xs">{field.description}</span>
+        </span>
+      </label>
+    );
+  }
+
+  return (
+    <label className="block space-y-1.5 text-sm">
+      <span className="font-medium">{field.label}</span>
+      {field.kind === "select" ? (
+        <select
+          className="border-input bg-background ring-offset-background focus-visible:ring-ring h-9 w-full rounded-md border px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+          value={stringValue}
+          disabled={disabled}
+          onChange={(event) => onChange(field.name, event.target.value)}
+        >
+          {(field.options ?? []).map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input
+          type={field.kind === "number" ? "number" : "text"}
+          className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring h-9 w-full rounded-md border px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+          value={stringValue}
+          min={field.min}
+          max={field.max}
+          placeholder={field.placeholder}
+          disabled={disabled}
+          onChange={(event) => onChange(field.name, event.target.value)}
+        />
+      )}
+      <span className="text-muted-foreground block text-xs">{field.description}</span>
+    </label>
   );
 }

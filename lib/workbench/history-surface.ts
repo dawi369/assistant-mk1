@@ -19,6 +19,8 @@ export type ArtifactPreview = {
   json?: string;
 };
 
+export type HistoryRunCounts = Record<HistoryFilter, number>;
+
 export const historyFilters: Array<{ id: HistoryFilter; label: string }> = [
   { id: "all", label: "All" },
   { id: "workflows", label: "Workflows" },
@@ -61,6 +63,42 @@ export const filterHistoryRuns = (
   if (filter === "failed") return runs.filter(isFailedRun);
   return runs;
 };
+
+const historySearchText = (run: ExecutionHistoryRunSummary) =>
+  [
+    run.id,
+    run.displayName,
+    run.summary,
+    run.status,
+    run.stage,
+    run.engine,
+    run.workflowIntentId,
+    ...(run.artifactIds ?? []),
+  ]
+    .filter((value): value is string => typeof value === "string" && Boolean(value.trim()))
+    .join(" ")
+    .toLowerCase();
+
+export const searchHistoryRuns = (
+  runs: ExecutionHistoryRunSummary[],
+  query: string,
+): ExecutionHistoryRunSummary[] => {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return runs;
+  const terms = normalized.split(/\s+/).filter(Boolean);
+  return runs.filter((run) => {
+    const text = historySearchText(run);
+    return terms.every((term) => text.includes(term));
+  });
+};
+
+export const countHistoryRuns = (runs: ExecutionHistoryRunSummary[]): HistoryRunCounts => ({
+  all: runs.length,
+  workflows: filterHistoryRuns(runs, "workflows").length,
+  tools: filterHistoryRuns(runs, "tools").length,
+  artifacts: filterHistoryRuns(runs, "artifacts").length,
+  failed: filterHistoryRuns(runs, "failed").length,
+});
 
 export const resolveFocusedRunId = (
   runs: ExecutionHistoryRunSummary[],

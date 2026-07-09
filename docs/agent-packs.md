@@ -85,8 +85,9 @@ open, selecting another agent asks whether to continue the current thread with a
 handoff marker or set the selected agent as the next blank-chat default.
 
 Pack detail no longer lives in `/agents`. Known read-only workflow bindings
-populate the `/` composer menu as active-agent slash actions, and workflow
-execution stays dry-run-only in this slice. Admin remains the detailed
+populate the `/` composer menu as active-agent slash actions. Selecting one
+opens a typed dry-run dialog with bounded preset fields; workflow execution
+stays dry-run-only in this slice. Admin remains the detailed
 diagnostics/configuration surface for pack metadata, declared tools, declared
 workflows, risk posture, behavior templates, and demo/test-agent creation.
 
@@ -141,9 +142,9 @@ services automatically.
 
 After local validation, use `/agents` to choose the pack-backed agent and use
 the `/` composer menu to run its declared read-only workflow when a binding is
-available. Slash workflow actions only call known same-origin workflow bindings,
-always send `executionMode: "dry_run"`, and link the resulting run back to
-`/history`.
+available. Slash workflow actions show bounded input fields, only call known
+same-origin workflow bindings, always send `executionMode: "dry_run"`, and link
+the resulting run back to `/history`.
 
 ## Golden Pack Checklist
 

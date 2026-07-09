@@ -3,9 +3,9 @@
 /**
  * Collapsible reasoning-part renderers for assistant-ui streams.
  *
- * Reasoning content is displayed as inspectable supporting context without
- * becoming the canonical source of truth. Durable decisions and provenance
- * should still be written through framework state contracts.
+ * Reasoning text can include transient chain-of-thought content. The workbench
+ * only renders a compact status affordance; durable decisions and provenance
+ * should be written through framework state contracts instead.
  */
 import { memo, useCallback, useRef, useState } from "react";
 import { cva, type VariantProps } from "class-variance-authority";
@@ -16,7 +16,6 @@ import {
   type ReasoningMessagePartComponent,
   type ReasoningGroupComponent,
 } from "@assistant-ui/react";
-import { MarkdownText } from "@/components/assistant-ui/markdown-text";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 
@@ -170,7 +169,6 @@ function ReasoningTrigger({
 
 function ReasoningContent({
   className,
-  children,
   ...props
 }: React.ComponentProps<typeof CollapsibleContent>) {
   return (
@@ -188,10 +186,7 @@ function ReasoningContent({
         className,
       )}
       {...props}
-    >
-      {children}
-      <ReasoningFade />
-    </CollapsibleContent>
+    />
   );
 }
 
@@ -217,9 +212,9 @@ function ReasoningText({ className, ...props }: React.ComponentProps<"div">) {
   );
 }
 
-const ReasoningImpl: ReasoningMessagePartComponent = () => <MarkdownText />;
+const ReasoningImpl: ReasoningMessagePartComponent = () => null;
 
-const ReasoningGroupImpl: ReasoningGroupComponent = ({ children, startIndex, endIndex }) => {
+const ReasoningGroupImpl: ReasoningGroupComponent = ({ startIndex, endIndex }) => {
   const isReasoningStreaming = useAuiState((s) => {
     if (s.message.status?.type !== "running") return false;
     const lastIndex = s.message.parts.length - 1;
@@ -232,9 +227,7 @@ const ReasoningGroupImpl: ReasoningGroupComponent = ({ children, startIndex, end
   return (
     <ReasoningRoot defaultOpen={isReasoningStreaming}>
       <ReasoningTrigger active={isReasoningStreaming} />
-      <ReasoningContent aria-busy={isReasoningStreaming}>
-        <ReasoningText>{children}</ReasoningText>
-      </ReasoningContent>
+      <ReasoningContent aria-busy={isReasoningStreaming} />
     </ReasoningRoot>
   );
 };
@@ -258,7 +251,7 @@ Reasoning.Fade = ReasoningFade;
  * @deprecated This wrapper targets the legacy `components.ReasoningGroup`
  * prop on `<MessagePrimitive.Parts>`. Use `<MessagePrimitive.GroupedParts>`
  * with a `groupBy` returning `"group-reasoning"` and compose `ReasoningRoot`
- * / `ReasoningTrigger` / `ReasoningContent` / `ReasoningText` directly.
+ * / `ReasoningTrigger` / `ReasoningContent` directly.
  * See `thread.tsx` for an example.
  */
 const ReasoningGroup = memo(ReasoningGroupImpl);

@@ -29,10 +29,12 @@ import {
 } from "@/components/workbench/dev-monitor-primitives";
 import {
   buildArtifactPreview,
+  countHistoryRuns,
   filterHistoryRuns,
   historyFilters,
   isOpenableArtifactUri,
   resolveFocusedRunId,
+  searchHistoryRuns,
   type HistoryFilter,
   type HistoryFocusRequest,
 } from "@/lib/workbench/history-surface";
@@ -108,6 +110,7 @@ export function WorkbenchHistoryPanel({
   const [selectedRunSnapshot, setSelectedRunSnapshot] =
     useState<CloudflareOwnedDemoRunSnapshot | null>(null);
   const [activeFilter, setActiveFilter] = useState<HistoryFilter>("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [highlightedRunId, setHighlightedRunId] = useState<string | null>(null);
   const [highlightedArtifactId, setHighlightedArtifactId] = useState<string | null>(null);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
@@ -120,7 +123,12 @@ export function WorkbenchHistoryPanel({
     () => runs.find((run) => run.id === selectedRunId) ?? null,
     [runs, selectedRunId],
   );
-  const filteredRuns = useMemo(() => filterHistoryRuns(runs, activeFilter), [activeFilter, runs]);
+  const searchedRuns = useMemo(() => searchHistoryRuns(runs, searchQuery), [runs, searchQuery]);
+  const filteredSearchedRuns = useMemo(
+    () => filterHistoryRuns(searchedRuns, activeFilter),
+    [activeFilter, searchedRuns],
+  );
+  const filterCounts = useMemo(() => countHistoryRuns(searchedRuns), [searchedRuns]);
   const selectedRunArtifacts = useMemo(() => {
     if (!selectedRun?.artifactIds?.length) return [];
     const artifactIds = new Set(selectedRun.artifactIds);
@@ -257,9 +265,9 @@ export function WorkbenchHistoryPanel({
             />
             <StatusRow
               label="Visible"
-              value={isLoadingHistory ? "Loading" : String(filteredRuns.length)}
+              value={isLoadingHistory ? "Loading" : String(filteredSearchedRuns.length)}
               compact
-              tone={filteredRuns.length ? "ok" : "muted"}
+              tone={filteredSearchedRuns.length ? "ok" : "muted"}
             />
             <StatusRow
               label="Artifacts"
@@ -284,6 +292,16 @@ export function WorkbenchHistoryPanel({
           ) : null}
 
           <HistorySection icon={HistoryIcon} title="Recent Runs">
+            <label className="relative mb-3 block">
+              <SearchIcon className="text-muted-foreground pointer-events-none absolute top-2.5 left-2.5 size-4" />
+              <input
+                type="search"
+                className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring h-9 w-full rounded-md border pr-3 pl-8 text-sm outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                value={searchQuery}
+                placeholder="Search runs, tools, artifacts, or status"
+                onChange={(event) => setSearchQuery(event.target.value)}
+              />
+            </label>
             <div className="mb-3 flex flex-wrap gap-1">
               {historyFilters.map((filter) => (
                 <Button
@@ -293,15 +311,15 @@ export function WorkbenchHistoryPanel({
                   variant={activeFilter === filter.id ? "secondary" : "ghost"}
                   onClick={() => setActiveFilter(filter.id)}
                 >
-                  {filter.label}
+                  {filter.label} {filterCounts[filter.id]}
                 </Button>
               ))}
             </div>
             {isLoadingHistory && !runs.length ? (
               <EmptyPanelText>Loading execution history.</EmptyPanelText>
-            ) : filteredRuns.length ? (
+            ) : filteredSearchedRuns.length ? (
               <ol className="space-y-2">
-                {filteredRuns.map((run) => (
+                {filteredSearchedRuns.map((run) => (
                   <li
                     key={run.id}
                     className={cn(
@@ -350,30 +368,10 @@ export function WorkbenchHistoryPanel({
                 ))}
               </ol>
             ) : runs.length ? (
-              <EmptyPanelText>No runs match the current filter.</EmptyPanelText>
+              <EmptyPanelText>No runs match the current search or filter.</EmptyPanelText>
             ) : (
               <EmptyPanelText>
                 Run a tool, callback, or workflow to populate execution history.
-              </EmptyPanelText>
-            )}
-          </HistorySection>
-
-          <HistorySection icon={FileTextIcon} title="Artifacts">
-            {isLoadingHistory && !artifacts.length ? (
-              <EmptyPanelText>Loading artifact metadata.</EmptyPanelText>
-            ) : artifacts.length ? (
-              <ol className="space-y-2">
-                {artifacts.map((artifact) => (
-                  <ArtifactPreviewCard
-                    key={artifact.id}
-                    artifact={artifact}
-                    highlighted={highlightedArtifactId === artifact.id}
-                  />
-                ))}
-              </ol>
-            ) : (
-              <EmptyPanelText>
-                Metadata artifacts will appear after tools or callbacks create them.
               </EmptyPanelText>
             )}
           </HistorySection>
@@ -396,6 +394,26 @@ export function WorkbenchHistoryPanel({
               />
             ) : (
               <EmptyPanelText>No details returned for this run.</EmptyPanelText>
+            )}
+          </HistorySection>
+
+          <HistorySection icon={FileTextIcon} title="Artifacts">
+            {isLoadingHistory && !artifacts.length ? (
+              <EmptyPanelText>Loading artifact metadata.</EmptyPanelText>
+            ) : artifacts.length ? (
+              <ol className="space-y-2">
+                {artifacts.map((artifact) => (
+                  <ArtifactPreviewCard
+                    key={artifact.id}
+                    artifact={artifact}
+                    highlighted={highlightedArtifactId === artifact.id}
+                  />
+                ))}
+              </ol>
+            ) : (
+              <EmptyPanelText>
+                Metadata artifacts will appear after tools or callbacks create them.
+              </EmptyPanelText>
             )}
           </HistorySection>
         </div>

@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildArtifactPreview,
+  countHistoryRuns,
   filterHistoryRuns,
   isOpenableArtifactUri,
   resolveFocusedRunId,
+  searchHistoryRuns,
 } from "./history-surface";
 import type { ArtifactSummary, ExecutionHistoryRunSummary } from "./workbench-types";
 
@@ -41,6 +43,39 @@ describe("history surface helpers", () => {
     expect(filterHistoryRuns(runs, "tools").map((run) => run.id)).toEqual(["tool-run"]);
     expect(filterHistoryRuns(runs, "artifacts").map((run) => run.id)).toEqual(["workflow-run"]);
     expect(filterHistoryRuns(runs, "failed").map((run) => run.id)).toEqual(["failed-run"]);
+    expect(countHistoryRuns(runs)).toEqual({
+      all: 3,
+      workflows: 1,
+      tools: 1,
+      artifacts: 1,
+      failed: 1,
+    });
+  });
+
+  it("searches run identity, summaries, status, stage, engine, and artifact ids", () => {
+    const searchableRuns = [
+      {
+        ...runs[0],
+        displayName: "Market research",
+        summary: "Public GTA market report.",
+        engine: "cloudflare",
+      },
+      {
+        ...runs[1],
+        displayName: "Runtime research",
+        summary: "Swordfish ESH6 bars.",
+        engine: "fly",
+      },
+    ] satisfies ExecutionHistoryRunSummary[];
+
+    expect(searchHistoryRuns(searchableRuns, "gta cloudflare").map((run) => run.id)).toEqual([
+      "workflow-run",
+    ]);
+    expect(searchHistoryRuns(searchableRuns, "artifact-1").map((run) => run.id)).toEqual([
+      "workflow-run",
+    ]);
+    expect(searchHistoryRuns(searchableRuns, "ESH6").map((run) => run.id)).toEqual(["tool-run"]);
+    expect(searchHistoryRuns(searchableRuns, "missing")).toEqual([]);
   });
 
   it("resolves focused run ids and falls back to the newest loaded run", () => {

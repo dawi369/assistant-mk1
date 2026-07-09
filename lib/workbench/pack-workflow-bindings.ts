@@ -19,6 +19,19 @@ export type PackWorkflowBinding = {
   fields: Array<"query" | "symbol" | "tf" | "lookbackMinutes" | "maxBars" | "includeBars">;
 };
 
+export type PackWorkflowFieldName = PackWorkflowBinding["fields"][number];
+
+export type PackWorkflowFieldDefinition = {
+  name: PackWorkflowFieldName;
+  label: string;
+  description: string;
+  kind: "text" | "number" | "checkbox" | "select";
+  placeholder?: string;
+  min?: number;
+  max?: number;
+  options?: Array<{ value: string; label: string }>;
+};
+
 export type ResolvedPackWorkflowBinding =
   | {
       runnable: true;
@@ -32,6 +45,55 @@ export type ResolvedPackWorkflowBinding =
     };
 
 const swordfishTimeframes = new Set(["1m", "5m", "15m", "30m", "1h"]);
+
+export const packWorkflowFieldDefinitions: Record<
+  PackWorkflowFieldName,
+  PackWorkflowFieldDefinition
+> = {
+  query: {
+    name: "query",
+    label: "Market query",
+    description: "Public Polymarket search query.",
+    kind: "text",
+    placeholder: "GTA",
+  },
+  symbol: {
+    name: "symbol",
+    label: "Symbol",
+    description: "Optional uppercase futures symbol.",
+    kind: "text",
+    placeholder: "ESH6",
+  },
+  tf: {
+    name: "tf",
+    label: "Timeframe",
+    description: "Bar timeframe.",
+    kind: "select",
+    options: Array.from(swordfishTimeframes).map((value) => ({ value, label: value })),
+  },
+  lookbackMinutes: {
+    name: "lookbackMinutes",
+    label: "Lookback",
+    description: "Minutes of public bars to inspect.",
+    kind: "number",
+    min: 1,
+    max: 1440,
+  },
+  maxBars: {
+    name: "maxBars",
+    label: "Max bars",
+    description: "Maximum bars returned in the report.",
+    kind: "number",
+    min: 1,
+    max: 200,
+  },
+  includeBars: {
+    name: "includeBars",
+    label: "Include bars",
+    description: "Attach compact recent bar data.",
+    kind: "checkbox",
+  },
+};
 
 export const packWorkflowBindings: Record<PackWorkflowType, PackWorkflowBinding> = {
   "polymancer.market_research": {
@@ -132,3 +194,8 @@ export const buildPackWorkflowRequest = (
   }
   return null;
 };
+
+export const fieldDefinitionsForPackWorkflow = (
+  binding: Pick<PackWorkflowBinding, "fields">,
+): PackWorkflowFieldDefinition[] =>
+  binding.fields.map((field) => packWorkflowFieldDefinitions[field]);

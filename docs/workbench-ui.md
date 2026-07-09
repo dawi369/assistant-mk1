@@ -54,9 +54,10 @@ Current implemented layout:
 - `/new` composer command for entering a local blank session.
 - `/agents` composer command for active agent selection only.
 - Active-agent pack workflows populate the `/` composer menu as runnable slash
-  actions when a safe binding exists.
+  actions when a safe binding exists. Selecting one opens a typed dry-run dialog
+  with bounded preset fields instead of raw JSON.
 - `/history` composer command and runtime-hint action for scoped runs,
-  selected-run summaries, tool calls, and metadata-only artifacts.
+  searchable selected-run summaries, tool calls, and metadata-only artifacts.
 - `/admin` composer command for the flow-first Cloudflare-owned Admin panel.
 - Admin tool actions for read-only adapters and conformance tools, currently
   `url.inspect`, `repo.snapshot`, `diagnostic.ping`, `runner.echo`, and
@@ -71,8 +72,9 @@ Target layout:
   customer-visible status surface.
 - Collapsible workbench/admin panel for inspectable runtime state.
 - Artifact/history drawer or tab. The current `/history` drawer is the first
-  product-facing version; it intentionally exposes metadata summaries before
-  blob previews or deletion/export controls.
+  product-facing version; it intentionally exposes search, filters,
+  selected-run details, and metadata summaries before blob previews or
+  deletion/export controls.
 - Tool/policy panel for enabled tools and recent calls.
 
 The first screen should be the usable workbench, not a landing page.
@@ -104,8 +106,8 @@ stay behind collapsible sections.
 
 ### Thread
 
-Shows conversation, messages, reasoning where available, attachments, and
-streaming model/tool activity.
+Shows conversation, messages, attachments, streaming model/tool activity, and
+compact reasoning activity status without exposing raw reasoning text.
 
 Source:
 
