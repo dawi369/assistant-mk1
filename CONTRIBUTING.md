@@ -50,6 +50,8 @@ The frontend runs at `http://localhost:3000`, LangGraph at
 `pnpm test:e2e` rebuilds only its isolated D1 fixture in
 `output/playwright/state`; it does not touch the normal local Worker database.
 Use `pnpm release:check` for the complete code, build, and browser gate.
+Local Markdown and image links are enforced by `pnpm docs:check`, which is also
+part of `pnpm verify:fast`.
 
 ## Architecture Rules
 

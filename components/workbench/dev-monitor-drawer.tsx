@@ -325,7 +325,6 @@ export function AdminPanel({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
           className="grid h-[min(88vh,58rem)] w-[min(92vw,72rem)] max-w-[calc(100vw-1rem)] grid-rows-[auto_auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-[min(92vw,72rem)]"
-          aria-describedby="admin-panel-description"
           onCloseAutoFocus={onCloseAutoFocus}
         >
           <DialogHeader className="border-border border-b px-5 py-4">
@@ -335,7 +334,7 @@ export function AdminPanel({
                   <ShieldCheckIcon className="text-muted-foreground size-4" />
                   Admin
                 </DialogTitle>
-                <DialogDescription id="admin-panel-description" className="mt-1">
+                <DialogDescription className="mt-1">
                   Operate agent packs, approvals, tools, and runtime diagnostics.
                 </DialogDescription>
               </div>

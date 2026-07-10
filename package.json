@@ -34,7 +34,8 @@
     "test:e2e:signed-out": "E2E_RELEASE_MODE=signed-out playwright test",
     "test:e2e:local": "E2E_RELEASE_MODE=local-session playwright test",
     "test:e2e": "pnpm test:e2e:signed-out && pnpm test:e2e:local",
-    "verify:fast": "pnpm agent-packs:validate && pnpm eval:real-session-posture && pnpm test:unit && pnpm typecheck && pnpm lint",
+    "docs:check": "tsx scripts/check-doc-links.ts",
+    "verify:fast": "pnpm docs:check && pnpm agent-packs:validate && pnpm eval:real-session-posture && pnpm test:unit && pnpm typecheck && pnpm lint",
     "verify": "pnpm verify:fast && pnpm build",
     "release:check": "pnpm verify && pnpm test:e2e",
     "agent-packs:validate": "tsx scripts/agent-packs-validate.ts",
@@ -133,6 +134,10 @@
     "typescript": "5.9.3",
     "vitest": "^4.1.8",
     "wrangler": "^4.98.0"
+  },
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=10.33.0 <11"
   },
   "packageManager": "pnpm@10.33.0"
 }

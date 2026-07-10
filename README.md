@@ -27,7 +27,7 @@ Assistant-mk1 keeps chat immediate while moving serious agent work into durable,
 inspectable control-plane state. Runs, tools, approvals, artifacts, traces, and
 tenant scope are visible outside the model conversation.
 
-![Repository Analyst chat with pack-specific starters](docs/assets/readme/workbench-overview.png)
+<!-- Add the primary workbench screenshot here before release. -->
 
 ### Workbench
 
@@ -36,7 +36,7 @@ tenant scope are visible outside the model conversation.
 - Searchable run history with cancellation, retry, reconnect, and approval recovery.
 - Server-enforced tool visibility, execution modes, policy, and audit.
 
-![Workbench history with a selected retryable run](docs/assets/readme/history-and-recovery.png)
+<!-- Add the History and recovery screenshot here before release. -->
 
 ### Agent Operations
 
@@ -47,7 +47,7 @@ tenant scope are visible outside the model conversation.
 - Signed external signals and callback-backed Fly/LangGraph execution.
 - Sentry and first-party runtime traces across Vercel, Cloudflare, and Fly.
 
-![Admin Agent Packs catalog](docs/assets/readme/workspace-and-policy.png)
+<!-- Add the Agent Packs and workspace policy screenshot here before release. -->
 
 ## Why Assistant-mk1
 
@@ -137,6 +137,7 @@ and [Agent Profile Authoring](docs/agent-profile-authoring.md).
 ## Verification
 
 ```bash
+pnpm docs:check     # validate local documentation and image links
 pnpm verify:fast   # packs, eval posture, unit tests, types, lint, format
 pnpm verify        # fast gate plus production build
 pnpm test:e2e      # signed-out and trusted-local browser journeys

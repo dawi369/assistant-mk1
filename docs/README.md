@@ -1,8 +1,8 @@
 # Docs Map
 
-This folder mixes current runbooks, target contracts, reference-app pressure,
-and historical notes. Check document status before treating any file as current
-implementation truth.
+This folder separates current runbooks, target contracts, reference-app
+pressure, and architectural decisions. Check a document's section below before
+treating it as current implementation truth.
 
 There is no separate goal doc. The north star is a reusable workbench product:
 personal enough for my own agent operations, packaged enough for developers to
@@ -88,8 +88,3 @@ Decision records capture durable choices and direction:
 
 ADR-0008 is the accepted source for Eve-inspired pattern adoption. There is no
 separate Eve reference doc.
-
-## Archive
-
-`archive/` contains historical planning docs. Do not use archive content as
-current implementation status without checking the live docs and code first.
