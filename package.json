@@ -119,21 +119,21 @@
     "zustand": "^5.0.13"
   },
   "devDependencies": {
-    "@langchain/core": "^1.1.48",
-    "@langchain/langgraph-cli": "^1.2.3",
+    "@langchain/core": "^1.2.2",
+    "@langchain/langgraph-cli": "^1.4.2",
     "@playwright/test": "^1.61.1",
-    "@tailwindcss/postcss": "^4.3.0",
-    "@types/node": "^25.9.1",
+    "@tailwindcss/postcss": "^4.3.2",
+    "@types/node": "^26.1.1",
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
-    "concurrently": "^9.2.1",
-    "oxfmt": "^0.51.0",
-    "oxlint": "^1.66.0",
-    "tailwindcss": "^4.3.0",
-    "tsx": "^4.22.4",
-    "typescript": "5.9.3",
-    "vitest": "^4.1.8",
-    "wrangler": "^4.98.0"
+    "concurrently": "^10.0.3",
+    "oxfmt": "^0.58.0",
+    "oxlint": "^1.73.0",
+    "tailwindcss": "^4.3.2",
+    "tsx": "^4.23.0",
+    "typescript": "7.0.2",
+    "vitest": "^4.1.10",
+    "wrangler": "^4.110.0"
   },
   "engines": {
     "node": ">=22",
