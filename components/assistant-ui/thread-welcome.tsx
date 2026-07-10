@@ -63,11 +63,11 @@ export function StarterSuggestionGrid({
   const suggestions =
     session?.activeAgent?.behavior.pack?.ui.welcome?.starters ?? starterSuggestions;
   return (
-    <div className="aui-thread-welcome-suggestions grid w-full gap-2 pb-4 @md:grid-cols-2">
+    <div className="aui-thread-welcome-suggestions grid w-full auto-rows-fr gap-2 pb-4 @md:grid-cols-2">
       {suggestions.map((suggestion) => (
         <div
           key={suggestion.title}
-          className="aui-thread-welcome-suggestion-display nth-[n+3]:hidden @md:nth-[n+3]:block"
+          className="aui-thread-welcome-suggestion-display h-full min-w-0 nth-[n+3]:hidden @md:nth-[n+3]:block"
         >
           <Button
             type="button"
@@ -84,12 +84,12 @@ export function StarterSuggestionGrid({
               }
               void onSelect(suggestion.prompt);
             }}
-            className="aui-thread-welcome-suggestion bg-background hover:bg-muted h-auto min-h-16 w-full min-w-0 flex-col items-start justify-start gap-1 rounded-lg border px-4 py-3 text-start text-sm transition-colors"
+            className="aui-thread-welcome-suggestion bg-background hover:bg-muted h-full min-h-20 w-full min-w-0 flex-col items-start justify-start gap-1 overflow-hidden rounded-lg border px-4 py-3 text-start text-sm whitespace-normal transition-colors"
           >
-            <span className="aui-thread-welcome-suggestion-text-1 max-w-full break-words font-medium">
+            <span className="aui-thread-welcome-suggestion-text-1 block w-full min-w-0 break-words font-medium whitespace-normal [overflow-wrap:anywhere]">
               {suggestion.title}
             </span>
-            <span className="aui-thread-welcome-suggestion-text-2 text-muted-foreground max-w-full break-words">
+            <span className="aui-thread-welcome-suggestion-text-2 text-muted-foreground block w-full min-w-0 break-words leading-5 whitespace-normal [overflow-wrap:anywhere]">
               {suggestion.description}
             </span>
           </Button>

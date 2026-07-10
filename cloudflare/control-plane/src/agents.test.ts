@@ -192,7 +192,7 @@ describe("agents", () => {
 
     expect(response.status).toBe(201);
     expect(body.created).toBe(true);
-    expect(body.packVersion).toBe("1.0.0");
+    expect(body.packVersion).toBe("1.1.0");
     const insert = statements.find((statement) =>
       statement.query.includes("INSERT OR IGNORE INTO agents"),
     );

@@ -19,6 +19,7 @@ const liveTool = {
   packScope: {
     activePackId: "baby-polymancer",
     declared: true,
+    invocation: "workflow",
     required: true,
     modelVisibleDefault: false,
     executionModes: ["dry_run"],
@@ -37,6 +38,7 @@ describe("pack capabilities", () => {
     ]);
     expect(capabilities.every((tool) => tool.executionModes.includes("dry_run"))).toBe(true);
     expect(capabilities.every((tool) => tool.modelVisibleDefault === false)).toBe(true);
+    expect(capabilities.every((tool) => tool.invocation === "workflow")).toBe(true);
     expect(capabilities.every((tool) => tool.required)).toBe(true);
   });
 
@@ -47,6 +49,7 @@ describe("pack capabilities", () => {
       id: "polymarket.market.search",
       registered: true,
       declared: true,
+      invocation: "workflow",
       adminVisible: true,
       modelVisible: false,
       mutationRisk: "read_only",

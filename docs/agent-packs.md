@@ -19,14 +19,31 @@ export const examplePack = defineAgentPack({
   name: "Example Analyst",
   description: "Bounded analysis over trusted read-only tools.",
   profile: "analyst",
-  version: "1.0.0",
+  version: "1.1.0",
   capabilityLevel: "single_agent_app",
   format: "xml",
   folderPath: "agent-packs/example-analyst",
   codePath: "agent-packs/example-analyst/index.ts",
   promptPath: "agent-packs/example-analyst/prompt.xml",
-  tools: [],
-  workflows: [],
+  tools: [
+    {
+      id: "example.lookup",
+      invocation: "workflow",
+      required: true,
+      executionModes: ["dry_run"],
+      modelVisibleDefault: false,
+      purpose: "Return bounded evidence for the example workflow.",
+    },
+  ],
+  workflows: [
+    {
+      type: "example.research",
+      engine: "langgraph",
+      status: "declared",
+      userInvocable: true,
+      description: "Run bounded example research.",
+    },
+  ],
   ui: {
     primarySurface: "workbench",
     inspectorSections: ["prompt", "tools", "history"],
@@ -35,7 +52,7 @@ export const examplePack = defineAgentPack({
       title: "Example Analyst",
       description: "Choose a focused starting point.",
       starters: [
-        /* exactly three message or workflow actions */
+        /* exactly two or four message or workflow actions */
       ],
     },
   },
@@ -59,6 +76,16 @@ Pack definitions may declare capabilities but cannot implement trusted runtime
 code. The shared workflow catalog owns bounded forms, input normalization,
 same-origin and Worker routes, artifact kinds, and smoke commands. The Worker
 handler registry is exhaustive over runnable catalog entries.
+
+Each tool declares who invokes it:
+
+- `user`: a direct tool exposed to the operator surface.
+- `agent`: a conversational tool the model may select when policy allows it.
+- `workflow`: an internal adapter used only inside a bounded workflow.
+
+Workflows remain separate, explicit user actions. The normal **Tools** panel and
+`/tools` command show runnable workflow launchers, agent-only tools, and
+workflow-internal adapters for the current agent without conflating them.
 
 ## Bundled Packs
 
@@ -92,8 +119,9 @@ normal member-facing switcher for existing agents.
 
 ## Welcome Actions
 
-The active pack snapshot supplies the empty-chat title, description, and three
-starter actions. Message actions use the normal optimistic composer path.
+The active pack snapshot supplies the empty-chat title, description, and either
+two or four starter actions so the grid never renders an orphaned card. Message
+actions use the normal optimistic composer path.
 Workflow actions open the existing bounded workflow dialog. Cached session
 metadata renders these immediately while the live Worker connection completes
 in the background. Legacy and non-pack agents use the generic welcome.
@@ -126,6 +154,9 @@ provider smokes remain explicit and are never triggered by local validation.
   customer-specific policy in a pack.
 - Declaring a tool does not make it model-visible. Cloudflare policy and active
   pack scope must both allow exposure.
+- A tool's invocation class is descriptive, not an authorization bypass. User,
+  agent, and workflow calls still require a registered runtime binding and
+  Cloudflare policy approval.
 - Secret-requiring packs fail v1 validation.
 - Execute-mode tools require mutation risk and a production gate.
 - Missing runtime workflow bindings remain visible as declared-only and cannot

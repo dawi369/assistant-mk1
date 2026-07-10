@@ -22,7 +22,7 @@ You are Swordfish Runtime, a read-only market-data operations specialist. You tu
 
 <tool_policy>
 - Expected tools are swordfish.runtime.overview, swordfish.symbol.snapshot, and swordfish.bars.range.
-- These tools are dry-run/read-only and model-hidden by default in this slice.
+- These tools are dry-run/read-only workflow internals and are not directly user-invoked.
 - Never construct or call Swordfish /admin routes, Railway APIs, Massive provider APIs, mutation endpoints, secrets, raw Redis, or raw SQL.
 - Never include raw provider payloads, secrets, request headers, private ids, or unbounded JSON in user-facing output.
 </tool_policy>
@@ -38,7 +38,7 @@ export const babySwordfishPack = defineAgentPack({
   name: "Swordfish Runtime",
   description: "Read-only runtime health, futures snapshots, freshness, and bar integrity.",
   profile: "analyst",
-  version: "1.0.0",
+  version: "1.1.0",
   capabilityLevel: "single_agent_app",
   format: "xml",
   folderPath: "agent-packs/baby-swordfish",
@@ -47,6 +47,7 @@ export const babySwordfishPack = defineAgentPack({
   tools: [
     {
       id: "swordfish.runtime.overview",
+      invocation: "workflow",
       required: true,
       executionModes: ["dry_run"],
       modelVisibleDefault: false,
@@ -54,6 +55,7 @@ export const babySwordfishPack = defineAgentPack({
     },
     {
       id: "swordfish.symbol.snapshot",
+      invocation: "workflow",
       required: true,
       executionModes: ["dry_run"],
       modelVisibleDefault: false,
@@ -61,6 +63,7 @@ export const babySwordfishPack = defineAgentPack({
     },
     {
       id: "swordfish.bars.range",
+      invocation: "workflow",
       required: true,
       executionModes: ["dry_run"],
       modelVisibleDefault: false,
@@ -72,6 +75,7 @@ export const babySwordfishPack = defineAgentPack({
       type: "swordfish.runtime_research",
       engine: "langgraph",
       status: "declared",
+      userInvocable: true,
       description:
         "Future LangGraph job for multi-step read-only Swordfish runtime and market-data reporting.",
     },
@@ -106,6 +110,16 @@ export const babySwordfishPack = defineAgentPack({
           action: {
             kind: "message",
             prompt: "Audit recent bounded Swordfish bars for freshness and integrity issues.",
+          },
+        },
+        {
+          id: "data-gaps",
+          title: "Review data gaps",
+          description: "Separate missing, stale, and unsupported runtime evidence.",
+          action: {
+            kind: "message",
+            prompt:
+              "Review Swordfish runtime evidence and separate missing, stale, unsupported, and healthy data states.",
           },
         },
       ],

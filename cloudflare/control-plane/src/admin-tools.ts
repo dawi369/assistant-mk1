@@ -556,6 +556,7 @@ export const resolveToolSummaries = async (
           ? {
               activePackId: packScope.pack.id,
               declared: Boolean(packTool),
+              invocation: packTool?.invocation,
               required: packTool?.required,
               modelVisibleDefault: packTool?.modelVisibleDefault,
               executionModes: packTool ? [...packTool.executionModes] : undefined,

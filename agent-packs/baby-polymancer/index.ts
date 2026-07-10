@@ -23,7 +23,7 @@ You are Polymancer Research, a read-only Polymarket research specialist. You tur
 
 <tool_policy>
 - Expected tools are polymarket.market.search, polymarket.market.snapshot, and polymarket.orderbook.snapshot.
-- These tools are dry-run/read-only and model-hidden by default in this slice.
+- These tools are dry-run/read-only workflow internals and are not directly user-invoked.
 - Never construct or call Polymarket order, cancel, auth, wallet, balance, allowance, or user-position endpoints.
 - Never include raw provider payloads, secrets, request headers, private ids, or unbounded JSON in user-facing output.
 </tool_policy>
@@ -39,7 +39,7 @@ export const babyPolymancerPack = defineAgentPack({
   name: "Polymancer Research",
   description: "Read-only Polymarket discovery, pricing, liquidity, and order-book research.",
   profile: "analyst",
-  version: "1.0.0",
+  version: "1.1.0",
   capabilityLevel: "single_agent_app",
   format: "xml",
   folderPath: "agent-packs/baby-polymancer",
@@ -48,6 +48,7 @@ export const babyPolymancerPack = defineAgentPack({
   tools: [
     {
       id: "polymarket.market.search",
+      invocation: "workflow",
       required: true,
       executionModes: ["dry_run"],
       modelVisibleDefault: false,
@@ -55,6 +56,7 @@ export const babyPolymancerPack = defineAgentPack({
     },
     {
       id: "polymarket.market.snapshot",
+      invocation: "workflow",
       required: true,
       executionModes: ["dry_run"],
       modelVisibleDefault: false,
@@ -62,6 +64,7 @@ export const babyPolymancerPack = defineAgentPack({
     },
     {
       id: "polymarket.orderbook.snapshot",
+      invocation: "workflow",
       required: true,
       executionModes: ["dry_run"],
       modelVisibleDefault: false,
@@ -73,6 +76,7 @@ export const babyPolymancerPack = defineAgentPack({
       type: "polymancer.market_research",
       engine: "langgraph",
       status: "declared",
+      userInvocable: true,
       description:
         "Future LangGraph job for multi-step read-only market research and report synthesis.",
     },
@@ -107,6 +111,16 @@ export const babyPolymancerPack = defineAgentPack({
           action: {
             kind: "message",
             prompt: "Show me how to assess spread, visible depth, and thin-market risk read-only.",
+          },
+        },
+        {
+          id: "candidate-comparison",
+          title: "Compare market candidates",
+          description: "Rank relevant markets by fit, liquidity, and evidence quality.",
+          action: {
+            kind: "message",
+            prompt:
+              "Compare relevant public Polymarket candidates by question fit, liquidity, spread, and evidence quality.",
           },
         },
       ],

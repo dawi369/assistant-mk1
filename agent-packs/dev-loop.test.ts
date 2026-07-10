@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { localAgentPacks, type LocalAgentPackManifest } from ".";
+import { localAgentPacks, validateLocalAgentPack, type LocalAgentPackManifest } from ".";
 import {
   inspectAgentPackForDeveloperLoop,
   smokeAgentPackForDeveloperLoop,
@@ -60,6 +60,30 @@ describe("agent pack developer loop", () => {
 
     expect(result.ok).toBe(false);
     expect(result.errors.map((item) => item.message).join("\n")).toContain("duplicate");
+  });
+
+  it("accepts two or four welcome starters and rejects uneven grids", () => {
+    const starters = repoAnalystPack.ui.welcome.starters;
+    expect(() =>
+      validateLocalAgentPack(
+        withPack({
+          ui: {
+            ...repoAnalystPack.ui,
+            welcome: { ...repoAnalystPack.ui.welcome, starters: starters.slice(0, 2) },
+          },
+        }),
+      ),
+    ).not.toThrow();
+    expect(() =>
+      validateLocalAgentPack(
+        withPack({
+          ui: {
+            ...repoAnalystPack.ui,
+            welcome: { ...repoAnalystPack.ui.welcome, starters: starters.slice(0, 3) },
+          },
+        }),
+      ),
+    ).toThrow("exactly two or four");
   });
 
   it("rejects missing prompt files and prompt mismatch", () => {
@@ -134,6 +158,7 @@ describe("agent pack developer loop", () => {
           type: "missing.workflow",
           engine: "langgraph",
           status: "declared",
+          userInvocable: true,
           description: "Missing route binding for test.",
         },
       ],

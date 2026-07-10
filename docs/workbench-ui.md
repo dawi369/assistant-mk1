@@ -214,7 +214,10 @@ Source:
 
 Shows:
 
-- registered tools
+- current-agent workflows the user can run
+- direct user tools when a pack declares a bound runtime action
+- conversational agent-only tools
+- workflow-internal adapters
 - exposed tools for current run
 - hidden tool reasons where useful
 - recent tool calls
@@ -317,13 +320,16 @@ Implemented:
   sidebar plus button. It stays unmaterialized until the first message is sent.
 - The normal shell includes a compact server-derived runtime hint for active
   workspace, active agent/profile, model, chat state, and quick access to
-  History plus Admin details when the latest runtime state needs attention.
+  current-agent Tools, History, plus Admin details when the latest runtime state
+  needs attention.
 - The `/agents` panel is a compact roster for choosing the active agent. When a
   chat is open, selecting another agent asks whether to continue the current
   chat or start a new chat.
-- Active pack workflow bindings appear directly in the `/` composer menu.
+- Active pack workflow bindings appear directly in the `/` composer menu. The
+  `/tools` command and normal Tools panel separate user-runnable workflow
+  launchers, conversational agent tools, and workflow-internal adapters.
   Repository Analyst, Polymancer Research, and Swordfish Runtime each expose a
-  bounded read-only workflow while their raw tools stay model-hidden by default.
+  bounded read-only workflow while their adapters remain workflow-internal.
 - The `/history` drawer shows recent scoped runs, selected-run summaries, tool
   call details, child runs, audit events, and metadata-only artifacts outside
   Admin.
@@ -354,8 +360,8 @@ Implemented:
   inspectable through history instead of pinning the global Details state.
 - `demo.inspect` remains a dev diagnostic action, not a product-level workflow.
 - The empty chat state renders the active pack's cached title, description, and
-  three message/workflow starters immediately. Non-pack agents keep practical
-  generic starter prompts.
+  a balanced two- or four-card starter grid immediately. Non-pack agents keep
+  four practical generic starter prompts.
 
 Next UI targets:
 

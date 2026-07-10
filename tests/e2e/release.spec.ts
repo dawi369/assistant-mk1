@@ -79,7 +79,7 @@ test("trusted local session is immediately usable and exposes release controls",
 
   await page.getByRole("tab", { name: "Agents & Packs" }).click();
   const repositoryPack = page.locator("article").filter({ hasText: "Repository Analyst" });
-  await expect(repositoryPack).toContainText("Version 1.0.0");
+  await expect(repositoryPack).toContainText("Version 1.1.0");
   await expect(page.getByText("Polymancer Research", { exact: true })).toBeVisible();
   await expect(page.getByText("Swordfish Runtime", { exact: true })).toBeVisible();
   await repositoryPack.getByRole("button", { name: "Use pack" }).click();
@@ -89,6 +89,24 @@ test("trusted local session is immediately usable and exposes release controls",
   await expect(page.getByRole("button", { name: /Assess release readiness/i })).toBeVisible();
   await expect(page.getByRole("button", { name: /Map the architecture/i })).toBeVisible();
   await expect(page.getByRole("button", { name: /Find the next slice/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Review release risk/i })).toBeVisible();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("button", { name: /Assess release readiness/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Map the architecture/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Find the next slice/i })).toBeHidden();
+  await expect(page.getByRole("button", { name: /Review release risk/i })).toBeHidden();
+  await page.setViewportSize({ width: 1440, height: 900 });
+
+  await page.getByRole("button", { name: "Tools", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Repository Analyst tools" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Available to you" })).toBeVisible();
+  await expect(page.getByText("Readiness report", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Agent only" })).toBeVisible();
+  await expect(page.getByText("No conversational agent-only tools are enabled.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Inside workflows" })).toBeVisible();
+  await expect(page.getByText("repo.snapshot", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Close" }).click();
 
   await page.getByRole("button", { name: /Assess release readiness/i }).click();
   await expect(page.getByRole("dialog", { name: "Readiness report" })).toBeVisible();

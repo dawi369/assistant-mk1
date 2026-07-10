@@ -26,6 +26,7 @@ export const resolveAgentSlashWorkflowActions = (
   if (!pack) return [];
 
   return pack.workflows.flatMap((workflow) => {
+    if (workflow.userInvocable === false) return [];
     const resolved = resolvePackWorkflowBinding(workflow);
     if (!resolved.runnable || resolved.binding.requiredPackId !== pack.id) return [];
 

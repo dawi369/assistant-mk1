@@ -41,7 +41,7 @@ export const repoAnalystPack = defineAgentPack({
   name: "Repository Analyst",
   description: "Repository readiness, architecture analysis, and implementation planning.",
   profile: "analyst",
-  version: "1.0.0",
+  version: "1.1.0",
   capabilityLevel: "single_agent_app",
   format: "xml",
   folderPath: "agent-packs/repo-analyst",
@@ -50,6 +50,7 @@ export const repoAnalystPack = defineAgentPack({
   tools: [
     {
       id: "repo.snapshot",
+      invocation: "workflow",
       required: true,
       executionModes: ["dry_run"],
       modelVisibleDefault: false,
@@ -57,6 +58,7 @@ export const repoAnalystPack = defineAgentPack({
     },
     {
       id: "url.inspect",
+      invocation: "workflow",
       required: false,
       executionModes: ["dry_run"],
       modelVisibleDefault: false,
@@ -69,6 +71,7 @@ export const repoAnalystPack = defineAgentPack({
       type: "repo.readiness_report",
       engine: "cloudflare",
       status: "declared",
+      userInvocable: true,
       description: "Create a bounded repository readiness report from the read-only snapshot.",
     },
   ],
@@ -104,6 +107,16 @@ export const repoAnalystPack = defineAgentPack({
             kind: "message",
             prompt:
               "Find the smallest safe, high-leverage implementation slice in this repository.",
+          },
+        },
+        {
+          id: "release-risk",
+          title: "Review release risk",
+          description: "Surface the highest-impact gaps and missing verification.",
+          action: {
+            kind: "message",
+            prompt:
+              "Review the current repository evidence for the highest-impact release risks and missing verification.",
           },
         },
       ],

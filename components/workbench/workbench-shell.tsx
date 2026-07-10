@@ -12,6 +12,7 @@ import {
   PlayIcon,
   ShieldCheckIcon,
   Building2Icon,
+  WrenchIcon,
 } from "lucide-react";
 
 import { Assistant } from "@/app/assistant";
@@ -36,6 +37,7 @@ import { AdminPanel } from "@/components/workbench/dev-monitor-drawer";
 import { ThreadHistorySidebar } from "@/components/workbench/thread-history-sidebar";
 import { WorkbenchAgentsPanel } from "@/components/workbench/workbench-agents-panel";
 import { WorkbenchAssistantEvents } from "@/components/workbench/workbench-assistant-events";
+import { WorkbenchCapabilitiesPanel } from "@/components/workbench/workbench-capabilities-panel";
 import { WorkbenchHistoryPanel } from "@/components/workbench/workbench-history-panel";
 import { WorkbenchRuntimeHint } from "@/components/workbench/workbench-runtime-hint";
 import { PackWorkflowProvider } from "@/components/workbench/pack-workflow-context";
@@ -90,6 +92,7 @@ function WorkbenchShellContent({
 }) {
   const [adminOpen, setAdminOpen] = useState(false);
   const [agentsOpen, setAgentsOpen] = useState(false);
+  const [capabilitiesOpen, setCapabilitiesOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [historyFocus, setHistoryFocus] = useState<HistoryFocusRequest | null>(null);
@@ -296,6 +299,14 @@ function WorkbenchShellContent({
     [focusComposerAfterOverlayClose],
   );
 
+  const handleCapabilitiesOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      setCapabilitiesOpen(nextOpen);
+      if (!nextOpen) focusComposerAfterOverlayClose();
+    },
+    [focusComposerAfterOverlayClose],
+  );
+
   const handleHistoryOpenChange = useCallback(
     (nextOpen: boolean) => {
       setHistoryOpen(nextOpen);
@@ -351,6 +362,13 @@ function WorkbenchShellContent({
         execute: () => {
           setAgentsOpen(true);
         },
+      },
+      {
+        id: "tools",
+        label: "Agent tools",
+        description: "See what you can run and what the current agent uses internally.",
+        icon: WrenchIcon,
+        execute: () => setCapabilitiesOpen(true),
       },
       ...workflowSlashActions.map((action) => ({
         id: action.id,
@@ -436,6 +454,7 @@ function WorkbenchShellContent({
               <div className="absolute top-14 right-3 z-20 flex max-w-[calc(100vw-1.5rem)] flex-col items-end gap-2">
                 <WorkbenchRuntimeHint
                   onOpenAdmin={openAdmin}
+                  onOpenCapabilities={() => setCapabilitiesOpen(true)}
                   onOpenHistory={() => setHistoryOpen(true)}
                 />
               </div>
@@ -448,6 +467,12 @@ function WorkbenchShellContent({
             open={agentsOpen}
             onOpenChange={handleAgentsOpenChange}
             onCloseAutoFocus={handlePanelCloseAutoFocus}
+          />
+          <WorkbenchCapabilitiesPanel
+            open={capabilitiesOpen}
+            onOpenChange={handleCapabilitiesOpenChange}
+            onCloseAutoFocus={handlePanelCloseAutoFocus}
+            onRunWorkflow={openPackWorkflowByType}
           />
           <WorkbenchWorkspacePanel
             open={workspaceOpen}

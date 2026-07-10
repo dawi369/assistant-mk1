@@ -47,8 +47,9 @@ Swordfish-specific behavior maps to generic Assistant-mk1 primitives:
 - `swordfish.symbol.snapshot`: reads a bounded uppercase futures symbol snapshot.
 - `swordfish.bars.range`: reads recent bars for a bounded symbol/timeframe/range.
 
-All Swordfish tools are registered as read-only, Admin-visible, model-hidden by
-default, and dry-run only.
+All Swordfish tools are registered as read-only, workflow-internal, and dry-run
+only. The user starts the bounded runtime workflow; its adapters are visible in
+the normal Tools panel but are not directly invokable.
 
 ## Current Workflow
 

@@ -41,6 +41,8 @@ tenant scope are visible outside the model conversation.
 ### Agent Operations
 
 - Code-first agent packs with behavior, tools, workflows, risk, and smoke metadata.
+- Current-agent Tools separates user-run workflows, agent-only tools, and
+  workflow-internal adapters.
 - Typed read-only workflows with bounded inputs and inspectable artifacts.
 - Signed external signals and callback-backed Fly/LangGraph execution.
 - Sentry and first-party runtime traces across Vercel, Cloudflare, and Fly.

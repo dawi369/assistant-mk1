@@ -12,6 +12,7 @@ import {
   HistoryIcon,
   MessageSquareIcon,
   RefreshCwIcon,
+  WrenchIcon,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -23,9 +24,11 @@ import { cn } from "@/lib/utils";
 
 export function WorkbenchRuntimeHint({
   onOpenAdmin,
+  onOpenCapabilities,
   onOpenHistory,
 }: {
   onOpenAdmin: () => void;
+  onOpenCapabilities: () => void;
   onOpenHistory: () => void;
 }) {
   const { summary, error: summaryError, refreshSummary, clearSummary } = useAdminSummaryResource();
@@ -96,6 +99,15 @@ export function WorkbenchRuntimeHint({
           {liveRuntime.chatLabel}
         </span>
         <span className="flex shrink-0 items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 gap-1 px-1.5 text-xs"
+            onClick={onOpenCapabilities}
+          >
+            <WrenchIcon className="size-3.5" />
+            Tools
+          </Button>
           <Button
             variant="ghost"
             size="sm"

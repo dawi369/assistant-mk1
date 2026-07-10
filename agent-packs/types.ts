@@ -4,10 +4,14 @@ export type AgentPackProfile = (typeof agentPackProfiles)[number];
 export const agentPackExecutionModes = ["ask", "dry_run", "execute"] as const;
 export type AgentPackExecutionMode = (typeof agentPackExecutionModes)[number];
 
+export const agentPackToolInvocations = ["user", "agent", "workflow"] as const;
+export type AgentPackToolInvocation = (typeof agentPackToolInvocations)[number];
+
 export type AgentPackCapabilityLevel = "template" | "single_agent_app";
 
 export type AgentPackDeclaredTool = {
   id: string;
+  invocation: AgentPackToolInvocation;
   required: boolean;
   executionModes: readonly AgentPackExecutionMode[];
   modelVisibleDefault: boolean;
@@ -18,6 +22,7 @@ export type AgentPackWorkflow = {
   type: string;
   engine: "cloudflare" | "langgraph";
   status: "declared";
+  userInvocable: boolean;
   description: string;
 };
 

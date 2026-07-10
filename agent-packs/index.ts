@@ -3,7 +3,7 @@ import { babySwordfishPack } from "./baby-swordfish";
 import { repoAnalystPack } from "./repo-analyst";
 
 import type { LocalAgentPackManifest } from "./types";
-import { agentPackProfiles } from "./types";
+import { agentPackProfiles, agentPackToolInvocations } from "./types";
 
 export const localAgentPacks = [repoAnalystPack, babyPolymancerPack, babySwordfishPack] as const;
 
@@ -14,6 +14,7 @@ export type {
   AgentPackProfile,
   AgentPackRisk,
   AgentPackStarter,
+  AgentPackToolInvocation,
   AgentPackUiHints,
   AgentPackWorkflow,
   LocalAgentPackManifest,
@@ -88,6 +89,9 @@ export const validateLocalAgentPack = (pack: LocalAgentPackManifest) => {
     if (toolIds.has(tool.id))
       throw new Error(`Agent pack ${pack.id} tool ${tool.id} is duplicate.`);
     toolIds.add(tool.id);
+    if (!agentPackToolInvocations.includes(tool.invocation)) {
+      throw new Error(`Agent pack ${pack.id} tool ${tool.id} invocation is invalid.`);
+    }
     if (!tool.executionModes.length) {
       throw new Error(`Agent pack ${pack.id} tool ${tool.id} must declare execution modes.`);
     }
@@ -113,6 +117,9 @@ export const validateLocalAgentPack = (pack: LocalAgentPackManifest) => {
     if (workflow.status !== "declared") {
       throw new Error(`Agent pack ${pack.id} workflow ${workflow.type} must be declared.`);
     }
+    if (!workflow.userInvocable) {
+      throw new Error(`Agent pack ${pack.id} workflow ${workflow.type} must be user invocable.`);
+    }
     if (!workflow.description.trim()) {
       throw new Error(`Agent pack ${pack.id} workflow ${workflow.type} description is required.`);
     }
@@ -126,8 +133,8 @@ export const validateLocalAgentPack = (pack: LocalAgentPackManifest) => {
   if (!pack.ui.welcome.title.trim() || !pack.ui.welcome.description.trim()) {
     throw new Error(`Agent pack ${pack.id} ui.welcome title and description are required.`);
   }
-  if (pack.ui.welcome.starters.length !== 3) {
-    throw new Error(`Agent pack ${pack.id} must declare exactly three welcome starters.`);
+  if (![2, 4].includes(pack.ui.welcome.starters.length)) {
+    throw new Error(`Agent pack ${pack.id} must declare exactly two or four welcome starters.`);
   }
   const starterIds = new Set<string>();
   const workflowTypes = new Set(pack.workflows.map((workflow) => workflow.type));

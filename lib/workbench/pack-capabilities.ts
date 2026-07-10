@@ -3,6 +3,7 @@ import type { ToolSummary } from "./workbench-types";
 export type PackCapabilitySource = {
   tools: ReadonlyArray<{
     id: string;
+    invocation?: "user" | "agent" | "workflow" | string;
     required?: boolean;
     executionModes?: readonly string[];
     modelVisibleDefault?: boolean;
@@ -12,6 +13,7 @@ export type PackCapabilitySource = {
 
 export type PackToolCapability = {
   id: string;
+  invocation: "user" | "agent" | "workflow";
   purpose?: string;
   required: boolean;
   executionModes: string[];
@@ -38,8 +40,15 @@ export const resolvePackToolCapabilities = (
   return pack.tools.map((tool) => {
     const summary = summariesByName.get(tool.id);
     const packScope = summary?.packScope;
+    const declaredInvocation = packScope?.invocation ?? tool.invocation;
     return {
       id: tool.id,
+      invocation:
+        declaredInvocation === "user" ||
+        declaredInvocation === "agent" ||
+        declaredInvocation === "workflow"
+          ? declaredInvocation
+          : "workflow",
       purpose: packScope?.purpose ?? tool.purpose ?? summary?.description,
       required: packScope?.required ?? tool.required ?? false,
       executionModes: [

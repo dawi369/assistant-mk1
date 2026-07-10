@@ -212,6 +212,7 @@ export type ToolSummary = {
   packScope?: {
     activePackId?: string;
     declared: boolean;
+    invocation?: "user" | "agent" | "workflow" | string;
     required?: boolean;
     modelVisibleDefault?: boolean;
     executionModes?: string[];
@@ -570,6 +571,7 @@ export type AgentPackTemplateMetadata = {
   promptPath: string;
   tools: Array<{
     id: string;
+    invocation?: "user" | "agent" | "workflow" | string;
     required?: boolean;
     executionModes?: string[];
     modelVisibleDefault?: boolean;
@@ -579,6 +581,7 @@ export type AgentPackTemplateMetadata = {
     type: string;
     engine?: "cloudflare" | "langgraph" | string;
     status?: "declared" | string;
+    userInvocable?: boolean;
     description?: string;
   }>;
   ui: {

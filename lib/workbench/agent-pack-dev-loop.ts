@@ -26,6 +26,7 @@ export type AgentPackIssue = {
 
 export type AgentPackRuntimeToolBinding = {
   id: string;
+  invocation: "user" | "agent" | "workflow";
   registered: boolean;
   policyReference?: string;
   modelVisibleDefault: boolean;
@@ -401,6 +402,7 @@ export const inspectAgentPackForDeveloperLoop = (
       const catalogEntry = toolPolicyCatalog[tool.id];
       return {
         id: tool.id,
+        invocation: tool.invocation,
         registered: Boolean(catalogEntry),
         policyReference: catalogEntry?.policyReference,
         modelVisibleDefault: tool.modelVisibleDefault,
