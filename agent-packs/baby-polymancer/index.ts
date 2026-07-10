@@ -1,7 +1,7 @@
-import type { LocalAgentPackManifest } from "../types";
+import { defineAgentPack } from "../types";
 
 export const babyPolymancerPrompt = `<identity>
-You are Baby Polymancer, a code-first Assistant-mk1 reference agent pack for read-only Polymarket market research. You help users understand public market structure, pricing, liquidity, order book shape, and research questions using only public no-auth market data.
+You are Polymancer Research, a read-only Polymarket research specialist. You turn bounded public market and order-book evidence into clear comparisons while making uncertainty, liquidity risk, and data limitations explicit.
 </identity>
 
 <hard_boundaries>
@@ -34,14 +34,12 @@ You are Baby Polymancer, a code-first Assistant-mk1 reference agent pack for rea
 - End with a read-only next research step when useful.
 </output_style>`;
 
-export const babyPolymancerPack = {
-  kind: "agent_pack",
+export const babyPolymancerPack = defineAgentPack({
   id: "baby-polymancer",
-  templateId: "pack-baby-polymancer",
-  name: "Baby Polymancer",
-  description: "Read-only Polymarket market-research agent app seed.",
+  name: "Polymancer Research",
+  description: "Read-only Polymarket discovery, pricing, liquidity, and order-book research.",
   profile: "analyst",
-  version: "2026-06-22",
+  version: "1.0.0",
   capabilityLevel: "single_agent_app",
   format: "xml",
   folderPath: "agent-packs/baby-polymancer",
@@ -83,6 +81,36 @@ export const babyPolymancerPack = {
     primarySurface: "workbench",
     inspectorSections: ["markets", "orderbook", "tools", "risk", "history"],
     configurationMode: "code",
+    welcome: {
+      title: "Polymancer Research",
+      description: "Compare public prediction markets without trading or private account access.",
+      starters: [
+        {
+          id: "market-research",
+          title: "Research a market topic",
+          description: "Search candidates and inspect pricing, liquidity, and depth.",
+          action: { kind: "workflow", workflowType: "polymancer.market_research" },
+        },
+        {
+          id: "pricing-explainer",
+          title: "Explain market pricing",
+          description: "Interpret outcomes and implied probabilities with caveats.",
+          action: {
+            kind: "message",
+            prompt: "Explain how to evaluate a public Polymarket market's prices and liquidity.",
+          },
+        },
+        {
+          id: "orderbook-risk",
+          title: "Inspect order-book risk",
+          description: "Focus on spread, visible depth, and thin-market warnings.",
+          action: {
+            kind: "message",
+            prompt: "Show me how to assess spread, visible depth, and thin-market risk read-only.",
+          },
+        },
+      ],
+    },
   },
   risk: {
     financialData: true,
@@ -111,4 +139,4 @@ export const babyPolymancerPack = {
     },
   ],
   prompt: babyPolymancerPrompt,
-} as const satisfies LocalAgentPackManifest;
+});

@@ -38,6 +38,7 @@ import { WorkbenchAgentsPanel } from "@/components/workbench/workbench-agents-pa
 import { WorkbenchAssistantEvents } from "@/components/workbench/workbench-assistant-events";
 import { WorkbenchHistoryPanel } from "@/components/workbench/workbench-history-panel";
 import { WorkbenchRuntimeHint } from "@/components/workbench/workbench-runtime-hint";
+import { PackWorkflowProvider } from "@/components/workbench/pack-workflow-context";
 import { WorkbenchWorkspacePanel } from "@/components/workbench/workbench-workspace-panel";
 import { requestWorkbenchSummaryRefresh } from "@/lib/workbench/admin-summary-events";
 import { resolveAgentSlashWorkflowActions } from "@/lib/workbench/agent-slash-actions";
@@ -111,6 +112,10 @@ function WorkbenchShellContent({
   });
   const { focusComposerAfterInteraction, focusComposerAfterOverlayClose } =
     useWorkbenchComposerFocus();
+  const workflowSlashActions = useMemo(
+    () => resolveAgentSlashWorkflowActions(session?.activeAgent?.behavior.pack),
+    [session?.activeAgent?.behavior.pack],
+  );
 
   useEffect(() => {
     if (loading) return;
@@ -210,6 +215,16 @@ function WorkbenchShellContent({
     setWorkflowInput(defaults);
     setWorkflowAction(action);
   }, []);
+
+  const openPackWorkflowByType = useCallback(
+    (workflowType: string) => {
+      const action = workflowSlashActions.find(
+        (candidate) => candidate.binding.workflowType === workflowType,
+      );
+      if (action) openPackWorkflowAction(action);
+    },
+    [openPackWorkflowAction, workflowSlashActions],
+  );
 
   const runPackWorkflowAction = useCallback(
     async (action: AgentSlashWorkflowAction, input: Record<string, unknown>) => {
@@ -312,11 +327,6 @@ function WorkbenchShellContent({
     [focusComposerAfterOverlayClose],
   );
 
-  const workflowSlashActions = useMemo(
-    () => resolveAgentSlashWorkflowActions(session?.activeAgent?.behavior.pack),
-    [session?.activeAgent?.behavior.pack],
-  );
-
   const slashCommands = useMemo(() => {
     const commands = [
       {
@@ -405,64 +415,81 @@ function WorkbenchShellContent({
   return (
     <div className="bg-background relative h-dvh overflow-hidden">
       <AssistantSlashCommandProvider commands={slashCommands}>
-        <div className="absolute top-3 right-3 z-30 flex max-w-[calc(100vw-1.5rem)] flex-col items-end gap-2">
-          <AuthButton
-            localSession={!user && hasAuthenticatedSession}
-            onOpenWorkspace={() => setWorkspaceOpen(true)}
-          />
-          {adminNotice ? (
-            <div className="border-border bg-background/95 text-muted-foreground rounded-md border px-2.5 py-1.5 text-xs shadow-xs backdrop-blur">
-              {adminNotice}
-            </div>
-          ) : null}
-        </div>
-        {hasAuthenticatedSession ? (
-          <>
-            <ThreadHistorySidebar disableNewChat={false} disableThreadActions={isInitialLoading} />
-            <div className="absolute top-14 right-3 z-20 flex max-w-[calc(100vw-1.5rem)] flex-col items-end gap-2">
-              <WorkbenchRuntimeHint
-                onOpenAdmin={openAdmin}
-                onOpenHistory={() => setHistoryOpen(true)}
+        <PackWorkflowProvider openWorkflow={openPackWorkflowByType}>
+          <div className="absolute top-3 right-3 z-30 flex max-w-[calc(100vw-1.5rem)] flex-col items-end gap-2">
+            <AuthButton
+              localSession={!user && hasAuthenticatedSession}
+              onOpenWorkspace={() => setWorkspaceOpen(true)}
+            />
+            {adminNotice ? (
+              <div className="border-border bg-background/95 text-muted-foreground rounded-md border px-2.5 py-1.5 text-xs shadow-xs backdrop-blur">
+                {adminNotice}
+              </div>
+            ) : null}
+          </div>
+          {hasAuthenticatedSession ? (
+            <>
+              <ThreadHistorySidebar
+                disableNewChat={false}
+                disableThreadActions={isInitialLoading}
               />
-            </div>
-          </>
-        ) : null}
-        <Assistant initialSignedOutPresentation={initialSignedOutPresentation}>
-          <WorkbenchAssistantEvents />
-        </Assistant>
-        <WorkbenchAgentsPanel
-          open={agentsOpen}
-          onOpenChange={handleAgentsOpenChange}
-          onCloseAutoFocus={handlePanelCloseAutoFocus}
-        />
-        <WorkbenchWorkspacePanel
-          open={workspaceOpen}
-          onOpenChange={(nextOpen) => {
-            setWorkspaceOpen(nextOpen);
-            if (!nextOpen) focusComposerAfterOverlayClose();
-          }}
-          onCloseAutoFocus={handlePanelCloseAutoFocus}
-        />
-        <WorkbenchHistoryPanel
-          open={historyOpen}
-          focus={historyFocus}
-          onOpenChange={handleHistoryOpenChange}
-          onCloseAutoFocus={handlePanelCloseAutoFocus}
-          onFocusConsumed={handleHistoryFocusConsumed}
-        />
-        <AdminPanel
-          open={adminOpen}
-          onOpenChange={handleAdminOpenChange}
-          onCloseAutoFocus={handlePanelCloseAutoFocus}
-        />
-        <WorkflowRunDialog
-          action={workflowAction}
-          input={workflowInput}
-          isRunning={isWorkflowRunning}
-          onInputChange={handleWorkflowInputChange}
-          onOpenChange={handleWorkflowDialogOpenChange}
-          onSubmit={submitWorkflowDialog}
-        />
+              <div className="absolute top-14 right-3 z-20 flex max-w-[calc(100vw-1.5rem)] flex-col items-end gap-2">
+                <WorkbenchRuntimeHint
+                  onOpenAdmin={openAdmin}
+                  onOpenHistory={() => setHistoryOpen(true)}
+                />
+              </div>
+            </>
+          ) : null}
+          <Assistant initialSignedOutPresentation={initialSignedOutPresentation}>
+            <WorkbenchAssistantEvents />
+          </Assistant>
+          <WorkbenchAgentsPanel
+            open={agentsOpen}
+            onOpenChange={handleAgentsOpenChange}
+            onCloseAutoFocus={handlePanelCloseAutoFocus}
+          />
+          <WorkbenchWorkspacePanel
+            open={workspaceOpen}
+            onOpenChange={(nextOpen) => {
+              setWorkspaceOpen(nextOpen);
+              if (!nextOpen) focusComposerAfterOverlayClose();
+            }}
+            onCloseAutoFocus={handlePanelCloseAutoFocus}
+          />
+          <WorkbenchHistoryPanel
+            open={historyOpen}
+            focus={historyFocus}
+            onOpenChange={handleHistoryOpenChange}
+            onCloseAutoFocus={handlePanelCloseAutoFocus}
+            onFocusConsumed={handleHistoryFocusConsumed}
+          />
+          <AdminPanel
+            open={adminOpen}
+            onOpenChange={handleAdminOpenChange}
+            onCloseAutoFocus={handlePanelCloseAutoFocus}
+            onOpenWorkspace={() => {
+              setAdminOpen(false);
+              setWorkspaceOpen(true);
+            }}
+            onOpenAgents={() => {
+              setAdminOpen(false);
+              setAgentsOpen(true);
+            }}
+            onOpenHistory={() => {
+              setAdminOpen(false);
+              setHistoryOpen(true);
+            }}
+          />
+          <WorkflowRunDialog
+            action={workflowAction}
+            input={workflowInput}
+            isRunning={isWorkflowRunning}
+            onInputChange={handleWorkflowInputChange}
+            onOpenChange={handleWorkflowDialogOpenChange}
+            onSubmit={submitWorkflowDialog}
+          />
+        </PackWorkflowProvider>
       </AssistantSlashCommandProvider>
     </div>
   );

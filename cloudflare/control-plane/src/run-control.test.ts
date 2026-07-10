@@ -144,7 +144,7 @@ describe("run control", () => {
       identity,
       "run-1",
       {
-        polymancer: async (request, _env, retryIdentity) => {
+        "polymancer.market_research": async (request, _env, retryIdentity) => {
           receivedBody = await request.json();
           receivedAgentId = retryIdentity.agentId;
           return Response.json({
@@ -152,7 +152,7 @@ describe("run control", () => {
             run: { runId: "run-2", workflowIntentId: "intent-2", status: "completed" },
           });
         },
-        swordfish: async () => Response.json({ ok: false }, { status: 500 }),
+        "swordfish.runtime_research": async () => Response.json({ ok: false }, { status: 500 }),
       },
     );
 

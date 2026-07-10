@@ -17,8 +17,11 @@ import {
   validatePolymarketMarketSearchInput,
   validatePolymarketMarketSnapshotInput,
   type PolymarketMarketSearchInput,
+  type PolymarketMarketSearchOutput,
   type PolymarketMarketSnapshotInput,
+  type PolymarketMarketSnapshotOutput,
   type PolymarketOrderbookSnapshotInput,
+  type PolymarketOrderbookSnapshotOutput,
 } from "../../../lib/workbench/polymarket-readonly";
 
 const workflowType = "polymancer.market_research";
@@ -79,7 +82,7 @@ const requireBabyPolymancerPack = async (env: Env, identity: AgentIdentity) => {
         ok: false as const,
         response: workflowError(
           "pack_required",
-          "polymancer.market_research requires the active Baby Polymancer agent pack.",
+          "polymancer.market_research requires the active Polymancer Research pack.",
           403,
         ),
       };
@@ -98,6 +101,67 @@ const runSnapshotFromSearch = async (input: PolymarketMarketSearchInput) => {
   }
   const snapshot = await runPolymarketMarketSnapshot({ slug: market.slug });
   return { ok: snapshot.ok as boolean, search, snapshot };
+};
+
+export const buildPolymancerResearchReport = (input: {
+  search?: PolymarketMarketSearchOutput | null;
+  snapshot: PolymarketMarketSnapshotOutput;
+  orderbook?: PolymarketOrderbookSnapshotOutput | null;
+}) => {
+  const { market } = input.snapshot;
+  const outcomeComparison = market.outcomes.map((outcome, index) => ({
+    outcome,
+    price: market.outcomePrices[index] ?? null,
+  }));
+  const numericLiquidity = Number(market.liquidity);
+  const warnings = [
+    market.closed ? "The selected market is closed." : null,
+    market.active === false ? "The selected market is not active." : null,
+    Number.isFinite(numericLiquidity) && numericLiquidity < 1_000
+      ? "Visible market liquidity is low."
+      : null,
+    input.orderbook && (input.orderbook.bidCount === 0 || input.orderbook.askCount === 0)
+      ? "The visible order book is one-sided or empty."
+      : null,
+    !input.orderbook ? "No public order-book snapshot was available." : null,
+  ].filter((item): item is string => Boolean(item));
+
+  return {
+    status: warnings.length ? "review" : "ok",
+    summary: `Read-only market research completed for ${market.question ?? market.slug ?? "market"}.`,
+    candidateMarkets: (input.search?.markets ?? []).slice(0, 5),
+    selectedMarket: market,
+    selectionRationale: input.search
+      ? "Selected the first bounded search result with a market slug and public CLOB token identifiers."
+      : "Used the market explicitly identified in the workflow input.",
+    outcomeComparison,
+    liquidity: market.liquidity ?? null,
+    volume: market.volume ?? null,
+    orderbook: input.orderbook
+      ? {
+          tokenId: input.orderbook.tokenId,
+          bestBid: input.orderbook.bestBid ?? null,
+          bestAsk: input.orderbook.bestAsk ?? null,
+          spread: input.orderbook.spread ?? null,
+          bidCount: input.orderbook.bidCount,
+          askCount: input.orderbook.askCount,
+          topBids: input.orderbook.topBids,
+          topAsks: input.orderbook.topAsks,
+        }
+      : null,
+    warnings,
+    limitations: [
+      "Market prices are noisy implied probabilities, not verified facts.",
+      "Visible public depth can change and does not guarantee executable liquidity.",
+    ],
+    risk: {
+      financialData: true,
+      externalMutation: false,
+      requiresSecrets: false,
+      trading: false,
+      advice: false,
+    },
+  };
 };
 
 export const handlePolymancerMarketResearch = async (
@@ -185,21 +249,11 @@ export const handlePolymancerMarketResearch = async (
     });
   }
 
-  const report = {
-    status: "ok",
-    summary: `Polymancer read-only market research completed for ${
-      snapshot.output.market.question ?? snapshot.output.market.slug ?? "market"
-    }.`,
-    market: snapshot.output.market,
+  const report = buildPolymancerResearchReport({
+    search: searchResult?.search.ok ? searchResult.search.output : null,
+    snapshot: snapshot.output,
     orderbook: orderbook?.ok ? orderbook.output : null,
-    risk: {
-      financialData: true,
-      externalMutation: false,
-      requiresSecrets: false,
-      trading: false,
-      advice: false,
-    },
-  };
+  });
   const artifactData = {
     source: "polymancer_market_research",
     workflowType,

@@ -3,6 +3,7 @@ import path from "node:path";
 
 import {
   localAgentPacks,
+  packWorkflowBindings,
   validateLocalAgentPack,
   validateLocalAgentPacks,
   type LocalAgentPackManifest,
@@ -91,18 +92,16 @@ export type AgentPackSmokeResult =
 export const knownAgentPackWorkflowBindings: Record<
   string,
   Omit<AgentPackRuntimeWorkflowBinding, "type" | "engine" | "registered">
-> = {
-  "polymancer.market_research": {
-    workerRoute: "/workflows/polymancer/market-research",
-    vercelRoute: "/api/workbench/workflows/polymancer/market-research",
-    smokeCommand: "pnpm smoke:polymarket-readonly",
-  },
-  "swordfish.runtime_research": {
-    workerRoute: "/workflows/swordfish/runtime-research",
-    vercelRoute: "/api/workbench/workflows/swordfish/runtime-research",
-    smokeCommand: "pnpm smoke:swordfish-readonly",
-  },
-};
+> = Object.fromEntries(
+  Object.values(packWorkflowBindings).map((binding) => [
+    binding.workflowType,
+    {
+      workerRoute: binding.workerRoute,
+      vercelRoute: binding.route,
+      smokeCommand: binding.smokeCommand,
+    },
+  ]),
+);
 
 const toolIdPattern = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)+$/;
 const workflowTypePattern = /^[a-z][a-z0-9]*(?:[._][a-z0-9]+)+$/;

@@ -1,7 +1,17 @@
 {
   "name": "assistant-mk1",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
+  "description": "Code-first agent workbench for durable runs, approvals, policy, artifacts, audit, and tenant-safe operations.",
+  "homepage": "https://github.com/dawi369/assistant-mk1#readme",
+  "bugs": {
+    "url": "https://github.com/dawi369/assistant-mk1/issues"
+  },
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dawi369/assistant-mk1.git"
+  },
   "scripts": {
     "dev": "concurrently -n frontend,backend -c cyan,magenta \"pnpm dev:frontend\" \"pnpm dev:backend\"",
     "dev:workbench": "concurrently -n frontend,backend,cloudflare -c cyan,magenta,yellow \"pnpm dev:frontend\" \"pnpm dev:backend\" \"pnpm dev:cloudflare\"",

@@ -1,12 +1,15 @@
-import type { AgentProfile } from "../cloudflare/control-plane/src/agent-records";
-import type { ExecutionMode } from "../cloudflare/control-plane/src/types";
+export const agentPackProfiles = ["default", "analyst", "operator"] as const;
+export type AgentPackProfile = (typeof agentPackProfiles)[number];
+
+export const agentPackExecutionModes = ["ask", "dry_run", "execute"] as const;
+export type AgentPackExecutionMode = (typeof agentPackExecutionModes)[number];
 
 export type AgentPackCapabilityLevel = "template" | "single_agent_app";
 
 export type AgentPackDeclaredTool = {
   id: string;
   required: boolean;
-  executionModes: readonly ExecutionMode[];
+  executionModes: readonly AgentPackExecutionMode[];
   modelVisibleDefault: boolean;
   purpose: string;
 };
@@ -18,10 +21,22 @@ export type AgentPackWorkflow = {
   description: string;
 };
 
+export type AgentPackStarter = {
+  id: string;
+  title: string;
+  description: string;
+  action: { kind: "message"; prompt: string } | { kind: "workflow"; workflowType: string };
+};
+
 export type AgentPackUiHints = {
   primarySurface: "chat" | "workbench" | "admin";
   inspectorSections: readonly string[];
   configurationMode: "code" | "ui_future";
+  welcome: {
+    title: string;
+    description: string;
+    starters: readonly AgentPackStarter[];
+  };
 };
 
 export type AgentPackRisk = {
@@ -32,12 +47,13 @@ export type AgentPackRisk = {
 };
 
 export type LocalAgentPackManifest = {
+  apiVersion: 1;
   kind: "agent_pack";
   id: string;
-  templateId: string;
+  templateId: `pack-${string}`;
   name: string;
   description: string;
-  profile: AgentProfile;
+  profile: AgentPackProfile;
   version: string;
   capabilityLevel: AgentPackCapabilityLevel;
   format: "xml";
@@ -55,3 +71,17 @@ export type LocalAgentPackManifest = {
   }[];
   prompt: string;
 };
+
+export type AgentPackDefinition = Omit<
+  LocalAgentPackManifest,
+  "apiVersion" | "kind" | "templateId"
+>;
+
+export const defineAgentPack = <const T extends AgentPackDefinition>(
+  definition: T,
+): T & Pick<LocalAgentPackManifest, "apiVersion" | "kind" | "templateId"> => ({
+  apiVersion: 1,
+  kind: "agent_pack",
+  templateId: `pack-${definition.id}`,
+  ...definition,
+});

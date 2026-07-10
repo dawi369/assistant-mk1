@@ -162,11 +162,24 @@ describe("polymancer market research workflow", () => {
     });
 
     const response = await handlePolymancerMarketResearch(request, env, identity);
-    const body = (await response.json()) as { ok?: boolean; run?: { workflowType?: string } };
+    const body = (await response.json()) as {
+      ok?: boolean;
+      run?: { workflowType?: string };
+      report?: {
+        candidateMarkets?: unknown[];
+        outcomeComparison?: unknown[];
+        orderbook?: { spread?: string };
+        warnings?: string[];
+      };
+    };
 
     expect(response.status).toBe(201);
     expect(body.ok).toBe(true);
     expect(body.run?.workflowType).toBe("polymancer.market_research");
+    expect(body.report?.candidateMarkets).toHaveLength(1);
+    expect(body.report?.outcomeComparison).toHaveLength(2);
+    expect(body.report?.orderbook?.spread).toBe("0.0200");
+    expect(body.report?.warnings).toContain("Visible market liquidity is low.");
 
     expect(
       statements.some((statement) =>

@@ -68,6 +68,33 @@ test("trusted local session is immediately usable and exposes release controls",
   );
   await page.getByRole("button", { name: "Close" }).click();
 
+  const composer = page.getByRole("textbox", { name: /Message input|Draft message/ });
+  await composer.fill("/admin");
+  await composer.press("Enter");
+  await expect(page.getByRole("dialog", { name: "Admin" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Overview" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Agents & Packs" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Tools & Approvals" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Diagnostics" })).toBeVisible();
+
+  await page.getByRole("tab", { name: "Agents & Packs" }).click();
+  const repositoryPack = page.locator("article").filter({ hasText: "Repository Analyst" });
+  await expect(repositoryPack).toContainText("Version 1.0.0");
+  await expect(page.getByText("Polymancer Research", { exact: true })).toBeVisible();
+  await expect(page.getByText("Swordfish Runtime", { exact: true })).toBeVisible();
+  await repositoryPack.getByRole("button", { name: "Use pack" }).click();
+
+  await expect(page.getByRole("dialog", { name: "Admin" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Repository Analyst" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Assess release readiness/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Map the architecture/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Find the next slice/i })).toBeVisible();
+
+  await page.getByRole("button", { name: /Assess release readiness/i }).click();
+  await expect(page.getByRole("dialog", { name: "Readiness report" })).toBeVisible();
+  await expect(page.getByText("Documentation", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Close" }).click();
+
   await page.getByRole("button", { name: "History" }).click();
   await expect(page.getByRole("dialog", { name: "Workbench History" })).toBeVisible();
   await expect(

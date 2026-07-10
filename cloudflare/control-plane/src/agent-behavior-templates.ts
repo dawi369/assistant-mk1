@@ -59,7 +59,11 @@ export type AgentBehaviorAuthoringMetadata =
     };
 
 export type AgentPackTemplateMetadata = {
+  apiVersion: 1;
   id: string;
+  name: string;
+  description: string;
+  version: string;
   capabilityLevel: AgentPackCapabilityLevel;
   folderPath: string;
   codePath: string;
@@ -101,14 +105,28 @@ const toPackTemplate = (pack: LocalAgentPackManifest): AgentBehaviorTemplate => 
     promptPath: pack.promptPath,
   },
   pack: {
+    apiVersion: pack.apiVersion,
     id: pack.id,
+    name: pack.name,
+    description: pack.description,
+    version: pack.version,
     capabilityLevel: pack.capabilityLevel,
     folderPath: pack.folderPath,
     codePath: pack.codePath,
     promptPath: pack.promptPath,
     tools: pack.tools.map((tool) => ({ ...tool, executionModes: [...tool.executionModes] })),
     workflows: pack.workflows.map((workflow) => ({ ...workflow })),
-    ui: { ...pack.ui, inspectorSections: [...pack.ui.inspectorSections] },
+    ui: {
+      ...pack.ui,
+      inspectorSections: [...pack.ui.inspectorSections],
+      welcome: {
+        ...pack.ui.welcome,
+        starters: pack.ui.welcome.starters.map((starter) => ({
+          ...starter,
+          action: { ...starter.action },
+        })),
+      },
+    },
     risk: { ...pack.risk },
     context: [...pack.context],
     smokeScenarios: pack.smokeScenarios.map((scenario) => ({ ...scenario })),

@@ -1,7 +1,7 @@
-import type { LocalAgentPackManifest } from "../types";
+import { defineAgentPack } from "../types";
 
 export const babySwordfishPrompt = `<identity>
-You are Baby Swordfish, a code-first Assistant-mk1 reference agent pack for read-only Swordfish market-data runtime inspection. You help users understand the public health, live-market shape, snapshots, and bounded bar data exposed by the Swordfish product backend.
+You are Swordfish Runtime, a read-only market-data operations specialist. You turn public service health, symbol snapshots, and bounded bars into a concise operational assessment with explicit freshness and integrity limits.
 </identity>
 
 <hard_boundaries>
@@ -33,14 +33,12 @@ You are Baby Swordfish, a code-first Assistant-mk1 reference agent pack for read
 - End with a read-only next inspection step when useful.
 </output_style>`;
 
-export const babySwordfishPack = {
-  kind: "agent_pack",
+export const babySwordfishPack = defineAgentPack({
   id: "baby-swordfish",
-  templateId: "pack-baby-swordfish",
-  name: "Baby Swordfish",
-  description: "Read-only Swordfish market-data runtime inspection agent app seed.",
+  name: "Swordfish Runtime",
+  description: "Read-only runtime health, futures snapshots, freshness, and bar integrity.",
   profile: "analyst",
-  version: "2026-06-23",
+  version: "1.0.0",
   capabilityLevel: "single_agent_app",
   format: "xml",
   folderPath: "agent-packs/baby-swordfish",
@@ -82,6 +80,36 @@ export const babySwordfishPack = {
     primarySurface: "workbench",
     inspectorSections: ["runtime", "symbols", "bars", "tools", "risk", "history"],
     configurationMode: "code",
+    welcome: {
+      title: "Swordfish Runtime",
+      description: "Inspect public runtime health and bounded futures data without mutations.",
+      starters: [
+        {
+          id: "runtime-research",
+          title: "Check runtime health",
+          description: "Inspect services, a symbol snapshot, and recent bars.",
+          action: { kind: "workflow", workflowType: "swordfish.runtime_research" },
+        },
+        {
+          id: "snapshot-freshness",
+          title: "Inspect a snapshot",
+          description: "Evaluate symbol-level freshness and available evidence.",
+          action: {
+            kind: "message",
+            prompt: "Inspect a public Swordfish symbol snapshot and assess its freshness.",
+          },
+        },
+        {
+          id: "bar-integrity",
+          title: "Audit bar integrity",
+          description: "Look for empty, stale, partial, or visibly gapped bars.",
+          action: {
+            kind: "message",
+            prompt: "Audit recent bounded Swordfish bars for freshness and integrity issues.",
+          },
+        },
+      ],
+    },
   },
   risk: {
     financialData: true,
@@ -111,4 +139,4 @@ export const babySwordfishPack = {
     },
   ],
   prompt: babySwordfishPrompt,
-} as const satisfies LocalAgentPackManifest;
+});

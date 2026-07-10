@@ -3,9 +3,12 @@ import { appendControlPlaneEvent } from "./control-plane-events";
 import { appendControlAudit } from "./demo-run-store";
 import { json, parseDataJson } from "./http";
 import { requireActiveMembership } from "./membership-policy";
-import { handlePolymancerMarketResearch } from "./polymancer-workflows";
+import {
+  packWorkflowHandlers,
+  type PackWorkflowHandler as RetryWorkflowHandler,
+} from "./pack-workflow-runtime";
 import { dispatchWorkbenchSessionEvent } from "./session-coordinator";
-import { handleSwordfishRuntimeResearch } from "./swordfish-workflows";
+import type { PackWorkflowType } from "../../../agent-packs/workflow-catalog";
 import { toJson, type AgentIdentity, type ControlRunRow, type D1Result, type Env } from "./types";
 
 type ControllableRunRow = ControlRunRow & {
@@ -13,21 +16,9 @@ type ControllableRunRow = ControlRunRow & {
   payload_json: string | null;
 };
 
-type RetryWorkflowHandler = (
-  request: Request,
-  env: Env,
-  identity: AgentIdentity,
-) => Promise<Response>;
+export type RunRetryHandlers = Partial<Record<PackWorkflowType, RetryWorkflowHandler>>;
 
-export type RunRetryHandlers = {
-  polymancer: RetryWorkflowHandler;
-  swordfish: RetryWorkflowHandler;
-};
-
-const defaultRetryHandlers: RunRetryHandlers = {
-  polymancer: handlePolymancerMarketResearch,
-  swordfish: handleSwordfishRuntimeResearch,
-};
+const defaultRetryHandlers: RunRetryHandlers = packWorkflowHandlers;
 
 const selectControllableRun = (env: Env, identity: AgentIdentity, runId: string) =>
   env.DB.prepare(
@@ -164,12 +155,8 @@ export const handleRetryExecutionRun = async (
     }),
   });
   const retryIdentity = { ...identity, agentId: run.agent_id };
-  const response =
-    run.workflow_type === "polymancer.market_research"
-      ? await handlers.polymancer(retryRequest, env, retryIdentity)
-      : run.workflow_type === "swordfish.runtime_research"
-        ? await handlers.swordfish(retryRequest, env, retryIdentity)
-        : null;
+  const retryHandler = handlers[run.workflow_type as PackWorkflowType];
+  const response = retryHandler ? await retryHandler(retryRequest, env, retryIdentity) : null;
   if (!response) {
     return json({ ok: false, error: "This run type does not support retry" }, { status: 409 });
   }

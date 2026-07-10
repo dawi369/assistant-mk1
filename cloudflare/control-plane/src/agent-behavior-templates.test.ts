@@ -98,7 +98,7 @@ describe("agent behavior authoring metadata", () => {
     const executeWithoutMutation = {
       ...firstPack,
       id: "unsafe-pack",
-      templateId: "pack-unsafe",
+      templateId: "pack-unsafe-pack",
       tools: [
         {
           ...firstPack.tools[0],
@@ -118,7 +118,7 @@ describe("agent behavior authoring metadata", () => {
     const secretRequiringPack = {
       ...firstPack,
       id: "secret-pack",
-      templateId: "pack-secret",
+      templateId: "pack-secret-pack",
       risk: {
         ...firstPack.risk,
         requiresSecrets: true,

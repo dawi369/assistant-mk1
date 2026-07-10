@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { handleActivateAgent, handleCreateAgent } from "./agents";
+import { createAgentBehaviorSnapshot } from "./agent-behavior-templates";
+import { handleActivateAgent, handleCreateAgent, handleInstantiateAgentPack } from "./agents";
 import type {
   AgentIdentity,
   AgentRow,
@@ -40,20 +41,24 @@ const membershipRow = (role: string): MembershipRow => ({
   updated_at: timestamp,
 });
 
-const agentRow = (input?: { status?: string }): AgentRow => ({
-  id: "agent-swordfish",
+const agentRow = (input?: { status?: string; id?: string; behavior?: unknown }): AgentRow => ({
+  id: input?.id ?? "agent-swordfish",
   workspace_id: identity.scope.workspaceId,
   name: "Baby Swordfish",
   description: "Public Swordfish runtime research.",
   status: input?.status ?? "active",
   is_default: 0,
   created_by_user_id: identity.scope.userId,
-  data_json: JSON.stringify({ profile: "analyst" }),
+  data_json: JSON.stringify({ profile: "analyst", behavior: input?.behavior }),
   created_at: timestamp,
   updated_at: timestamp,
 });
 
-const createRecordingEnv = (input: { role: string; agent?: AgentRow | null }) => {
+const createRecordingEnv = (input: {
+  role: string;
+  agent?: AgentRow | null;
+  agents?: AgentRow[];
+}) => {
   const statements: RecordedStatement[] = [];
   const membership = membershipRow(input.role);
 
@@ -71,11 +76,12 @@ const createRecordingEnv = (input: { role: string; agent?: AgentRow | null }) =>
         return null as T | null;
       },
       async all<T = unknown>() {
+        if (query.includes("FROM agents")) return { results: (input.agents ?? []) as T[] };
         return { results: [] as T[] };
       },
       async run() {
         statements.push({ query, values: statement.values });
-        return { success: true };
+        return { success: true, meta: { changes: 1 } };
       },
     };
     return statement;
@@ -140,5 +146,62 @@ describe("agents", () => {
           JSON.stringify(statement.values).includes("agent-activated"),
       ),
     ).toBe(true);
+  });
+
+  it("keeps pack instantiation admin-only", async () => {
+    const { env, statements } = createRecordingEnv({ role: "member" });
+    const response = await handleInstantiateAgentPack(env, identity, "repo-analyst");
+
+    expect(response.status).toBe(403);
+    expect(statements.some((statement) => statement.query.includes("INSERT INTO agents"))).toBe(
+      false,
+    );
+  });
+
+  it("reuses an active agent on the installed pack version", async () => {
+    const behavior = createAgentBehaviorSnapshot("analyst", "pack-repo-analyst");
+    const existing = agentRow({ id: "agent-repo-current", behavior });
+    const { env, statements } = createRecordingEnv({ role: "admin", agents: [existing] });
+
+    const response = await handleInstantiateAgentPack(env, identity, "repo-analyst");
+    const body = (await response.json()) as { created?: boolean; agent?: { id?: string } };
+
+    expect(response.status).toBe(200);
+    expect(body.created).toBe(false);
+    expect(body.agent?.id).toBe("agent-repo-current");
+    expect(statements.some((statement) => statement.query.includes("INSERT OR IGNORE"))).toBe(
+      false,
+    );
+  });
+
+  it("creates a managed current-version agent without mutating an old snapshot", async () => {
+    const currentBehavior = createAgentBehaviorSnapshot("analyst", "pack-repo-analyst");
+    const oldBehavior = structuredClone(currentBehavior);
+    if (oldBehavior.authoring?.kind === "local_agent_pack")
+      oldBehavior.authoring.packVersion = "0.9.0";
+    const oldAgent = agentRow({ id: "agent-repo-old", behavior: oldBehavior });
+    const managedAgent = agentRow({ id: "agent-repo-managed", behavior: currentBehavior });
+    const { env, statements } = createRecordingEnv({
+      role: "owner",
+      agents: [oldAgent],
+      agent: managedAgent,
+    });
+
+    const response = await handleInstantiateAgentPack(env, identity, "repo-analyst");
+    const body = (await response.json()) as { created?: boolean; packVersion?: string };
+
+    expect(response.status).toBe(201);
+    expect(body.created).toBe(true);
+    expect(body.packVersion).toBe("1.0.0");
+    const insert = statements.find((statement) =>
+      statement.query.includes("INSERT OR IGNORE INTO agents"),
+    );
+    expect(insert).toBeDefined();
+    expect(
+      insert?.values.some(
+        (value) => typeof value === "string" && value.includes('"provisionedBy":"agent_pack"'),
+      ),
+    ).toBe(true);
+    expect(oldAgent.data_json).toContain('"packVersion":"0.9.0"');
   });
 });

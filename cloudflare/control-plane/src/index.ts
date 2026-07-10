@@ -18,6 +18,7 @@ import {
 import {
   handleActivateAgent,
   handleCreateAgent,
+  handleInstantiateAgentPack,
   handleListAgentBehaviorTemplates,
   handleListAgents,
 } from "./agents";
@@ -48,8 +49,7 @@ import {
   handleLatestChatSession,
 } from "./langgraph-facade";
 import { handleExternalSignal } from "./external-signals";
-import { handlePolymancerMarketResearch } from "./polymancer-workflows";
-import { handleSwordfishRuntimeResearch } from "./swordfish-workflows";
+import { packWorkflowHandlerForPath } from "./pack-workflow-runtime";
 import {
   getTraceId,
   handleGetRuntimeTrace,
@@ -155,11 +155,10 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
     return handleExternalSignal(request, env, identity);
   }
 
-  if (request.method === "POST" && url.pathname === "/workflows/polymancer/market-research") {
-    return handlePolymancerMarketResearch(request, env, identity);
-  }
-  if (request.method === "POST" && url.pathname === "/workflows/swordfish/runtime-research") {
-    return handleSwordfishRuntimeResearch(request, env, identity);
+  const packWorkflowHandler =
+    request.method === "POST" ? packWorkflowHandlerForPath(url.pathname) : null;
+  if (packWorkflowHandler) {
+    return packWorkflowHandler(request, env, identity);
   }
 
   if (request.method === "POST" && url.pathname === "/tools/policy") {
@@ -336,6 +335,11 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
 
   if (request.method === "POST" && url.pathname === "/agents") {
     return handleCreateAgent(request, env, identity);
+  }
+
+  const instantiatePackMatch = url.pathname.match(/^\/agent-packs\/([^/]+)\/instantiate$/);
+  if (request.method === "POST" && instantiatePackMatch?.[1]) {
+    return handleInstantiateAgentPack(env, identity, decodeURIComponent(instantiatePackMatch[1]));
   }
 
   const activateAgentMatch = url.pathname.match(/^\/agents\/([^/]+)\/activate$/);

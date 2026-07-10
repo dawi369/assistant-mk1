@@ -112,4 +112,26 @@ describe("history surface helpers", () => {
     expect(isOpenableArtifactUri("d1://control-plane/artifact-1/report.json")).toBe(false);
     expect(isOpenableArtifactUri("not a url")).toBe(false);
   });
+
+  it("builds structured previews for bundled pack reports", () => {
+    const artifact = {
+      id: "repo-report",
+      kind: "repo_readiness_report",
+      title: "Repository readiness report",
+      data: {
+        report: {
+          summary: "Repository evidence captured.",
+          packageManager: "pnpm",
+          inventory: { repositoryFiles: 42, documentationFiles: 7 },
+          warnings: ["Build verification is pending."],
+        },
+      },
+    } satisfies ArtifactSummary;
+
+    expect(buildArtifactPreview(artifact).lines).toEqual([
+      "Repository evidence captured.",
+      "pnpm · 42 files · 7 docs",
+      "Warning: Build verification is pending.",
+    ]);
+  });
 });

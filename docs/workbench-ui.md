@@ -321,23 +321,21 @@ Implemented:
 - The `/agents` panel is a compact roster for choosing the active agent. When a
   chat is open, selecting another agent asks whether to continue the current
   chat or start a new chat.
-- Active pack workflow bindings appear directly in the `/` composer menu. Baby
-  Polymancer currently exposes Market research through this path while its raw
-  Polymarket tools stay model-hidden by default.
+- Active pack workflow bindings appear directly in the `/` composer menu.
+  Repository Analyst, Polymancer Research, and Swordfish Runtime each expose a
+  bounded read-only workflow while their raw tools stay model-hidden by default.
 - The `/history` drawer shows recent scoped runs, selected-run summaries, tool
   call details, child runs, audit events, and metadata-only artifacts outside
   Admin.
-- Admin opens as a flow-first panel from the local `/admin` composer command:
-  a Cloudflare-owned request map/waterfall, chat readiness, active workspace,
-  active agent/profile, latest meaningful event, and important errors are shown
-  first.
-- Admin supports name-only workspace create/switch, test agent creation,
-  and active-agent switching for the current workspace as secondary management
-  controls.
-- Workspace/agent management, pack details, declared tools/workflows, tool
-  registry/run controls, diagnostic runs, raw ids, external WorkOS signals,
-  recent Cloudflare events, and diagnostic internals stay available in
-  collapsible Manage, Tools, or Advanced details.
+- Admin opens from the local `/admin` composer command with four tabs: Overview,
+  Agents & Packs, Tools & Approvals, and Diagnostics. Overview keeps current
+  workspace/agent/health concise and links to dedicated product surfaces.
+- Agents & Packs is the operator switching surface. **Use pack** reuses or
+  creates the installed version, starts a fresh chat, and preserves the current
+  thread. Custom-agent creation remains secondary.
+- Diagnostics contains traces, raw ids/JSON, URL inspection, conformance tools,
+  and runtime internals. Normal workspace management and execution history are
+  not duplicated in Admin.
 - Admin Tools includes a scoped approval queue for `url.inspect`, confirmation
   dialogs for approve/deny, policy-state warnings, and compact latest-approval
   cross-references on tool summaries.
@@ -349,16 +347,15 @@ Implemented:
 - Admin Test Tools includes `diagnostic.ping`, `runner.echo`, and
   `artifact.metadata.test` as model-hidden, dry-run-only conformance probes for
   policy, runner, callback, artifact, history, and event plumbing.
-- Admin includes read-only execution history, artifact metadata history, and a
-  selected-run snapshot drilldown for diagnostics; the normal `/history`
-  surface covers the product-facing read path.
+- Structured pack artifacts and run controls live in `/history`; Admin keeps
+  only the deeper diagnostic context.
 - Admin summary treats historical tool failures as history once a newer
   completed control run proves the path recovered; stale errors remain
   inspectable through history instead of pinning the global Details state.
 - `demo.inspect` remains a dev diagnostic action, not a product-level workflow.
-- The empty chat state stays default assistant-ui but includes practical
-  starter prompts for readiness, project planning, agent behavior, and failure
-  explanation.
+- The empty chat state renders the active pack's cached title, description, and
+  three message/workflow starters immediately. Non-pack agents keep practical
+  generic starter prompts.
 
 Next UI targets:
 

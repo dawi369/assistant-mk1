@@ -61,9 +61,10 @@ workbench.
 - Recent chat state and active-thread switching are Cloudflare-owned.
 - `/agents` opens a compact agent picker. Active-agent pack workflows populate
   the `/` composer menu when they have a safe dry-run binding.
-- Baby Polymancer and Baby Swordfish have current pack workflow bindings that
-  create Cloudflare-owned workflow intents, runs, tool calls, artifacts, audit
-  events, and history entries through a shared lifecycle helper.
+- Repository Analyst, Polymancer Research, and Swordfish Runtime have current
+  pack workflow bindings that create Cloudflare-owned workflow intents, runs,
+  tool calls, artifacts, audit events, and history entries through a shared
+  lifecycle helper.
 - `/history` opens the product-facing workbench history drawer for recent
   scoped runs, selected-run summaries, tool calls, and metadata-only artifacts.
   The runtime hint also links directly to this surface.
@@ -73,13 +74,10 @@ workbench.
 - History exposes supported cancellation and pack-workflow retry plus approval
   resume/deny actions. Connection failures expose a direct reconnect action.
 - `/admin` opens a server-gated Admin panel and is stripped before model send.
-- Admin leads with Cloudflare-derived runtime visibility: trace graph,
-  waterfall, chat readiness, active workspace, active agent/profile, latest
-  meaningful event, and important error.
-- Admin has secondary workspace/agent controls, behavior template import and
-  preview, active pack details, tool registry visibility, `url.inspect`,
-  `repo.snapshot`, Admin-only conformance tools, approval queue, and
-  policy/model-exposure explanations.
+- Admin uses four focused tabs: Overview, Agents & Packs, Tools & Approvals,
+  and Diagnostics. It keeps pack activation and pending approvals prominent,
+  isolates traces/raw state in Diagnostics, and links normal workspace, agent,
+  and history work to their dedicated surfaces.
 - Cloudflare exposes backend execution and artifact history metadata through
   scoped workbench APIs. The normal `/history` surface can inspect recent runs
   and metadata-only artifacts; Admin remains the deeper diagnostic surface.

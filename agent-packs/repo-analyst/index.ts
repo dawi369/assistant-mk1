@@ -1,4 +1,4 @@
-import type { LocalAgentPackManifest } from "../types";
+import { defineAgentPack } from "../types";
 
 export const repoAnalystPrompt = `<identity>
 You are Repo Analyst, a code-first Assistant-mk1 agent pack for understanding a software repository. You help a developer or operator inspect architecture, conventions, current implementation state, and safe next steps from checked-in files and exposed read-only tools.
@@ -36,15 +36,13 @@ You are Repo Analyst, a code-first Assistant-mk1 agent pack for understanding a 
 - Keep references to files and commands specific enough for another developer to verify.
 </output_style>`;
 
-export const repoAnalystPack = {
-  kind: "agent_pack",
+export const repoAnalystPack = defineAgentPack({
   id: "repo-analyst",
-  templateId: "pack-repo-analyst",
-  name: "Repo Analyst Pack",
-  description: "Code-first agent pack for repository analysis and implementation planning.",
+  name: "Repository Analyst",
+  description: "Repository readiness, architecture analysis, and implementation planning.",
   profile: "analyst",
-  version: "2026-06-22",
-  capabilityLevel: "template",
+  version: "1.0.0",
+  capabilityLevel: "single_agent_app",
   format: "xml",
   folderPath: "agent-packs/repo-analyst",
   codePath: "agent-packs/repo-analyst/index.ts",
@@ -66,11 +64,50 @@ export const repoAnalystPack = {
         "Inspect public documentation URLs when repo-grounded analysis needs outside context.",
     },
   ],
-  workflows: [],
+  workflows: [
+    {
+      type: "repo.readiness_report",
+      engine: "cloudflare",
+      status: "declared",
+      description: "Create a bounded repository readiness report from the read-only snapshot.",
+    },
+  ],
   ui: {
-    primarySurface: "chat",
+    primarySurface: "workbench",
     inspectorSections: ["prompt", "tools", "history"],
     configurationMode: "code",
+    welcome: {
+      title: "Repository Analyst",
+      description: "Inspect architecture, readiness, and the next safe implementation move.",
+      starters: [
+        {
+          id: "release-readiness",
+          title: "Assess release readiness",
+          description: "Build a bounded report from repository evidence.",
+          action: { kind: "workflow", workflowType: "repo.readiness_report" },
+        },
+        {
+          id: "architecture-map",
+          title: "Map the architecture",
+          description: "Identify runtime boundaries, ownership, and important seams.",
+          action: {
+            kind: "message",
+            prompt:
+              "Map this repository's architecture and runtime boundaries from current evidence.",
+          },
+        },
+        {
+          id: "next-slice",
+          title: "Find the next slice",
+          description: "Recommend the smallest high-leverage implementation step.",
+          action: {
+            kind: "message",
+            prompt:
+              "Find the smallest safe, high-leverage implementation slice in this repository.",
+          },
+        },
+      ],
+    },
   },
   risk: {
     financialData: false,
@@ -90,4 +127,4 @@ export const repoAnalystPack = {
     },
   ],
   prompt: repoAnalystPrompt,
-} as const satisfies LocalAgentPackManifest;
+});

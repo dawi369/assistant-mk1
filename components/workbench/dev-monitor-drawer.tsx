@@ -4,228 +4,178 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   ActivityIcon,
   AlertCircleIcon,
-  Building2Icon,
-  FileTextIcon,
-  LinkIcon,
+  BotIcon,
+  BoxIcon,
+  CheckIcon,
+  ExternalLinkIcon,
+  FileClockIcon,
+  FlaskConicalIcon,
   Loader2Icon,
-  MessageSquareIcon,
   PlayIcon,
   PlusIcon,
   RefreshCwIcon,
   ShieldCheckIcon,
-  UserIcon,
+  SlidersHorizontalIcon,
   WrenchIcon,
 } from "lucide-react";
 
-import {
-  CopyId,
-  EmptyPanelText,
-  formatTime,
-  MonitorSection,
-  RuntimeRecord,
-  StatusPill,
-  StatusRow,
-  terminalStatuses,
-} from "@/components/workbench/dev-monitor-primitives";
-import {
-  approvalTone,
-  DetailsBlock,
-  formatAge,
-  formatDuration,
-  LiveRequestMap,
-} from "@/components/workbench/dev-monitor-sections";
-import { NewChatButton } from "@/components/workbench/new-chat-button";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  requestWorkbenchSummaryRefresh,
-  workbenchSummaryRefreshEvent,
-  type WorkbenchSummaryRefreshSource,
-} from "@/lib/workbench/admin-summary-events";
+  CopyId,
+  EmptyPanelText,
+  formatTime,
+  StatusPill,
+  StatusRow,
+} from "@/components/workbench/dev-monitor-primitives";
+import { resolveAdminAgentPackState } from "@/lib/workbench/admin-agent-packs";
+import { requestWorkbenchSummaryRefresh } from "@/lib/workbench/admin-summary-events";
 import { deriveRuntimeState } from "@/lib/workbench/chat-runtime-live-state";
-import {
-  resolvePackToolCapabilities,
-  type PackToolCapability,
-} from "@/lib/workbench/pack-capabilities";
-import {
-  resolvePackWorkflowBinding,
-  type ResolvedPackWorkflowBinding,
-} from "@/lib/workbench/pack-workflow-bindings";
 import { useAdminSummaryResource } from "@/lib/workbench/use-admin-summary-resource";
 import { useWorkbenchAgentConnection } from "@/lib/workbench/use-agent-connection";
 import type {
   AgentBehaviorTemplate,
-  ArtifactSummary,
-  CloudflareArtifactHistoryResponse,
+  AgentSummary,
   CloudflareAgentBehaviorTemplatesResponse,
-  CloudflareExecutionHistoryResponse,
-  CloudflareExecutionHistoryRunResponse,
-  CloudflareToolApprovalsResponse,
-  CloudflareOwnedDemoRunResponse,
-  CloudflareOwnedDemoRunSnapshot,
   CloudflareToolApprovalActionResponse,
+  CloudflareToolApprovalsResponse,
   CloudflareToolPolicyUpdateResponse,
   CloudflareToolRunResponse,
-  ExecutionHistoryRunSummary,
   ToolApprovalRequestSummary,
+  ToolSummary,
 } from "@/lib/workbench/workbench-types";
 
-const cloudflareDemoRunsPath = "/api/workbench/cloudflare-demo-runs";
-const workspacesPath = "/api/workbench/workspaces";
-const agentsPath = "/api/workbench/agents";
 const behaviorTemplatesPath = "/api/workbench/agent-behavior-templates";
+const agentsPath = "/api/workbench/agents";
 const toolRunsPath = "/api/workbench/tools/runs";
 const toolPolicyPath = "/api/workbench/tools/policy";
 const toolApprovalsPath = "/api/workbench/tools/approvals";
-const historyRunsPath = "/api/workbench/history/runs";
-const historyArtifactsPath = "/api/workbench/history/artifacts";
-const agentModelOptions = ["deepseek/deepseek-v4-flash", "openai/gpt-4.1-mini"] as const;
-const defaultBehaviorTemplateByProfile = {
-  default: "assistant-general",
-  analyst: "assistant-analyst",
-  operator: "assistant-operator",
-} as const satisfies Record<"default" | "analyst" | "operator", AgentBehaviorTemplate["id"]>;
 
 const readJsonResponse = async <T,>(response: Response, fallback: string): Promise<T> => {
   const body = (await response.json().catch(() => ({}))) as T & { error?: unknown };
   if (!response.ok) {
-    const error =
+    const message =
       typeof body.error === "string"
         ? body.error
-        : isRecord(body.error) && typeof body.error.message === "string"
-          ? body.error.message
+        : body.error && typeof body.error === "object" && "message" in body.error
+          ? String(body.error.message)
           : fallback;
-    throw new Error(error);
+    throw new Error(message);
   }
   return body;
 };
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
+const packStateLabel = {
+  current: "Current",
+  ready: "Ready",
+  update_available: "Update available",
+  not_instantiated: "Not instantiated",
+} as const;
 
-const listValue = (items?: string[]) => (items && items.length > 0 ? items.join(", ") : undefined);
-
-const runHistoryTitle = (run: ExecutionHistoryRunSummary) =>
-  run.displayName ?? run.summary ?? run.id;
-
-const formatBytes = (value?: number) => {
-  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
-  if (value < 1024) return `${value} B`;
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
-  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
-};
-
-const snapshotDisplayJson = (snapshot: CloudflareOwnedDemoRunSnapshot) => ({
-  scope: snapshot.scope,
-  intent: snapshot.intent
-    ? {
-        id: snapshot.intent.id,
-        type: snapshot.intent.type,
-        stage: snapshot.intent.stage,
-        execution: snapshot.intent.execution,
-      }
-    : null,
-  run: snapshot.run
-    ? {
-        id: snapshot.run.id,
-        status: snapshot.run.status,
-        workflowIntentId: snapshot.run.workflowIntentId,
-        execution: snapshot.run.execution,
-        stage: snapshot.run.stage,
-        relation: snapshot.run.relation,
-        updatedAt: snapshot.run.updatedAt,
-      }
-    : null,
-  toolCalls: snapshot.toolCalls,
-  childRuns: snapshot.childRuns ?? [],
-  artifacts: snapshot.artifacts,
-  decisions: snapshot.decisions,
-  auditEvents: snapshot.auditEvents,
-});
+const sectionClass = "border-border rounded-lg border bg-background";
+const inputClass =
+  "border-input bg-background h-9 w-full rounded-md border px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 export function AdminPanel({
   open,
   onOpenChange,
   onCloseAutoFocus,
+  onOpenWorkspace,
+  onOpenAgents,
+  onOpenHistory,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCloseAutoFocus?: (event: Event) => void;
+  onOpenWorkspace: () => void;
+  onOpenAgents: () => void;
+  onOpenHistory: () => void;
 }) {
   const {
     connection,
-    error,
+    error: sessionError,
     session,
     pending,
     isInitialLoading,
     isSessionStreamConnected,
     latestSessionEvent,
+    switchAgent,
   } = useWorkbenchAgentConnection();
   const {
     summary,
     error: summaryError,
-    isLoading: isLoadingSummary,
-    lastRefreshSource,
-    lastDurationMs,
+    isLoading,
     refreshSummary,
     setProjectionPreference,
   } = useAdminSummaryResource();
-  const [approvalQueue, setApprovalQueue] = useState<ToolApprovalRequestSummary[]>([]);
-  const [behaviorTemplates, setBehaviorTemplates] = useState<AgentBehaviorTemplate[]>([]);
-  const [historyRuns, setHistoryRuns] = useState<ExecutionHistoryRunSummary[]>([]);
-  const [historyArtifacts, setHistoryArtifacts] = useState<ArtifactSummary[]>([]);
-  const [isLoadingApprovals, setIsLoadingApprovals] = useState(false);
-  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
-  const [isLoadingRunSnapshot, setIsLoadingRunSnapshot] = useState(false);
-  const [isStarting, setIsStarting] = useState(false);
-  const [isRunningTool, setIsRunningTool] = useState(false);
-  const [runningTestTool, setRunningTestTool] = useState<string | null>(null);
-  const [updatingToolPolicy, setUpdatingToolPolicy] = useState<string | null>(null);
-  const [updatingApprovalId, setUpdatingApprovalId] = useState<string | null>(null);
-  const [isCreatingWorkspace, setIsCreatingWorkspace] = useState(false);
-  const [isCreatingAgent, setIsCreatingAgent] = useState(false);
-  const [activatingWorkspaceId, setActivatingWorkspaceId] = useState<string | null>(null);
-  const [activatingAgentId, setActivatingAgentId] = useState<string | null>(null);
-  const [workspaceName, setWorkspaceName] = useState("");
-  const [urlInspectTarget, setUrlInspectTarget] = useState("");
-  const [runnerEchoMessage, setRunnerEchoMessage] = useState("runner echo ok");
-  const [artifactTestLabel, setArtifactTestLabel] = useState("admin conformance");
-  const [agentName, setAgentName] = useState("");
-  const [agentDescription, setAgentDescription] = useState("");
-  const [agentProfile, setAgentProfile] = useState<"default" | "analyst" | "operator">("analyst");
-  const [agentModel, setAgentModel] = useState<(typeof agentModelOptions)[number]>(
-    "deepseek/deepseek-v4-flash",
-  );
-  const [agentBehaviorTemplateId, setAgentBehaviorTemplateId] =
-    useState<AgentBehaviorTemplate["id"]>("assistant-analyst");
+  const [templates, setTemplates] = useState<AgentBehaviorTemplate[]>([]);
+  const [approvals, setApprovals] = useState<ToolApprovalRequestSummary[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [busyPackId, setBusyPackId] = useState<string | null>(null);
+  const [busyTool, setBusyTool] = useState<string | null>(null);
+  const [busyApprovalId, setBusyApprovalId] = useState<string | null>(null);
   const [approvalDialog, setApprovalDialog] = useState<{
     approval: ToolApprovalRequestSummary;
     action: "approve" | "deny";
   } | null>(null);
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-  const [selectedRunSnapshot, setSelectedRunSnapshot] =
-    useState<CloudflareOwnedDemoRunSnapshot | null>(null);
   const [denyReason, setDenyReason] = useState("");
-  const [fetchError, setFetchError] = useState<string | null>(null);
-  const [historyError, setHistoryError] = useState<string | null>(null);
-  const [runSnapshotError, setRunSnapshotError] = useState<string | null>(null);
+  const [customAgentOpen, setCustomAgentOpen] = useState(false);
+  const [customName, setCustomName] = useState("");
+  const [customDescription, setCustomDescription] = useState("");
+  const [customTemplateId, setCustomTemplateId] = useState("assistant-analyst");
+  const [urlTarget, setUrlTarget] = useState("");
 
-  const demoSnapshot = summary?.demo.latestRun ?? null;
-  const chatRuntime = summary?.chatRuntime ?? null;
-  const latestTrace = summary?.latestTrace ?? null;
-  const traceWaterfall = summary?.traceWaterfall ?? [];
-  const run = demoSnapshot?.run;
-  const isDemoActive = run?.status ? !terminalStatuses.has(run.status) : false;
+  const loadSecondaryData = async () => {
+    try {
+      const [templateResponse, approvalResponse] = await Promise.all([
+        fetch(behaviorTemplatesPath, { cache: "no-store" }),
+        fetch(`${toolApprovalsPath}?status=all&limit=20`, { cache: "no-store" }),
+      ]);
+      const [templateBody, approvalBody] = await Promise.all([
+        readJsonResponse<CloudflareAgentBehaviorTemplatesResponse>(
+          templateResponse,
+          "Failed to load agent packs",
+        ),
+        readJsonResponse<CloudflareToolApprovalsResponse>(
+          approvalResponse,
+          "Failed to load approvals",
+        ),
+      ]);
+      setTemplates(templateBody.templates ?? []);
+      setApprovals(approvalBody.approvals ?? []);
+      setError(null);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Failed to load Admin data");
+    }
+  };
+
+  const refresh = async (force = false) => {
+    await Promise.all([
+      refreshSummary({ source: "manual", force, projection: "drawer" }),
+      loadSecondaryData(),
+    ]);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    setProjectionPreference("drawer");
+    void refreshSummary({ source: "drawer-open", projection: "drawer" });
+    void loadSecondaryData();
+    return () => setProjectionPreference("compact");
+  }, [open, refreshSummary, setProjectionPreference]);
+
   const liveRuntime = deriveRuntimeState({
     session,
     connection,
-    error,
+    error: sessionError,
     isSessionStreamConnected,
     latestSessionEvent,
     pending,
@@ -233,2446 +183,678 @@ export function AdminPanel({
     summary,
     summaryError,
   });
-  const isChatActive = liveRuntime.chatState === "running";
-  const latestToolCall = demoSnapshot?.toolCalls.at(-1);
-  const latestArtifact = demoSnapshot?.artifacts.at(-1);
-  const latestAdminToolCall = summary?.latestToolCalls?.at(0) ?? null;
-  const latestAdminArtifact = summary?.latestArtifacts?.at(0) ?? null;
-  const latestHistoryRun = historyRuns.at(0) ?? null;
-  const latestHistoryArtifact = historyArtifacts.at(0) ?? null;
-  const selectedHistoryRun =
-    historyRuns.find((historyRun) => historyRun.id === selectedRunId) ?? null;
-  const urlInspectTool = summary?.tools?.find((tool) => tool.name === "url.inspect") ?? null;
-  const diagnosticPingTool =
-    summary?.tools?.find((tool) => tool.name === "diagnostic.ping") ?? null;
-  const runnerEchoTool = summary?.tools?.find((tool) => tool.name === "runner.echo") ?? null;
-  const artifactMetadataTestTool =
-    summary?.tools?.find((tool) => tool.name === "artifact.metadata.test") ?? null;
-  const pendingApprovals = approvalQueue.filter((approval) => approval.status === "requested");
-  const decidedApprovals = approvalQueue.filter((approval) => approval.status !== "requested");
-  const selectedApprovalPolicy = approvalDialog?.approval.currentPolicy;
-  const selectedApprovalPolicyBlocked = selectedApprovalPolicy?.decision === "block";
-  const latestDecision = demoSnapshot?.decisions.at(-1);
-  const latestChatEvent = useMemo(
-    () =>
-      chatRuntime?.events.at(0) ?? summary?.events.find((event) => event.type?.startsWith("chat.")),
-    [chatRuntime?.events, summary?.events],
-  );
-  const latestMeaningfulEvent = latestChatEvent ?? summary?.events.at(0) ?? null;
-  const canManageWorkspaces =
-    summary?.membership?.status === "active" &&
-    ["owner", "admin"].includes(summary.membership.role.toLowerCase());
-  const canManageAgents = canManageWorkspaces;
-  const importantError = fetchError
-    ? { message: fetchError, source: "drawer action", status: undefined, targetId: undefined }
-    : summaryError
-      ? { message: summaryError, source: "summary", status: undefined, targetId: undefined }
-      : error
-        ? { message: error, source: "session", status: undefined, targetId: undefined }
-        : liveRuntime.errorMessage && !chatRuntime?.failure && !summary?.lastError
-          ? {
-              message: liveRuntime.errorMessage,
-              source: liveRuntime.sourceLabel,
-              status: undefined,
-              targetId: liveRuntime.activeThreadId,
-            }
-          : chatRuntime?.failure
-            ? {
-                message: chatRuntime.failure.message,
-                source: chatRuntime.failure.source,
-                status: chatRuntime.failure.status,
-                targetId: chatRuntime.failure.targetId,
-                errorCode: chatRuntime.failure.errorCode,
-              }
-            : summary?.lastError
-              ? {
-                  message: summary.lastError.message,
-                  source: summary.lastError.source,
-                  status: summary.lastError.status,
-                  targetId: summary.lastError.targetId,
-                  errorCode: undefined,
-                }
-              : null;
-  const chatLabel = liveRuntime.chatLabel;
-  const chatTone = liveRuntime.chatTone;
-  const summaryStateLabel = summaryError
-    ? "Summary fetch failed"
-    : liveRuntime.summaryIsStale
-      ? "Stale behind live event"
-      : summary
-        ? "Summary refreshed"
-        : "Not loaded";
-  const summaryRefreshMeta =
-    lastRefreshSource && typeof lastDurationMs === "number"
-      ? `${lastRefreshSource} / ${lastDurationMs}ms`
-      : (lastRefreshSource ?? null);
-  const selectedBehaviorTemplate = useMemo(
-    () => behaviorTemplates.find((template) => template.id === agentBehaviorTemplateId) ?? null,
-    [agentBehaviorTemplateId, behaviorTemplates],
-  );
-  const selectedRunState = selectedRunId
-    ? isLoadingRunSnapshot
-      ? "Loading snapshot"
-      : runSnapshotError
-        ? "Snapshot failed"
-        : (selectedRunSnapshot?.run?.status ?? selectedHistoryRun?.status ?? "Selected")
-    : "No run selected";
-  const activePack = summary?.activeAgent?.behavior.pack ?? null;
-  const activePackCapabilities = useMemo(
-    () => resolvePackToolCapabilities(activePack, summary?.tools ?? []),
-    [activePack, summary?.tools],
-  );
-  const activePackWorkflows = useMemo(
-    () => activePack?.workflows.map((workflow) => resolvePackWorkflowBinding(workflow)) ?? [],
-    [activePack],
-  );
+  const packTemplates = useMemo(() => templates.filter((template) => template.pack), [templates]);
+  const pendingApprovals = approvals.filter((approval) => approval.status === "requested");
+  const importantError =
+    error ?? summaryError ?? liveRuntime.errorMessage ?? summary?.lastError?.message;
 
-  const loadApprovals = async () => {
-    setIsLoadingApprovals(true);
+  const usePack = async (template: AgentBehaviorTemplate) => {
+    if (!template.pack) return;
+    setBusyPackId(template.pack.id);
+    setError(null);
     try {
-      const response = await fetch(`${toolApprovalsPath}?status=all&limit=20`, {
-        cache: "no-store",
-      });
-      const body = await readJsonResponse<CloudflareToolApprovalsResponse>(
-        response,
-        "Failed to load tool approvals",
-      );
-      setApprovalQueue(body.approvals ?? []);
-      setFetchError(null);
-    } catch (loadError) {
-      setFetchError(loadError instanceof Error ? loadError.message : "Failed to load approvals");
-    } finally {
-      setIsLoadingApprovals(false);
-    }
-  };
-
-  const loadHistory = async () => {
-    setIsLoadingHistory(true);
-    try {
-      const [runsResponse, artifactsResponse] = await Promise.all([
-        fetch(`${historyRunsPath}?limit=20`, { cache: "no-store" }),
-        fetch(`${historyArtifactsPath}?limit=20`, { cache: "no-store" }),
-      ]);
-      const [runsBody, artifactsBody] = await Promise.all([
-        readJsonResponse<CloudflareExecutionHistoryResponse>(
-          runsResponse,
-          "Failed to load execution history",
+      const result = await readJsonResponse<{ agent: AgentSummary }>(
+        await fetch(
+          `/api/workbench/agent-packs/${encodeURIComponent(template.pack.id)}/instantiate`,
+          { method: "POST" },
         ),
-        readJsonResponse<CloudflareArtifactHistoryResponse>(
-          artifactsResponse,
-          "Failed to load artifact history",
-        ),
-      ]);
-      setHistoryRuns(runsBody.runs ?? []);
-      setHistoryArtifacts(artifactsBody.artifacts ?? []);
-      setHistoryError(null);
-    } catch (loadError) {
-      setHistoryError(loadError instanceof Error ? loadError.message : "Failed to load history");
-    } finally {
-      setIsLoadingHistory(false);
-    }
-  };
-
-  const inspectHistoryRun = async (runId: string) => {
-    setSelectedRunId(runId);
-    setIsLoadingRunSnapshot(true);
-    setRunSnapshotError(null);
-    try {
-      const response = await fetch(`${historyRunsPath}/${encodeURIComponent(runId)}`, {
-        cache: "no-store",
-      });
-      const body = await readJsonResponse<CloudflareExecutionHistoryRunResponse>(
-        response,
-        "Failed to load run snapshot",
+        "Failed to prepare agent pack",
       );
-      setSelectedRunSnapshot(body.snapshot ?? null);
-    } catch (loadError) {
-      setSelectedRunSnapshot(null);
-      setRunSnapshotError(
-        loadError instanceof Error ? loadError.message : "Failed to load run snapshot",
+      await switchAgent(result.agent.id, "new_thread");
+      requestWorkbenchSummaryRefresh({ source: "event" });
+      onOpenChange(false);
+    } catch (activationError) {
+      setError(
+        activationError instanceof Error
+          ? activationError.message
+          : "Failed to activate agent pack",
       );
     } finally {
-      setIsLoadingRunSnapshot(false);
+      setBusyPackId(null);
     }
   };
 
-  const loadBehaviorTemplates = async () => {
-    try {
-      const response = await fetch(behaviorTemplatesPath, { cache: "no-store" });
-      const body = await readJsonResponse<CloudflareAgentBehaviorTemplatesResponse>(
-        response,
-        "Failed to load agent behavior templates",
-      );
-      setBehaviorTemplates(body.templates ?? []);
-    } catch (loadError) {
-      setFetchError(
-        loadError instanceof Error ? loadError.message : "Failed to load agent behavior templates",
-      );
-    }
-  };
-
-  const loadDrawerData = () => {
-    void loadApprovals();
-    void loadHistory();
-  };
-
-  const loadAdminData = (source: WorkbenchSummaryRefreshSource = "event", force = false) => {
-    void refreshSummary({ source, force, projection: "drawer" });
-    loadDrawerData();
-  };
-
-  useEffect(() => {
-    if (!open) return;
-    setProjectionPreference("drawer");
-    loadAdminData("drawer-open");
-    void loadBehaviorTemplates();
-    const refreshDrawerData = () => loadDrawerData();
-    window.addEventListener(workbenchSummaryRefreshEvent, refreshDrawerData);
-    return () => {
-      setProjectionPreference("compact");
-      window.removeEventListener(workbenchSummaryRefreshEvent, refreshDrawerData);
-    };
-  }, [open, refreshSummary, setProjectionPreference]);
-
-  useEffect(() => {
-    if (!open || (isSessionStreamConnected && !isDemoActive && !isChatActive)) return;
-    const interval = window.setInterval(() => {
-      loadAdminData("fallback-poll");
-    }, 4000);
-    return () => window.clearInterval(interval);
-  }, [open, isSessionStreamConnected, isDemoActive, isChatActive, refreshSummary]);
-
-  const startDemoRun = async () => {
-    setIsStarting(true);
-    setFetchError(null);
-    try {
-      const response = await fetch(cloudflareDemoRunsPath, { method: "POST" });
-      await readJsonResponse<CloudflareOwnedDemoRunResponse>(
-        response,
-        "Failed to start Cloudflare demo run",
-      );
-      requestWorkbenchSummaryRefresh({ source: "event" });
-    } catch (startError) {
-      setFetchError(
-        startError instanceof Error ? startError.message : "Failed to start Cloudflare demo run",
-      );
-    } finally {
-      setIsStarting(false);
-    }
-  };
-
-  const runUrlInspect = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const url = urlInspectTarget.trim();
-    if (!url) return;
-
-    setIsRunningTool(true);
-    setFetchError(null);
-    try {
-      await readJsonResponse<CloudflareToolRunResponse>(
-        await fetch(toolRunsPath, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            toolName: "url.inspect",
-            executionMode: "dry_run",
-            input: { url },
-          }),
-        }),
-        "Failed to run URL inspector",
-      );
-      requestWorkbenchSummaryRefresh({ source: "event" });
-    } catch (toolError) {
-      setFetchError(toolError instanceof Error ? toolError.message : "Failed to run URL inspector");
-      requestWorkbenchSummaryRefresh({ source: "event" });
-    } finally {
-      setIsRunningTool(false);
-    }
-  };
-
-  const runTestTool = async (
-    toolName: "diagnostic.ping" | "runner.echo" | "artifact.metadata.test",
-    input: Record<string, unknown> = {},
-  ) => {
-    setRunningTestTool(toolName);
-    setFetchError(null);
-    try {
-      await readJsonResponse<CloudflareToolRunResponse>(
-        await fetch(toolRunsPath, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            toolName,
-            executionMode: "dry_run",
-            input,
-          }),
-        }),
-        `Failed to run ${toolName}`,
-      );
-      requestWorkbenchSummaryRefresh({ source: "event" });
-    } catch (toolError) {
-      setFetchError(toolError instanceof Error ? toolError.message : `Failed to run ${toolName}`);
-      requestWorkbenchSummaryRefresh({ source: "event" });
-    } finally {
-      setRunningTestTool(null);
-    }
-  };
-
-  const updateUrlInspectPolicy = async (input: {
-    status?: "enabled" | "disabled";
-    requiresApproval?: boolean;
-    killSwitchReason?: string;
-    modelVisible?: boolean;
-  }) => {
-    setUpdatingToolPolicy("url.inspect");
-    setFetchError(null);
+  const updateToolPolicy = async (tool: ToolSummary, change: Record<string, string | boolean>) => {
+    setBusyTool(tool.name);
+    setError(null);
     try {
       await readJsonResponse<CloudflareToolPolicyUpdateResponse>(
         await fetch(toolPolicyPath, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            toolName: "url.inspect",
-            ...input,
-          }),
+          body: JSON.stringify({ toolName: tool.name, ...change }),
         }),
-        "Failed to update URL inspector policy",
+        `Failed to update ${tool.name}`,
       );
-      requestWorkbenchSummaryRefresh({ source: "event" });
+      await refresh(true);
     } catch (policyError) {
-      setFetchError(
-        policyError instanceof Error ? policyError.message : "Failed to update tool policy",
-      );
+      setError(policyError instanceof Error ? policyError.message : "Failed to update tool policy");
     } finally {
-      setUpdatingToolPolicy(null);
+      setBusyTool(null);
     }
   };
 
-  const openApprovalDialog = (approval: ToolApprovalRequestSummary, action: "approve" | "deny") => {
-    setApprovalDialog({ approval, action });
-    setDenyReason("");
-  };
-
-  const decideToolApproval = async (
-    approvalRequestId: string,
-    action: "approve" | "deny",
-    reason?: string,
-  ) => {
-    setUpdatingApprovalId(approvalRequestId);
-    setFetchError(null);
+  const decideApproval = async () => {
+    const approval = approvalDialog?.approval;
+    if (!approval?.id || !approvalDialog) return;
+    setBusyApprovalId(approval.id);
+    setError(null);
     try {
+      const suffix = approvalDialog.action === "approve" ? "approve" : "deny";
       await readJsonResponse<CloudflareToolApprovalActionResponse>(
-        await fetch(`${toolApprovalsPath}/${encodeURIComponent(approvalRequestId)}/${action}`, {
+        await fetch(`${toolApprovalsPath}/${encodeURIComponent(approval.id)}/${suffix}`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body:
-            action === "deny"
-              ? JSON.stringify({ reason: reason?.trim() || "Denied from Admin Tools." })
+            approvalDialog.action === "deny"
+              ? JSON.stringify({ reason: denyReason.trim() || "Denied by an operator." })
               : undefined,
         }),
-        action === "approve" ? "Failed to approve tool run" : "Failed to deny tool run",
+        `Failed to ${approvalDialog.action} request`,
       );
       setApprovalDialog(null);
-      await Promise.all([
-        refreshSummary({ source: "event", force: true }),
-        loadApprovals(),
-        loadHistory(),
-      ]);
-      requestWorkbenchSummaryRefresh({ source: "event" });
+      setDenyReason("");
+      await refresh(true);
     } catch (approvalError) {
-      setFetchError(
+      setError(
         approvalError instanceof Error ? approvalError.message : "Failed to update approval",
       );
-      requestWorkbenchSummaryRefresh({ source: "event" });
     } finally {
-      setUpdatingApprovalId(null);
+      setBusyApprovalId(null);
     }
   };
 
-  const createWorkspace = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const name = workspaceName.trim();
-    if (!name) return;
-
-    setIsCreatingWorkspace(true);
-    setFetchError(null);
+  const runDiagnostic = async (toolName: string, input: Record<string, unknown> = {}) => {
+    setBusyTool(toolName);
+    setError(null);
     try {
-      const response = await fetch(workspacesPath, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name }),
-      });
-      await readJsonResponse(response, "Failed to create workspace");
-      setWorkspaceName("");
-      requestWorkbenchSummaryRefresh({ source: "event" });
-    } catch (createError) {
-      setFetchError(
-        createError instanceof Error ? createError.message : "Failed to create workspace",
-      );
-    } finally {
-      setIsCreatingWorkspace(false);
-    }
-  };
-
-  const activateWorkspace = async (workspaceId: string) => {
-    setActivatingWorkspaceId(workspaceId);
-    setFetchError(null);
-    try {
-      const response = await fetch(
-        `${workspacesPath}/${encodeURIComponent(workspaceId)}/activate`,
-        { method: "POST" },
-      );
-      await readJsonResponse(response, "Failed to activate workspace");
-      requestWorkbenchSummaryRefresh({ source: "event" });
-    } catch (activateError) {
-      setFetchError(
-        activateError instanceof Error ? activateError.message : "Failed to activate workspace",
-      );
-    } finally {
-      setActivatingWorkspaceId(null);
-    }
-  };
-
-  const createAgent = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const name = agentName.trim();
-    if (!name) return;
-
-    setIsCreatingAgent(true);
-    setFetchError(null);
-    try {
-      const response = await fetch(agentsPath, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          name,
-          description: agentDescription.trim() || undefined,
-          profile: agentProfile,
-          model: agentModel,
-          behaviorTemplateId: agentBehaviorTemplateId,
-          activate: true,
+      await readJsonResponse<CloudflareToolRunResponse>(
+        await fetch(toolRunsPath, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ toolName, executionMode: "dry_run", input }),
         }),
-      });
-      await readJsonResponse(response, "Failed to create agent");
-      setAgentName("");
-      setAgentDescription("");
-      setAgentProfile("analyst");
-      setAgentModel("deepseek/deepseek-v4-flash");
-      setAgentBehaviorTemplateId("assistant-analyst");
-      requestWorkbenchSummaryRefresh({ source: "event" });
-    } catch (createError) {
-      setFetchError(createError instanceof Error ? createError.message : "Failed to create agent");
-    } finally {
-      setIsCreatingAgent(false);
-    }
-  };
-
-  const activateAgent = async (agentId: string) => {
-    setActivatingAgentId(agentId);
-    setFetchError(null);
-    try {
-      const response = await fetch(`${agentsPath}/${encodeURIComponent(agentId)}/activate`, {
-        method: "POST",
-      });
-      await readJsonResponse(response, "Failed to activate agent");
-      requestWorkbenchSummaryRefresh({ source: "event" });
-    } catch (activateError) {
-      setFetchError(
-        activateError instanceof Error ? activateError.message : "Failed to activate agent",
+        `Failed to run ${toolName}`,
+      );
+      await refresh(true);
+    } catch (diagnosticError) {
+      setError(
+        diagnosticError instanceof Error ? diagnosticError.message : `Failed to run ${toolName}`,
       );
     } finally {
-      setActivatingAgentId(null);
+      setBusyTool(null);
     }
   };
 
-  const confirmApprovalDialog = () => {
-    if (!approvalDialog?.approval.id) return;
-    void decideToolApproval(
-      approvalDialog.approval.id,
-      approvalDialog.action,
-      approvalDialog.action === "deny" ? denyReason : undefined,
-    );
-  };
-
-  const closeFromOverlay = (event: { preventDefault: () => void }) => {
+  const createCustomAgent = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    onOpenChange(false);
+    const template = templates.find((candidate) => candidate.id === customTemplateId);
+    if (!template || !customName.trim()) return;
+    setBusyTool("custom-agent");
+    setError(null);
+    try {
+      await readJsonResponse(
+        await fetch(agentsPath, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            name: customName.trim(),
+            description: customDescription.trim() || undefined,
+            profile: template.profile,
+            behaviorTemplateId: template.id,
+            activate: false,
+          }),
+        }),
+        "Failed to create custom agent",
+      );
+      setCustomAgentOpen(false);
+      setCustomName("");
+      setCustomDescription("");
+      await refresh(true);
+    } catch (createError) {
+      setError(
+        createError instanceof Error ? createError.message : "Failed to create custom agent",
+      );
+    } finally {
+      setBusyTool(null);
+    }
   };
 
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
-          className="grid h-[min(85vh,56rem)] w-[min(80vw,72rem)] max-w-[calc(100vw-2rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-[min(80vw,72rem)]"
+          className="grid h-[min(88vh,58rem)] w-[min(92vw,72rem)] max-w-[calc(100vw-1rem)] grid-rows-[auto_auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-[min(92vw,72rem)]"
           aria-describedby="admin-panel-description"
           onCloseAutoFocus={onCloseAutoFocus}
-          onOverlayMouseDown={closeFromOverlay}
-          onOverlayPointerDown={closeFromOverlay}
-          onOverlayTouchStart={closeFromOverlay}
         >
           <DialogHeader className="border-border border-b px-5 py-4">
-            <DialogTitle className="flex items-center gap-2 text-base">
-              <ShieldCheckIcon className="text-muted-foreground size-4" />
-              Admin
-            </DialogTitle>
-            <DialogDescription id="admin-panel-description">
-              Flow-first view of Cloudflare-owned chat, workspace, agent, and diagnostic state.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-muted-foreground text-xs">
-                Summary generated {formatTime(summary?.generatedAt)} / {summaryStateLabel}
-                {summaryRefreshMeta ? ` / ${summaryRefreshMeta}` : ""}
-              </p>
+            <div className="flex items-center justify-between gap-4 pr-8">
+              <div>
+                <DialogTitle className="flex items-center gap-2 text-base">
+                  <ShieldCheckIcon className="text-muted-foreground size-4" />
+                  Admin
+                </DialogTitle>
+                <DialogDescription id="admin-panel-description" className="mt-1">
+                  Operate agent packs, approvals, tools, and runtime diagnostics.
+                </DialogDescription>
+              </div>
               <Button
-                size="sm"
                 variant="outline"
-                onClick={() => loadAdminData("manual", true)}
-                disabled={isLoadingSummary || isLoadingApprovals || isLoadingHistory}
+                size="sm"
+                onClick={() => void refresh(true)}
+                disabled={isLoading}
               >
-                {isLoadingSummary || isLoadingApprovals || isLoadingHistory ? (
-                  <Loader2Icon className="animate-spin" />
-                ) : (
-                  <RefreshCwIcon />
-                )}
+                {isLoading ? <Loader2Icon className="animate-spin" /> : <RefreshCwIcon />}
                 Refresh
               </Button>
             </div>
+          </DialogHeader>
 
-            <LiveRequestMap trace={latestTrace} spans={traceWaterfall} />
+          {importantError ? (
+            <div className="border-destructive/30 bg-destructive/5 text-destructive flex items-center gap-2 border-b px-5 py-2 text-xs">
+              <AlertCircleIcon className="size-3.5 shrink-0" />
+              <span className="min-w-0 truncate">{importantError}</span>
+            </div>
+          ) : (
+            <div className="border-border text-muted-foreground border-b px-5 py-2 text-xs">
+              Updated {formatTime(summary?.generatedAt)}
+            </div>
+          )}
 
-            <MonitorSection icon={ActivityIcon} title="Current State">
-              <div className="flex flex-wrap items-center gap-2">
-                <StatusPill status={chatLabel} tone={chatTone} />
-                {importantError ? <StatusPill status="Needs attention" tone="failed" /> : null}
-              </div>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <StatusRow
-                  label="Workspace"
-                  value={session?.workspace?.name ?? summary?.workspace?.name}
-                  compact
-                  tone="ok"
-                />
-                <StatusRow label="Agent" value={liveRuntime.activeAgentLabel} compact tone="ok" />
-                <StatusRow
-                  label="Model"
-                  value={liveRuntime.modelLabel ?? summary?.activeAgent?.runtime.model}
-                  compact
-                  tone="ok"
-                />
-                <StatusRow label="Runtime source" value={liveRuntime.sourceLabel} compact />
-                <StatusRow label="Summary" value={summaryStateLabel} compact />
-                <StatusRow
-                  label="Active thread"
-                  value={liveRuntime.activeThreadTitle ?? liveRuntime.activeThreadId}
-                  compact
-                />
-                <StatusRow
-                  label="Latest chat event"
-                  value={latestMeaningfulEvent?.summary ?? latestMeaningfulEvent?.type}
-                  compact
-                />
-                <StatusRow
-                  label="Last error"
-                  value={importantError?.message ?? "No current error"}
-                  compact
-                  tone={importantError ? "muted" : "ok"}
-                />
-                <StatusRow
-                  label="Session display"
-                  value={
-                    session?.isStale
-                      ? "Cached, refreshing"
-                      : pending
-                        ? "Transitioning"
-                        : session?.partial
-                          ? "Partial, refreshing history"
-                          : "Cloudflare current"
-                  }
-                  compact
-                  tone={session?.isStale || session?.partial ? "muted" : "ok"}
-                />
-                <StatusRow
-                  label="Session stream"
-                  value={isSessionStreamConnected ? "Live" : "Disconnected"}
-                  compact
-                  tone={isSessionStreamConnected ? "ok" : "muted"}
-                />
-                <StatusRow
-                  label="Connection"
-                  value={connection ? "Agent token ready" : "Waiting for Agent token"}
-                  compact
-                  tone={connection ? "ok" : "muted"}
-                />
-                <StatusRow
-                  label="Latest live event"
-                  value={latestSessionEvent?.type ?? "none yet"}
-                  compact
-                />
-              </div>
-              {importantError ? (
-                <div className="border-destructive/30 bg-destructive/10 rounded-md border p-3 text-sm">
-                  <p className="text-destructive font-medium">{importantError.message}</p>
-                  <p className="text-muted-foreground mt-1 text-xs">
-                    Open Advanced Details for source, status, and target ids.
-                  </p>
-                </div>
-              ) : null}
-            </MonitorSection>
+          <Tabs defaultValue="overview" className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)]">
+            <div className="border-border overflow-x-auto border-b px-4 py-2">
+              <TabsList>
+                <TabsTrigger value="overview">
+                  <ActivityIcon />
+                  Overview
+                </TabsTrigger>
+                <TabsTrigger value="packs">
+                  <BoxIcon />
+                  Agents & Packs
+                </TabsTrigger>
+                <TabsTrigger value="tools">
+                  <SlidersHorizontalIcon />
+                  Tools & Approvals
+                </TabsTrigger>
+                <TabsTrigger value="diagnostics">
+                  <FlaskConicalIcon />
+                  Diagnostics
+                </TabsTrigger>
+              </TabsList>
+            </div>
 
-            <MonitorSection icon={MessageSquareIcon} title="Chat Flow">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-muted-foreground text-xs">
-                  Start a fresh Cloudflare-owned thread for the current workspace and agent.
-                </p>
-                <NewChatButton className="shrink-0" />
-              </div>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <StatusRow
-                  label="Chat"
-                  value={chatLabel}
-                  compact
-                  tone={
-                    liveRuntime.chatState === "thread_ready" ||
-                    liveRuntime.chatState === "completed"
-                      ? "ok"
-                      : "muted"
-                  }
-                />
-                <StatusRow
-                  label="Run"
-                  value={chatRuntime?.latestRun?.status ?? "No run yet"}
-                  compact
-                />
-                <StatusRow
-                  label="Error category"
-                  value={chatRuntime?.failure?.errorCode ?? "none"}
-                  compact
-                />
-                <StatusRow
-                  label="Thread"
-                  value={
-                    chatRuntime?.latestThread
-                      ? `${chatRuntime.latestThread.status ?? "active"}${
-                          chatRuntime.latestRun ? "" : " / fresh"
-                        }`
-                      : "No thread yet"
-                  }
-                  compact
-                />
-                <StatusRow
-                  label="Runtime"
-                  value={
-                    chatRuntime?.latestRun?.metadata?.runtime
-                      ? String(chatRuntime.latestRun.metadata.runtime)
-                      : "cloudflare-agent-chat"
-                  }
-                  compact
-                />
-                <StatusRow
-                  label="First token"
-                  value={formatDuration(chatRuntime?.timings?.firstTokenMs)}
-                  compact
-                />
-                <StatusRow
-                  label="Total runtime"
-                  value={formatDuration(chatRuntime?.timings?.totalMs)}
-                  compact
-                />
-                <StatusRow
-                  label="Policy"
-                  value={
-                    chatRuntime?.latestPolicyDecision
-                      ? `${chatRuntime.latestPolicyDecision.decision}: ${chatRuntime.latestPolicyDecision.reason}`
-                      : "No policy decision yet"
-                  }
-                  compact
-                />
-              </div>
-              {chatRuntime?.failure ? (
-                <div className="border-destructive/30 bg-destructive/10 rounded-md border p-3 text-sm">
-                  <p className="text-destructive font-medium">{chatRuntime.failure.message}</p>
-                  <p className="text-muted-foreground mt-1 text-xs">
-                    {chatRuntime.failure.source}
-                    {chatRuntime.failure.status ? ` / ${chatRuntime.failure.status}` : ""}
-                    {chatRuntime.failure.errorCode ? ` / ${chatRuntime.failure.errorCode}` : ""}
-                  </p>
-                </div>
-              ) : (
-                <EmptyPanelText>
-                  {fetchError && !chatRuntime
-                    ? "The drawer could not load the Cloudflare summary. Check the current session or local auth fallback."
-                    : chatRuntime?.state === "no_session" || chatRuntime?.state === "no_thread"
-                      ? "Send a message to create the first chat session for this workspace."
-                      : "Chat state is being read from Cloudflare for the active workspace and agent."}
-                </EmptyPanelText>
-              )}
-            </MonitorSection>
-
-            <MonitorSection icon={UserIcon} title="Current Scope">
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <StatusRow
-                  label="User"
-                  value={summary?.user?.email ?? summary?.user?.displayName}
-                />
-                <StatusRow
-                  label="Account"
-                  value={summary?.account?.source ?? summary?.identity.workspaceSource}
-                />
-                <StatusRow
-                  label="Membership"
-                  value={
-                    summary?.membership
-                      ? `${summary.membership.role} / ${summary.membership.status}`
-                      : undefined
-                  }
-                />
-                <StatusRow
-                  label="Admin controls"
-                  value={summary?.membership ? (canManageWorkspaces ? "Enabled" : "Read only") : ""}
-                />
-                <StatusRow
-                  label="Active model"
-                  value={
-                    summary?.activeAgent?.runtime
-                      ? `${summary.activeAgent.runtime.model} / ${summary.activeAgent.runtime.source}`
-                      : undefined
-                  }
-                />
-              </div>
-            </MonitorSection>
-
-            <MonitorSection icon={FileTextIcon} title="Execution History">
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <StatusRow
-                  label="Latest run"
-                  value={
-                    latestHistoryRun
-                      ? `${latestHistoryRun.status ?? "unknown"} / ${formatAge(
-                          latestHistoryRun.updatedAt ?? latestHistoryRun.createdAt,
-                        )}`
-                      : "No run history"
-                  }
-                  compact
-                  tone={latestHistoryRun ? "ok" : "muted"}
-                />
-                <StatusRow
-                  label="Latest artifact"
-                  value={
-                    latestHistoryArtifact
-                      ? (latestHistoryArtifact.title ?? latestHistoryArtifact.id)
-                      : "No artifacts"
-                  }
-                  compact
-                  tone={latestHistoryArtifact ? "ok" : "muted"}
-                />
-                <StatusRow
-                  label="Loaded runs"
-                  value={isLoadingHistory ? "Loading" : String(historyRuns.length)}
-                  compact
-                />
-                <StatusRow label="Selected run" value={selectedRunState} compact />
-              </div>
-
-              {historyError ? (
-                <div className="border-destructive/30 bg-destructive/10 rounded-md border p-3 text-sm">
-                  <p className="text-destructive font-medium">{historyError}</p>
-                  <p className="text-muted-foreground mt-1 text-xs">
-                    Summary and approval data can still render while history reloads.
-                  </p>
-                </div>
-              ) : null}
-
-              <DetailsBlock title="Recent runs" defaultOpen>
-                {isLoadingHistory && !historyRuns.length ? (
-                  <EmptyPanelText>Loading execution history.</EmptyPanelText>
-                ) : historyRuns.length ? (
-                  <ol className="space-y-2">
-                    {historyRuns.map((historyRun) => (
-                      <li
-                        key={historyRun.id}
-                        className="border-border rounded-md border p-3 text-sm"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <span className="min-w-0">
-                            <span className="block truncate font-medium">
-                              {runHistoryTitle(historyRun)}
-                            </span>
-                            <span className="text-muted-foreground block text-xs">
-                              {historyRun.stage ?? "unknown stage"} /{" "}
-                              {historyRun.engine ?? "unknown engine"} /{" "}
-                              {historyRun.toolCallCount ?? 0} tool calls
-                            </span>
-                            <span className="text-muted-foreground/80 block text-xs">
-                              {formatAge(historyRun.updatedAt ?? historyRun.createdAt)}
-                              {historyRun.completedAt
-                                ? ` / completed ${formatTime(historyRun.completedAt)}`
-                                : ""}
-                              {historyRun.failedAt
-                                ? ` / failed ${formatTime(historyRun.failedAt)}`
-                                : ""}
-                            </span>
-                            {historyRun.artifactIds?.length || historyRun.decisionIds?.length ? (
-                              <span className="text-muted-foreground block text-xs">
-                                {(historyRun.artifactIds?.length ?? 0).toString()} artifacts /{" "}
-                                {(historyRun.decisionIds?.length ?? 0).toString()} decisions
-                              </span>
-                            ) : null}
-                          </span>
-                          <span className="flex shrink-0 flex-col items-end gap-2">
-                            <StatusPill
-                              status={historyRun.status ?? "unknown"}
-                              tone={historyRun.status}
-                            />
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              disabled={isLoadingRunSnapshot && selectedRunId === historyRun.id}
-                              onClick={() => void inspectHistoryRun(historyRun.id)}
-                            >
-                              {isLoadingRunSnapshot && selectedRunId === historyRun.id ? (
-                                <Loader2Icon className="animate-spin" />
-                              ) : (
-                                <FileTextIcon />
-                              )}
-                              Inspect
-                            </Button>
-                          </span>
-                        </div>
-                        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                          <CopyId label="Run id" value={historyRun.id} />
-                          <CopyId label="Workflow intent id" value={historyRun.workflowIntentId} />
-                        </div>
-                      </li>
-                    ))}
-                  </ol>
-                ) : (
-                  <EmptyPanelText>
-                    Run a tool, diagnostic, callback, or chat workflow to populate execution
-                    history.
-                  </EmptyPanelText>
-                )}
-              </DetailsBlock>
-
-              <DetailsBlock title="Selected run snapshot" defaultOpen={Boolean(selectedRunId)}>
-                {!selectedRunId ? (
-                  <EmptyPanelText>Select a run to inspect its stored D1 snapshot.</EmptyPanelText>
-                ) : isLoadingRunSnapshot ? (
-                  <EmptyPanelText>Loading run snapshot.</EmptyPanelText>
-                ) : runSnapshotError ? (
-                  <div className="border-destructive/30 bg-destructive/10 rounded-md border p-3 text-sm">
-                    <p className="text-destructive font-medium">{runSnapshotError}</p>
-                    <CopyId label="Run id" value={selectedRunId} />
+            <TabsContent value="overview" className="overflow-y-auto p-5">
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(18rem,.7fr)]">
+                <section className={`${sectionClass} p-4`}>
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <h2 className="text-sm font-semibold">Current environment</h2>
+                    <StatusPill status={liveRuntime.chatLabel} tone={liveRuntime.chatTone} />
                   </div>
-                ) : selectedRunSnapshot ? (
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      <StatusRow
-                        label="Run status"
-                        value={selectedRunSnapshot.run?.status}
-                        compact
-                        tone={selectedRunSnapshot.run?.status === "completed" ? "ok" : "muted"}
-                      />
-                      <StatusRow
-                        label="Intent"
-                        value={selectedRunSnapshot.intent?.type ?? selectedRunSnapshot.intent?.id}
-                        compact
-                      />
-                      <StatusRow
-                        label="Stage"
-                        value={selectedRunSnapshot.run?.stage ?? selectedRunSnapshot.intent?.stage}
-                        compact
-                      />
-                      <StatusRow
-                        label="Tool calls"
-                        value={String(selectedRunSnapshot.toolCalls.length)}
-                        compact
-                      />
-                      <StatusRow
-                        label="Artifacts"
-                        value={String(selectedRunSnapshot.artifacts.length)}
-                        compact
-                      />
-                      <StatusRow
-                        label="Decisions"
-                        value={String(selectedRunSnapshot.decisions.length)}
-                        compact
-                      />
-                    </div>
-
-                    <DetailsBlock title="Snapshot tool calls">
-                      {selectedRunSnapshot.toolCalls.length ? (
-                        <ol className="space-y-2">
-                          {selectedRunSnapshot.toolCalls.slice(0, 8).map((toolCall) => (
-                            <li
-                              key={toolCall.id}
-                              className="border-border rounded-md border p-3 text-sm"
-                            >
-                              <div className="flex items-start justify-between gap-2">
-                                <span className="min-w-0">
-                                  <span className="block truncate font-medium">
-                                    {toolCall.toolId ?? "unknown tool"}
-                                  </span>
-                                  <span className="text-muted-foreground block text-xs">
-                                    {toolCall.outputSummary ??
-                                      toolCall.inputSummary ??
-                                      "Tool call recorded."}
-                                  </span>
-                                </span>
-                                <StatusPill
-                                  status={toolCall.status ?? "unknown"}
-                                  tone={toolCall.status}
-                                />
-                              </div>
-                              <CopyId label="Tool call id" value={toolCall.id} />
-                            </li>
-                          ))}
-                        </ol>
-                      ) : (
-                        <EmptyPanelText>No tool calls attached to this run.</EmptyPanelText>
-                      )}
-                    </DetailsBlock>
-
-                    <DetailsBlock title="Snapshot artifacts">
-                      {selectedRunSnapshot.artifacts.length ? (
-                        <ol className="space-y-2">
-                          {selectedRunSnapshot.artifacts.slice(0, 8).map((artifact) => (
-                            <li
-                              key={artifact.id}
-                              className="border-border rounded-md border p-3 text-sm"
-                            >
-                              <p className="truncate font-medium">
-                                {artifact.title ?? artifact.id}
-                              </p>
-                              <p className="text-muted-foreground mt-1 break-all text-xs">
-                                {artifact.uri ?? "metadata artifact"}
-                              </p>
-                              <CopyId label="Artifact id" value={artifact.id} />
-                            </li>
-                          ))}
-                        </ol>
-                      ) : (
-                        <EmptyPanelText>No artifacts attached to this run.</EmptyPanelText>
-                      )}
-                    </DetailsBlock>
-
-                    <DetailsBlock title="Snapshot decisions">
-                      {selectedRunSnapshot.decisions.length ? (
-                        <ol className="space-y-2">
-                          {selectedRunSnapshot.decisions.slice(0, 8).map((decision) => (
-                            <li
-                              key={decision.id}
-                              className="border-border rounded-md border p-3 text-sm"
-                            >
-                              <p className="truncate font-medium">
-                                {decision.title ?? decision.id}
-                              </p>
-                              <p className="text-muted-foreground mt-1 text-xs">
-                                {decision.summary ?? decision.thesis ?? "Decision recorded."}
-                              </p>
-                              <CopyId label="Decision id" value={decision.id} />
-                            </li>
-                          ))}
-                        </ol>
-                      ) : (
-                        <EmptyPanelText>No decision records attached to this run.</EmptyPanelText>
-                      )}
-                    </DetailsBlock>
-
-                    {selectedRunSnapshot.childRuns?.length ? (
-                      <DetailsBlock title="Snapshot child runs">
-                        <ol className="space-y-2">
-                          {selectedRunSnapshot.childRuns.slice(0, 8).map((childRun) => (
-                            <li
-                              key={childRun.id}
-                              className="border-border rounded-md border p-3 text-sm"
-                            >
-                              <div className="flex items-start justify-between gap-2">
-                                <span className="min-w-0">
-                                  <span className="block truncate font-medium">
-                                    {childRun.id ?? "child run"}
-                                  </span>
-                                  <span className="text-muted-foreground block text-xs">
-                                    {childRun.stage ?? "stage unknown"} /{" "}
-                                    {childRun.engine ?? "engine unknown"} /{" "}
-                                    {formatAge(childRun.updatedAt ?? childRun.createdAt)}
-                                  </span>
-                                </span>
-                                <StatusPill
-                                  status={childRun.status ?? "unknown"}
-                                  tone={childRun.status}
-                                />
-                              </div>
-                            </li>
-                          ))}
-                        </ol>
-                      </DetailsBlock>
-                    ) : null}
-
-                    <DetailsBlock title="Snapshot audit events">
-                      {selectedRunSnapshot.auditEvents.length ? (
-                        <ol className="space-y-2">
-                          {selectedRunSnapshot.auditEvents.slice(0, 8).map((event) => (
-                            <li
-                              key={event.id}
-                              className="border-border rounded-md border p-3 text-sm"
-                            >
-                              <p className="truncate font-medium">
-                                {event.action ?? "audit.event"}
-                              </p>
-                              <p className="text-muted-foreground mt-1 text-xs">
-                                {event.summary ?? "Audit event recorded."}
-                              </p>
-                              <p className="text-muted-foreground/80 mt-1 text-xs">
-                                {formatTime(event.createdAt)}
-                              </p>
-                            </li>
-                          ))}
-                        </ol>
-                      ) : (
-                        <EmptyPanelText>No audit events attached to this run.</EmptyPanelText>
-                      )}
-                    </DetailsBlock>
-
-                    <DetailsBlock title="Selected snapshot JSON">
-                      <pre className="bg-muted/50 max-h-72 overflow-auto rounded-md p-3 text-xs whitespace-pre-wrap">
-                        {JSON.stringify(snapshotDisplayJson(selectedRunSnapshot), null, 2)}
-                      </pre>
-                    </DetailsBlock>
-                  </div>
-                ) : (
-                  <EmptyPanelText>No snapshot returned for the selected run.</EmptyPanelText>
-                )}
-              </DetailsBlock>
-
-              <DetailsBlock title="Artifact metadata" defaultOpen>
-                {isLoadingHistory && !historyArtifacts.length ? (
-                  <EmptyPanelText>Loading artifact metadata.</EmptyPanelText>
-                ) : historyArtifacts.length ? (
-                  <ol className="space-y-2">
-                    {historyArtifacts.map((artifact) => (
-                      <li key={artifact.id} className="border-border rounded-md border p-3 text-sm">
-                        <div className="flex items-start justify-between gap-3">
-                          <span className="min-w-0">
-                            <span className="block truncate font-medium">
-                              {artifact.title ?? artifact.id}
-                            </span>
-                            <span className="text-muted-foreground block text-xs">
-                              {artifact.kind ?? "artifact"} / {artifact.mimeType ?? "metadata"} /{" "}
-                              {formatBytes(artifact.sizeBytes) ?? "size unknown"}
-                            </span>
-                            <span className="text-muted-foreground/80 block text-xs">
-                              {formatAge(artifact.createdAt)}
-                            </span>
-                          </span>
-                        </div>
-                        <p className="text-muted-foreground mt-2 break-all text-xs">
-                          {artifact.uri ?? "metadata-only artifact"}
-                        </p>
-                        <CopyId label="Artifact id" value={artifact.id} />
-                      </li>
-                    ))}
-                  </ol>
-                ) : (
-                  <EmptyPanelText>
-                    Metadata artifacts will appear here after tool runs or callbacks create them.
-                  </EmptyPanelText>
-                )}
-              </DetailsBlock>
-            </MonitorSection>
-
-            <DetailsBlock title="Manage" defaultOpen={false}>
-              <MonitorSection icon={Building2Icon} title="Workspace & Agents">
-                <DetailsBlock title="Workspaces">
-                  <StatusRow label="Active workspace" value={summary?.workspace?.name} />
-                  <form className="flex gap-2" onSubmit={createWorkspace}>
-                    <input
-                      className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring min-w-0 flex-1 rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-                      value={workspaceName}
-                      onChange={(event) => setWorkspaceName(event.target.value)}
-                      placeholder="New workspace name"
-                      maxLength={80}
-                    />
-                    <Button
-                      type="submit"
-                      size="sm"
-                      disabled={
-                        isCreatingWorkspace || !workspaceName.trim() || !canManageWorkspaces
-                      }
-                    >
-                      {isCreatingWorkspace ? (
-                        <Loader2Icon className="animate-spin" />
-                      ) : (
-                        <PlusIcon />
-                      )}
-                      Create
-                    </Button>
-                  </form>
-                  {summary?.workspaces?.length ? (
-                    <ol className="space-y-2">
-                      {summary.workspaces.map((workspace) => (
-                        <li
-                          key={workspace.id}
-                          className="border-border rounded-md border p-3 text-sm"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <span className="min-w-0">
-                              <span className="block truncate font-medium">{workspace.name}</span>
-                              <span className="text-muted-foreground block text-xs">
-                                {workspace.isActive ? "active" : "available"}
-                                {workspace.isDefault ? " / default" : ""}
-                              </span>
-                            </span>
-                            {workspace.isActive ? (
-                              <StatusPill status="active" tone="completed" />
-                            ) : (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => void activateWorkspace(workspace.id)}
-                                disabled={
-                                  activatingWorkspaceId === workspace.id || !canManageWorkspaces
-                                }
-                              >
-                                {activatingWorkspaceId === workspace.id ? (
-                                  <Loader2Icon className="animate-spin" />
-                                ) : null}
-                                Make active
-                              </Button>
-                            )}
-                          </div>
-                        </li>
-                      ))}
-                    </ol>
-                  ) : (
-                    <EmptyPanelText>No account workspaces loaded.</EmptyPanelText>
-                  )}
-                </DetailsBlock>
-
-                <DetailsBlock title="Agents">
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    <StatusRow label="Active agent" value={summary?.activeAgent?.name} />
-                    <StatusRow label="Profile" value={summary?.activeAgent?.profile} />
-                    <StatusRow label="Model" value={summary?.activeAgent?.runtime.model} />
-                    <StatusRow label="Model source" value={summary?.activeAgent?.runtime.source} />
-                    <StatusRow label="Behavior" value={summary?.activeAgent?.behavior.profile} />
+                  <div className="grid gap-2 sm:grid-cols-2">
                     <StatusRow
-                      label="Behavior source"
-                      value={summary?.activeAgent?.behavior.source}
+                      label="Workspace"
+                      value={session?.workspace?.name ?? summary?.workspace?.name}
+                      compact
+                      tone="ok"
+                    />
+                    <StatusRow
+                      label="Agent"
+                      value={session?.activeAgent?.name ?? summary?.activeAgent?.name}
+                      compact
+                      tone="ok"
+                    />
+                    <StatusRow
+                      label="Pack"
+                      value={
+                        session?.activeAgent?.behavior.pack?.name ??
+                        session?.activeAgent?.behavior.pack?.id ??
+                        summary?.activeAgent?.behavior.pack?.name ??
+                        summary?.activeAgent?.behavior.pack?.id
+                      }
+                      compact
+                    />
+                    <StatusRow
+                      label="Model"
+                      value={
+                        session?.activeAgent?.runtime.model ?? summary?.activeAgent?.runtime.model
+                      }
+                      compact
+                    />
+                    <StatusRow
+                      label="Membership"
+                      value={
+                        summary?.membership
+                          ? `${summary.membership.role} / ${summary.membership.status}`
+                          : undefined
+                      }
+                      compact
+                    />
+                    <StatusRow
+                      label="Connection"
+                      value={connection ? "Live token available" : "Connecting"}
+                      compact
                     />
                   </div>
-                  <form className="space-y-2" onSubmit={createAgent}>
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
-                      <input
-                        className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring min-w-0 rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-                        value={agentName}
-                        onChange={(event) => setAgentName(event.target.value)}
-                        placeholder="New test agent name"
-                        maxLength={80}
-                      />
-                      <select
-                        className="border-input bg-background ring-offset-background focus-visible:ring-ring rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-                        value={agentProfile}
-                        onChange={(event) => {
-                          const nextProfile = event.target.value as
-                            | "default"
-                            | "analyst"
-                            | "operator";
-                          setAgentProfile(nextProfile);
-                          setAgentBehaviorTemplateId(defaultBehaviorTemplateByProfile[nextProfile]);
-                        }}
-                      >
-                        <option value="analyst">Analyst</option>
-                        <option value="operator">Operator</option>
-                        <option value="default">Default</option>
-                      </select>
-                    </div>
-                    <select
-                      className="border-input bg-background ring-offset-background focus-visible:ring-ring w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-                      value={agentModel}
-                      onChange={(event) =>
-                        setAgentModel(event.target.value as (typeof agentModelOptions)[number])
-                      }
-                    >
-                      {agentModelOptions.map((model) => (
-                        <option key={model} value={model}>
-                          {model}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      className="border-input bg-background ring-offset-background focus-visible:ring-ring w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-                      value={agentBehaviorTemplateId}
-                      onChange={(event) => {
-                        const nextTemplateId = event.target.value as AgentBehaviorTemplate["id"];
-                        const nextTemplate = behaviorTemplates.find(
-                          (template) => template.id === nextTemplateId,
-                        );
-                        setAgentBehaviorTemplateId(nextTemplateId);
-                        if (nextTemplate?.profile) setAgentProfile(nextTemplate.profile);
-                      }}
-                    >
-                      {behaviorTemplates.length === 0 ? (
-                        <option value={agentBehaviorTemplateId}>
-                          Behavior template loading...
-                        </option>
-                      ) : (
-                        behaviorTemplates.map((template) => (
-                          <option key={template.id} value={template.id}>
-                            {template.name} / {template.version}
-                          </option>
-                        ))
-                      )}
-                    </select>
-                    <textarea
-                      className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring min-h-16 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-                      value={agentDescription}
-                      onChange={(event) => setAgentDescription(event.target.value)}
-                      placeholder="Optional description"
-                      maxLength={240}
-                    />
-                    {selectedBehaviorTemplate ? (
-                      <DetailsBlock title="Selected behavior template">
-                        <StatusRow label="Name" value={selectedBehaviorTemplate.name} />
-                        <StatusRow
-                          label="Description"
-                          value={selectedBehaviorTemplate.description}
-                        />
-                        <StatusRow label="Version" value={selectedBehaviorTemplate.version} />
-                        <StatusRow
-                          label="Authoring"
-                          value={[
-                            selectedBehaviorTemplate.authoring?.kind ?? "built_in_template",
-                            selectedBehaviorTemplate.authoring?.source ??
-                              "cloudflare-control-plane",
-                          ].join(" / ")}
-                        />
-                        {selectedBehaviorTemplate.pack ? (
-                          <>
-                            <StatusRow
-                              label="Pack folder"
-                              value={selectedBehaviorTemplate.pack.folderPath}
-                            />
-                            <StatusRow
-                              label="Pack files"
-                              value={[
-                                selectedBehaviorTemplate.pack.codePath,
-                                selectedBehaviorTemplate.pack.promptPath,
-                              ].join(" / ")}
-                            />
-                            <StatusRow
-                              label="Pack level"
-                              value={selectedBehaviorTemplate.pack.capabilityLevel}
-                            />
-                            <StatusRow
-                              label="Pack tools"
-                              value={
-                                selectedBehaviorTemplate.pack.tools.length
-                                  ? selectedBehaviorTemplate.pack.tools
-                                      .map((tool) => tool.id)
-                                      .join(", ")
-                                  : "No declared tools"
-                              }
-                            />
-                            <StatusRow
-                              label="Pack workflows"
-                              value={
-                                selectedBehaviorTemplate.pack.workflows.length
-                                  ? selectedBehaviorTemplate.pack.workflows
-                                      .map(
-                                        (workflow) =>
-                                          `${workflow.type} (${workflow.engine ?? "engine"} / ${
-                                            workflow.status ?? "status"
-                                          })`,
-                                      )
-                                      .join(", ")
-                                  : "No declared workflows"
-                              }
-                            />
-                            <StatusRow
-                              label="Pack risk"
-                              value={[
-                                selectedBehaviorTemplate.pack.risk.financialData
-                                  ? "financial-data"
-                                  : "no-financial-data",
-                                selectedBehaviorTemplate.pack.risk.externalMutation
-                                  ? "mutation"
-                                  : "read-only",
-                                selectedBehaviorTemplate.pack.risk.requiresSecrets
-                                  ? "secrets"
-                                  : "no-secrets",
-                                `gate: ${
-                                  selectedBehaviorTemplate.pack.risk.productionGate ?? "none"
-                                }`,
-                              ].join(" / ")}
-                            />
-                            <StatusRow
-                              label="Pack UI"
-                              value={[
-                                selectedBehaviorTemplate.pack.ui.primarySurface ?? "chat",
-                                selectedBehaviorTemplate.pack.ui.configurationMode ?? "code",
-                                selectedBehaviorTemplate.pack.ui.inspectorSections?.join(", ") ??
-                                  "no sections",
-                              ].join(" / ")}
-                            />
-                          </>
-                        ) : null}
-                        <pre className="bg-muted/50 max-h-48 overflow-auto rounded-md p-3 text-xs whitespace-pre-wrap">
-                          {selectedBehaviorTemplate.prompt}
-                        </pre>
-                      </DetailsBlock>
-                    ) : null}
-                    <Button
-                      type="submit"
-                      size="sm"
-                      disabled={isCreatingAgent || !agentName.trim() || !canManageAgents}
-                    >
-                      {isCreatingAgent ? <Loader2Icon className="animate-spin" /> : <PlusIcon />}
-                      Create and activate test agent
+                </section>
+                <section className={`${sectionClass} p-4`}>
+                  <h2 className="text-sm font-semibold">Product surfaces</h2>
+                  <p className="text-muted-foreground mt-1 text-xs">
+                    Use the dedicated interfaces for normal workspace operations.
+                  </p>
+                  <div className="mt-4 grid gap-2">
+                    <Button variant="outline" className="justify-between" onClick={onOpenWorkspace}>
+                      Workspace <ExternalLinkIcon />
                     </Button>
-                  </form>
-                  {summary?.agents.length ? (
-                    <ol className="space-y-2">
-                      {summary.agents.map((agent) => (
-                        <li key={agent.id} className="border-border rounded-md border p-3 text-sm">
-                          <div className="flex items-start justify-between gap-2">
-                            <span className="min-w-0">
-                              <span className="block truncate font-medium">{agent.name}</span>
-                              <span className="text-muted-foreground block text-xs">
-                                {agent.isActive ? "active" : "available"}
-                                {agent.isDefault ? " / default" : ""}
-                                {` / ${agent.profile}`}
-                              </span>
-                              <span className="text-muted-foreground block truncate text-xs">
-                                {agent.runtime.provider} / {agent.runtime.model}
-                              </span>
-                              <span className="text-muted-foreground block truncate text-xs">
-                                behavior: {agent.behavior.templateId ?? agent.behavior.profile} /{" "}
-                                {agent.behavior.version}
-                              </span>
-                              {agent.behavior.pack ? (
-                                <span className="text-muted-foreground block truncate text-xs">
-                                  pack: {agent.behavior.pack.id} /{" "}
-                                  {agent.behavior.pack.capabilityLevel}
-                                </span>
-                              ) : null}
-                            </span>
-                            {agent.isActive ? (
-                              <StatusPill status="active" tone="completed" />
-                            ) : (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => void activateAgent(agent.id)}
-                                disabled={
-                                  activatingAgentId === agent.id ||
-                                  !canManageAgents ||
-                                  agent.status !== "active"
-                                }
-                              >
-                                {activatingAgentId === agent.id ? (
-                                  <Loader2Icon className="animate-spin" />
-                                ) : null}
-                                Make active
-                              </Button>
-                            )}
-                          </div>
-                          {agent.description ? (
-                            <p className="text-muted-foreground mt-1 text-xs">
-                              {agent.description}
-                            </p>
-                          ) : null}
-                        </li>
-                      ))}
-                    </ol>
-                  ) : (
-                    <EmptyPanelText>No workspace agents loaded.</EmptyPanelText>
-                  )}
-                </DetailsBlock>
-              </MonitorSection>
+                    <Button variant="outline" className="justify-between" onClick={onOpenAgents}>
+                      Agents <ExternalLinkIcon />
+                    </Button>
+                    <Button variant="outline" className="justify-between" onClick={onOpenHistory}>
+                      History <ExternalLinkIcon />
+                    </Button>
+                  </div>
+                </section>
+              </div>
+            </TabsContent>
 
-              <MonitorSection icon={LinkIcon} title="Tools">
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <StatusRow
-                    label="Registered tools"
-                    value={String(summary?.tools?.length ?? 0)}
-                    compact
-                  />
-                  <StatusRow
-                    label="Model-visible tools"
-                    value={String(summary?.tools?.filter((tool) => tool.modelVisible).length ?? 0)}
-                    compact
-                  />
-                  <StatusRow
-                    label="Latest tool"
-                    value={latestAdminToolCall?.toolId ?? "none"}
-                    compact
-                  />
-                  <StatusRow
-                    label="Latest status"
-                    value={latestAdminToolCall?.status ?? "No tool call yet"}
-                    compact
-                  />
+            <TabsContent value="packs" className="overflow-y-auto p-5">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-semibold">Installed packs</h2>
+                  <p className="text-muted-foreground text-xs">
+                    Use the current version without changing existing conversations.
+                  </p>
                 </div>
-
-                <DetailsBlock title="Active agent pack" defaultOpen={Boolean(activePack)}>
-                  <ActiveAgentPackDetails
-                    pack={activePack}
-                    capabilities={activePackCapabilities}
-                    workflows={activePackWorkflows}
-                  />
-                </DetailsBlock>
-
-                <DetailsBlock title="Approval queue" defaultOpen>
-                  {isLoadingApprovals && !approvalQueue.length ? (
-                    <EmptyPanelText>Loading approval requests.</EmptyPanelText>
-                  ) : approvalQueue.length ? (
-                    <div className="space-y-3">
-                      {pendingApprovals.length ? (
-                        <ol className="space-y-2">
-                          {pendingApprovals.map((approval) => {
-                            const policyBlocked = approval.currentPolicy?.decision === "block";
-                            return (
-                              <li
-                                key={approval.id}
-                                className="border-border rounded-md border p-3 text-sm"
-                              >
-                                <div className="flex items-start justify-between gap-3">
-                                  <span className="min-w-0">
-                                    <span className="block truncate font-medium">
-                                      {approval.input?.url ?? "URL unavailable"}
-                                    </span>
-                                    <span className="text-muted-foreground block text-xs">
-                                      {approval.toolId ?? "unknown tool"} /{" "}
-                                      {approval.executionMode ?? "dry_run"} /{" "}
-                                      {formatAge(approval.createdAt)}
-                                    </span>
-                                    {approval.humanIntervention ? (
-                                      <span className="text-muted-foreground block text-xs">
-                                        Intervention: {approval.humanIntervention.state ?? "parked"}{" "}
-                                        /{" "}
-                                        {approval.humanIntervention.requiredAction ??
-                                          "approve_or_deny"}
-                                      </span>
-                                    ) : null}
-                                    {approval.currentPolicy?.reason ? (
-                                      <span
-                                        className={
-                                          policyBlocked
-                                            ? "text-destructive block text-xs"
-                                            : "text-muted-foreground block text-xs"
-                                        }
-                                      >
-                                        Policy: {approval.currentPolicy.code ?? "unknown"} -{" "}
-                                        {approval.currentPolicy.reason}
-                                      </span>
-                                    ) : null}
-                                  </span>
-                                  <StatusPill
-                                    status={approval.status ?? "requested"}
-                                    tone={approvalTone(approval.status)}
-                                  />
-                                </div>
-                                <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                  <CopyId label="Approval id" value={approval.id ?? ""} />
-                                  <CopyId label="Run id" value={approval.runId ?? ""} />
-                                </div>
-                                <div className="mt-2 flex justify-end gap-2">
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="outline"
-                                    disabled={
-                                      updatingApprovalId === approval.id || !canManageAgents
-                                    }
-                                    onClick={() => openApprovalDialog(approval, "deny")}
-                                  >
-                                    {updatingApprovalId === approval.id ? (
-                                      <Loader2Icon className="animate-spin" />
-                                    ) : (
-                                      <ShieldCheckIcon />
-                                    )}
-                                    Deny
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    disabled={
-                                      updatingApprovalId === approval.id ||
-                                      !canManageAgents ||
-                                      policyBlocked
-                                    }
-                                    onClick={() => openApprovalDialog(approval, "approve")}
-                                  >
-                                    {updatingApprovalId === approval.id ? (
-                                      <Loader2Icon className="animate-spin" />
-                                    ) : (
-                                      <PlayIcon />
-                                    )}
-                                    Approve
-                                  </Button>
-                                </div>
-                              </li>
-                            );
-                          })}
-                        </ol>
-                      ) : (
-                        <EmptyPanelText>No pending approval requests.</EmptyPanelText>
-                      )}
-                      {decidedApprovals.length ? (
-                        <div className="space-y-2">
-                          <p className="text-muted-foreground text-xs font-medium">
-                            Recent decided requests
+                <Button variant="outline" size="sm" onClick={() => setCustomAgentOpen(true)}>
+                  <PlusIcon />
+                  Custom agent
+                </Button>
+              </div>
+              <div className="grid gap-3 lg:grid-cols-3">
+                {packTemplates.map((template) => {
+                  const state = resolveAdminAgentPackState(
+                    template,
+                    summary?.agents ?? [],
+                    session?.activeAgent?.id ?? summary?.activeAgent?.id,
+                  );
+                  if (!template.pack || !state) return null;
+                  const busy = busyPackId === template.pack.id;
+                  return (
+                    <article
+                      key={template.id}
+                      className={`${sectionClass} flex min-h-64 flex-col p-4`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <h3 className="font-medium">{template.name}</h3>
+                          <p className="text-muted-foreground mt-1 text-xs">
+                            {template.description}
                           </p>
-                          <ol className="space-y-2">
-                            {decidedApprovals.slice(0, 6).map((approval) => (
-                              <li
-                                key={approval.id}
-                                className="border-border rounded-md border p-3 text-sm"
-                              >
-                                <div className="flex items-start justify-between gap-3">
-                                  <span className="min-w-0">
-                                    <span className="block truncate font-medium">
-                                      {approval.input?.url ?? "URL unavailable"}
-                                    </span>
-                                    <span className="text-muted-foreground block text-xs">
-                                      {approval.toolId ?? "unknown tool"} /{" "}
-                                      {formatAge(
-                                        approval.decision?.decidedAt ?? approval.updatedAt,
-                                      )}
-                                    </span>
-                                    {approval.decision?.denyReason ? (
-                                      <span className="text-muted-foreground block text-xs">
-                                        {approval.decision.denyReason}
-                                      </span>
-                                    ) : null}
-                                    {approval.humanIntervention ? (
-                                      <span className="text-muted-foreground block text-xs">
-                                        Intervention:{" "}
-                                        {approval.humanIntervention.state ?? "decided"}
-                                      </span>
-                                    ) : null}
-                                  </span>
-                                  <StatusPill
-                                    status={approval.status ?? "decided"}
-                                    tone={approvalTone(approval.status)}
-                                  />
-                                </div>
-                                <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                  <CopyId label="Approval id" value={approval.id ?? ""} />
-                                  <CopyId label="Run id" value={approval.runId ?? ""} />
-                                </div>
-                              </li>
-                            ))}
-                          </ol>
+                        </div>
+                        <StatusPill
+                          status={packStateLabel[state.state]}
+                          tone={state.state === "current" ? "completed" : undefined}
+                        />
+                      </div>
+                      <div className="text-muted-foreground mt-4 space-y-1 text-xs">
+                        <p>Version {template.version}</p>
+                        <p>
+                          {template.pack.tools.length} tools · {template.pack.workflows.length}{" "}
+                          workflow{template.pack.workflows.length === 1 ? "" : "s"}
+                        </p>
+                        <p>
+                          {template.pack.risk.externalMutation ? "Mutation capable" : "Read-only"}
+                        </p>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-1">
+                        {template.pack.tools.slice(0, 3).map((tool) => (
+                          <span
+                            key={tool.id}
+                            className="bg-muted text-muted-foreground rounded-md px-1.5 py-1 text-[11px]"
+                          >
+                            {tool.id}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="mt-auto pt-5">
+                        <Button
+                          className="w-full"
+                          disabled={busy || state.state === "current"}
+                          onClick={() => void usePack(template)}
+                        >
+                          {busy ? (
+                            <Loader2Icon className="animate-spin" />
+                          ) : state.state === "current" ? (
+                            <CheckIcon />
+                          ) : (
+                            <PlayIcon />
+                          )}
+                          {state.state === "current" ? "Current pack" : "Use pack"}
+                        </Button>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+              {packTemplates.length === 0 ? (
+                <EmptyPanelText>No installed packs were returned.</EmptyPanelText>
+              ) : null}
+            </TabsContent>
+
+            <TabsContent value="tools" className="overflow-y-auto p-5">
+              <section className={`${sectionClass} mb-4`}>
+                <div className="border-border border-b px-4 py-3">
+                  <h2 className="text-sm font-semibold">Pending approvals</h2>
+                </div>
+                {pendingApprovals.length ? (
+                  pendingApprovals.map((approval) => (
+                    <div
+                      key={approval.id}
+                      className="border-border flex flex-col gap-3 border-b px-4 py-3 last:border-b-0 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium">{approval.toolId ?? "Tool request"}</p>
+                        <p className="text-muted-foreground mt-0.5 text-xs">
+                          {approval.reason ?? approval.input?.url ?? "Operator decision required."}
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setApprovalDialog({ approval, action: "deny" })}
+                        >
+                          Deny
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => setApprovalDialog({ approval, action: "approve" })}
+                        >
+                          Approve
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="p-4">
+                    <EmptyPanelText>No pending approvals.</EmptyPanelText>
+                  </div>
+                )}
+              </section>
+              <section className={sectionClass}>
+                <div className="border-border border-b px-4 py-3">
+                  <h2 className="text-sm font-semibold">Registered tools</h2>
+                </div>
+                <div className="divide-border divide-y">
+                  {(summary?.tools ?? []).map((tool) => (
+                    <div
+                      key={tool.name}
+                      className="grid gap-3 px-4 py-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-medium">{tool.name}</p>
+                          <StatusPill
+                            status={tool.permissionStatus ?? tool.status}
+                            tone={tool.permissionStatus === "enabled" ? "completed" : undefined}
+                          />
+                          {tool.modelVisible ? (
+                            <span className="text-muted-foreground text-xs">Model visible</span>
+                          ) : null}
+                        </div>
+                        <p className="text-muted-foreground mt-1 text-xs">{tool.description}</p>
+                      </div>
+                      {tool.policyEditable ? (
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={busyTool === tool.name}
+                            onClick={() =>
+                              void updateToolPolicy(tool, {
+                                status:
+                                  tool.permissionStatus === "enabled" ? "disabled" : "enabled",
+                              })
+                            }
+                          >
+                            {tool.permissionStatus === "enabled" ? "Disable" : "Enable"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={busyTool === tool.name}
+                            onClick={() =>
+                              void updateToolPolicy(tool, { modelVisible: !tool.modelVisible })
+                            }
+                          >
+                            {tool.modelVisible ? "Hide from model" : "Show to model"}
+                          </Button>
                         </div>
                       ) : null}
                     </div>
-                  ) : (
-                    <EmptyPanelText>No approval requests for this workspace.</EmptyPanelText>
-                  )}
-                </DetailsBlock>
+                  ))}
+                </div>
+              </section>
+            </TabsContent>
 
-                <DetailsBlock title="Registered tools" defaultOpen>
-                  {summary?.tools?.length ? (
-                    <ol className="space-y-2">
-                      {summary.tools.map((tool) => (
-                        <li key={tool.name} className="border-border rounded-md border p-3 text-sm">
-                          <div className="flex items-start justify-between gap-3">
-                            <span className="min-w-0">
-                              <span className="block truncate font-medium">{tool.name}</span>
-                              <span className="text-muted-foreground block text-xs">
-                                {tool.family} / {tool.kind} / {tool.mutationRisk}
-                              </span>
-                              <span className="text-muted-foreground block text-xs">
-                                modes:{" "}
-                                {(tool.allowedExecutionModes ?? tool.supportedExecutionModes).join(
-                                  ", ",
-                                )}
-                              </span>
-                              <span className="text-muted-foreground block text-xs">
-                                policy: {tool.policyReference ?? "none"}
-                              </span>
-                              {tool.runner?.sandbox ? (
-                                <span className="text-muted-foreground block text-xs">
-                                  sandbox: {tool.runner.sandbox.lifecycle?.template ?? "unknown"} /{" "}
-                                  {tool.runner.sandbox.network?.egress ?? "egress"} /{" "}
-                                  {tool.runner.sandbox.network?.privateNetwork ?? "private"}
-                                </span>
-                              ) : null}
-                              {tool.connectionAuth ? (
-                                <span className="text-muted-foreground block text-xs">
-                                  connection: {tool.connectionAuth.status ?? "unknown"} /{" "}
-                                  {tool.connectionAuth.principal ?? "none"} /{" "}
-                                  {tool.connectionAuth.approvalOrder ?? "policy"}
-                                </span>
-                              ) : null}
-                              {tool.packScope ? (
-                                <span className="text-muted-foreground block text-xs">
-                                  pack: {tool.packScope.activePackId ?? "none"} /{" "}
-                                  {tool.packScope.declared ? "declared" : "not declared"}
-                                  {tool.packScope.purpose ? ` / ${tool.packScope.purpose}` : ""}
-                                </span>
-                              ) : null}
-                            </span>
-                            <span className="flex shrink-0 flex-col items-end gap-1">
-                              <StatusPill
-                                status={tool.permissionStatus ?? "unseeded"}
-                                tone={tool.permissionStatus === "enabled" ? "completed" : undefined}
-                              />
-                              <StatusPill
-                                status={tool.adminVisible ? "Admin" : "Hidden"}
-                                tone={tool.adminVisible ? "completed" : undefined}
-                              />
-                              <StatusPill
-                                status={tool.approvalRequired ? "Approval required" : "No approval"}
-                                tone={tool.approvalRequired ? "running" : "completed"}
-                              />
-                              <StatusPill
-                                status={tool.modelVisible ? "Model" : "Not model-visible"}
-                                tone={tool.modelVisible ? "completed" : undefined}
-                              />
-                              {tool.packScope ? (
-                                <StatusPill
-                                  status={tool.packScope.declared ? "Pack tool" : "Registry only"}
-                                  tone={tool.packScope.declared ? "completed" : undefined}
-                                />
-                              ) : null}
-                            </span>
-                          </div>
-                          <p className="text-muted-foreground mt-2 text-xs">{tool.reason}</p>
-                          {tool.capability ? (
-                            <p className="text-muted-foreground mt-1 text-xs">
-                              Capability: {tool.capability.decision} /{" "}
-                              {tool.capability.code ?? "unknown"} for{" "}
-                              {summary.capabilityContext?.surface ?? "model_exposure"} (
-                              {summary.capabilityContext?.stage ?? "observe"},{" "}
-                              {summary.capabilityContext?.executionMode ?? "dry_run"})
-                            </p>
-                          ) : null}
-                          {tool.adminPolicy?.reason ? (
-                            <p className="text-muted-foreground mt-1 text-xs">
-                              Admin policy: {tool.adminPolicy.code ?? "unknown"} -{" "}
-                              {tool.adminPolicy.reason}
-                            </p>
-                          ) : null}
-                          {tool.modelExposurePolicy?.reason ? (
-                            <p className="text-muted-foreground mt-1 text-xs">
-                              Model exposure: {tool.modelExposurePolicy.code ?? "unknown"} -{" "}
-                              {tool.modelExposurePolicy.reason}
-                            </p>
-                          ) : null}
-                          {tool.killSwitchReason ? (
-                            <p className="text-destructive mt-1 text-xs">{tool.killSwitchReason}</p>
-                          ) : null}
-                          {tool.latestApprovalRequest ? (
-                            <div className="border-border bg-muted/30 mt-2 rounded-md border p-2 text-xs">
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="font-medium">Latest approval request</span>
-                                <StatusPill
-                                  status={tool.latestApprovalRequest.status ?? "requested"}
-                                  tone={
-                                    tool.latestApprovalRequest.status === "approved" ||
-                                    tool.latestApprovalRequest.status === "denied"
-                                      ? "completed"
-                                      : "running"
-                                  }
-                                />
-                              </div>
-                              <p className="text-muted-foreground mt-1">
-                                {tool.latestApprovalRequest.reason ?? "Approval requested."}
-                              </p>
-                              <CopyId
-                                label="Approval id"
-                                value={tool.latestApprovalRequest.id ?? ""}
-                              />
-                            </div>
-                          ) : null}
-                          {tool.name === "url.inspect" ? (
-                            <div className="mt-3 flex flex-wrap justify-end gap-2">
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                disabled={
-                                  updatingToolPolicy === tool.name ||
-                                  !canManageAgents ||
-                                  tool.approvalRequired
-                                }
-                                onClick={() =>
-                                  updateUrlInspectPolicy({
-                                    modelVisible: !tool.modelVisible,
-                                  })
-                                }
-                              >
-                                {updatingToolPolicy === tool.name ? (
-                                  <Loader2Icon className="animate-spin" />
-                                ) : (
-                                  <MessageSquareIcon />
-                                )}
-                                {tool.modelVisible ? "Hide from model" : "Expose to model"}
-                              </Button>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                disabled={updatingToolPolicy === tool.name || !canManageAgents}
-                                onClick={() =>
-                                  updateUrlInspectPolicy({
-                                    requiresApproval: !tool.approvalRequired,
-                                  })
-                                }
-                              >
-                                {updatingToolPolicy === tool.name ? (
-                                  <Loader2Icon className="animate-spin" />
-                                ) : (
-                                  <ShieldCheckIcon />
-                                )}
-                                {tool.approvalRequired ? "Clear approval" : "Require approval"}
-                              </Button>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                disabled={updatingToolPolicy === tool.name || !canManageAgents}
-                                onClick={() =>
-                                  updateUrlInspectPolicy({
-                                    status:
-                                      tool.permissionStatus === "enabled" ? "disabled" : "enabled",
-                                    killSwitchReason:
-                                      tool.permissionStatus === "enabled"
-                                        ? "Disabled by workspace admin policy."
-                                        : undefined,
-                                  })
-                                }
-                              >
-                                {updatingToolPolicy === tool.name ? (
-                                  <Loader2Icon className="animate-spin" />
-                                ) : (
-                                  <ShieldCheckIcon />
-                                )}
-                                {tool.permissionStatus === "enabled" ? "Disable" : "Enable"}
-                              </Button>
-                            </div>
-                          ) : null}
-                        </li>
-                      ))}
-                    </ol>
-                  ) : (
-                    <EmptyPanelText>No tools loaded for this workspace.</EmptyPanelText>
-                  )}
-                </DetailsBlock>
-
-                <DetailsBlock title="URL Inspector">
-                  <form className="space-y-2" onSubmit={runUrlInspect}>
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
-                      <input
-                        className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring min-w-0 rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-                        value={urlInspectTarget}
-                        onChange={(event) => setUrlInspectTarget(event.target.value)}
-                        placeholder="https://example.com"
-                        inputMode="url"
-                      />
-                      <Button
-                        type="submit"
-                        size="sm"
-                        disabled={
-                          isRunningTool ||
-                          !urlInspectTarget.trim() ||
-                          !canManageAgents ||
-                          urlInspectTool?.permissionStatus === "disabled"
-                        }
-                      >
-                        {isRunningTool ? <Loader2Icon className="animate-spin" /> : <LinkIcon />}
-                        Inspect URL
-                      </Button>
-                    </div>
-                    <p className="text-muted-foreground text-xs">
-                      Read-only dry-run tool. Local, private, and metadata hosts are blocked.
-                    </p>
-                  </form>
-                </DetailsBlock>
-
-                <DetailsBlock title="Test Tools">
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="min-w-0">
-                        <span className="block text-sm font-medium">Diagnostic ping</span>
-                        <span className="text-muted-foreground block text-xs">
-                          Cloudflare inline conformance check
-                        </span>
-                      </span>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        disabled={
-                          runningTestTool !== null ||
-                          !canManageAgents ||
-                          diagnosticPingTool?.permissionStatus === "disabled"
-                        }
-                        onClick={() => runTestTool("diagnostic.ping")}
-                      >
-                        {runningTestTool === "diagnostic.ping" ? (
-                          <Loader2Icon className="animate-spin" />
-                        ) : (
-                          <ActivityIcon />
-                        )}
-                        Ping
-                      </Button>
-                    </div>
-
-                    <div className="space-y-2">
-                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
-                        <input
-                          className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring min-w-0 rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-                          value={runnerEchoMessage}
-                          onChange={(event) => setRunnerEchoMessage(event.target.value)}
-                          placeholder="runner echo ok"
-                          maxLength={160}
-                        />
+            <TabsContent value="diagnostics" className="overflow-y-auto p-5">
+              <div className="grid gap-4 lg:grid-cols-2">
+                <section className={`${sectionClass} p-4`}>
+                  <h2 className="flex items-center gap-2 text-sm font-semibold">
+                    <WrenchIcon className="size-4" />
+                    Conformance tools
+                  </h2>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                    {["diagnostic.ping", "runner.echo", "artifact.metadata.test"].map(
+                      (toolName) => (
                         <Button
-                          type="button"
-                          size="sm"
+                          key={toolName}
                           variant="outline"
-                          disabled={
-                            runningTestTool !== null ||
-                            !canManageAgents ||
-                            runnerEchoTool?.permissionStatus === "disabled"
-                          }
+                          size="sm"
+                          disabled={Boolean(busyTool)}
                           onClick={() =>
-                            runTestTool("runner.echo", {
-                              message: runnerEchoMessage.trim() || "runner echo ok",
-                            })
+                            void runDiagnostic(
+                              toolName,
+                              toolName === "runner.echo"
+                                ? { message: "runner echo ok" }
+                                : toolName === "artifact.metadata.test"
+                                  ? { label: "admin conformance" }
+                                  : {},
+                            )
                           }
                         >
-                          {runningTestTool === "runner.echo" ? (
+                          {busyTool === toolName ? (
                             <Loader2Icon className="animate-spin" />
                           ) : (
                             <PlayIcon />
                           )}
-                          Echo
+                          {toolName}
                         </Button>
-                      </div>
-                      <p className="text-muted-foreground text-xs">
-                        Fly runner path with signed callbacks and no network egress.
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
-                        <input
-                          className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring min-w-0 rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-                          value={artifactTestLabel}
-                          onChange={(event) => setArtifactTestLabel(event.target.value)}
-                          placeholder="admin conformance"
-                          maxLength={80}
-                        />
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          disabled={
-                            runningTestTool !== null ||
-                            !canManageAgents ||
-                            artifactMetadataTestTool?.permissionStatus === "disabled"
-                          }
-                          onClick={() =>
-                            runTestTool("artifact.metadata.test", {
-                              label: artifactTestLabel.trim() || "admin conformance",
-                            })
-                          }
-                        >
-                          {runningTestTool === "artifact.metadata.test" ? (
-                            <Loader2Icon className="animate-spin" />
-                          ) : (
-                            <FileTextIcon />
-                          )}
-                          Artifact
-                        </Button>
-                      </div>
-                      <p className="text-muted-foreground text-xs">
-                        Metadata-only artifact reference for history readback.
-                      </p>
-                    </div>
+                      ),
+                    )}
                   </div>
-                </DetailsBlock>
-
-                <DetailsBlock title="Recent tool calls">
-                  {summary?.latestToolCalls?.length ? (
-                    <ol className="space-y-2">
-                      {summary.latestToolCalls.slice(0, 6).map((toolCall) => (
-                        <li
-                          key={toolCall.id}
-                          className="border-border rounded-md border p-3 text-sm"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <span className="min-w-0">
-                              <span className="block truncate font-medium">{toolCall.toolId}</span>
-                              <span className="text-muted-foreground block text-xs">
-                                {toolCall.outputSummary ??
-                                  toolCall.inputSummary ??
-                                  "Tool call recorded"}
-                              </span>
-                              <span className="text-muted-foreground/80 block truncate text-xs">
-                                {formatTime(toolCall.finishedAt ?? toolCall.startedAt)}
-                              </span>
-                            </span>
-                            <StatusPill
-                              status={toolCall.status ?? "unknown"}
-                              tone={toolCall.status}
-                            />
-                          </div>
-                          <CopyId label="Tool call id" value={toolCall.id} />
-                        </li>
-                      ))}
-                    </ol>
-                  ) : (
-                    <EmptyPanelText>
-                      Run the URL inspector or diagnostic to populate tool calls.
-                    </EmptyPanelText>
-                  )}
-                </DetailsBlock>
-
-                {latestAdminArtifact ? (
-                  <RuntimeRecord
-                    icon={FileTextIcon}
-                    label="Latest tool artifact"
-                    title={latestAdminArtifact.title ?? latestAdminArtifact.id}
-                    detail={latestAdminArtifact.uri}
-                  />
-                ) : null}
-              </MonitorSection>
-
-              <MonitorSection icon={WrenchIcon} title="Diagnostic Run">
-                <div className="flex items-center justify-between gap-3">
-                  <StatusPill status={`demo run: ${run?.status ?? "idle"}`} tone={run?.status} />
-                  <Button size="sm" onClick={startDemoRun} disabled={isStarting || isDemoActive}>
-                    {isStarting ? <Loader2Icon className="animate-spin" /> : <PlayIcon />}
-                    Run diagnostic
-                  </Button>
-                </div>
-                <DetailsBlock title="Diagnostic details">
-                  <div className="grid grid-cols-2 gap-2">
-                    <StatusRow label="Mode" value={run?.execution?.mode ?? "dry_run"} compact />
-                    <StatusRow label="Stage" value={run?.stage ?? "observe"} compact />
-                    <StatusRow
-                      label="Intent"
-                      value={demoSnapshot?.intent?.type ?? "not created"}
-                      compact
+                  <form
+                    className="mt-4 flex gap-2"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      if (urlTarget.trim())
+                        void runDiagnostic("url.inspect", { url: urlTarget.trim() });
+                    }}
+                  >
+                    <input
+                      className={inputClass}
+                      value={urlTarget}
+                      onChange={(event) => setUrlTarget(event.target.value)}
+                      placeholder="https://example.com"
+                      aria-label="URL to inspect"
                     />
-                    <StatusRow label="Updated" value={formatTime(run?.updatedAt)} compact />
+                    <Button
+                      type="submit"
+                      variant="outline"
+                      disabled={!urlTarget.trim() || Boolean(busyTool)}
+                    >
+                      Inspect
+                    </Button>
+                  </form>
+                </section>
+                <section className={`${sectionClass} p-4`}>
+                  <h2 className="flex items-center gap-2 text-sm font-semibold">
+                    <FileClockIcon className="size-4" />
+                    Recent runtime
+                  </h2>
+                  <div className="mt-3 space-y-3">
+                    {(summary?.recentTraces ?? []).slice(0, 5).map((trace) => (
+                      <div key={trace.traceId} className="border-border rounded-md border p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="truncate text-sm font-medium">{trace.rootName}</p>
+                          <StatusPill status={trace.status} tone={trace.status} />
+                        </div>
+                        <p className="text-muted-foreground mt-1 text-xs">
+                          {trace.summary ?? `${trace.durationMs ?? 0}ms`}
+                        </p>
+                      </div>
+                    ))}
+                    {!summary?.recentTraces?.length ? (
+                      <EmptyPanelText>No runtime traces.</EmptyPanelText>
+                    ) : null}
                   </div>
-                  <RuntimeRecord
-                    icon={WrenchIcon}
-                    label="Tool call"
-                    title={latestToolCall?.toolId ?? "none yet"}
-                    detail={latestToolCall?.outputSummary ?? latestToolCall?.inputSummary}
-                    status={latestToolCall?.status}
-                  />
-                  <RuntimeRecord
-                    icon={FileTextIcon}
-                    label="Artifact"
-                    title={latestArtifact?.title ?? "none yet"}
-                    detail={latestArtifact?.uri}
-                  />
-                  <RuntimeRecord
-                    icon={ShieldCheckIcon}
-                    label="Decision"
-                    title={latestDecision?.title ?? "none yet"}
-                    detail={latestDecision?.summary}
-                  />
-                  {demoSnapshot?.childRuns?.length ? (
-                    <div className="border-border rounded-md border p-3">
-                      <p className="text-muted-foreground text-xs">Child runs</p>
-                      <ol className="mt-2 space-y-2">
-                        {demoSnapshot.childRuns.slice(0, 4).map((childRun) => (
-                          <li key={childRun.id} className="space-y-1">
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="truncate text-sm font-medium">
-                                {childRun.id ?? "child run"}
-                              </span>
-                              <StatusPill
-                                status={childRun.status ?? "unknown"}
-                                tone={childRun.status}
-                              />
-                            </div>
-                            <StatusRow
-                              label="Relation"
-                              value={[
-                                childRun.relation?.kind ?? "child",
-                                childRun.relation?.depth !== undefined
-                                  ? `depth ${childRun.relation.depth}`
-                                  : null,
-                              ]
-                                .filter(Boolean)
-                                .join(" / ")}
-                              compact
-                            />
-                          </li>
-                        ))}
-                      </ol>
-                    </div>
-                  ) : null}
-                </DetailsBlock>
-              </MonitorSection>
-            </DetailsBlock>
-
-            <DetailsBlock title="Advanced" defaultOpen={false}>
-              <MonitorSection icon={AlertCircleIcon} title="Advanced Details">
-                <DetailsBlock title="Raw scope ids">
-                  <CopyId label="Trace id" value={latestTrace?.traceId} />
-                  <CopyId label="Bottleneck span id" value={latestTrace?.bottleneckSpanId} />
+                </section>
+              </div>
+              <section className={`${sectionClass} mt-4 p-4`}>
+                <h2 className="text-sm font-semibold">Raw diagnostic context</h2>
+                <div className="mt-3 grid gap-3 md:grid-cols-3">
                   <CopyId label="User id" value={summary?.identity.userId} />
-                  <CopyId label="Account id" value={summary?.account?.id} />
                   <CopyId label="Workspace id" value={summary?.identity.workspaceId} />
-                  <CopyId label="Active agent id" value={summary?.identity.agentId} />
-                  <CopyId label="Session id" value={chatRuntime?.latestSession?.sessionId} />
-                  <CopyId label="Thread id" value={chatRuntime?.latestThread?.threadId} />
-                  <CopyId label="Chat intent id" value={chatRuntime?.latestIntent?.id} />
-                  <CopyId label="Policy id" value={chatRuntime?.latestPolicyDecision?.id} />
-                  <CopyId label="Chat run id" value={chatRuntime?.latestRun?.id} />
-                  <CopyId label="External run id" value={chatRuntime?.latestRun?.upstreamRunId} />
-                  <CopyId label="Demo run id" value={run?.id} />
-                </DetailsBlock>
-
-                <DetailsBlock title="Runtime trace JSON">
-                  {latestTrace ? (
-                    <pre className="bg-muted/50 max-h-72 overflow-auto rounded-md p-3 text-xs whitespace-pre-wrap">
-                      {JSON.stringify({ trace: latestTrace, spans: traceWaterfall }, null, 2)}
-                    </pre>
-                  ) : (
-                    <EmptyPanelText>No runtime trace loaded yet.</EmptyPanelText>
-                  )}
-                </DetailsBlock>
-
-                <DetailsBlock title="Agent runtime config">
-                  <StatusRow label="Provider" value={summary?.activeAgent?.runtime.provider} />
-                  <CopyId label="Model" value={summary?.activeAgent?.runtime.model} />
-                  <StatusRow
-                    label="Temperature"
-                    value={String(summary?.activeAgent?.runtime.temperature ?? "")}
-                  />
-                  <StatusRow
-                    label="Max tokens"
-                    value={String(summary?.activeAgent?.runtime.maxTokens ?? "")}
-                  />
-                  <StatusRow label="Source" value={summary?.activeAgent?.runtime.source} />
-                </DetailsBlock>
-
-                <DetailsBlock title="Chat runtime timings">
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    <StatusRow
-                      label="Pre-stream"
-                      value={formatDuration(chatRuntime?.timings?.preStreamMs)}
-                      compact
-                    />
-                    <StatusRow
-                      label="First token"
-                      value={formatDuration(chatRuntime?.timings?.firstTokenMs)}
-                      compact
-                    />
-                    <StatusRow
-                      label="Provider"
-                      value={formatDuration(chatRuntime?.timings?.providerMs)}
-                      compact
-                    />
-                    <StatusRow
-                      label="Total"
-                      value={formatDuration(chatRuntime?.timings?.totalMs)}
-                      compact
-                    />
-                  </div>
-                  {chatRuntime?.timings?.stageMarks &&
-                  Object.keys(chatRuntime.timings.stageMarks).length > 0 ? (
-                    <div className="space-y-2">
-                      {Object.entries(chatRuntime.timings.stageMarks).map(([stage, value]) => (
-                        <StatusRow
-                          key={stage}
-                          label={stage}
-                          value={formatDuration(value)}
-                          compact
-                        />
-                      ))}
-                    </div>
-                  ) : (
-                    <EmptyPanelText>
-                      Send a message to populate Cloudflare timing marks.
-                    </EmptyPanelText>
-                  )}
-                </DetailsBlock>
-
-                <DetailsBlock title="Tool internals">
-                  <CopyId label="Latest tool call id" value={latestAdminToolCall?.id} />
-                  <CopyId label="Latest tool run id" value={latestAdminToolCall?.runId} />
-                  <CopyId label="Latest tool artifact id" value={latestAdminArtifact?.id} />
-                  {latestAdminToolCall ? (
-                    <pre className="bg-muted/50 max-h-72 overflow-auto rounded-md p-3 text-xs whitespace-pre-wrap">
-                      {JSON.stringify(latestAdminToolCall, null, 2)}
-                    </pre>
-                  ) : (
-                    <EmptyPanelText>No tool call internals recorded yet.</EmptyPanelText>
-                  )}
-                  {latestAdminArtifact?.data ? (
-                    <pre className="bg-muted/50 max-h-72 overflow-auto rounded-md p-3 text-xs whitespace-pre-wrap">
-                      {JSON.stringify(latestAdminArtifact.data, null, 2)}
-                    </pre>
-                  ) : null}
-                </DetailsBlock>
-
-                <DetailsBlock title="Agent behavior config">
-                  <StatusRow label="Profile" value={summary?.activeAgent?.behavior.profile} />
-                  <StatusRow label="Source" value={summary?.activeAgent?.behavior.source} />
-                  <StatusRow label="Format" value={summary?.activeAgent?.behavior.format} />
-                  <StatusRow label="Template" value={summary?.activeAgent?.behavior.templateId} />
-                  <StatusRow label="Pack" value={summary?.activeAgent?.behavior.pack?.id} />
-                  <StatusRow
-                    label="Pack level"
-                    value={summary?.activeAgent?.behavior.pack?.capabilityLevel}
-                  />
-                  <StatusRow
-                    label="Pack folder"
-                    value={summary?.activeAgent?.behavior.pack?.folderPath}
-                  />
-                  <StatusRow
-                    label="Declared tools"
-                    value={
-                      summary?.activeAgent?.behavior.pack?.tools.length
-                        ? summary.activeAgent.behavior.pack.tools.map((tool) => tool.id).join(", ")
-                        : undefined
-                    }
-                  />
-                  <StatusRow
-                    label="Declared workflows"
-                    value={
-                      summary?.activeAgent?.behavior.pack?.workflows.length
-                        ? summary.activeAgent.behavior.pack.workflows
-                            .map((workflow) => `${workflow.type} (${workflow.engine})`)
-                            .join(", ")
-                        : undefined
-                    }
-                  />
-                  <StatusRow
-                    label="Risk posture"
-                    value={
-                      summary?.activeAgent?.behavior.pack
-                        ? [
-                            summary.activeAgent.behavior.pack.risk.financialData
-                              ? "financial-data"
-                              : "no-financial-data",
-                            summary.activeAgent.behavior.pack.risk.externalMutation
-                              ? "mutation"
-                              : "read-only",
-                            summary.activeAgent.behavior.pack.risk.requiresSecrets
-                              ? "secrets"
-                              : "no-secrets",
-                            `gate: ${
-                              summary.activeAgent.behavior.pack.risk.productionGate ?? "none"
-                            }`,
-                          ].join(" / ")
-                        : undefined
-                    }
-                  />
-                  <StatusRow
-                    label="Authoring"
-                    value={
-                      summary?.activeAgent?.behavior.authoring
-                        ? [
-                            summary.activeAgent.behavior.authoring.kind,
-                            summary.activeAgent.behavior.authoring.source,
-                          ]
-                            .filter(Boolean)
-                            .join(" / ")
-                        : undefined
-                    }
-                  />
-                  <StatusRow label="Version" value={summary?.activeAgent?.behavior.version} />
-                  <CopyId
-                    label="Instruction id"
-                    value={summary?.activeAgent?.behavior.instructionId}
-                  />
-                  {summary?.activeAgent?.behavior.preview ? (
-                    <pre className="bg-muted/50 max-h-72 overflow-auto rounded-md p-3 text-xs whitespace-pre-wrap">
-                      {summary.activeAgent.behavior.preview}
-                    </pre>
-                  ) : (
-                    <EmptyPanelText>
-                      This agent is using the legacy server preset fallback.
-                    </EmptyPanelText>
-                  )}
-                </DetailsBlock>
-
-                <DetailsBlock title="Membership and external identity">
-                  <StatusRow label="Auth mode" value={summary?.identity.authMode} />
-                  <StatusRow label="Account source" value={summary?.account?.source} />
-                  <StatusRow label="Membership source" value={summary?.membership?.source} />
-                  <StatusRow label="Roles" value={listValue(summary?.membership?.roles)} />
-                  <StatusRow
-                    label="Permissions"
-                    value={listValue(summary?.membership?.permissions)}
-                  />
-                  {summary?.externalMembership ? (
-                    <div className="border-border rounded-md border p-3">
-                      <p className="text-muted-foreground text-xs">External WorkOS signal</p>
-                      <StatusRow
-                        label="Role / status"
-                        value={[
-                          summary.externalMembership.role ?? "not available",
-                          summary.externalMembership.status ?? "not available",
-                        ].join(" / ")}
-                        compact
-                      />
-                      <StatusRow
-                        label="Roles"
-                        value={listValue(summary.externalMembership.roles)}
-                        compact
-                      />
-                      <StatusRow
-                        label="Permissions"
-                        value={listValue(summary.externalMembership.permissions)}
-                        compact
-                      />
-                    </div>
-                  ) : null}
-                </DetailsBlock>
-
-                <DetailsBlock title="Cloudflare events">
-                  {summary?.events.length ? (
-                    <ol className="space-y-3">
-                      {summary.events.slice(0, 12).map((event) => (
-                        <li key={event.id} className="grid grid-cols-[0.75rem_1fr] gap-3 text-sm">
-                          <span className="bg-primary mt-1.5 size-2 rounded-full" />
-                          <span className="min-w-0">
-                            <span className="block truncate font-medium">
-                              {event.type ?? "control.event"}
-                            </span>
-                            <span className="text-muted-foreground block">
-                              {event.summary ?? "Control-plane event recorded."}
-                            </span>
-                            <span className="text-muted-foreground/80 block truncate text-xs">
-                              {formatTime(event.createdAt)}
-                              {event.targetType ? ` / ${event.targetType}` : ""}
-                            </span>
-                            <CopyId label="Event id" value={event.id} />
-                          </span>
-                        </li>
-                      ))}
-                    </ol>
-                  ) : (
-                    <EmptyPanelText>
-                      Open chat or run the diagnostic to populate events.
-                    </EmptyPanelText>
-                  )}
-                </DetailsBlock>
-
-                <DetailsBlock title="Error internals" defaultOpen={Boolean(importantError)}>
-                  {importantError ? (
-                    <div className="border-destructive/30 bg-destructive/10 rounded-md border p-3 text-sm">
-                      <p className="text-destructive font-medium">{importantError.message}</p>
-                      <p className="text-muted-foreground mt-1 text-xs">
-                        {importantError.source}
-                        {importantError.status ? ` / ${importantError.status}` : ""}
-                        {importantError.errorCode ? ` / ${importantError.errorCode}` : ""}
-                      </p>
-                      <CopyId label="Error target id" value={importantError.targetId} />
-                    </div>
-                  ) : (
-                    <EmptyPanelText>No Cloudflare-owned error found for this scope.</EmptyPanelText>
-                  )}
-                </DetailsBlock>
-              </MonitorSection>
-            </DetailsBlock>
-          </div>
+                  <CopyId label="Agent id" value={summary?.identity.agentId} />
+                </div>
+                <details className="mt-4">
+                  <summary className="text-muted-foreground hover:text-foreground cursor-pointer text-xs">
+                    Summary JSON
+                  </summary>
+                  <pre className="bg-muted mt-2 max-h-80 overflow-auto rounded-md p-3 text-xs whitespace-pre-wrap">
+                    {JSON.stringify(summary ?? {}, null, 2)}
+                  </pre>
+                </details>
+              </section>
+            </TabsContent>
+          </Tabs>
         </DialogContent>
       </Dialog>
-      <Dialog
-        open={Boolean(approvalDialog)}
-        onOpenChange={(nextOpen) => !nextOpen && setApprovalDialog(null)}
-      >
-        <DialogContent className="max-w-lg" aria-describedby="approval-dialog-description">
-          <DialogHeader>
-            <DialogTitle>
-              {approvalDialog?.action === "approve" ? "Approve URL inspection" : "Deny approval"}
-            </DialogTitle>
-            <DialogDescription id="approval-dialog-description">
-              Review the original request and current policy state before deciding.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3 text-sm">
-            <div className="border-border rounded-md border p-3">
-              <p className="text-muted-foreground text-xs">Original URL</p>
-              <p className="mt-1 break-all font-medium">
-                {approvalDialog?.approval.input?.url ?? "URL unavailable"}
-              </p>
-            </div>
-            <div className="border-border rounded-md border p-3">
-              <p className="text-muted-foreground text-xs">Current policy</p>
-              <p
-                className={
-                  selectedApprovalPolicyBlocked
-                    ? "text-destructive mt-1"
-                    : "text-muted-foreground mt-1"
-                }
-              >
-                {selectedApprovalPolicy
-                  ? `${selectedApprovalPolicy.code ?? "unknown"} - ${
-                      selectedApprovalPolicy.reason ?? "No policy reason returned."
-                    }`
-                  : "Policy will be checked by the control plane before execution."}
-              </p>
-            </div>
-            {approvalDialog?.action === "deny" ? (
-              <label className="block space-y-1">
-                <span className="text-muted-foreground text-xs">Deny reason</span>
-                <textarea
-                  className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring min-h-20 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-                  value={denyReason}
-                  onChange={(event) => setDenyReason(event.target.value)}
-                  placeholder="Denied from Admin Tools."
+
+      <Dialog open={customAgentOpen} onOpenChange={setCustomAgentOpen}>
+        <DialogContent>
+          <form onSubmit={createCustomAgent}>
+            <DialogHeader>
+              <DialogTitle>Create custom agent</DialogTitle>
+              <DialogDescription>
+                Create a separate snapshot from an installed behavior template.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="mt-5 space-y-4">
+              <label className="block text-sm font-medium">
+                Name
+                <input
+                  className={`${inputClass} mt-1`}
+                  value={customName}
+                  onChange={(event) => setCustomName(event.target.value)}
+                  maxLength={80}
+                  required
                 />
               </label>
-            ) : null}
-            {approvalDialog?.action === "approve" && selectedApprovalPolicyBlocked ? (
-              <p className="text-destructive text-xs">
-                This request cannot be approved until the policy block is cleared. Deny remains
-                available from the queue.
-              </p>
-            ) : null}
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setApprovalDialog(null)}
-              disabled={Boolean(updatingApprovalId)}
-            >
+              <label className="block text-sm font-medium">
+                Description
+                <input
+                  className={`${inputClass} mt-1`}
+                  value={customDescription}
+                  onChange={(event) => setCustomDescription(event.target.value)}
+                  maxLength={240}
+                />
+              </label>
+              <label className="block text-sm font-medium">
+                Behavior
+                <select
+                  className={`${inputClass} mt-1`}
+                  value={customTemplateId}
+                  onChange={(event) => setCustomTemplateId(event.target.value)}
+                >
+                  {templates.map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <DialogFooter className="mt-6">
+              <Button type="button" variant="outline" onClick={() => setCustomAgentOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={!customName.trim() || busyTool === "custom-agent"}>
+                {busyTool === "custom-agent" ? (
+                  <Loader2Icon className="animate-spin" />
+                ) : (
+                  <BotIcon />
+                )}
+                Create agent
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(approvalDialog)}
+        onOpenChange={(next) => {
+          if (!next) {
+            setApprovalDialog(null);
+            setDenyReason("");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {approvalDialog?.action === "approve" ? "Approve tool request" : "Deny tool request"}
+            </DialogTitle>
+            <DialogDescription>
+              {approvalDialog?.approval.toolId ?? "Tool request"} ·{" "}
+              {approvalDialog?.approval.reason ??
+                approvalDialog?.approval.input?.url ??
+                "No reason supplied."}
+            </DialogDescription>
+          </DialogHeader>
+          {approvalDialog?.action === "deny" ? (
+            <label className="text-sm font-medium">
+              Reason
+              <input
+                className={`${inputClass} mt-1`}
+                value={denyReason}
+                onChange={(event) => setDenyReason(event.target.value)}
+                placeholder="Why is this request denied?"
+              />
+            </label>
+          ) : null}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setApprovalDialog(null)}>
               Cancel
             </Button>
             <Button
-              type="button"
-              onClick={confirmApprovalDialog}
-              disabled={
-                !approvalDialog?.approval.id ||
-                Boolean(updatingApprovalId) ||
-                (approvalDialog?.action === "approve" && selectedApprovalPolicyBlocked)
-              }
+              variant={approvalDialog?.action === "deny" ? "destructive" : "default"}
+              disabled={Boolean(busyApprovalId)}
+              onClick={() => void decideApproval()}
             >
-              {updatingApprovalId ? <Loader2Icon className="animate-spin" /> : null}
-              {approvalDialog?.action === "approve" ? "Approve and run" : "Deny request"}
+              {busyApprovalId ? (
+                <Loader2Icon className="animate-spin" />
+              ) : approvalDialog?.action === "approve" ? (
+                <CheckIcon />
+              ) : (
+                <ShieldCheckIcon />
+              )}
+              {approvalDialog?.action === "approve" ? "Approve" : "Deny"}
             </Button>
-          </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </>
-  );
-}
-
-function ActiveAgentPackDetails({
-  pack,
-  capabilities,
-  workflows,
-}: {
-  pack: NonNullable<AgentBehaviorTemplate["pack"]> | null;
-  capabilities: PackToolCapability[];
-  workflows: ResolvedPackWorkflowBinding[];
-}) {
-  if (!pack) {
-    return <EmptyPanelText>The active agent does not declare a pack.</EmptyPanelText>;
-  }
-
-  return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <StatusRow label="Pack" value={pack.id} compact tone="ok" />
-        <StatusRow label="Level" value={pack.capabilityLevel} compact />
-        <StatusRow
-          label="Risk"
-          value={[
-            pack.risk.financialData ? "financial-data" : "no-financial-data",
-            pack.risk.externalMutation ? "mutation-capable" : "read-only",
-            pack.risk.requiresSecrets ? "secrets" : "no-secrets",
-          ].join(" / ")}
-          compact
-        />
-        <StatusRow label="Gate" value={pack.risk.productionGate ?? "none"} compact />
-      </div>
-
-      <div className="space-y-2">
-        <p className="text-muted-foreground text-xs font-medium">Declared tools</p>
-        {capabilities.length ? (
-          <ol className="space-y-2">
-            {capabilities.map((capability) => (
-              <li key={capability.id} className="border-border rounded-md border p-3 text-sm">
-                <div className="flex items-start justify-between gap-3">
-                  <span className="min-w-0">
-                    <span className="block truncate font-medium">{capability.id}</span>
-                    {capability.purpose ? (
-                      <span className="text-muted-foreground mt-1 block text-xs">
-                        {capability.purpose}
-                      </span>
-                    ) : null}
-                    <span className="text-muted-foreground mt-1 block text-xs">
-                      {(capability.executionModes.length
-                        ? capability.executionModes
-                        : ["declared"]
-                      ).join(", ")}{" "}
-                      / {capability.mutationRisk ?? "read_only"}
-                    </span>
-                  </span>
-                  <span className="flex shrink-0 flex-col items-end gap-1">
-                    <StatusPill
-                      status={capability.modelVisible ? "Model-visible" : "Model-hidden"}
-                      tone={capability.modelVisible ? "completed" : undefined}
-                    />
-                    <StatusPill
-                      status={capability.registered ? "Registered" : "Declared"}
-                      tone={capability.registered ? "completed" : undefined}
-                    />
-                  </span>
-                </div>
-              </li>
-            ))}
-          </ol>
-        ) : (
-          <EmptyPanelText>No declared pack tools.</EmptyPanelText>
-        )}
-      </div>
-
-      <div className="space-y-2">
-        <p className="text-muted-foreground text-xs font-medium">Declared workflows</p>
-        {workflows.length ? (
-          <ol className="space-y-2">
-            {workflows.map((workflow) => (
-              <li
-                key={workflow.workflow.type}
-                className="border-border rounded-md border p-3 text-sm"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <span className="min-w-0">
-                    <span className="block truncate font-medium">{workflow.workflow.type}</span>
-                    <span className="text-muted-foreground mt-1 block text-xs">
-                      {workflow.workflow.description}
-                    </span>
-                    <span className="text-muted-foreground mt-1 block text-xs">
-                      {workflow.workflow.engine ?? "workflow"} /{" "}
-                      {workflow.workflow.status ?? "declared"}
-                    </span>
-                  </span>
-                  <StatusPill
-                    status={workflow.runnable ? "Slash action" : "Declared only"}
-                    tone={workflow.runnable ? "completed" : undefined}
-                  />
-                </div>
-              </li>
-            ))}
-          </ol>
-        ) : (
-          <EmptyPanelText>No declared pack workflows.</EmptyPanelText>
-        )}
-      </div>
-    </div>
   );
 }

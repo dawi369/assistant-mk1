@@ -1,5 +1,5 @@
 import { parseDataJson } from "./http";
-import { createId, toJson, type AgentRow, type Env } from "./types";
+import { createId, toJson, type AgentRow, type D1Result, type Env } from "./types";
 import {
   createAgentBehaviorSnapshot,
   type AgentBehaviorAuthoringMetadata,
@@ -211,10 +211,13 @@ export const insertAgent = async (
     profile: AgentProfile;
     model?: AllowedOpenRouterModel;
     behaviorTemplateId?: AgentBehaviorTemplateId;
+    agentId?: string;
+    provisionedBy?: "manual" | "agent_pack";
+    idempotent?: boolean;
   },
 ) => {
   const timestamp = new Date().toISOString();
-  const agentId = createId("agent");
+  const agentId = input.agentId ?? createId("agent");
   const runtime = input.model
     ? {
         provider: "openrouter",
@@ -224,8 +227,8 @@ export const insertAgent = async (
       }
     : undefined;
   const behavior = createAgentBehaviorSnapshot(input.profile, input.behaviorTemplateId);
-  await env.DB.prepare(
-    `INSERT INTO agents (
+  const result = (await env.DB.prepare(
+    `${input.idempotent ? "INSERT OR IGNORE" : "INSERT"} INTO agents (
        id, workspace_id, name, description, status, is_default, created_by_user_id,
        data_json, created_at, updated_at
      )
@@ -239,13 +242,13 @@ export const insertAgent = async (
       input.userId,
       toJson({
         profile: input.profile,
-        provisionedBy: "dev-monitor",
+        provisionedBy: input.provisionedBy ?? "manual",
         behavior,
         ...(runtime ? { runtime } : {}),
       }),
       timestamp,
       timestamp,
     )
-    .run();
-  return agentId;
+    .run()) as D1Result;
+  return { agentId, created: (result.meta?.changes ?? 0) > 0 };
 };

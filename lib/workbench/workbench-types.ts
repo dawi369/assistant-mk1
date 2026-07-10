@@ -152,7 +152,7 @@ export type ToolSummary = {
   runner?: {
     transport?: "cloudflare_inline" | "fly";
     adapterVersion?: string;
-    source?: "admin" | "approval" | "model" | "demo-compat";
+    source?: "admin" | "approval" | "model" | "demo-compat" | "agent-pack";
     sandbox?: {
       lifecycle?: {
         template?: string;
@@ -559,7 +559,11 @@ export type AgentBehaviorAuthoringMetadata = {
 };
 
 export type AgentPackTemplateMetadata = {
+  apiVersion?: 1;
   id: string;
+  name?: string;
+  description?: string;
+  version?: string;
   capabilityLevel: "template" | "single_agent_app" | string;
   folderPath: string;
   codePath: string;
@@ -581,6 +585,16 @@ export type AgentPackTemplateMetadata = {
     primarySurface?: "chat" | "workbench" | "admin" | string;
     inspectorSections?: string[];
     configurationMode?: "code" | "ui_future" | string;
+    welcome?: {
+      title: string;
+      description: string;
+      starters: Array<{
+        id: string;
+        title: string;
+        description: string;
+        action: { kind: "message"; prompt: string } | { kind: "workflow"; workflowType: string };
+      }>;
+    };
   };
   risk: {
     financialData?: boolean;

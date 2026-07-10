@@ -14,7 +14,7 @@ export type ToolRunnerTransport =
   | typeof cloudflareInlineRunnerTransport
   | typeof flyRunnerTransport;
 
-export type ToolRunnerSource = "admin" | "approval" | "model" | "demo-compat";
+export type ToolRunnerSource = "admin" | "approval" | "model" | "demo-compat" | "agent-pack";
 
 export type ToolRunnerMetadata = {
   transport: ToolRunnerTransport;

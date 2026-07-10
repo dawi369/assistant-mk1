@@ -36,12 +36,15 @@ scoped.
 - Read-only tools now include `url.inspect` and `repo.snapshot`, with
   Cloudflare-owned tool policy, runner metadata, artifacts, audit events,
   runtime traces, and model exposure controls.
-- Code-first local agent packs can be checked into `agent-packs/*`, surfaced as
-  behavior templates, and snapshotted into workspace-scoped agent records.
-- `/agents` is the compact agent picker. Active Polymancer/Swordfish pack
-  workflows populate the `/` composer menu as typed dry-run slash actions and
-  use shared lifecycle helpers for workflow intents, runs, tool calls, artifact
-  metadata, audit, and events.
+- Agent Pack API v1 validates semantic versions, derived template ids, prompt
+  parity, three curated welcome actions, risk, tools, workflows, and smoke
+  metadata before compiling packs into immutable workspace agent snapshots.
+- Repository Analyst, Polymancer Research, and Swordfish Runtime each ship a
+  typed read-only workflow and structured history artifact. The shared workflow
+  catalog drives forms, routes, retry, artifact kinds, and smoke commands.
+- `/agents` remains the compact member-facing picker. Allowlisted Admin exposes
+  installed packs and idempotently reuses or creates the current pack version
+  before starting a fresh chat.
 - `/history` is a normal workbench surface for scoped execution history,
   searchable selected-run summaries, metadata-only artifacts, supported run
   retry/cancel actions, and approval resume/deny controls. Admin still carries
@@ -59,9 +62,9 @@ scoped.
 - Generic signed workflow callbacks are implemented at
   `POST /workbench/run-callbacks` for delegated work to report compact
   lifecycle/artifact metadata back into Cloudflare-owned D1 state.
-- Admin can read recent execution history, artifact metadata, selected run
-  snapshots, compact/drawer summary projections, and recovered-vs-current error
-  state through Cloudflare-owned APIs.
+- Admin is organized into Overview, Agents & Packs, Tools & Approvals, and
+  Diagnostics. Normal workspace, agent, and history operations link to their
+  dedicated product surfaces instead of being duplicated in Admin.
 - The current dev schema is rebuildable. Keep the active schema in
   `cloudflare/control-plane/schema.sql` until the project explicitly introduces
   migrations and remote data retention. The migration/retention gate is now
@@ -79,9 +82,8 @@ scoped.
    rendering and approval explanations before broader model tool use.
 3. Expand read-only adapters beyond `url.inspect` and `repo.snapshot` only
    where they prove the common runner, policy, artifact, and audit model.
-4. Expand code-first agent packs from behavior snapshots into more workflow
-   bindings, tool-specific configuration, context assembly, smoke scenarios,
-   and package verification.
+4. Validate the internal Agent Pack v1 contract with downstream repositories
+   before publishing an external SDK or adding remote installation.
 5. Keep promoting execution history and artifact metadata from read-only
    metadata into richer product surfaces: previews, filters, export/delete
    behavior, and artifact blob storage when retention gates exist.

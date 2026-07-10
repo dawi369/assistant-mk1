@@ -77,9 +77,9 @@ agent to update adjacent docs or code without needing the old graph generator.
 - `cloudflare/control-plane/src/pack-workflow-lifecycle.ts`: shared lifecycle
   helper for pack workflow intents, runs, tool calls, artifact metadata, audit,
   and events
-- `cloudflare/control-plane/src/polymancer-workflows.ts`: Baby Polymancer
+- `cloudflare/control-plane/src/polymancer-workflows.ts`: Polymancer Research
   read-only pack workflow route
-- `cloudflare/control-plane/src/swordfish-workflows.ts`: Baby Swordfish
+- `cloudflare/control-plane/src/swordfish-workflows.ts`: Swordfish Runtime
   read-only pack workflow route
 - `cloudflare/control-plane/src/workbench-history.ts`: scoped execution and
   artifact history reads

@@ -1,40 +1,75 @@
 # Assistant-mk1
 
-Assistant-mk1 is a production-oriented agent workbench for chat, long-running
-workflows, tools, approvals, artifacts, and tenant-scoped operations. It keeps
-the chat experience immediate while making execution state inspectable and
-policy-controlled.
+A code-first agent workbench for durable runs, approvals, tool policy, artifacts,
+audit, and tenant-safe operations.
 
-[Hosted workbench](https://assistant-mk1.vercel.app) | [Documentation](docs/README.md) | [Release readiness](docs/release-readiness.md)
+[![Version](https://img.shields.io/badge/version-1.0.0-111827)](#release-status)
+[![Verify](https://github.com/dawi369/assistant-mk1/actions/workflows/verify.yml/badge.svg)](https://github.com/dawi369/assistant-mk1/actions/workflows/verify.yml)
+[![License](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-2563eb)](LICENSE)
 
-## What It Provides
+[Hosted workbench](https://assistant-mk1.vercel.app) ·
+[Documentation](docs/README.md) ·
+[Release readiness](docs/release-readiness.md)
 
-- Cloudflare Agents chat with fast local-new first paint and durable thread state.
-- WorkOS authentication with organization, workspace, membership, and role boundaries.
-- Code-first agent packs with typed prompts, tools, workflows, and smoke scenarios.
-- Read-only tools behind explicit policy, approvals, runner metadata, and audit.
-- Searchable execution history with tool calls, artifacts, traces, retry, cancel,
-  and approval resume controls where supported.
-- Signed external signals and callback-backed Fly/LangGraph execution for work
-  that does not belong in the normal chat path.
-- Sentry and first-party runtime traces across the Vercel, Cloudflare, and Fly surfaces.
+## Release Status
 
-The read-only 1.0 contract deliberately excludes external mutation, encrypted
-credential brokerage, artifact blob storage, and retained customer-data
-migrations. Those gates stay explicit rather than being implied by the UI.
+Assistant-mk1 is under active development and is not ready for public release.
+The repository is pinned at version `1.0.0` as its current product baseline; that
+version is not a release announcement or a promise of retained production data.
+
+The implemented surface is an authenticated, read-only workbench. External
+mutation, encrypted credential brokerage, artifact blob storage, and retained
+customer-data migrations remain explicit production gates.
+
+## Product Tour
+
+Assistant-mk1 keeps chat immediate while moving serious agent work into durable,
+inspectable control-plane state. Runs, tools, approvals, artifacts, traces, and
+tenant scope are visible outside the model conversation.
+
+![Repository Analyst chat with pack-specific starters](docs/assets/readme/workbench-overview.png)
+
+### Workbench
+
+- Cloudflare Agents chat with optimistic new-chat rendering and durable threads.
+- WorkOS-backed accounts, workspaces, memberships, roles, and agent selection.
+- Searchable run history with cancellation, retry, reconnect, and approval recovery.
+- Server-enforced tool visibility, execution modes, policy, and audit.
+
+![Workbench history with a selected retryable run](docs/assets/readme/history-and-recovery.png)
+
+### Agent Operations
+
+- Code-first agent packs with behavior, tools, workflows, risk, and smoke metadata.
+- Typed read-only workflows with bounded inputs and inspectable artifacts.
+- Signed external signals and callback-backed Fly/LangGraph execution.
+- Sentry and first-party runtime traces across Vercel, Cloudflare, and Fly.
+
+![Admin Agent Packs catalog](docs/assets/readme/workspace-and-policy.png)
+
+## Why Assistant-mk1
+
+Most agent starters optimize for the first chat response. Assistant-mk1 focuses
+on what comes after that: who the agent acts for, which tools it can see, how
+long-running work is controlled, where results live, and how an operator recovers
+when execution fails or pauses for approval.
+
+The base workbench stays domain-neutral. Product behavior belongs in agent packs,
+workspace configuration, policy, tools, and integrations rather than hard-coded
+application assumptions.
 
 ## Architecture
 
-| Surface          | Responsibility                                                                                                         |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Vercel / Next.js | WorkOS browser session, workbench UI, and signed same-origin API facades                                               |
-| Cloudflare       | Application authorization, D1 control state, Durable Object chat/session state, policy, audit, events, and normal chat |
-| Fly / LangGraph  | Graph-shaped workflows and signed heavy tool execution                                                                 |
+| Surface          | Responsibility                                                                               |
+| ---------------- | -------------------------------------------------------------------------------------------- |
+| Vercel / Next.js | WorkOS browser session, workbench UI, and signed same-origin facades                         |
+| Cloudflare       | Authorization, D1 control state, Durable Object chat, policy, audit, events, and normal chat |
+| Fly / LangGraph  | Graph-shaped workflows and signed heavy tool execution                                       |
 
-Trusted tenant scope is always derived server-side. The browser never chooses
+Trusted tenant scope is derived server-side. The browser never chooses trusted
 `userId`, `workspaceId`, `agentId`, or provider credentials.
 
-See [architecture](docs/architecture.md), [tenancy](docs/tenancy.md), and the
+See [Architecture](docs/architecture.md), [Tenancy](docs/tenancy.md), and the
 [current topology](docs/diagrams/current-implementation-topology.mmd).
 
 ## Quick Start
@@ -78,61 +113,37 @@ fallback from `.env.example`. Hosted deployments fail closed and require WorkOS.
 
 ## Agent Packs
 
-Agent packs live under `agent-packs/*` and declare behavior, tools, workflows,
-risk posture, UI metadata, and smoke scenarios in code. Validate a pack before
-running it:
+Agent packs are the code-first extension boundary. Each checked-in pack declares
+behavior, tools, workflows, UI hints, risk posture, context, and smoke scenarios
+without bypassing workspace policy or tenant authorization.
+
+The bundled v1 examples are **Repository Analyst**, **Polymancer Research**, and
+**Swordfish Runtime**. Each includes an immediate pack-specific welcome, a
+bounded read-only workflow, and a structured artifact in History. Allowlisted
+operators can reuse or instantiate the current pack version from Admin without
+mutating older agent snapshots.
 
 ```bash
 pnpm agent-packs:validate
-pnpm agent-packs:inspect
-pnpm agent-packs:smoke
+pnpm agent-packs:inspect --pack repo-analyst
+pnpm agent-packs:smoke --pack repo-analyst
 ```
 
-See [Agent Packs](docs/agent-packs.md) and
-[Agent Profile Authoring](docs/agent-profile-authoring.md).
+The current contract supports local checked-in packs. See [Agent Packs](docs/agent-packs.md)
+and [Agent Profile Authoring](docs/agent-profile-authoring.md).
 
 ## Verification
 
-Fast local gate:
-
 ```bash
-pnpm verify:fast
+pnpm verify:fast   # packs, eval posture, unit tests, types, lint, format
+pnpm verify        # fast gate plus production build
+pnpm test:e2e      # signed-out and trusted-local browser journeys
+pnpm release:check # complete repository and browser release gate
 ```
 
-Complete repository gate, including the production build:
-
-```bash
-pnpm verify
-```
-
-Browser release gate (first run also needs `pnpm exec playwright install chromium`):
-
-```bash
-pnpm test:e2e
-```
-
-`pnpm test:e2e` uses an isolated local D1 fixture under `output/playwright/`.
-It verifies the signed-out refresh contract and a trusted local session with a
-delayed Worker handoff, workspace membership, and History recovery controls.
-Run the complete code, build, and browser gate with:
-
-```bash
-pnpm release:check
-```
-
-Runtime changes should also run the affected smoke. The remote Cloudflare
-minimum is:
-
-```bash
-CLOUDFLARE_CONTROL_PLANE_URL=<worker-url> \
-CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
-CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET=<signing-secret> \
-pnpm smoke:cloudflare-deploy-readiness
-```
-
-The real-session eval manifest is verified with
-`pnpm eval:real-session-posture`. See [Evals](docs/evals.md) for the covered
-runtime contracts.
+The browser suite uses isolated D1 state under `output/playwright/`. Runtime
+changes should also run the affected Cloudflare or Fly smoke documented in
+[Contributing](CONTRIBUTING.md).
 
 ## Repository Map
 
@@ -148,20 +159,31 @@ runtime contracts.
 
 ## Deployment
 
-Deploy the Cloudflare control plane and Fly runtime before a Vercel release that
-depends on them. Use the checked-in runbooks:
+Deploy Cloudflare and Fly before a Vercel release that depends on them:
 
 - [Vercel](docs/deployment-vercel.md)
 - [Cloudflare and local infrastructure](docs/dev-infrastructure-readiness.md)
 - [Fly](docs/deployment-fly.md)
 
-The current remote D1 schema is intentionally reset-based and disposable.
-Forward-only migrations and retention remain a documented post-1.0 gate in
-[Migrations and Retention](docs/migrations-and-retention.md).
+Remote D1 is currently disposable validation state. Forward-only migrations and
+retention remain tracked in [Migrations and Retention](docs/migrations-and-retention.md).
 
-## Contributing And Security
+## Contributing and Security
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before changing runtime boundaries.
-Report vulnerabilities through the process in [SECURITY.md](SECURITY.md).
+Report vulnerabilities through [SECURITY.md](SECURITY.md), not a public issue.
 
 This repository uses pnpm. Do not update the lockfile with npm or yarn.
+
+## License
+
+Assistant-mk1 is source-available under the
+[PolyForm Noncommercial License 1.0.0](LICENSE). Noncommercial use is permitted
+under those terms. Commercial use requires a separate written agreement; see
+[Commercial Use](COMMERCIAL_USE.md).
+
+This license is not an OSI-approved open-source license.
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=dawi369/assistant-mk1&type=Date)](https://www.star-history.com/#dawi369/assistant-mk1&Date)

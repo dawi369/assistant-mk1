@@ -875,9 +875,20 @@ export class WorkbenchSessionAgent {
     return this.snapshot;
   }
 
+  private async activeIdentity(input: CoordinatorRequest) {
+    const latestSession = await getLatestChatSession(this.env, input.identity.scope);
+    const agentId =
+      this.snapshot?.activeAgent?.id ?? latestSession?.agent_id ?? input.identity.agentId;
+    return {
+      identity: { ...input.identity, agentId },
+      latestSession,
+    };
+  }
+
   private async getSession(input: CoordinatorRequest) {
     if (!this.snapshot || input.refresh === "threads") {
-      this.snapshot = await buildSnapshot(this.env, input.identity, {
+      const active = await this.activeIdentity(input);
+      this.snapshot = await buildSnapshot(this.env, active.identity, {
         revision: this.nextRevision(),
       });
       if (input.refresh === "threads") {
@@ -907,12 +918,13 @@ export class WorkbenchSessionAgent {
 
   private async createThread(input: CoordinatorRequest) {
     const startedAt = new Date().toISOString();
+    const active = await this.activeIdentity(input);
     const sessionId =
       this.snapshot?.context?.sessionId ??
-      (await getLatestChatSession(this.env, input.identity.scope))?.session_id ??
-      (await createChatSession(this.env, input.identity, { source: "cloudflare-agent-chat" }));
-    const created = await createThreadContext(this.env, input.identity, sessionId, input.title);
-    const activeIdentity = { ...input.identity, agentId: created.activeAgent.id };
+      active.latestSession?.session_id ??
+      (await createChatSession(this.env, active.identity, { source: "cloudflare-agent-chat" }));
+    const created = await createThreadContext(this.env, active.identity, sessionId, input.title);
+    const activeIdentity = { ...active.identity, agentId: created.activeAgent.id };
     const activeThread = toActiveThreadSummary(
       this.env,
       created.thread,
@@ -961,23 +973,24 @@ export class WorkbenchSessionAgent {
   }
 
   private async stageThread(input: CoordinatorRequest) {
-    const latestSession = await getLatestChatSession(this.env, input.identity.scope);
+    const active = await this.activeIdentity(input);
+    const latestSession = active.latestSession;
     const sessionId =
       this.snapshot?.context?.sessionId ??
       latestSession?.session_id ??
-      (await createChatSession(this.env, input.identity, { source: "cloudflare-agent-chat" }));
+      (await createChatSession(this.env, active.identity, { source: "cloudflare-agent-chat" }));
     const reusable =
       (this.snapshot?.context?.threadId
         ? await reusableDraftThread(
             this.env,
-            input.identity,
+            active.identity,
             sessionId,
             this.snapshot.context.threadId,
           )
         : null) ??
       (await reusableDraftThread(
         this.env,
-        input.identity,
+        active.identity,
         sessionId,
         latestSession?.active_thread_id,
       ));
@@ -993,7 +1006,7 @@ export class WorkbenchSessionAgent {
           ),
           thread: reusable,
         }
-      : await createThreadContext(this.env, input.identity, sessionId, "New chat", {
+      : await createThreadContext(this.env, active.identity, sessionId, "New chat", {
           status: "draft",
           draftExpiresAt,
         });
@@ -1002,7 +1015,7 @@ export class WorkbenchSessionAgent {
       throw new Error("Agent is not active");
     }
 
-    const activeIdentity = { ...input.identity, agentId: created.activeAgent.id };
+    const activeIdentity = { ...active.identity, agentId: created.activeAgent.id };
     const activeThread = toActiveThreadSummary(
       this.env,
       created.thread,
@@ -1050,12 +1063,13 @@ export class WorkbenchSessionAgent {
       };
     }
 
+    const active = await this.activeIdentity(input);
     const sessionId =
       this.snapshot?.context?.sessionId ??
-      (await getLatestChatSession(this.env, input.identity.scope))?.session_id ??
-      (await createChatSession(this.env, input.identity, { source: "cloudflare-agent-chat" }));
-    const created = await createThreadContext(this.env, input.identity, sessionId, message);
-    const activeIdentity = { ...input.identity, agentId: created.activeAgent.id };
+      active.latestSession?.session_id ??
+      (await createChatSession(this.env, active.identity, { source: "cloudflare-agent-chat" }));
+    const created = await createThreadContext(this.env, active.identity, sessionId, message);
+    const activeIdentity = { ...active.identity, agentId: created.activeAgent.id };
     const activeThread = toActiveThreadSummary(
       this.env,
       created.thread,

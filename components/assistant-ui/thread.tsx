@@ -195,10 +195,10 @@ const ThreadSuggestionItem: FC = () => {
       <SuggestionPrimitive.Trigger send asChild>
         <Button
           variant="ghost"
-          className="aui-thread-welcome-suggestion bg-background hover:bg-muted h-auto w-full flex-wrap items-start justify-start gap-1 rounded-3xl border px-4 py-3 text-start text-sm transition-colors @md:flex-col"
+          className="aui-thread-welcome-suggestion bg-background hover:bg-muted h-auto min-h-16 w-full min-w-0 flex-col items-start justify-start gap-1 rounded-lg border px-4 py-3 text-start text-sm transition-colors"
         >
-          <SuggestionPrimitive.Title className="aui-thread-welcome-suggestion-text-1 font-medium" />
-          <SuggestionPrimitive.Description className="aui-thread-welcome-suggestion-text-2 text-muted-foreground empty:hidden" />
+          <SuggestionPrimitive.Title className="aui-thread-welcome-suggestion-text-1 max-w-full break-words font-medium" />
+          <SuggestionPrimitive.Description className="aui-thread-welcome-suggestion-text-2 text-muted-foreground max-w-full break-words empty:hidden" />
         </Button>
       </SuggestionPrimitive.Trigger>
     </div>

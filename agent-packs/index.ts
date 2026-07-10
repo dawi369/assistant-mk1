@@ -3,17 +3,37 @@ import { babySwordfishPack } from "./baby-swordfish";
 import { repoAnalystPack } from "./repo-analyst";
 
 import type { LocalAgentPackManifest } from "./types";
+import { agentPackProfiles } from "./types";
 
 export const localAgentPacks = [repoAnalystPack, babyPolymancerPack, babySwordfishPack] as const;
 
 export type {
   AgentPackCapabilityLevel,
   AgentPackDeclaredTool,
+  AgentPackExecutionMode,
+  AgentPackProfile,
   AgentPackRisk,
+  AgentPackStarter,
   AgentPackUiHints,
   AgentPackWorkflow,
   LocalAgentPackManifest,
 } from "./types";
+export { defineAgentPack } from "./types";
+export {
+  buildPackWorkflowRequest,
+  fieldDefinitionsForPackWorkflow,
+  packWorkflowBindings,
+  packWorkflowFieldDefinitions,
+} from "./workflow-catalog";
+export type {
+  PackWorkflowBinding,
+  PackWorkflowFieldDefinition,
+  PackWorkflowFieldName,
+  PackWorkflowRequest,
+  PackWorkflowType,
+} from "./workflow-catalog";
+
+const semanticVersionPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/;
 
 export const validateLocalAgentPack = (pack: LocalAgentPackManifest) => {
   const requiredStrings = [
@@ -35,8 +55,14 @@ export const validateLocalAgentPack = (pack: LocalAgentPackManifest) => {
   if (pack.kind !== "agent_pack") {
     throw new Error(`Agent pack ${pack.id} kind must be "agent_pack".`);
   }
-  if (!pack.templateId.startsWith("pack-")) {
-    throw new Error(`Agent pack ${pack.id} templateId must start with "pack-".`);
+  if (pack.apiVersion !== 1) {
+    throw new Error(`Agent pack ${pack.id} apiVersion must be 1.`);
+  }
+  if (pack.templateId !== `pack-${pack.id}`) {
+    throw new Error(`Agent pack ${pack.id} templateId must be derived from its id.`);
+  }
+  if (!semanticVersionPattern.test(pack.version)) {
+    throw new Error(`Agent pack ${pack.id} version must be semantic.`);
   }
   if (!["template", "single_agent_app"].includes(pack.capabilityLevel)) {
     throw new Error(`Agent pack ${pack.id} capabilityLevel is invalid.`);
@@ -44,7 +70,7 @@ export const validateLocalAgentPack = (pack: LocalAgentPackManifest) => {
   if (pack.format !== "xml") {
     throw new Error(`Agent pack ${pack.id} must use XML prompt format.`);
   }
-  if (!["default", "analyst", "operator"].includes(pack.profile)) {
+  if (!agentPackProfiles.includes(pack.profile)) {
     throw new Error(`Agent pack ${pack.id} profile is invalid.`);
   }
   if (!pack.prompt.includes("<identity>")) {
@@ -96,6 +122,31 @@ export const validateLocalAgentPack = (pack: LocalAgentPackManifest) => {
   }
   if (!["code", "ui_future"].includes(pack.ui.configurationMode)) {
     throw new Error(`Agent pack ${pack.id} ui.configurationMode is invalid.`);
+  }
+  if (!pack.ui.welcome.title.trim() || !pack.ui.welcome.description.trim()) {
+    throw new Error(`Agent pack ${pack.id} ui.welcome title and description are required.`);
+  }
+  if (pack.ui.welcome.starters.length !== 3) {
+    throw new Error(`Agent pack ${pack.id} must declare exactly three welcome starters.`);
+  }
+  const starterIds = new Set<string>();
+  const workflowTypes = new Set(pack.workflows.map((workflow) => workflow.type));
+  for (const starter of pack.ui.welcome.starters) {
+    if (!starter.id.trim() || !starter.title.trim() || !starter.description.trim()) {
+      throw new Error(`Agent pack ${pack.id} welcome starter fields are required.`);
+    }
+    if (starterIds.has(starter.id)) {
+      throw new Error(`Agent pack ${pack.id} welcome starter ${starter.id} is duplicate.`);
+    }
+    starterIds.add(starter.id);
+    if (starter.action.kind === "message" && !starter.action.prompt.trim()) {
+      throw new Error(`Agent pack ${pack.id} welcome starter ${starter.id} prompt is required.`);
+    }
+    if (starter.action.kind === "workflow" && !workflowTypes.has(starter.action.workflowType)) {
+      throw new Error(
+        `Agent pack ${pack.id} welcome starter ${starter.id} references an undeclared workflow.`,
+      );
+    }
   }
 
   return pack;

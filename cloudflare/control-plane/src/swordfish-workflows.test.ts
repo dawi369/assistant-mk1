@@ -158,11 +158,24 @@ describe("swordfish runtime research workflow", () => {
     });
 
     const response = await handleSwordfishRuntimeResearch(request, env, identity);
-    const body = (await response.json()) as { ok?: boolean; run?: { workflowType?: string } };
+    const body = (await response.json()) as {
+      ok?: boolean;
+      run?: { workflowType?: string };
+      report?: {
+        serviceHealth?: unknown[];
+        freshness?: { snapshotAgeMs?: number };
+        bars?: { returnedBars?: number; dataSource?: string };
+        warnings?: string[];
+      };
+    };
 
     expect(response.status).toBe(201);
     expect(body.ok).toBe(true);
     expect(body.run?.workflowType).toBe("swordfish.runtime_research");
+    expect(body.report?.serviceHealth).toHaveLength(3);
+    expect(body.report?.freshness?.snapshotAgeMs).toBeGreaterThan(0);
+    expect(body.report?.bars).toMatchObject({ returnedBars: 2, dataSource: "redis" });
+    expect(body.report?.warnings).toContain("The selected snapshot appears stale.");
 
     expect(
       statements.some((statement) =>

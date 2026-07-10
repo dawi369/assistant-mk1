@@ -17,6 +17,9 @@ import {
   validateSwordfishBarsRangeInput,
   validateSwordfishSymbolSnapshotInput,
   type SwordfishBarsRangeInput,
+  type SwordfishBarsRangeOutput,
+  type SwordfishRuntimeOverviewOutput,
+  type SwordfishSymbolSnapshotOutput,
 } from "../../../lib/workbench/swordfish-readonly";
 
 const workflowType = "swordfish.runtime_research";
@@ -147,10 +150,116 @@ const requireBabySwordfishPack = async (env: Env, identity: AgentIdentity) => {
         ok: false as const,
         response: workflowError(
           "pack_required",
-          "swordfish.runtime_research requires the active Baby Swordfish agent pack.",
+          "swordfish.runtime_research requires the active Swordfish Runtime pack.",
           403,
         ),
       };
+};
+
+const timeframeMs: Record<SwordfishBarsRangeInput["tf"], number> = {
+  "1m": 60_000,
+  "5m": 300_000,
+  "15m": 900_000,
+  "30m": 1_800_000,
+  "1h": 3_600_000,
+};
+
+const timestampValue = (value: number | string | undefined) => {
+  const parsed =
+    typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+export const buildSwordfishRuntimeReport = (input: {
+  overview: SwordfishRuntimeOverviewOutput;
+  symbol?: string | null;
+  snapshot?: SwordfishSymbolSnapshotOutput | null;
+  bars?: SwordfishBarsRangeOutput | null;
+  observedAtMs?: number;
+  upstreamWarnings?: string[];
+}) => {
+  const observedAtMs = input.observedAtMs ?? Date.now();
+  const snapshotTimestamp = timestampValue(input.snapshot?.snapshot.timestamp);
+  const snapshotAgeMs =
+    snapshotTimestamp === null ? null : Math.max(0, observedAtMs - snapshotTimestamp);
+  const barTimestamps = (input.bars?.bars ?? [])
+    .map((bar) => timestampValue(bar.ts))
+    .filter((value): value is number => value !== null)
+    .sort((a, b) => a - b);
+  const gapThreshold = input.bars ? timeframeMs[input.bars.tf] * 1.5 : null;
+  const visibleGapCount = gapThreshold
+    ? barTimestamps
+        .slice(1)
+        .filter((timestamp, index) => timestamp - barTimestamps[index] > gapThreshold).length
+    : 0;
+  const serviceHealth = Object.entries(input.overview.health.services).map(([service, status]) => ({
+    service,
+    status: status ?? "unknown",
+  }));
+  const warnings = [
+    ...serviceHealth
+      .filter((service) => service.status !== "connected")
+      .map((service) => `${service.service} reports ${service.status}.`),
+    !input.symbol ? "No public symbol was available for symbol-level inspection." : null,
+    input.snapshot && snapshotTimestamp === null
+      ? "Snapshot freshness could not be determined."
+      : null,
+    snapshotAgeMs !== null && snapshotAgeMs > 5 * 60_000
+      ? "The selected snapshot appears stale."
+      : null,
+    input.bars && input.bars.returnedBars === 0 ? "The bounded bars response was empty." : null,
+    input.bars && input.bars.returnedBars < input.bars.count
+      ? "The bars response is partial relative to the reported count."
+      : null,
+    visibleGapCount > 0
+      ? `${visibleGapCount} visible bar gap${visibleGapCount === 1 ? "" : "s"} exceeded the expected timeframe.`
+      : null,
+    ...(input.upstreamWarnings ?? []),
+  ].filter((item): item is string => Boolean(item));
+
+  return {
+    status: warnings.length ? "degraded" : "ok",
+    summary: `Swordfish read-only runtime research completed for ${input.symbol ?? "the public runtime"}.`,
+    serviceHealth,
+    runtime: {
+      status: input.overview.health.status ?? "unknown",
+      symbolCount: input.overview.symbolCount ?? null,
+      snapshotCount: input.overview.snapshotCount ?? null,
+      openTicker: input.overview.openTicker ?? null,
+    },
+    symbol: input.symbol ?? null,
+    snapshot: input.snapshot ?? null,
+    freshness: {
+      observedAtMs,
+      snapshotTimestamp,
+      snapshotAgeMs,
+    },
+    bars: input.bars
+      ? {
+          symbol: input.bars.symbol,
+          timeframe: input.bars.tf,
+          start: input.bars.start,
+          end: input.bars.end,
+          reportedCount: input.bars.count,
+          returnedBars: input.bars.returnedBars,
+          dataSource: input.bars.dataSource ?? null,
+          visibleGapCount,
+        }
+      : null,
+    warnings,
+    limitations: [
+      "Public health and market-data endpoints cannot prove private service or provider state.",
+      "Freshness and gap checks are bounded operational signals, not trading recommendations.",
+    ],
+    risk: {
+      financialData: true,
+      externalMutation: false,
+      requiresSecrets: false,
+      adminEndpoints: false,
+      trading: false,
+      advice: false,
+    },
+  };
 };
 
 export const handleSwordfishRuntimeResearch = async (
@@ -244,28 +353,19 @@ export const handleSwordfishRuntimeResearch = async (
     });
   }
 
-  const report = {
-    status: "ok",
-    summary: `Swordfish read-only runtime research completed: ${overview.output.summary}`,
+  const upstreamWarnings = [
+    !selectedSymbol ? "No public symbol was available for symbol-level inspection." : null,
+    snapshot && !snapshot.ok ? snapshot.error.message : null,
+    bars && !bars.ok ? bars.error.message : null,
+    barsInput && "code" in barsInput ? barsInput.message : null,
+  ].filter((item): item is string => typeof item === "string");
+  const report = buildSwordfishRuntimeReport({
     overview: overview.output,
-    symbol: selectedSymbol ?? null,
+    symbol: selectedSymbol,
     snapshot: snapshot?.ok ? snapshot.output : null,
     bars: bars?.ok ? bars.output : null,
-    warnings: [
-      !selectedSymbol ? "No public symbol was available for symbol-level inspection." : null,
-      snapshot && !snapshot.ok ? snapshot.error.message : null,
-      bars && !bars.ok ? bars.error.message : null,
-      barsInput && "code" in barsInput ? barsInput.message : null,
-    ].filter((item): item is string => typeof item === "string"),
-    risk: {
-      financialData: true,
-      externalMutation: false,
-      requiresSecrets: false,
-      adminEndpoints: false,
-      trading: false,
-      advice: false,
-    },
-  };
+    upstreamWarnings,
+  });
   const artifactData = {
     source: "swordfish_runtime_research",
     workflowType,

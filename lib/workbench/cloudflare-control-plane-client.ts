@@ -291,6 +291,18 @@ export const runPolymancerMarketResearch = (input: {
     },
   );
 
+export const runRepoReadinessReport = (input: {
+  executionMode?: "dry_run";
+  input: Record<string, unknown>;
+}) =>
+  requestControlPlane<CloudflareToolRunResponse & { report?: unknown }>(
+    "/workflows/repo/readiness-report",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
+
 export const runSwordfishRuntimeResearch = (input: {
   executionMode?: "dry_run";
   input: Record<string, unknown>;
@@ -489,6 +501,15 @@ export const activateCloudflareAgent = (agentId: Id) =>
     `/agents/${encodeURIComponent(agentId)}/activate`,
     { method: "POST" },
   );
+
+export const instantiateCloudflareAgentPack = (packId: string) =>
+  requestControlPlane<{
+    ok: boolean;
+    created: boolean;
+    packId: string;
+    packVersion: string;
+    agent: AgentSummary;
+  }>(`/agent-packs/${encodeURIComponent(packId)}/instantiate`, { method: "POST" });
 
 export const getLatestControlPlaneEvents = (limit = 50) =>
   requestControlPlane<ControlPlaneEventsResponse>(

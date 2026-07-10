@@ -24,16 +24,18 @@ const writePackFiles = (
   writeFileSync(path.join(root, pack.promptPath), input?.prompt ?? pack.prompt);
 };
 
-const withPack = (input: Partial<LocalAgentPackManifest>): LocalAgentPackManifest =>
-  ({
+const withPack = (input: Partial<LocalAgentPackManifest>): LocalAgentPackManifest => {
+  const id = input.id ?? "test-pack";
+  return {
     ...repoAnalystPack,
-    id: "test-pack",
-    templateId: "pack-test",
+    id,
+    templateId: `pack-${id}`,
     folderPath: "agent-packs/test-pack",
     codePath: "agent-packs/test-pack/index.ts",
     promptPath: "agent-packs/test-pack/prompt.xml",
     ...input,
-  }) as LocalAgentPackManifest;
+  } as LocalAgentPackManifest;
+};
 
 describe("agent pack developer loop", () => {
   it("validates checked-in packs", () => {

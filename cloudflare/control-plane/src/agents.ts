@@ -2,11 +2,14 @@ import {
   insertAgent,
   normalizeAgentProfile,
   normalizeOpenRouterModel,
+  resolveAgentBehaviorConfig,
   toAgentSummary,
 } from "./agent-records";
 import {
   agentBehaviorTemplates,
   normalizeAgentBehaviorTemplateId,
+  type AgentBehaviorTemplate,
+  type AgentBehaviorTemplateId,
 } from "./agent-behavior-templates";
 import { upsertActiveAgentPreference } from "./authz";
 import { selectAgent, selectMembership, selectWorkspaceAgents } from "./authz-store";
@@ -88,7 +91,7 @@ export const handleCreateAgent = async (request: Request, env: Env, identity: Ag
     );
   }
 
-  const agentId = await insertAgent(env, {
+  const inserted = await insertAgent(env, {
     workspaceId: identity.scope.workspaceId,
     userId: identity.scope.userId,
     name,
@@ -97,7 +100,7 @@ export const handleCreateAgent = async (request: Request, env: Env, identity: Ag
     model,
     behaviorTemplateId: behaviorTemplateId ?? undefined,
   });
-  const agent = await selectAgent(env, agentId, identity.scope.workspaceId);
+  const agent = await selectAgent(env, inserted.agentId, identity.scope.workspaceId);
   if (!agent) {
     return json({ ok: false, error: "Created agent not found" }, { status: 500 });
   }
@@ -119,6 +122,86 @@ export const handleCreateAgent = async (request: Request, env: Env, identity: Ag
       agent: toAgentSummary(env, agent, activate ? agent.id : identity.agentId),
     },
     { status: 201 },
+  );
+};
+
+const managedPackAgentId = async (workspaceId: string, packId: string, packVersion: string) => {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`${workspaceId}:${packId}:${packVersion}`),
+  );
+  const hash = Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+  return `agent-pack-${hash.slice(0, 24)}`;
+};
+
+export const handleInstantiateAgentPack = async (
+  env: Env,
+  identity: AgentIdentity,
+  packId: string,
+) => {
+  const currentMembership = await selectMembership(
+    env,
+    identity.scope.userId,
+    identity.scope.workspaceId,
+  );
+  const adminError = requireAdminMembership(currentMembership);
+  if (adminError) return adminError;
+
+  const template = (agentBehaviorTemplates as AgentBehaviorTemplate[]).find(
+    (candidate) => candidate.pack?.id === packId,
+  );
+  if (!template?.pack) {
+    return json({ ok: false, error: "Agent pack not found" }, { status: 404 });
+  }
+
+  const agents = await selectWorkspaceAgents(env, identity.scope.workspaceId);
+  const currentVersionAgent = agents.results.find((agent) => {
+    if (agent.status !== "active") return false;
+    const behavior = resolveAgentBehaviorConfig(agent);
+    return (
+      behavior.pack?.id === packId &&
+      behavior.authoring?.kind === "local_agent_pack" &&
+      behavior.authoring.packVersion === template.version
+    );
+  });
+  if (currentVersionAgent) {
+    return json({
+      ok: true,
+      created: false,
+      packId,
+      packVersion: template.version,
+      agent: toAgentSummary(env, currentVersionAgent, identity.agentId),
+    });
+  }
+
+  const agentId = await managedPackAgentId(identity.scope.workspaceId, packId, template.version);
+  const inserted = await insertAgent(env, {
+    workspaceId: identity.scope.workspaceId,
+    userId: identity.scope.userId,
+    name: template.name,
+    description: template.description,
+    profile: template.profile,
+    behaviorTemplateId: template.id as AgentBehaviorTemplateId,
+    agentId,
+    provisionedBy: "agent_pack",
+    idempotent: true,
+  });
+  const agent = await selectAgent(env, agentId, identity.scope.workspaceId);
+  if (!agent) {
+    return json({ ok: false, error: "Managed agent pack instance not found" }, { status: 500 });
+  }
+
+  return json(
+    {
+      ok: true,
+      created: inserted.created,
+      packId,
+      packVersion: template.version,
+      agent: toAgentSummary(env, agent, identity.agentId),
+    },
+    { status: inserted.created ? 201 : 200 },
   );
 };
 
