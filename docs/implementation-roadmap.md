@@ -39,9 +39,10 @@ scoped.
 - Agent Pack API v1 validates semantic versions, derived template ids, prompt
   parity, three curated welcome actions, risk, tools, workflows, and smoke
   metadata before compiling packs into immutable workspace agent snapshots.
-- Repository Analyst, Polymancer Research, and Swordfish Runtime each ship a
-  typed read-only workflow and structured history artifact. The shared workflow
-  catalog drives forms, routes, retry, artifact kinds, and smoke commands.
+- Repository Analyst and Polymancer Research ship live typed read-only workflows
+  and structured history artifacts. Swordfish Runtime preserves the same
+  packaged contract while its backend is intentionally parked. The shared
+  workflow catalog drives forms, routes, retry, artifact kinds, and smoke commands.
 - `/agents` remains the compact member-facing picker. Allowlisted Admin exposes
   installed packs and idempotently reuses or creates the current pack version
   before starting a fresh chat.
@@ -80,19 +81,20 @@ scoped.
    materialization, and background reconciliation with Cloudflare-owned truth.
 2. Keep model-visible tools narrow and policy-gated; harden model-side tool
    rendering and approval explanations before broader model tool use.
-3. Expand read-only adapters beyond `url.inspect` and `repo.snapshot` only
-   where they prove the common runner, policy, artifact, and audit model.
-4. Validate the internal Agent Pack v1 contract with downstream repositories
+3. Prove one complete pack-owned vertical slice across typed context, a user or
+   agent tool, a workflow, an artifact renderer, managed state, a trusted
+   trigger, eval evidence, and failure recovery.
+4. Validate the resulting Agent Pack contract and capability levels with downstream repositories
    before publishing an external SDK or adding remote installation.
 5. Keep promoting execution history and artifact metadata from read-only
    metadata into richer product surfaces: previews, filters, export/delete
    behavior, and artifact blob storage when retention gates exist.
-6. Add swappable domain context configuration for downstream apps, developer
-   installs, and business integrations without introducing a committed
-   `Project` entity.
+6. Add pack-contributed domain context, managed-state descriptors, and shared
+   views for downstream apps without introducing a committed `Project` entity.
 7. Move more Fly/LangGraph producers onto scoped callbacks and session-event
    fanout instead of one-off status paths.
-8. Keep the developer/customer packaging contract current as capabilities,
+8. Add another read-only adapter only when it proves a missing common contract,
+   then keep developer/customer packaging current as capabilities,
    setup requirements, and upgrade boundaries change.
 
 ## Production Gates

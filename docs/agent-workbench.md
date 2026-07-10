@@ -9,7 +9,8 @@ The target audience is broader than internal use:
 
 - personal/operator use for my own agent workflows
 - developer use, where another dev can define agents in code, run, configure,
-  extend, and eventually buy the workbench as a serious OSS/commercial tool
+  extend, and adopt the source-available workbench under its noncommercial or
+  separately agreed commercial terms
 - business integration use, where a willing company gets scoped agents inside
   its workflows, permissions, data, approvals, and audit boundaries
 
@@ -30,6 +31,11 @@ Agent are benchmark pressure tests. Real customer integrations should follow
 the same rule: validate autonomy, secrets, ledgers, browser automation,
 external signals, and policy without baking a single domain into the base
 workbench.
+
+The north-star autonomy ladder and the guarantees required at each level live
+in `capability-model.md`. Capability is cumulative: conversation, tools,
+workflows, background execution, delegation, and mutation add progressively
+stronger runtime requirements rather than progressively broader prompt access.
 
 ## Core Surfaces
 
@@ -61,8 +67,10 @@ workbench.
 - Recent chat state and active-thread switching are Cloudflare-owned.
 - `/agents` opens a compact agent picker. Active-agent pack workflows populate
   the `/` composer menu when they have a safe dry-run binding.
-- Repository Analyst, Polymancer Research, and Swordfish Runtime have current
-  pack workflow bindings that create Cloudflare-owned workflow intents, runs,
+- Repository Analyst and Polymancer Research have current live pack workflow
+  bindings. Swordfish Runtime retains the same packaged workflow contract while
+  its reference backend is intentionally parked and may return `404`.
+- The runnable bindings create Cloudflare-owned workflow intents, runs,
   tool calls, artifacts, audit events, and history entries through a shared
   lifecycle helper.
 - `/history` opens the product-facing workbench history drawer for recent
@@ -93,20 +101,20 @@ workbench.
 2. Expand `/history` from metadata summaries into richer artifact previews,
    filtering, export/delete behavior, and blob-backed storage once migration
    and retention gates exist.
-3. Expand code-first agent packs from template import/preview and the current
-   Polymancer/Swordfish workflow bindings into
-   tool-specific configuration, context assembly, smoke scenarios, and package
-   verification.
+3. Prove one complete pack-owned application slice across context, tools,
+   workflow, artifact rendering, managed state, trigger handling, evals, and
+   recovery before widening the external pack contract.
 4. Harden model-side tool rendering and approval explanations before broader
    model-visible tool use.
 5. Add swappable domain context configuration for downstream apps and customer
    integrations without introducing a committed `Project` entity too early.
-6. Broaden read-only tool adapters beyond `url.inspect` and `repo.snapshot`
-   while keeping mutation-capable tools behind the production gates.
+6. Add another read-only adapter only when it proves a missing capability-model
+   contract rather than adding a one-off integration.
 7. Move the remaining Fly/LangGraph producers onto the generic scoped callback
    path.
-8. Add generic managed-state, audit, and decision-record surfaces after the
-   read-only 1.0 release boundary is proven.
+8. Add generic managed-state and decision surfaces after the 1.0 read-only
+   baseline is proven; packs contribute typed descriptors without owning tenant
+   scope or core navigation.
 
 ## Component Rules
 

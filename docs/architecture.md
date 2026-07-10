@@ -9,6 +9,9 @@ and business integrations without forking the core runtime. Customer- or
 domain-specific behavior belongs in workspace, agent, policy, tool, context,
 and integration configuration, not in hard-coded product assumptions.
 
+The cumulative autonomy levels and guarantees expected from those subsystems
+are defined in `capability-model.md`.
+
 Document status: this page is the concise current system map. Use
 `docs/infrastructure.md` for request flow and ownership, and
 `docs/cloudflare-control-plane.md` for Worker/D1 details.

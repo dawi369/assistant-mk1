@@ -5,6 +5,10 @@ bundles reviewed behavior, declared tools and workflows, user-facing starters,
 risk metadata, and verification scenarios. Creating an agent snapshots the
 installed pack version into the workspace-scoped D1 agent record.
 
+The complete target composition boundary is defined in
+`capability-model.md`. API v1 intentionally implements only the subset that can
+be validated and enforced today.
+
 Document status: Agent Pack API v1 is implemented for trusted, checked-in
 packs. Remote installation, a marketplace, arbitrary executable uploads,
 secret binding, and automatic snapshot upgrades are not implemented.
@@ -87,6 +91,20 @@ Workflows remain separate, explicit user actions. The normal **Tools** panel and
 `/tools` command show runnable workflow launchers, agent-only tools, and
 workflow-internal adapters for the current agent without conflating them.
 
+## Target Composition
+
+Future pack versions may declare context sources, managed-state and decision
+extensions, artifact renderers, triggers, connection requirements, policy
+defaults, budgets, evals, health checks, migrations, and compatibility bounds.
+Those declarations remain inert until trusted platform code registers the
+runtime binding and workspace policy allows it. Pack installation never grants
+credentials, model exposure, trigger authority, or mutation rights.
+
+Pack-owned descriptors compose into generic workbench surfaces. They do not add
+unscoped routes, arbitrary executable uploads, domain tables, or private
+navigation forks. State uses namespaced extension data until a repeated shape
+earns a shared platform contract.
+
 ## Bundled Packs
 
 | Product name        | Stable pack id    | Workflow                     | Artifact kind             |
@@ -97,9 +115,10 @@ workflow-internal adapters for the current agent without conflating them.
 
 Repository Analyst calls the signed Fly `repo.snapshot` adapter and produces a
 bounded repository-readiness report. Polymancer Research uses public no-auth
-Polymarket discovery, snapshot, and CLOB reads. Swordfish Runtime uses only the
-public Swordfish health, snapshot, and bounded-bars endpoints. All three are
-read-only and persist their workflow, tool-call, audit, event, and artifact
+Polymarket discovery, snapshot, and CLOB reads. Swordfish Runtime preserves a
+bounded public-health/snapshot/bars reference contract, but its backend is
+intentionally parked and may return `404`; it is not a live release smoke.
+Runnable pack workflows persist workflow, tool-call, audit, event, and artifact
 metadata through the common Cloudflare lifecycle.
 
 ## Versioning And Activation

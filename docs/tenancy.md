@@ -134,7 +134,7 @@ agent are the committed authorization boundaries.
   running in production. Hosted production fails closed when WorkOS is
   incomplete.
 
-The read-only 1.0 authorization surface is implemented. Richer customer
+The 1.0 read-only baseline authorization surface is implemented. Richer customer
 invitation lifecycle, mutation policy, and secret access remain production
 gates for capabilities outside that release contract.
 
@@ -181,7 +181,7 @@ The next steps should keep WorkOS and assistant-mk1 responsibilities separate:
 
 ## Acceptance Bar
 
-For the read-only 1.0 boundary, two users in separate workspaces must receive
+For the 1.0 read-only baseline, two users in separate workspaces must receive
 isolated agents, chats, runs, tools, artifacts, and history, while role tests
 prove that members cannot administer workspace access. Memory, ledgers,
 schedules, secrets, and mutation add their own acceptance gates when implemented.

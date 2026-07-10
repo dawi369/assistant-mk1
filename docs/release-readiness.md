@@ -1,8 +1,8 @@
-# Read-Only 1.0 Release Readiness
+# 1.0 Read-Only Baseline Readiness
 
 Document status: current release contract.
 
-Assistant-mk1 1.0 is an authenticated, tenant-scoped, read-only agent
+The Assistant-mk1 1.0 baseline is an authenticated, tenant-scoped, read-only agent
 workbench. It is not a commitment to external mutation, durable customer-data
 retention, encrypted credential brokerage, or artifact blob storage.
 
@@ -32,7 +32,7 @@ retention, encrypted credential brokerage, or artifact blob storage.
 
 ## Deferred Gates
 
-The following are intentionally outside the read-only 1.0 contract:
+The following are intentionally outside the 1.0 read-only baseline:
 
 - forward-only D1 migrations, backup/restore, and retained customer history
 - the broader unattended-production operations gate

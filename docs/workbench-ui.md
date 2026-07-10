@@ -328,8 +328,9 @@ Implemented:
 - Active pack workflow bindings appear directly in the `/` composer menu. The
   `/tools` command and normal Tools panel separate user-runnable workflow
   launchers, conversational agent tools, and workflow-internal adapters.
-  Repository Analyst, Polymancer Research, and Swordfish Runtime each expose a
-  bounded read-only workflow while their adapters remain workflow-internal.
+  Repository Analyst and Polymancer Research expose live bounded read-only
+  workflows while their adapters remain workflow-internal. Swordfish Runtime
+  preserves the same packaged UI contract while its backend is parked.
 - The `/history` drawer shows recent scoped runs, selected-run summaries, tool
   call details, child runs, audit events, and metadata-only artifacts outside
   Admin.

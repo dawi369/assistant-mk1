@@ -5,11 +5,15 @@ the Assistant-mk1 product identity; it is a concrete pressure test for agents
 that need live runtime health, bounded market-data reads, and inspectable
 reports without exposing provider credentials.
 
-## Current Slice
+## Current Status
 
-The `baby-swordfish` pack is a read-only single-agent app seed. It uses the
-public Swordfish backend at `https://swordfish-backend-production.up.railway.app`
-through fixed server-side adapters only.
+The `baby-swordfish` pack is a read-only single-agent reference seed. Its
+workflow, adapters, artifact contract, and tests remain packaged, but the
+Swordfish backend is intentionally parked and may return `404`. It is not a
+live release smoke and should not block Assistant-mk1 verification.
+
+When the backend is restored, the pack uses its public product API through fixed
+server-side adapters only.
 
 It does not use `HUB_API_KEY`, Railway tokens, Massive credentials, admin
 endpoints, direct provider access, mutation routes, or browser-side secrets.
@@ -40,7 +44,7 @@ Swordfish-specific behavior maps to generic Assistant-mk1 primitives:
 - Runtime research report -> artifact metadata attached to a workflow run.
 - Demo selection -> pack-backed agent activation in the workbench shell.
 
-## Current Tools
+## Packaged Tools
 
 - `swordfish.runtime.overview`: reads public health, open ticker, symbols, and
   compact snapshot counts.
@@ -51,7 +55,7 @@ All Swordfish tools are registered as read-only, workflow-internal, and dry-run
 only. The user starts the bounded runtime workflow; its adapters are visible in
 the normal Tools panel but are not directly invokable.
 
-## Current Workflow
+## Packaged Workflow
 
 `swordfish.runtime_research` is declared in the pack contract and implemented
 through the Cloudflare-owned workflow/history path.
@@ -65,6 +69,6 @@ bars, and writes one compact runtime research report artifact.
 
 ## Boundary
 
-Swordfish v0 is public read-only. Trading, order routing, admin actions,
-provider secrets, infrastructure tokens, mutation tools, and private data remain
-out of scope.
+The Swordfish v0 contract is public read-only when its backend is available.
+Trading, order routing, admin actions, provider secrets, infrastructure tokens,
+mutation tools, and private data remain out of scope.

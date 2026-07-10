@@ -74,3 +74,15 @@ Fly/LangGraph services should receive a scoped workflow context, then use a data
 The data client enforces `userId + workspaceId`, permissions, redaction, and audit. Initially it is backed by mediated Cloudflare APIs.
 
 Future optimization: the backing implementation may switch to scoped direct D1/R2 access only for proven hot paths. That must not change the workflow-facing API or bypass tenant checks, redaction, or audit events.
+
+## Pack-Owned Domain State
+
+Agent Packs do not create an alternate persistence boundary. A pack may declare
+namespaced managed-state, decision, artifact, and view descriptors from the
+target contract in `capability-model.md`. The generic workbench renders those
+descriptors through shared list, detail, filter, history, and action surfaces.
+
+Cloudflare still derives scope and mediates reads and writes. Domain fields stay
+in namespaced extension data until repeated use proves they belong in a shared
+entity contract. Pack upgrades that change retained shapes require explicit,
+forward-compatible migrations before automatic snapshot upgrades are allowed.

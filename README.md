@@ -9,7 +9,7 @@ audit, and tenant-safe operations.
 
 [Hosted workbench](https://assistant-mk1.vercel.app) ·
 [Documentation](docs/README.md) ·
-[Release readiness](docs/release-readiness.md)
+[Baseline readiness](docs/release-readiness.md)
 
 ## Release Status
 
@@ -120,8 +120,10 @@ behavior, tools, workflows, UI hints, risk posture, context, and smoke scenarios
 without bypassing workspace policy or tenant authorization.
 
 The bundled v1 examples are **Repository Analyst**, **Polymancer Research**, and
-**Swordfish Runtime**. Each includes an immediate pack-specific welcome, a
-bounded read-only workflow, and a structured artifact in History. Allowlisted
+**Swordfish Runtime**. Each includes an immediate pack-specific welcome and a
+bounded read-only workflow contract. Repository Analyst and Polymancer provide
+live examples; Swordfish is packaged but its reference backend is intentionally
+parked and may return `404`. Allowlisted
 operators can reuse or instantiate the current pack version from Admin without
 mutating older agent snapshots.
 
@@ -131,8 +133,9 @@ pnpm agent-packs:inspect --pack repo-analyst
 pnpm agent-packs:smoke --pack repo-analyst
 ```
 
-The current contract supports local checked-in packs. See [Agent Packs](docs/agent-packs.md)
-and [Agent Profile Authoring](docs/agent-profile-authoring.md).
+The current contract supports local checked-in packs. See [Agent Packs](docs/agent-packs.md),
+the [Capability Model](docs/capability-model.md), and
+[Agent Profile Authoring](docs/agent-profile-authoring.md).
 
 ## Verification
 

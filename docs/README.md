@@ -10,6 +10,7 @@ run or buy, and configurable enough for willing businesses to integrate without
 forking the core runtime.
 
 - Product direction: `agent-workbench.md`
+- Capability and autonomy contract: `capability-model.md`
 - Implementation sequencing: `implementation-roadmap.md`
 - Reference-app pressure: `reference-apps/*`
 - Topology diagram workflow: `diagrams/README.md`
@@ -35,7 +36,7 @@ These files should stay aligned with code changes:
 - `dev-infrastructure-readiness.md`: local/remote setup, smoke commands, and
   resource checklist.
 - `evals.md`: real-session eval posture, manifest, and verifier command.
-- `release-readiness.md`: read-only 1.0 scope, deferred gates, and release evidence.
+- `release-readiness.md`: 1.0 read-only baseline, deferred gates, and release evidence.
 - `deployment-vercel.md` and `deployment-fly.md`: deployment runbooks.
 - `diagrams/current-implementation-topology.mmd`: current topology source.
 
@@ -45,6 +46,7 @@ These files are intentionally ahead of implementation. They define north-star
 contracts and constraints; any implementation still needs to land behind the
 Cloudflare authorization boundary in `tenancy.md`.
 
+- `capability-model.md`
 - `db-contracts.md`
 - `control-plane-api.md`
 - `data-and-state.md`
