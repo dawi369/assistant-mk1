@@ -103,6 +103,42 @@ export const countWorkspaceMemberships = (env: Env, workspaceId: string) =>
     .bind(workspaceId)
     .first<{ count: number }>();
 
+export const countActiveWorkspaceOwners = (env: Env, workspaceId: string) =>
+  env.DB.prepare(
+    `SELECT COUNT(*) AS count
+     FROM memberships
+     WHERE workspace_id = ? AND status = 'active' AND lower(role) = 'owner'`,
+  )
+    .bind(workspaceId)
+    .first<{ count: number }>();
+
+export const selectWorkspaceMemberships = (env: Env, workspaceId: string) =>
+  env.DB.prepare(
+    `SELECT memberships.id, memberships.user_id, memberships.workspace_id,
+            memberships.role, memberships.status, memberships.roles_json,
+            memberships.permissions_json, memberships.data_json,
+            memberships.created_at, memberships.updated_at,
+            users.email, users.display_name, users.status AS user_status
+     FROM memberships
+     LEFT JOIN users ON users.id = memberships.user_id
+     WHERE memberships.workspace_id = ?
+     ORDER BY
+       CASE lower(memberships.role)
+         WHEN 'owner' THEN 0
+         WHEN 'admin' THEN 1
+         ELSE 2
+       END,
+       COALESCE(users.display_name, users.email, memberships.user_id) ASC`,
+  )
+    .bind(workspaceId)
+    .all<
+      MembershipRow & {
+        email: string | null;
+        display_name: string | null;
+        user_status: string | null;
+      }
+    >();
+
 export const selectDefaultAgent = (env: Env, workspaceId: string) =>
   env.DB.prepare(
     `SELECT id, workspace_id, name, description, status, is_default, created_by_user_id,

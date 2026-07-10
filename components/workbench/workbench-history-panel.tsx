@@ -3,12 +3,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   CheckIcon,
+  CircleStopIcon,
   ClipboardIcon,
   ExternalLinkIcon,
   FileTextIcon,
   HistoryIcon,
   Loader2Icon,
   RefreshCwIcon,
+  RotateCcwIcon,
   SearchIcon,
   type LucideIcon,
 } from "lucide-react";
@@ -117,6 +119,7 @@ export function WorkbenchHistoryPanel({
   const [isLoadingRun, setIsLoadingRun] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
+  const [busyAction, setBusyAction] = useState<string | null>(null);
   const selectedRunIdRef = useRef<string | null>(null);
 
   const selectedRun = useMemo(
@@ -190,6 +193,51 @@ export function WorkbenchHistoryPanel({
       setIsLoadingRun(false);
     }
   }, []);
+
+  const performRunAction = useCallback(
+    async (action: "cancel" | "retry") => {
+      if (!selectedRunId) return;
+      setBusyAction(action);
+      setRunError(null);
+      try {
+        await fetch(`${historyRunsPath}/${encodeURIComponent(selectedRunId)}/${action}`, {
+          method: "POST",
+        }).then((response) => readJsonResponse(response, `Failed to ${action} run`));
+        const loaded = await loadHistory();
+        const nextRunId =
+          action === "retry" ? (loaded?.runs[0]?.id ?? selectedRunId) : selectedRunId;
+        await inspectRun(nextRunId);
+      } catch (actionError) {
+        setRunError(actionError instanceof Error ? actionError.message : `Failed to ${action} run`);
+      } finally {
+        setBusyAction(null);
+      }
+    },
+    [inspectRun, loadHistory, selectedRunId],
+  );
+
+  const decideApproval = useCallback(
+    async (approvalId: string, action: "approve" | "deny") => {
+      setBusyAction(`${action}:${approvalId}`);
+      setRunError(null);
+      try {
+        await fetch(`/api/workbench/tools/approvals/${encodeURIComponent(approvalId)}/${action}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: action === "deny" ? JSON.stringify({ reason: "Denied from History" }) : undefined,
+        }).then((response) => readJsonResponse(response, `Failed to ${action} approval`));
+        await loadHistory();
+        if (selectedRunId) await inspectRun(selectedRunId);
+      } catch (approvalError) {
+        setRunError(
+          approvalError instanceof Error ? approvalError.message : `Failed to ${action} approval`,
+        );
+      } finally {
+        setBusyAction(null);
+      }
+    },
+    [inspectRun, loadHistory, selectedRunId],
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -391,6 +439,9 @@ export function WorkbenchHistoryPanel({
                 run={selectedRun}
                 artifacts={selectedRunArtifacts}
                 highlightedArtifactId={highlightedArtifactId}
+                busyAction={busyAction}
+                onRunAction={performRunAction}
+                onApprovalAction={decideApproval}
               />
             ) : (
               <EmptyPanelText>No details returned for this run.</EmptyPanelText>
@@ -449,11 +500,17 @@ function SelectedRunSummary({
   run,
   artifacts,
   highlightedArtifactId,
+  busyAction,
+  onRunAction,
+  onApprovalAction,
 }: {
   snapshot: CloudflareOwnedDemoRunSnapshot;
   run: ExecutionHistoryRunSummary | null;
   artifacts: ArtifactSummary[];
   highlightedArtifactId?: string | null;
+  busyAction?: string | null;
+  onRunAction: (action: "cancel" | "retry") => Promise<void>;
+  onApprovalAction: (approvalId: string, action: "approve" | "deny") => Promise<void>;
 }) {
   const snapshotArtifacts = snapshot.artifacts ?? [];
   const artifactMap = new Map<string, PreviewableArtifact>();
@@ -463,12 +520,92 @@ function SelectedRunSummary({
   const runId = run?.id ?? snapshot.run?.id;
   const workflowIntentId =
     run?.workflowIntentId ?? snapshot.run?.workflowIntentId ?? snapshot.intent?.id;
+  const pendingInterventions = (snapshot.interventions ?? []).filter(
+    (intervention) => intervention.status === "requested",
+  );
 
   return (
     <div className="space-y-3">
       {run?.summary ? (
         <p className="text-muted-foreground rounded-md border px-3 py-2 text-sm">{run.summary}</p>
       ) : null}
+
+      {run?.controls?.canCancel || run?.controls?.canRetry ? (
+        <div className="border-border flex flex-wrap items-center gap-2 border-y py-3">
+          {run.controls.canCancel ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={Boolean(busyAction)}
+              onClick={() => void onRunAction("cancel")}
+            >
+              {busyAction === "cancel" ? (
+                <Loader2Icon className="animate-spin" />
+              ) : (
+                <CircleStopIcon />
+              )}
+              Cancel run
+            </Button>
+          ) : null}
+          {run.controls.canRetry ? (
+            <Button
+              type="button"
+              size="sm"
+              disabled={Boolean(busyAction)}
+              onClick={() => void onRunAction("retry")}
+            >
+              {busyAction === "retry" ? (
+                <Loader2Icon className="animate-spin" />
+              ) : (
+                <RotateCcwIcon />
+              )}
+              Retry run
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {pendingInterventions.map((intervention) => (
+        <div
+          key={intervention.id}
+          className="border-border bg-muted/30 rounded-md border px-3 py-3"
+        >
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <span className="min-w-0">
+              <span className="block text-sm font-medium">{intervention.title}</span>
+              <span className="text-muted-foreground mt-1 block text-xs">
+                {intervention.reason}
+              </span>
+            </span>
+            <span className="flex shrink-0 gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={Boolean(busyAction)}
+                onClick={() => void onApprovalAction(intervention.id, "deny")}
+              >
+                {busyAction === `deny:${intervention.id}` ? (
+                  <Loader2Icon className="animate-spin" />
+                ) : null}
+                Deny
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                disabled={Boolean(busyAction)}
+                onClick={() => void onApprovalAction(intervention.id, "approve")}
+              >
+                {busyAction === `approve:${intervention.id}` ? (
+                  <Loader2Icon className="animate-spin" />
+                ) : null}
+                Approve and resume
+              </Button>
+            </span>
+          </div>
+        </div>
+      ))}
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <StatusRow label="Status" value={run?.status ?? snapshot.run?.status} compact />

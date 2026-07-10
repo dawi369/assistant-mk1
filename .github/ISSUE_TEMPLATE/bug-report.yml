@@ -1,0 +1,46 @@
+name: Bug report
+description: Report a reproducible problem in the workbench or runtime.
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: Do not include credentials, private tenant data, or security exploit details. Use a private security advisory for vulnerabilities.
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Observed behavior
+      description: What happened, and on which surface?
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Minimal steps using synthetic data.
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Runtime surface
+      options:
+        - Vercel / Next.js
+        - Cloudflare Worker / Agents / D1
+        - Fly / LangGraph / runner
+        - Local development
+        - Documentation or packaging
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Diagnostics
+      description: Redacted error codes, trace IDs, and commands already tried.

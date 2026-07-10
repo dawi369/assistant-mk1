@@ -8,8 +8,9 @@ Document status: Cloudflare currently owns users, accounts, workspaces,
 memberships, active workspace preferences, workspace-scoped agents, active
 agent preferences, normal chat coordination, Admin summaries, diagnostic runs,
 tool policy, approvals, runtime traces, execution/artifact history metadata,
-and control-plane events. Secret custody, customer-facing admin flows,
-mutation-capable tools, and richer artifact storage remain target work.
+customer-facing workspace/member administration, run recovery controls, and
+control-plane events. Secret custody, invitation lifecycle, mutation-capable
+tools, and richer artifact storage remain target work.
 
 ## Responsibilities
 
@@ -61,6 +62,19 @@ workspace, membership, and active agent before reading or writing state.
 Local development can fall back to server-derived `WORKBENCH_DEV_*` identity
 only when `WORKBENCH_ALLOW_LOCAL_DEV_IDENTITY=true` and the runtime is not
 production. Hosted production fails closed if WorkOS is incomplete.
+
+Current customer access routes:
+
+- `GET/POST /workspaces`
+- `POST /workspaces/:workspaceId/activate`
+- `GET/POST /workspaces/:workspaceId/members`
+- `PATCH /workspaces/:workspaceId/members/:userId`
+
+Active members can switch assigned workspaces. Workspace creation and member
+administration require owner/admin role. Admins cannot edit owners or grant
+owner, self-lockout is denied, and the final active owner is protected. New
+members must already have an active membership in the same account's default
+workspace, which prevents cross-account user-id admission.
 
 ## Chat Runtime
 
@@ -149,16 +163,23 @@ metadata reads for execution and artifact history:
 
 - Cloudflare `GET /workbench/history/runs?limit=25`
 - Cloudflare `GET /workbench/history/runs/:runId`
+- Cloudflare `POST /workbench/history/runs/:runId/cancel`
+- Cloudflare `POST /workbench/history/runs/:runId/retry`
 - Cloudflare `GET /workbench/history/artifacts?limit=25`
 - Vercel `GET /api/workbench/history/runs`
 - Vercel `GET /api/workbench/history/runs/:runId`
+- Vercel `POST /api/workbench/history/runs/:runId/cancel`
+- Vercel `POST /api/workbench/history/runs/:runId/retry`
 - Vercel `GET /api/workbench/history/artifacts`
 
-These endpoints expose run summaries, tool-call counts, compact stored run
-snapshots, and metadata-only artifacts. They do not provide blob/R2 storage,
-raw logs, prompts, or secrets. The `/history` workbench surface and workflow
-handoff now make this product-visible metadata available outside Admin, while
-Admin still carries the deeper diagnostic details.
+These endpoints expose run summaries, action availability, tool-call counts,
+compact stored run snapshots, pending approval interventions, and metadata-only
+artifacts. Cancellation is accepted only for queued/running/waiting runs.
+Retry is implemented for failed/cancelled Polymancer and Swordfish pack
+workflows and creates a new run from the stored typed input. They do not provide
+blob/R2 storage, raw logs, prompts, or secrets. The `/history` workbench surface
+makes this product-visible state and recovery available outside Admin, while
+Admin still carries deeper diagnostics.
 
 ## Tools And Policy
 

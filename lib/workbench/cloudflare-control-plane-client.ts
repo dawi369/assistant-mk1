@@ -21,6 +21,8 @@ import type {
   CloudflareToolsResponse,
   CloudflareOwnedDemoRunResponse,
   CloudflareWorkspaceMutationResponse,
+  CloudflareWorkspaceMemberMutationResponse,
+  CloudflareWorkspaceMembersResponse,
   CloudflareWorkspacesResponse,
   ChatThreadResponse,
   ChatThreadStatus,
@@ -49,6 +51,8 @@ export type {
   CloudflareOwnedDemoRunResponse,
   CloudflareOwnedDemoRunSnapshot,
   CloudflareWorkspaceMutationResponse,
+  CloudflareWorkspaceMemberMutationResponse,
+  CloudflareWorkspaceMembersResponse,
   CloudflareWorkspacesResponse,
   ChatRuntimeSummary,
   ChatRuntimeSummaryResponse,
@@ -232,6 +236,18 @@ export const getExecutionHistory = (limit = 25) =>
 export const getExecutionHistoryRun = (runId: Id) =>
   requestControlPlane<CloudflareExecutionHistoryRunResponse>(
     `/workbench/history/runs/${encodeURIComponent(runId)}`,
+  );
+
+export const cancelCloudflareExecutionRun = (runId: Id) =>
+  requestControlPlane<{ ok?: boolean; run?: { id?: Id; status?: string }; error?: string }>(
+    `/workbench/history/runs/${encodeURIComponent(runId)}/cancel`,
+    { method: "POST" },
+  );
+
+export const retryCloudflareExecutionRun = (runId: Id) =>
+  requestControlPlane<CloudflareToolRunResponse>(
+    `/workbench/history/runs/${encodeURIComponent(runId)}/retry`,
+    { method: "POST" },
   );
 
 export const getArtifactHistory = (limit = 25) =>
@@ -418,6 +434,36 @@ export const activateCloudflareWorkspace = (workspaceId: Id) =>
   requestControlPlane<CloudflareWorkspaceMutationResponse>(
     `/workspaces/${encodeURIComponent(workspaceId)}/activate`,
     { method: "POST" },
+  );
+
+export const getCloudflareWorkspaceMembers = (workspaceId: Id) =>
+  requestControlPlane<CloudflareWorkspaceMembersResponse>(
+    `/workspaces/${encodeURIComponent(workspaceId)}/members`,
+  );
+
+export const addCloudflareWorkspaceMember = (
+  workspaceId: Id,
+  input: { userId: Id; role: "owner" | "admin" | "member" },
+) =>
+  requestControlPlane<{
+    ok?: boolean;
+    userId?: Id;
+    role?: string;
+    status?: string;
+    error?: string;
+  }>(`/workspaces/${encodeURIComponent(workspaceId)}/members`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+
+export const updateCloudflareWorkspaceMember = (
+  workspaceId: Id,
+  userId: Id,
+  input: { role: "owner" | "admin" | "member"; status: "active" | "disabled" },
+) =>
+  requestControlPlane<CloudflareWorkspaceMemberMutationResponse>(
+    `/workspaces/${encodeURIComponent(workspaceId)}/members/${encodeURIComponent(userId)}`,
+    { method: "PATCH", body: JSON.stringify(input) },
   );
 
 export const getCloudflareAgents = () => requestControlPlane<CloudflareAgentsResponse>("/agents");

@@ -6,11 +6,21 @@
  * marketing or demo landing page.
  */
 import { WorkbenchShell } from "@/components/workbench/workbench-shell";
+import {
+  authPresentationCookieName,
+  isSignedOutPresentation,
+} from "@/lib/workbench/auth-presentation";
+import { cookies } from "next/headers";
 
-export default function Home() {
+export default async function Home() {
+  const cookieStore = await cookies();
+  const initialSignedOutPresentation = isSignedOutPresentation(
+    cookieStore.get(authPresentationCookieName)?.value,
+  );
+
   return (
     <main className="h-dvh">
-      <WorkbenchShell />
+      <WorkbenchShell initialSignedOutPresentation={initialSignedOutPresentation} />
     </main>
   );
 }

@@ -82,6 +82,8 @@ describe("workbench history", () => {
         created_at: "2026-06-18T09:59:00.000Z",
         updated_at: "2026-06-18T10:02:00.000Z",
         tool_call_count: 2,
+        workflow_type: "polymancer.market_research",
+        pending_approval_count: 0,
       },
     ]);
 
@@ -95,6 +97,8 @@ describe("workbench history", () => {
         artifactIds?: string[];
         decisionIds?: string[];
         toolCallCount?: number;
+        workflowType?: string;
+        controls?: { canCancel?: boolean; canRetry?: boolean; canResume?: boolean };
       }>;
       limit?: number;
     }>(response);
@@ -108,6 +112,8 @@ describe("workbench history", () => {
       artifactIds: ["artifact-1"],
       decisionIds: ["decision-1"],
       toolCallCount: 2,
+      workflowType: "polymancer.market_research",
+      controls: { canCancel: false, canRetry: false, canResume: false },
     });
     expect(calls[0]?.values).toEqual(["user-1", "workspace-1", 5]);
   });

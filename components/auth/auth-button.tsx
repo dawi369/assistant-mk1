@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth } from "@workos-inc/authkit-nextjs/components";
-import { Loader2Icon, LogInIcon, LogOutIcon, UserIcon } from "lucide-react";
+import { Building2Icon, Loader2Icon, LogInIcon, LogOutIcon, UserIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 
@@ -10,7 +10,13 @@ import { Button } from "@/components/ui/button";
  * Uses refreshAuth({ ensureSignedIn: true }) for sign-in to avoid
  * server component cookie issues in Next.js 15+/16.
  */
-export function AuthButton() {
+export function AuthButton({
+  localSession = false,
+  onOpenWorkspace,
+}: {
+  localSession?: boolean;
+  onOpenWorkspace?: () => void;
+}) {
   const { user, loading, signOut, refreshAuth } = useAuth();
 
   if (loading) {
@@ -21,17 +27,25 @@ export function AuthButton() {
     );
   }
 
-  if (user) {
+  if (user || localSession) {
     return (
       <div className="flex items-center gap-2">
         <span className="text-muted-foreground flex items-center gap-1.5 text-xs">
           <UserIcon className="size-3.5" />
-          {user.email ?? user.firstName ?? "User"}
+          {user?.email ?? user?.firstName ?? "Local development"}
         </span>
-        <Button variant="ghost" size="sm" onClick={() => void signOut()} title="Sign out">
-          <LogOutIcon className="size-4" />
-          <span className="sr-only">Sign out</span>
-        </Button>
+        {onOpenWorkspace ? (
+          <Button variant="ghost" size="sm" onClick={onOpenWorkspace} title="Workspace access">
+            <Building2Icon className="size-4" />
+            <span className="sr-only">Workspace access</span>
+          </Button>
+        ) : null}
+        {user ? (
+          <Button variant="ghost" size="sm" onClick={() => void signOut()} title="Sign out">
+            <LogOutIcon className="size-4" />
+            <span className="sr-only">Sign out</span>
+          </Button>
+        ) : null}
       </div>
     );
   }

@@ -57,12 +57,18 @@ import {
   readVercelTimingHeaders,
 } from "./runtime-traces";
 import { handleWorkspaceContext } from "./workspace-context";
+import { handleCancelExecutionRun, handleRetryExecutionRun } from "./run-control";
 import {
   getExecutionHistoryRun,
   listArtifactHistory,
   listExecutionHistory,
 } from "./workbench-history";
 import { handleActivateWorkspace, handleCreateWorkspace, handleListWorkspaces } from "./workspaces";
+import {
+  handleAddWorkspaceMember,
+  handleListWorkspaceMembers,
+  handleUpdateWorkspaceMember,
+} from "./workspace-members";
 import { resolveAgentIdentity } from "./authz";
 import { internalErrorResponse, json, requireControlPlaneAuth, requireDevToken } from "./http";
 import type { Env, WorkerExecutionContext } from "./types";
@@ -264,6 +270,21 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
     return getExecutionHistoryRun(env, identity, decodeURIComponent(historyRunMatch[1]));
   }
 
+  const cancelHistoryRunMatch = url.pathname.match(/^\/workbench\/history\/runs\/([^/]+)\/cancel$/);
+  if (request.method === "POST" && cancelHistoryRunMatch?.[1]) {
+    return handleCancelExecutionRun(env, identity, decodeURIComponent(cancelHistoryRunMatch[1]));
+  }
+
+  const retryHistoryRunMatch = url.pathname.match(/^\/workbench\/history\/runs\/([^/]+)\/retry$/);
+  if (request.method === "POST" && retryHistoryRunMatch?.[1]) {
+    return handleRetryExecutionRun(
+      request,
+      env,
+      identity,
+      decodeURIComponent(retryHistoryRunMatch[1]),
+    );
+  }
+
   if (request.method === "GET" && url.pathname === "/workbench/history/artifacts") {
     return listArtifactHistory(env, identity, url);
   }
@@ -279,6 +300,30 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
   const activateWorkspaceMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/activate$/);
   if (request.method === "POST" && activateWorkspaceMatch?.[1]) {
     return handleActivateWorkspace(env, identity, decodeURIComponent(activateWorkspaceMatch[1]));
+  }
+
+  const workspaceMembersMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/members$/);
+  if (request.method === "GET" && workspaceMembersMatch?.[1]) {
+    return handleListWorkspaceMembers(env, identity, decodeURIComponent(workspaceMembersMatch[1]));
+  }
+  if (request.method === "POST" && workspaceMembersMatch?.[1]) {
+    return handleAddWorkspaceMember(
+      request,
+      env,
+      identity,
+      decodeURIComponent(workspaceMembersMatch[1]),
+    );
+  }
+
+  const workspaceMemberMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/members\/([^/]+)$/);
+  if (request.method === "PATCH" && workspaceMemberMatch?.[1] && workspaceMemberMatch[2]) {
+    return handleUpdateWorkspaceMember(
+      request,
+      env,
+      identity,
+      decodeURIComponent(workspaceMemberMatch[1]),
+      decodeURIComponent(workspaceMemberMatch[2]),
+    );
   }
 
   if (request.method === "GET" && url.pathname === "/agents") {

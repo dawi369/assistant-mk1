@@ -22,8 +22,24 @@ const scopeFromRow = (row: { user_id: string; workspace_id: string }): TenantSco
   workspaceId: row.workspace_id,
 });
 
-const toRunHistoryItem = (row: ControlRunRow & { tool_call_count?: number }) => {
+const retryableWorkflowTypes = new Set([
+  "polymancer.market_research",
+  "swordfish.runtime_research",
+]);
+
+const toRunHistoryItem = (
+  row: ControlRunRow & {
+    tool_call_count?: number;
+    workflow_type?: string | null;
+    pending_approval_count?: number;
+  },
+) => {
   const data = parseDataJson(row.data_json);
+  const canCancel = row.status === "queued" || row.status === "running" || row.status === "waiting";
+  const canRetry =
+    (row.status === "failed" || row.status === "cancelled") &&
+    Boolean(row.workflow_type && retryableWorkflowTypes.has(row.workflow_type));
+  const canResume = row.status === "interrupted" && Boolean(row.pending_approval_count);
   return {
     id: row.id,
     scope: scopeFromRow(row),
@@ -34,6 +50,7 @@ const toRunHistoryItem = (row: ControlRunRow & { tool_call_count?: number }) => 
     engine: row.engine ?? undefined,
     summary: typeof data.summary === "string" ? data.summary : undefined,
     displayName: typeof data.displayName === "string" ? data.displayName : undefined,
+    workflowType: row.workflow_type ?? undefined,
     artifactIds: Array.isArray(data.artifactIds)
       ? data.artifactIds.filter((item): item is string => typeof item === "string")
       : [],
@@ -50,6 +67,12 @@ const toRunHistoryItem = (row: ControlRunRow & { tool_call_count?: number }) => 
     failedAt: row.failed_at ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    controls: {
+      canCancel,
+      canRetry,
+      canResume,
+      resumeKind: canResume ? "approval" : undefined,
+    },
   };
 };
 
@@ -72,19 +95,35 @@ export const listExecutionHistory = async (env: Env, identity: AgentIdentity, ur
        r.id, r.user_id, r.workspace_id, r.agent_id, r.workflow_intent_id, r.status,
        r.execution_json, r.stage, r.engine, r.heartbeat_at, r.last_event_at,
        r.completed_at, r.failed_at, r.data_json, r.created_at, r.updated_at,
-       COUNT(tc.id) AS tool_call_count
+       i.type AS workflow_type,
+       COUNT(DISTINCT tc.id) AS tool_call_count,
+       COUNT(DISTINCT CASE WHEN ar.status = 'requested' THEN ar.id END) AS pending_approval_count
      FROM control_runs r
+     LEFT JOIN control_workflow_intents i
+       ON i.user_id = r.user_id
+      AND i.workspace_id = r.workspace_id
+      AND i.id = r.workflow_intent_id
      LEFT JOIN control_tool_calls tc
        ON tc.user_id = r.user_id
       AND tc.workspace_id = r.workspace_id
       AND tc.run_id = r.id
+     LEFT JOIN control_approval_requests ar
+       ON ar.user_id = r.user_id
+      AND ar.workspace_id = r.workspace_id
+      AND ar.run_id = r.id
      WHERE r.user_id = ? AND r.workspace_id = ?
      GROUP BY r.id
      ORDER BY r.updated_at DESC, r.created_at DESC
      LIMIT ?`,
   )
     .bind(identity.scope.userId, identity.scope.workspaceId, limit)
-    .all<ControlRunRow & { tool_call_count?: number }>();
+    .all<
+      ControlRunRow & {
+        tool_call_count?: number;
+        workflow_type?: string | null;
+        pending_approval_count?: number;
+      }
+    >();
 
   return json({
     ok: true,

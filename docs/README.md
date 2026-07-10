@@ -35,6 +35,7 @@ These files should stay aligned with code changes:
 - `dev-infrastructure-readiness.md`: local/remote setup, smoke commands, and
   resource checklist.
 - `evals.md`: real-session eval posture, manifest, and verifier command.
+- `release-readiness.md`: read-only 1.0 scope, deferred gates, and release evidence.
 - `deployment-vercel.md` and `deployment-fly.md`: deployment runbooks.
 - `diagrams/current-implementation-topology.mmd`: current topology source.
 

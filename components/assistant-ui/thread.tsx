@@ -30,6 +30,10 @@ import {
 } from "@/components/assistant-ui/tool-group";
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
+import {
+  StarterSuggestionGrid,
+  ThreadWelcomeLayout,
+} from "@/components/assistant-ui/thread-welcome";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useWorkbenchAgentConnection } from "@/lib/workbench/use-agent-connection";
@@ -151,106 +155,43 @@ const ThreadScrollToBottom: FC = () => {
 
 const ThreadWelcome: FC = () => {
   return (
-    <div className="aui-thread-welcome-root my-auto flex grow flex-col">
-      <div className="aui-thread-welcome-center flex w-full grow flex-col items-center justify-center">
-        <div className="aui-thread-welcome-message flex size-full flex-col justify-center px-4">
-          <h1 className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in fill-mode-both text-2xl font-semibold duration-200">
-            Hello there!
-          </h1>
-          <p className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in fill-mode-both text-muted-foreground text-xl delay-75 duration-200">
-            How can I help you today?
-          </p>
-        </div>
-      </div>
+    <ThreadWelcomeLayout>
       <ThreadSuggestions />
-    </div>
+    </ThreadWelcomeLayout>
   );
 };
 
 const ThreadSuggestions: FC = () => {
+  const aui = useAui();
+  const disabled = useAuiState((s) => s.thread.isDisabled || s.thread.isRunning);
   const runtimeSuggestionCount = useAuiState((s) => s.suggestions.suggestions.length);
+
+  if (runtimeSuggestionCount === 0) {
+    return (
+      <StarterSuggestionGrid
+        disabled={disabled}
+        onSelect={(prompt) => {
+          if (disabled) return;
+          aui.thread().append({
+            content: [{ type: "text", text: prompt }],
+            runConfig: aui.composer().getState().runConfig,
+          });
+          aui.composer().setText("");
+        }}
+      />
+    );
+  }
 
   return (
     <div className="aui-thread-welcome-suggestions grid w-full gap-2 pb-4 @md:grid-cols-2">
-      {runtimeSuggestionCount > 0 ? (
-        <ThreadPrimitive.Suggestions>{() => <ThreadSuggestionItem />}</ThreadPrimitive.Suggestions>
-      ) : (
-        starterSuggestions.map((suggestion) => (
-          <StaticSuggestionItem
-            key={suggestion.title}
-            title={suggestion.title}
-            description={suggestion.description}
-            prompt={suggestion.prompt}
-          />
-        ))
-      )}
-    </div>
-  );
-};
-
-const starterSuggestions = [
-  {
-    title: "Run a readiness check",
-    description: "Confirm the chat loop is responding.",
-    prompt:
-      "Give me a concise readiness check for this chat session. Keep it practical and mention what you can help with next.",
-  },
-  {
-    title: "Plan a project handoff",
-    description: "Test a workbench-style planning response.",
-    prompt:
-      "Help me turn a rough project idea into a short implementation plan with assumptions, risks, and next checks.",
-  },
-  {
-    title: "Test agent behavior",
-    description: "Ask for a focused operator-style answer.",
-    prompt:
-      "Act as a concise operator assistant. List the first three checks you would run before taking action on a new workspace task.",
-  },
-  {
-    title: "Explain a failure",
-    description: "Practice debugging from symptoms.",
-    prompt:
-      "If I tell you a chat message failed or did nothing, what exact facts should we inspect first?",
-  },
-] as const;
-
-const StaticSuggestionItem: FC<{
-  title: string;
-  description: string;
-  prompt: string;
-}> = ({ title, description, prompt }) => {
-  const aui = useAui();
-  const disabled = useAuiState((s) => s.thread.isDisabled || s.thread.isRunning);
-  const sendPrompt = () => {
-    if (disabled) return;
-    aui.thread().append({
-      content: [{ type: "text", text: prompt }],
-      runConfig: aui.composer().getState().runConfig,
-    });
-    aui.composer().setText("");
-  };
-
-  return (
-    <div className="aui-thread-welcome-suggestion-display fade-in slide-in-from-bottom-2 animate-in fill-mode-both duration-200 nth-[n+3]:hidden @md:nth-[n+3]:block">
-      <Button
-        variant="ghost"
-        disabled={disabled}
-        onClick={sendPrompt}
-        className="aui-thread-welcome-suggestion bg-background hover:bg-muted h-auto w-full flex-wrap items-start justify-start gap-1 rounded-3xl border px-4 py-3 text-start text-sm transition-colors @md:flex-col"
-      >
-        <span className="aui-thread-welcome-suggestion-text-1 font-medium">{title}</span>
-        <span className="aui-thread-welcome-suggestion-text-2 text-muted-foreground">
-          {description}
-        </span>
-      </Button>
+      <ThreadPrimitive.Suggestions>{() => <ThreadSuggestionItem />}</ThreadPrimitive.Suggestions>
     </div>
   );
 };
 
 const ThreadSuggestionItem: FC = () => {
   return (
-    <div className="aui-thread-welcome-suggestion-display fade-in slide-in-from-bottom-2 animate-in fill-mode-both duration-200 nth-[n+3]:hidden @md:nth-[n+3]:block">
+    <div className="aui-thread-welcome-suggestion-display nth-[n+3]:hidden @md:nth-[n+3]:block">
       <SuggestionPrimitive.Trigger send asChild>
         <Button
           variant="ghost"

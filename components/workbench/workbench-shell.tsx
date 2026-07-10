@@ -11,6 +11,7 @@ import {
   MessageSquarePlusIcon,
   PlayIcon,
   ShieldCheckIcon,
+  Building2Icon,
 } from "lucide-react";
 
 import { Assistant } from "@/app/assistant";
@@ -37,6 +38,7 @@ import { WorkbenchAgentsPanel } from "@/components/workbench/workbench-agents-pa
 import { WorkbenchAssistantEvents } from "@/components/workbench/workbench-assistant-events";
 import { WorkbenchHistoryPanel } from "@/components/workbench/workbench-history-panel";
 import { WorkbenchRuntimeHint } from "@/components/workbench/workbench-runtime-hint";
+import { WorkbenchWorkspacePanel } from "@/components/workbench/workbench-workspace-panel";
 import { requestWorkbenchSummaryRefresh } from "@/lib/workbench/admin-summary-events";
 import { resolveAgentSlashWorkflowActions } from "@/lib/workbench/agent-slash-actions";
 import type { HistoryFocusRequest } from "@/lib/workbench/history-surface";
@@ -52,6 +54,7 @@ import {
 import type { RunnableAdminToolName } from "@/lib/workbench/cloudflare-control-plane-client";
 import type { AgentSlashWorkflowAction } from "@/lib/workbench/agent-slash-actions";
 import type { CloudflareToolRunResponse } from "@/lib/workbench/workbench-types";
+import { hasWorkbenchSessionAccess } from "@/lib/workbench/session-access";
 
 const adminAccessPath = "/api/workbench/admin-access";
 const toolRunsPath = "/api/workbench/tools/runs";
@@ -65,20 +68,29 @@ const adminTestToolInputs: Record<
   "artifact.metadata.test": { label: "admin conformance" },
 };
 
-export function WorkbenchShell() {
+export function WorkbenchShell({
+  initialSignedOutPresentation = false,
+}: {
+  initialSignedOutPresentation?: boolean;
+}) {
   return (
     <ChatSessionProvider>
       <WorkbenchComposerFocusProvider>
-        <WorkbenchShellContent />
+        <WorkbenchShellContent initialSignedOutPresentation={initialSignedOutPresentation} />
       </WorkbenchComposerFocusProvider>
     </ChatSessionProvider>
   );
 }
 
-function WorkbenchShellContent() {
+function WorkbenchShellContent({
+  initialSignedOutPresentation,
+}: {
+  initialSignedOutPresentation: boolean;
+}) {
   const [adminOpen, setAdminOpen] = useState(false);
   const [agentsOpen, setAgentsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [historyFocus, setHistoryFocus] = useState<HistoryFocusRequest | null>(null);
   const [adminAccess, setAdminAccess] = useState<{ isAdmin: boolean } | null>(null);
   const [adminNotice, setAdminNotice] = useState<string | null>(null);
@@ -86,7 +98,17 @@ function WorkbenchShellContent() {
   const [workflowInput, setWorkflowInput] = useState<Record<string, string | boolean>>({});
   const [isWorkflowRunning, setIsWorkflowRunning] = useState(false);
   const { user, loading } = useAuth();
-  const { isInitialLoading, session, startNewSession } = useWorkbenchAgentConnection();
+  const {
+    error: sessionError,
+    isInitialLoading,
+    session,
+    startNewSession,
+  } = useWorkbenchAgentConnection();
+  const hasAuthenticatedSession = hasWorkbenchSessionAccess({
+    hasWorkOsUser: Boolean(user),
+    session,
+    sessionError,
+  });
   const { focusComposerAfterInteraction, focusComposerAfterOverlayClose } =
     useWorkbenchComposerFocus();
 
@@ -305,6 +327,13 @@ function WorkbenchShellContent() {
         execute: startNewChat,
       },
       {
+        id: "workspace",
+        label: "Workspace",
+        description: "Switch accounts and manage workspace access.",
+        icon: Building2Icon,
+        execute: () => setWorkspaceOpen(true),
+      },
+      {
         id: "agents",
         label: "Agents",
         description: "Pick the active chat agent.",
@@ -377,26 +406,41 @@ function WorkbenchShellContent() {
     <div className="bg-background relative h-dvh overflow-hidden">
       <AssistantSlashCommandProvider commands={slashCommands}>
         <div className="absolute top-3 right-3 z-30 flex max-w-[calc(100vw-1.5rem)] flex-col items-end gap-2">
-          <AuthButton />
+          <AuthButton
+            localSession={!user && hasAuthenticatedSession}
+            onOpenWorkspace={() => setWorkspaceOpen(true)}
+          />
           {adminNotice ? (
             <div className="border-border bg-background/95 text-muted-foreground rounded-md border px-2.5 py-1.5 text-xs shadow-xs backdrop-blur">
               {adminNotice}
             </div>
           ) : null}
         </div>
-        <ThreadHistorySidebar disableNewChat={false} disableThreadActions={isInitialLoading} />
-        <div className="absolute top-14 right-3 z-20 flex max-w-[calc(100vw-1.5rem)] flex-col items-end gap-2">
-          <WorkbenchRuntimeHint
-            onOpenAdmin={openAdmin}
-            onOpenHistory={() => setHistoryOpen(true)}
-          />
-        </div>
-        <Assistant>
+        {hasAuthenticatedSession ? (
+          <>
+            <ThreadHistorySidebar disableNewChat={false} disableThreadActions={isInitialLoading} />
+            <div className="absolute top-14 right-3 z-20 flex max-w-[calc(100vw-1.5rem)] flex-col items-end gap-2">
+              <WorkbenchRuntimeHint
+                onOpenAdmin={openAdmin}
+                onOpenHistory={() => setHistoryOpen(true)}
+              />
+            </div>
+          </>
+        ) : null}
+        <Assistant initialSignedOutPresentation={initialSignedOutPresentation}>
           <WorkbenchAssistantEvents />
         </Assistant>
         <WorkbenchAgentsPanel
           open={agentsOpen}
           onOpenChange={handleAgentsOpenChange}
+          onCloseAutoFocus={handlePanelCloseAutoFocus}
+        />
+        <WorkbenchWorkspacePanel
+          open={workspaceOpen}
+          onOpenChange={(nextOpen) => {
+            setWorkspaceOpen(nextOpen);
+            if (!nextOpen) focusComposerAfterOverlayClose();
+          }}
           onCloseAutoFocus={handlePanelCloseAutoFocus}
         />
         <WorkbenchHistoryPanel

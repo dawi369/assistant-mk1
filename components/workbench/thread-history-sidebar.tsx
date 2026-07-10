@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useAuiState } from "@assistant-ui/react";
+import { useAuth } from "@workos-inc/authkit-nextjs/components";
 import {
   ArchiveIcon,
   ArchiveRestoreIcon,
+  LockKeyholeIcon,
   Loader2Icon,
   MessageSquareIcon,
   PencilIcon,
@@ -16,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { useWorkbenchComposerFocus } from "@/components/workbench/composer-focus-context";
 import { cn } from "@/lib/utils";
 import { useWorkbenchAgentConnection } from "@/lib/workbench/use-agent-connection";
+import { hasWorkbenchSessionAccess } from "@/lib/workbench/session-access";
 import type { ChatThreadSummary } from "@/lib/workbench/workbench-types";
 
 export function AssistantThreadHistorySidebar() {
@@ -48,6 +51,7 @@ export function ThreadHistorySidebar({
     deleteThread,
     loadArchivedThreads,
   } = useWorkbenchAgentConnection();
+  const { user, loading: authLoading } = useAuth();
   const [view, setView] = useState<"active" | "archived">("active");
   const [archiveError, setArchiveError] = useState<string | null>(null);
   const { focusComposerAfterInteraction } = useWorkbenchComposerFocus();
@@ -55,16 +59,26 @@ export function ThreadHistorySidebar({
   const isNavigatingThread =
     pending?.type === "activate" || pending?.type === "create" || pending?.type === "materialize";
   const isCached = session?.isStale === true;
-  const actionsDisabled = disableThreadActions || isCached;
-  const newChatDisabled = disableNewChat || pending?.type === "materialize";
+  const isSignedOut =
+    !authLoading &&
+    !hasWorkbenchSessionAccess({
+      hasWorkOsUser: Boolean(user),
+      session,
+      sessionError: error,
+    });
+  const actionsDisabled = disableThreadActions || isCached || isSignedOut;
+  const newChatDisabled = disableNewChat || pending?.type === "materialize" || actionsDisabled;
   const threadItemsDisabled = actionsDisabled;
   const visibleThreads = (view === "archived" ? archivedThreads : threads).filter(
     (thread) => !deletingThreadIds.has(thread.threadId),
   );
   const loadingArchived = view === "archived" && isLoadingArchivedThreads;
   const loadingInitialThreads = isInitialLoading && visibleThreads.length === 0;
-  const visibleError =
-    view === "archived" ? (archiveError ?? archivedThreadsError) : (archiveError ?? error);
+  const visibleError = isSignedOut
+    ? null
+    : view === "archived"
+      ? (archiveError ?? archivedThreadsError)
+      : (archiveError ?? error);
   const headerLabel = view === "archived" ? "Archived chats" : "Recent chats";
 
   useEffect(() => {
@@ -183,12 +197,20 @@ export function ThreadHistorySidebar({
           </Button>
         </div>
 
+        {isSignedOut ? (
+          <div className="text-muted-foreground flex items-center gap-1.5 border-b px-3 py-2 text-[11px]">
+            <LockKeyholeIcon className="size-3.5 shrink-0" />
+            Sign in to resume chats
+          </div>
+        ) : null}
+
         <div className="border-border flex gap-1 border-b px-2 py-2">
           <Button
             type="button"
             variant={view === "active" ? "secondary" : "ghost"}
             size="sm"
             className="h-7 flex-1 text-xs"
+            disabled={isSignedOut}
             onClick={() => setView("active")}
           >
             Recent
@@ -198,6 +220,7 @@ export function ThreadHistorySidebar({
             variant={view === "archived" ? "secondary" : "ghost"}
             size="sm"
             className="h-7 flex-1 text-xs"
+            disabled={isSignedOut}
             onClick={() => setView("archived")}
           >
             Archived

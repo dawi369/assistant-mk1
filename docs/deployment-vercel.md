@@ -30,7 +30,7 @@ When AuthKit provides an `organizationId`, Vercel maps it to an internal
 default workspace if needed and resolves the active workspace from D1. That is
 the current B2B shape: a customer/company WorkOS organization owns one or more
 assistant-mk1 workspaces, with one default workspace created first. During the
-current pre-user development phase, a signed-in WorkOS session without an
+current read-only release, a signed-in WorkOS session without an
 organization gets a stable personal account id derived from the WorkOS
 `user.id`, with a default workspace under that account.
 
@@ -59,7 +59,8 @@ identity provider sign-in succeeds.
 
 `WORKBENCH_ADMIN_USER_IDS` and `WORKBENCH_ADMIN_EMAILS` gate the local `/admin`
 composer command and centered Admin panel. Use WorkOS user ids when available;
-email allowlisting is acceptable for the current solo/pre-user phase.
+email allowlisting is acceptable for local development; production should use
+stable WorkOS user ids.
 
 Do not mirror local `.env.local` into Vercel Production blindly:
 
@@ -71,12 +72,13 @@ request. `CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN` remains the shared transport
 token for current dev operations, but Cloudflare trusts WorkOS-derived identity
 headers only when the request signature is fresh and non-replayed. WorkOS
 `user.id` becomes the internal `userId`. WorkOS `organizationId` becomes
-`workos-org:<organizationId>` when available; otherwise the pre-user dev
-fallback account id is
+`workos-org:<organizationId>` when available; otherwise the personal fallback
+account id is
 `workos-personal:<user-id>`. Cloudflare auto-bootstraps D1-backed user, default
-workspace, initial membership, and default agent rows for the current pre-user
-dev environment, then resolves the active workspace and active agent before
-touching control-plane state. Cloudflare stores the OpenRouter key for
+workspace, initial membership, and default agent rows, then resolves the active
+workspace and active agent before touching control-plane state. Owners and
+admins manage workspace membership through the normal workbench surface;
+Cloudflare enforces those changes against D1. Cloudflare stores the OpenRouter key for
 Cloudflare-native simple chat and the Fly gateway token as
 `LANGGRAPH_UPSTREAM_TOKEN` for explicit LangGraph/Fly escalation. Browser
 requests never provide tenant ids or agent

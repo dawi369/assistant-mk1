@@ -27,19 +27,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Validate agent packs
-        run: pnpm agent-packs:validate
-
-      - name: Run focused unit tests
-        run: pnpm test:unit -- agent-packs pack-workflow-bindings polymancer-workflows swordfish-workflows tool-policy
-
-      - name: Typecheck
-        run: pnpm typecheck
-
-      - name: Lint
-        run: pnpm lint
-
-      - name: Build
-        run: pnpm build
+      - name: Verify repository
+        run: pnpm verify
         env:
           SENTRY_AUTH_TOKEN: ""

@@ -16,7 +16,8 @@ export type RealSessionEvalAssertion =
   | "traces"
   | "tenant_isolation"
   | "runner_sandbox"
-  | "schedule_dispatch";
+  | "schedule_dispatch"
+  | "membership";
 
 export type RealSessionEvalSuite = {
   id: string;
@@ -40,6 +41,14 @@ export const realSessionEvalSuites = [
     surface: "cloudflare_agent_session",
     requiredAssertions: ["threads", "runs", "messages", "events"],
     description: "Exercises create, switch, rename, archive, restore, delete, and running guards.",
+  },
+  {
+    id: "workspace-membership",
+    command: "pnpm smoke:cloudflare-membership-policy",
+    surface: "cloudflare_worker_http",
+    requiredAssertions: ["membership", "tenant_isolation", "events"],
+    description:
+      "Exercises owner/admin/member policy, account-scoped admission, workspace switching, and disabled access.",
   },
   {
     id: "tool-admin-hitl",
@@ -88,6 +97,7 @@ export const requiredRealSessionAssertions = [
   "threads",
   "tool_calls",
   "approvals",
+  "membership",
   "hitl",
   "events",
   "traces",

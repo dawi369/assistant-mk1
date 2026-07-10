@@ -52,12 +52,20 @@ Current implemented layout:
 - Main thread region using assistant-ui.
 - Top-right auth controls.
 - `/new` composer command for entering a local blank session.
+- The local `/new` surface renders the complete welcome, static starter prompts,
+  and draft composer immediately while Cloudflare staging continues in the
+  background. A starter selection or first send queues through the existing
+  runtime handoff when the Agent connection is not ready yet.
 - `/agents` composer command for active agent selection only.
+- `/workspace` composer command and signed-in account control for WorkOS
+  organization switching, workspace switching/creation, and scoped member
+  administration.
 - Active-agent pack workflows populate the `/` composer menu as runnable slash
   actions when a safe binding exists. Selecting one opens a typed dry-run dialog
   with bounded preset fields instead of raw JSON.
 - `/history` composer command and runtime-hint action for scoped runs,
-  searchable selected-run summaries, tool calls, and metadata-only artifacts.
+  searchable selected-run summaries, tool calls, metadata-only artifacts,
+  supported cancel/retry actions, and interrupted approval resume/deny controls.
 - `/admin` composer command for the flow-first Cloudflare-owned Admin panel.
 - Admin tool actions for read-only adapters and conformance tools, currently
   `url.inspect`, `repo.snapshot`, `diagnostic.ping`, `runner.echo`, and
@@ -65,11 +73,18 @@ Current implemented layout:
 - Admin diagnostic compatibility action for `demo.inspect`.
 - Cache-backed recent-chat sidebar for display-only workspace history. Cached
   rows can paint immediately, then reconcile with Cloudflare.
+- Signed-out recovery state hides cached workspace chrome and provider
+  diagnostics, giving the user one clear sign-in path before the composer,
+  recent chats, or runtime state become available.
+- While AuthKit refreshes on reload, the browser holds a secure session gate
+  instead of briefly painting the workbench. A presentation-only browser cookie
+  lets the server render later signed-out reloads consistently; it never grants
+  access or restores workspace data and is cleared when a live session resolves.
+- Connection failures expose a direct reconnect action while preserving deeper
+  redacted diagnostics behind Admin.
 
-Target layout:
+Remaining target layout:
 
-- Compact run/status strip near the thread when chat/workflow state needs a
-  customer-visible status surface.
 - Collapsible workbench/admin panel for inspectable runtime state.
 - Artifact/history drawer or tab. The current `/history` drawer is the first
   product-facing version; it intentionally exposes search, filters,
@@ -133,6 +148,11 @@ Source:
 - active `RunRecord`
 - lifecycle events
 
+The normal History surface executes cancellation and supported pack-workflow
+retry through Cloudflare-owned scoped routes. Retry creates a new run from the
+stored typed workflow input and records the parent run id. Unsupported run
+types do not render a retry action.
+
 ### Interrupts And Approvals
 
 Shows:
@@ -150,6 +170,11 @@ Source:
 - scoped Admin approval queue
 - workflow engine interrupt
 - audit/lifecycle events
+
+Requested tool approvals attached to a selected run render in History with
+approve-and-resume and deny actions. The existing Cloudflare approval policy is
+re-evaluated server-side; the UI never converts a blocked approval into an
+allowed action.
 
 ### Artifacts
 

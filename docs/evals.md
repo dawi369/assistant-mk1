@@ -23,6 +23,7 @@ package script still exists.
 Current real-session suites:
 
 - `pnpm smoke:cloudflare-chat-session-lifecycle`
+- `pnpm smoke:cloudflare-membership-policy`
 - `pnpm smoke:cloudflare-tool-admin`
 - `pnpm smoke:cloudflare-runtime-traces`
 - `pnpm smoke:cloudflare-event-stream`

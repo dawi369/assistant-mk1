@@ -67,6 +67,11 @@ workbench.
 - `/history` opens the product-facing workbench history drawer for recent
   scoped runs, selected-run summaries, tool calls, and metadata-only artifacts.
   The runtime hint also links directly to this surface.
+- `/workspace` opens the product-facing account and access panel for WorkOS
+  organization switching, assigned workspace switching, workspace creation,
+  and owner/admin member controls.
+- History exposes supported cancellation and pack-workflow retry plus approval
+  resume/deny actions. Connection failures expose a direct reconnect action.
 - `/admin` opens a server-gated Admin panel and is stripped before model send.
 - Admin leads with Cloudflare-derived runtime visibility: trace graph,
   waterfall, chat readiness, active workspace, active agent/profile, latest
@@ -102,7 +107,8 @@ workbench.
    while keeping mutation-capable tools behind the production gates.
 7. Move the remaining Fly/LangGraph producers onto the generic scoped callback
    path.
-8. Add generic managed-state, audit, and decision-record surfaces.
+8. Add generic managed-state, audit, and decision-record surfaces after the
+   read-only 1.0 release boundary is proven.
 
 ## Component Rules
 

@@ -1,5 +1,6 @@
 import { parseDataJson, parseJson } from "./http";
 import { readControlRunRelation } from "./run-relations";
+import { toHumanInterventionSummary } from "./human-interventions";
 import {
   createId,
   demoExecution,
@@ -7,6 +8,7 @@ import {
   toJson,
   type AgentIdentity,
   type ControlArtifactRow,
+  type ControlApprovalRequestRow,
   type ControlAuditRow,
   type ControlDecisionRow,
   type ControlIntentRow,
@@ -17,13 +19,14 @@ import {
   type TenantScope,
 } from "./types";
 
-type ControlAuditInput = ScopedRunIdentity & {
-  action: string;
-  summary: string;
-  targetType?: string;
-  targetId?: string;
-  data?: Record<string, unknown>;
-};
+type ControlAuditInput = AgentIdentity &
+  Partial<RunIdentity> & {
+    action: string;
+    summary: string;
+    targetType?: string;
+    targetId?: string;
+    data?: Record<string, unknown>;
+  };
 
 type ControlRunStatusInput = ScopedRunIdentity & {
   status: RunStatus;
@@ -283,6 +286,16 @@ export const getControlRunSnapshot = async (env: Env, scope: TenantScope, runId:
     .bind(scope.userId, scope.workspaceId, runId)
     .all<ControlAuditRow>();
 
+  const approvalRequests = await env.DB.prepare(
+    `SELECT id, user_id, workspace_id, agent_id, workflow_intent_id, run_id, tool_id,
+            status, reason, data_json, created_at, updated_at
+     FROM control_approval_requests
+     WHERE user_id = ? AND workspace_id = ? AND run_id = ?
+     ORDER BY created_at ASC`,
+  )
+    .bind(scope.userId, scope.workspaceId, runId)
+    .all<ControlApprovalRequestRow>();
+
   const childRuns = await env.DB.prepare(
     `SELECT id, user_id, workspace_id, agent_id, workflow_intent_id, status, execution_json,
             stage, engine, heartbeat_at, last_event_at, completed_at, failed_at, data_json,
@@ -307,6 +320,7 @@ export const getControlRunSnapshot = async (env: Env, scope: TenantScope, runId:
     artifacts: artifacts.results.map(toArtifact),
     decisions: decisions.results.map(toDecision),
     auditEvents: auditEvents.results.map(toAuditEvent),
+    interventions: approvalRequests.results.map((approval) => toHumanInterventionSummary(approval)),
     childRuns: childRuns.results.map(toChildRunSummary),
   };
 };

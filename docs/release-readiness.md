@@ -1,0 +1,62 @@
+# Read-Only 1.0 Release Readiness
+
+Document status: current release contract.
+
+Assistant-mk1 1.0 is an authenticated, tenant-scoped, read-only agent
+workbench. It is not a commitment to external mutation, durable customer-data
+retention, encrypted credential brokerage, or artifact blob storage.
+
+## Included
+
+- WorkOS sign-in, sign-out, reload recovery, and organization switching.
+- Cloudflare-owned account, workspace, membership, role, and agent resolution.
+- Customer-facing workspace switching and owner/admin member administration.
+- Cloudflare Agents chat, local-new first paint, recent chats, and agent switching.
+- Typed read-only pack workflows and policy-gated read-only tools.
+- Searchable execution history, metadata artifacts, approvals, cancellation,
+  retry for supported pack workflows, and reconnect recovery.
+- Unit, contract, service-boundary, and browser release checks.
+- Vercel, Cloudflare, Fly, WorkOS, Sentry, and local-development runbooks.
+
+## Release Evidence
+
+| Gate                     | Evidence                                                                    |
+| ------------------------ | --------------------------------------------------------------------------- |
+| Repository               | `pnpm release:check`                                                        |
+| Real-session contract    | `pnpm eval:real-session-posture`                                            |
+| Cloudflare authorization | `pnpm smoke:cloudflare-authz` and `pnpm smoke:cloudflare-membership-policy` |
+| Tenant isolation         | `pnpm smoke:tenant-isolation` and the boundary smokes                       |
+| Run recovery             | run-control unit tests, history smoke, and hosted browser acceptance        |
+| Browser UX               | `pnpm test:e2e` plus signed-in Dia acceptance                               |
+| Documentation            | `docs/README.md` current-state map and deploy runbooks                      |
+
+## Deferred Gates
+
+The following are intentionally outside the read-only 1.0 contract:
+
+- forward-only D1 migrations, backup/restore, and retained customer history
+- the broader unattended-production operations gate
+- encrypted credential custody and refresh brokerage
+- mutation-capable tools and external side effects
+- R2 artifact blobs, export, and deletion workflows
+- plugin marketplace and multi-region deployment
+
+Remote D1 remains disposable development validation state until
+`docs/migrations-and-retention.md` is implemented. A release must not describe
+that state as retained customer history.
+
+## Hosted Acceptance
+
+The deterministic local browser gate runs first. It uses an isolated D1 state
+directory, holds Worker staging long enough to prove the optimistic new-chat
+surface, and verifies workspace membership plus retry controls. The production
+pass then uses the existing WorkOS session and validates:
+
+1. Signed-out reload shows only the deliberate sign-in surface.
+2. Signed-in reload never flashes cached workspace data before auth resolves.
+3. New chat paints immediately and the first prompt sends after background connection.
+4. Existing threads switch, rename, archive, restore, and delete correctly.
+5. Account, workspace, agent, workflow, history, and Admin surfaces enforce role scope.
+6. Failed/disconnected states expose a useful next action.
+7. Interrupted approvals resume or deny from History.
+8. Supported failed pack workflows retry as new linked runs.

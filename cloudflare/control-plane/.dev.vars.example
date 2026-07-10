@@ -1,24 +1,18 @@
-CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=replace-with-local-dev-token
-WORKBENCH_AGENT_CONNECTION_SECRET=replace-with-local-agent-connection-secret
+# Copy to .dev.vars for local Worker development. Never commit real values.
+CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=replace-with-a-local-token
+OPENROUTER_API_KEY=
 LANGGRAPH_UPSTREAM_URL=http://127.0.0.1:2024
-LANGGRAPH_UPSTREAM_TOKEN=replace-with-local-langgraph-proxy-token
-OPENROUTER_API_KEY=replace-with-local-openrouter-key
-OPENROUTER_MODEL=deepseek/deepseek-v4-flash
-OPENROUTER_SITE_URL=http://localhost:3000
-OPENROUTER_APP_NAME=assistant-mk1-cloudflare-chat-local
-ALLOWED_ORIGINS=http://localhost:3000
-SENTRY_DSN=
-SENTRY_ENVIRONMENT=development
-SENTRY_TRACES_SAMPLE_RATE=1.0
+LANGGRAPH_UPSTREAM_TOKEN=replace-with-the-local-langgraph-token
+WORKBENCH_AGENT_CONNECTION_SECRET=replace-with-a-long-random-secret
 WORKBENCH_EXECUTOR_URL=http://localhost:3000/api/workbench/executors/demo-inspect
-WORKBENCH_EXECUTOR_TOKEN=replace-with-local-executor-token
-WORKBENCH_RUNNER_TRANSPORT=inline
-WORKBENCH_RUNNER_URL=http://localhost:3000/workbench/tool-runners/invocations
-WORKBENCH_RUNNER_SIGNING_SECRET=replace-with-local-runner-signing-secret
+WORKBENCH_EXECUTOR_TOKEN=replace-with-the-local-executor-token
+WORKBENCH_CALLBACK_SIGNING_SECRET=replace-with-a-long-random-secret
 
-# Local parity requirement:
-# - CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN must match .env.local
-# - WORKBENCH_EXECUTOR_TOKEN must match .env.local
-#
-# Agent connection tokens are now minted and verified inside Cloudflare, so
-# WORKBENCH_AGENT_CONNECTION_SECRET is Worker-only for the normal chat path.
+# Optional Fly runner path. Inline Cloudflare execution remains the default.
+WORKBENCH_RUNNER_TRANSPORT=inline
+WORKBENCH_RUNNER_URL=
+WORKBENCH_RUNNER_SIGNING_SECRET=
+
+# Local development accepts the bearer token above when facade signing is absent.
+CLOUDFLARE_CONTROL_PLANE_REQUIRE_FACADE_SIGNATURE=false
+ALLOWED_ORIGINS=http://localhost:3000

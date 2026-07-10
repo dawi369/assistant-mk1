@@ -37,6 +37,13 @@ type WorkspaceMutationResponse = {
   error?: string;
 };
 
+type MembersResponse = {
+  ok?: boolean;
+  members?: Array<{ userId?: string; role?: string; status?: string }>;
+  availableMembers?: Array<{ userId?: string }>;
+  error?: string;
+};
+
 const { baseUrl, suffix, readJson, assertStatus } = createSmokeContext();
 
 const accountId = `workos-org:membership-policy-org-${suffix}`;
@@ -131,12 +138,6 @@ runSmoke("Cloudflare membership policy smoke", async () => {
     method: "POST",
     body: JSON.stringify({ name: "Member Blocked Workspace" }),
   });
-  await assertStatus(
-    `/workspaces/${encodeURIComponent(ownerWorkspaceId)}/activate`,
-    memberTenant,
-    403,
-    { method: "POST" },
-  );
 
   const adminSummary = await requireSummary(adminTenant, "admin summary");
   if (adminSummary.membership?.role !== "admin" || adminSummary.membership.status !== "active") {
@@ -145,6 +146,66 @@ runSmoke("Cloudflare membership policy smoke", async () => {
   const adminWorkspace = await createWorkspace(adminTenant, `Admin Workspace ${suffix}`);
   if (!adminWorkspace.ok || !adminWorkspace.workspace?.id) {
     throw new Error(adminWorkspace.error ?? "admin workspace creation failed");
+  }
+
+  const ownerMembersBefore = await readJson<MembersResponse>(
+    `/workspaces/${encodeURIComponent(ownerWorkspaceId)}/members`,
+    ownerTenant,
+  );
+  if (!ownerMembersBefore.availableMembers?.some((item) => item.userId === memberTenant.userId)) {
+    throw new Error("owner workspace did not expose eligible account members");
+  }
+  await readJson(`/workspaces/${encodeURIComponent(ownerWorkspaceId)}/members`, ownerTenant, {
+    method: "POST",
+    body: JSON.stringify({ userId: memberTenant.userId, role: "member" }),
+  });
+  await readJson(`/workspaces/${encodeURIComponent(ownerWorkspaceId)}/members`, ownerTenant, {
+    method: "POST",
+    body: JSON.stringify({ userId: adminTenant.userId, role: "admin" }),
+  });
+
+  const memberActivation = await readJson<WorkspaceMutationResponse>(
+    `/workspaces/${encodeURIComponent(ownerWorkspaceId)}/activate`,
+    memberTenant,
+    { method: "POST" },
+  );
+  if (!memberActivation.ok || memberActivation.activeWorkspaceId !== ownerWorkspaceId) {
+    throw new Error("active member could not switch to an assigned workspace");
+  }
+  const adminActivation = await readJson<WorkspaceMutationResponse>(
+    `/workspaces/${encodeURIComponent(ownerWorkspaceId)}/activate`,
+    adminTenant,
+    { method: "POST" },
+  );
+  if (!adminActivation.ok || adminActivation.activeWorkspaceId !== ownerWorkspaceId) {
+    throw new Error("workspace admin could not switch to an assigned workspace");
+  }
+  await assertStatus(
+    `/workspaces/${encodeURIComponent(ownerWorkspaceId)}/members`,
+    memberTenant,
+    403,
+  );
+  await assertStatus(
+    `/workspaces/${encodeURIComponent(ownerWorkspaceId)}/members/${encodeURIComponent(ownerTenant.userId)}`,
+    adminTenant,
+    403,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ role: "member", status: "active" }),
+    },
+  );
+
+  const ownerMembersAfter = await readJson<MembersResponse>(
+    `/workspaces/${encodeURIComponent(ownerWorkspaceId)}/members`,
+    ownerTenant,
+  );
+  if (
+    !ownerMembersAfter.members?.some(
+      (item) =>
+        item.userId === memberTenant.userId && item.role === "member" && item.status === "active",
+    )
+  ) {
+    throw new Error("added member was not listed with scoped access");
   }
 
   await assertStatus("/admin/workspace-summary", disabledTenant, 403);

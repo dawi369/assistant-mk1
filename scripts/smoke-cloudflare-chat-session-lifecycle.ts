@@ -136,7 +136,10 @@ runSmoke("Cloudflare chat session lifecycle smoke", async () => {
   console.log(`Smoking Cloudflare chat session lifecycle at ${baseUrl}`);
 
   const initial = await getSession(owner);
-  const threadA = requireThreadId(initial, "initial session");
+  if (!initial.ok || initial.activeThread || initial.connection?.token) {
+    throw new Error(initial.error ?? "initial session did not return a blank durable-thread state");
+  }
+  const threadA = requireThreadId(await createThread(owner), "first created session");
 
   const created = await createThread(owner);
   const threadB = requireThreadId(created, "created session");

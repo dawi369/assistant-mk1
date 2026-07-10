@@ -208,8 +208,8 @@ export const handleActivateWorkspace = async (
     identity.scope.userId,
     identity.scope.workspaceId,
   );
-  const adminError = requireAdminMembership(currentMembership);
-  if (adminError) return adminError;
+  const activeError = requireActiveMembership(currentMembership);
+  if (activeError) return activeError;
 
   const membership = await selectMembership(env, identity.scope.userId, workspaceIdToActivate);
   const activeTargetError = requireActiveMembership(membership);

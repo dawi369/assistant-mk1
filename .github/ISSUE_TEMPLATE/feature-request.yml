@@ -1,0 +1,30 @@
+name: Feature request
+description: Propose a capability that fits the reusable workbench contract.
+title: "feat: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Which user or operator workflow is currently blocked?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed capability
+    validations:
+      required: true
+  - type: textarea
+    id: boundaries
+    attributes:
+      label: Runtime and security boundaries
+      description: Note tenant, policy, secret, retention, or mutation implications.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

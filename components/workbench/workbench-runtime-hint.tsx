@@ -11,12 +11,14 @@ import {
   CpuIcon,
   HistoryIcon,
   MessageSquareIcon,
+  RefreshCwIcon,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { deriveRuntimeState } from "@/lib/workbench/chat-runtime-live-state";
 import { useAdminSummaryResource } from "@/lib/workbench/use-admin-summary-resource";
 import { useWorkbenchAgentConnection } from "@/lib/workbench/use-agent-connection";
+import { hasWorkbenchSessionAccess } from "@/lib/workbench/session-access";
 import { cn } from "@/lib/utils";
 
 export function WorkbenchRuntimeHint({
@@ -36,17 +38,23 @@ export function WorkbenchRuntimeHint({
     latestSessionEvent,
     isInitialLoading,
     isSessionStreamConnected,
+    retry,
   } = useWorkbenchAgentConnection();
+  const hasSessionAccess = hasWorkbenchSessionAccess({
+    hasWorkOsUser: Boolean(user),
+    session,
+    sessionError: error,
+  });
 
   useEffect(() => {
     if (loading) return;
-    if (!user) {
+    if (!hasSessionAccess) {
       clearSummary();
       return;
     }
 
     void refreshSummary({ source: "initial" });
-  }, [clearSummary, loading, refreshSummary, user]);
+  }, [clearSummary, hasSessionAccess, loading, refreshSummary]);
 
   const liveRuntime = deriveRuntimeState({
     session,
@@ -81,8 +89,6 @@ export function WorkbenchRuntimeHint({
     }
   }, [liveRuntime.chatTone]);
 
-  if (!loading && !user && !summary && !session && !error) return null;
-
   return (
     <div className="border-border bg-background/95 text-muted-foreground hidden w-[min(22rem,calc(100vw-1.5rem))] flex-col gap-1.5 rounded-md border px-2.5 py-2 text-xs shadow-xs backdrop-blur md:flex">
       <div className="flex min-w-0 items-center justify-between gap-2">
@@ -100,15 +106,27 @@ export function WorkbenchRuntimeHint({
             History
           </Button>
           {hasError ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-destructive hover:text-destructive h-6 gap-1 px-1.5 text-xs"
-              onClick={onOpenAdmin}
-            >
-              <AlertCircleIcon className="size-3.5" />
-              Details
-            </Button>
+            <>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                className="text-destructive hover:text-destructive"
+                onClick={() => void retry()}
+                title="Reconnect"
+              >
+                <RefreshCwIcon className="size-3.5" />
+                <span className="sr-only">Reconnect</span>
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-destructive hover:text-destructive h-6 gap-1 px-1.5 text-xs"
+                onClick={onOpenAdmin}
+              >
+                <AlertCircleIcon className="size-3.5" />
+                Details
+              </Button>
+            </>
           ) : null}
         </span>
       </div>

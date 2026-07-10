@@ -113,6 +113,17 @@ agent are the committed authorization boundaries.
   Hosted WorkOS traffic resolves the active agent inside Cloudflare, falling
   back to the workspace default agent when no preference exists, instead of
   forwarding `WORKBENCH_DEV_AGENT_ID`.
+- The signed-in Workspace panel lists the user's active WorkOS organization
+  memberships through a server-only WorkOS API call and switches organization
+  context with AuthKit session refresh. Organization IDs never become trusted
+  browser tenant scope.
+- Active members may switch among assistant-mk1 workspaces where they have an
+  active membership. Owners/admins may create workspaces and manage members;
+  admins can only manage the `member` role, self-lockout is blocked, and the
+  final active owner cannot be removed.
+- A user can be added to a non-default workspace only after Cloudflare verifies
+  an active membership in the same account's default workspace. Arbitrary or
+  cross-account user IDs are rejected.
 - Agent records are workspace-scoped Cloudflare D1 rows. Admin may create
   test agents, show profiles, and activate existing agents for the current
   operator. Customer-facing agent creation and configuration remain out of
@@ -123,9 +134,9 @@ agent are the committed authorization boundaries.
   running in production. Hosted production fails closed when WorkOS is
   incomplete.
 
-WorkOS sign-in is implemented, but production authorization is not complete.
-Richer role policy, explicit workspace administration, tool permissions, and
-secret access policy remain production gates.
+The read-only 1.0 authorization surface is implemented. Richer customer
+invitation lifecycle, mutation policy, and secret access remain production
+gates for capabilities outside that release contract.
 
 ## Ownership Roadmap
 
@@ -133,10 +144,10 @@ The next steps should keep WorkOS and assistant-mk1 responsibilities separate:
 
 1. Admin visibility: expose the Cloudflare-resolved account, workspace,
    membership, default agent, recent events, and last error in Admin.
-2. Workspace management model: allow one WorkOS organization or personal
-   account to own multiple assistant-mk1 workspaces. The current v0 is
-   Admin-only list/create/switch, with Cloudflare storing the active
-   workspace preference.
+2. Workspace management model: one WorkOS organization or personal account can
+   own multiple assistant-mk1 workspaces. Active members can switch assigned
+   workspaces; owners/admins can create workspaces and manage membership, with
+   Cloudflare storing the active workspace preference.
 3. Membership source of truth: WorkOS answers who signed in and which external
    organization they came through; Cloudflare D1 answers what they can do inside
    an assistant-mk1 workspace. The current v0 keeps reads open to active
@@ -155,9 +166,9 @@ The next steps should keep WorkOS and assistant-mk1 responsibilities separate:
 7. Stronger Vercel-to-Cloudflare trust boundary: Vercel should forward
    server-derived identity through a stricter internal contract, not
    browser-controlled scope.
-8. WorkOS organization UX: surface current account/workspace clearly and add
-   organization switching or onboarding only after the internal workspace model
-   is stable.
+8. WorkOS organization UX: the current panel surfaces and switches active
+   organization memberships. Invitation, domain, and enterprise onboarding
+   remain future customer-lifecycle work.
 
 ## Failure Modes To Avoid
 
@@ -170,4 +181,7 @@ The next steps should keep WorkOS and assistant-mk1 responsibilities separate:
 
 ## Acceptance Bar
 
-Before hosted multi-user runtime work is considered ready, two users in two workspaces must be able to run separate agents with separate memories, ledgers, tools, schedules, artifacts, and secrets.
+For the read-only 1.0 boundary, two users in separate workspaces must receive
+isolated agents, chats, runs, tools, artifacts, and history, while role tests
+prove that members cannot administer workspace access. Memory, ledgers,
+schedules, secrets, and mutation add their own acceptance gates when implemented.

@@ -43,8 +43,13 @@ scoped.
   use shared lifecycle helpers for workflow intents, runs, tool calls, artifact
   metadata, audit, and events.
 - `/history` is a normal workbench surface for scoped execution history,
-  searchable selected-run summaries, and metadata-only artifacts. Admin still
-  carries deeper diagnostics.
+  searchable selected-run summaries, metadata-only artifacts, supported run
+  retry/cancel actions, and approval resume/deny controls. Admin still carries
+  deeper diagnostics.
+- `/workspace` is the customer-facing account and access surface. It switches
+  WorkOS organizations through AuthKit, switches assigned workspaces for active
+  members, and lets owners/admins manage scoped membership without accepting
+  browser-supplied tenant identity.
 - Admin-only conformance tools now cover Cloudflare-inline ping,
   callback-backed Fly runner echo, and metadata artifact creation. They are
   model-hidden, dry-run-only, and non-policy-editable.
@@ -61,9 +66,9 @@ scoped.
   `cloudflare/control-plane/schema.sql` until the project explicitly introduces
   migrations and remote data retention. The migration/retention gate is now
   tracked in `docs/migrations-and-retention.md`.
-- The repo now has a GitHub Actions verification gate for clean installs,
-  agent-pack validation, focused workflow/tool-policy tests, typecheck, lint,
-  and build.
+- The repo now has a GitHub Actions verification gate for clean installs and
+  the full pack, eval, unit, typecheck, lint, and production-build suite. A
+  deterministic Playwright release gate covers signed-out and trusted-local UX.
 
 ## Active Next Targets
 
@@ -85,8 +90,8 @@ scoped.
    `Project` entity.
 7. Move more Fly/LangGraph producers onto scoped callbacks and session-event
    fanout instead of one-off status paths.
-8. Define the developer/customer packaging story: setup, capability toggles,
-   sample integrations, safe defaults, and upgrade boundaries.
+8. Keep the developer/customer packaging contract current as capabilities,
+   setup requirements, and upgrade boundaries change.
 
 ## Production Gates
 
@@ -94,8 +99,8 @@ Mutation-capable tools stay blocked until the platform has:
 
 - A non-destructive D1 migration path and retention policy for any table or
   artifact class the tool needs to preserve.
-- WorkOS-backed customer/workspace administration beyond the current pre-user
-  defaults.
+- WorkOS-backed invitation and customer-lifecycle administration beyond the
+  current organization switcher and Cloudflare workspace/member controls.
 - Cloudflare-owned membership and tool authorization for customer-facing roles.
 - Encrypted secret custody.
 - Tenant isolation tests for every durable state boundary touched by the tool.
@@ -145,3 +150,10 @@ tool and workbench work:
   snapshots.
 - Runtime visibility trimming, Admin summary projection tiers, and a
   responsive local-new/pre-runtime draft shell.
+- Customer-facing WorkOS organization switching, workspace/member controls,
+  owner/admin/member enforcement, and cross-account admission checks.
+- Product-facing run cancellation, supported workflow retry, approval resume,
+  and reconnect recovery.
+- One-command local startup and verification, environment templates,
+  contribution/security guidance, an isolated browser release suite, and an
+  explicit read-only release contract.

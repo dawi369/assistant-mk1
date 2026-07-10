@@ -71,6 +71,22 @@ export type CloudflareOwnedDemoRunSnapshot = {
     summary?: string;
     createdAt?: string;
   }>;
+  interventions?: Array<{
+    id: Id;
+    kind: "approval" | string;
+    status: string;
+    state: "parked" | "resumable" | "decided" | string;
+    requiredAction: "approve_or_deny" | "none" | string;
+    runId: Id;
+    workflowIntentId: Id;
+    toolId: string;
+    reason: string;
+    title: string;
+    approvePath?: string;
+    denyPath?: string;
+    createdAt?: string;
+    updatedAt?: string;
+  }>;
 };
 
 export type CloudflareOwnedDemoRunResponse = {
@@ -263,6 +279,7 @@ export type ExecutionHistoryRunSummary = {
   engine?: string;
   summary?: string;
   displayName?: string;
+  workflowType?: string;
   artifactIds?: Id[];
   decisionIds?: Id[];
   toolCallCount?: number;
@@ -272,6 +289,12 @@ export type ExecutionHistoryRunSummary = {
   failedAt?: string;
   createdAt?: string;
   updatedAt?: string;
+  controls?: {
+    canCancel: boolean;
+    canRetry: boolean;
+    canResume: boolean;
+    resumeKind?: "approval";
+  };
 };
 
 export type CloudflareExecutionHistoryResponse = {
@@ -973,6 +996,52 @@ export type CloudflareWorkspaceMutationResponse = {
     status: string;
     isDefault: boolean;
   } | null;
+  error?: string;
+};
+
+export type WorkspaceMemberSummary = {
+  id: Id;
+  userId: Id;
+  email?: string;
+  displayName: string;
+  role: "owner" | "admin" | "member" | string;
+  roles: string[];
+  permissions: string[];
+  status: "active" | "disabled" | string;
+  userStatus?: string;
+  isCurrentUser: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type CloudflareWorkspaceMembersResponse = {
+  ok?: boolean;
+  workspace?: Pick<WorkspaceSummary, "id" | "name">;
+  currentMembership?: WorkspaceMemberSummary | null;
+  members?: WorkspaceMemberSummary[];
+  availableMembers?: WorkspaceMemberSummary[];
+  error?: string;
+};
+
+export type CloudflareWorkspaceMemberMutationResponse = {
+  ok?: boolean;
+  member?: WorkspaceMemberSummary;
+  error?: string;
+};
+
+export type WorkbenchAccountContextResponse = {
+  ok?: boolean;
+  currentAccountId?: Id;
+  currentOrganizationId?: Id;
+  accounts?: Array<{
+    id: Id;
+    organizationId?: Id;
+    name: string;
+    source: "workos-organization" | "workos-personal" | "local-dev";
+    role?: string;
+    roles?: string[];
+    isCurrent: boolean;
+  }>;
   error?: string;
 };
 
