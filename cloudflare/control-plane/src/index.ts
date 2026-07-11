@@ -86,12 +86,23 @@ const isCloudflareAgentSdkPath = (pathname: string) => {
 const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionContext) => {
   const url = new URL(request.url);
 
-  if (request.method === "GET" && url.pathname === "/health") {
+  if (request.method === "GET" && url.pathname === "/health/live") {
     return json({
       ok: true,
       service: "assistant-mk1-control-plane",
-      storage: "d1-local",
     });
+  }
+
+  if (request.method === "GET" && url.pathname === "/health") {
+    try {
+      const database = await env.DB.prepare("SELECT 1 AS ok").first<{ ok: number }>();
+      if (database?.ok !== 1 || !env.WorkbenchThreadChatAgent || !env.WorkbenchSessionAgent) {
+        return json({ ok: false, service: "assistant-mk1-control-plane" }, { status: 503 });
+      }
+      return json({ ok: true, service: "assistant-mk1-control-plane", storage: "d1" });
+    } catch {
+      return json({ ok: false, service: "assistant-mk1-control-plane" }, { status: 503 });
+    }
   }
 
   if (isCloudflareAgentSdkPath(url.pathname)) {

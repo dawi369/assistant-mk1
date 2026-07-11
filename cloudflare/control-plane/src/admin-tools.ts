@@ -23,7 +23,6 @@ import {
   type RunnerEchoResult,
 } from "../../../lib/workbench/admin-test-tools";
 import {
-  inspectUrl,
   urlInspectError,
   validateUrlInspectInput,
   type UrlInspectResult,
@@ -100,8 +99,8 @@ import {
 import {
   cloudflareInlineRunnerTransport,
   invokeFlyToolRunner,
+  isFlyRunnerConfigured,
   runnerMetadataFor,
-  resolveConfiguredRunnerTransport,
   runnerEchoSandboxContract,
   type ToolAdapterMetadata,
   type ToolRunnerSandboxContract,
@@ -152,7 +151,7 @@ const urlInspectAdapter: ToolAdapterMetadata = {
   toolName: urlInspectToolName,
   adapterVersion: urlInspectAdapterVersion,
   supportedExecutionModes: ["dry_run"],
-  transport: cloudflareInlineRunnerTransport,
+  transport: "fly",
 };
 
 const demoInspectAdapter: ToolAdapterMetadata = {
@@ -523,13 +522,16 @@ export const resolveToolSummaries = async (
       const capability = capabilityForTool(capabilityDecisions, tool.name);
       const packTool = packScope.declarations.get(tool.name);
 
-      const reason =
-        adminPolicy.decision === "allow"
+      const flyRunnerRequired = tool.name === urlInspectToolName && !isFlyRunnerConfigured(env);
+      const reason = flyRunnerRequired
+        ? "url.inspect requires the configured signed Fly runner."
+        : adminPolicy.decision === "allow"
           ? `${adminPolicy.reason} ${modelPolicy.reason}`
           : adminPolicy.reason;
 
       return {
         ...tool,
+        status: flyRunnerRequired ? "unavailable" : tool.status,
         runner:
           tool.name === urlInspectToolName
             ? urlInspectRunnerMetadata(env, "admin", adminPolicy.constraints)
@@ -539,7 +541,8 @@ export const resolveToolSummaries = async (
                 ? runnerEchoRunnerMetadata("admin", adminPolicy.constraints)
                 : tool.runner,
         adminVisible: adminPolicy.decision === "allow" && adminPolicy.adminVisible,
-        modelVisible: modelPolicy.decision === "allow" && modelPolicy.modelVisible,
+        modelVisible:
+          !flyRunnerRequired && modelPolicy.decision === "allow" && modelPolicy.modelVisible,
         reason,
         permissionStatus: permission?.status,
         policyReference: adminPolicy.policyReference,
@@ -636,12 +639,7 @@ const urlInspectRunnerMetadata = (
     maxRuntimeMs?: number;
   },
 ): ToolRunnerMetadata =>
-  runnerMetadataFor(
-    urlInspectAdapter,
-    source,
-    resolveConfiguredRunnerTransport(env),
-    urlInspectSandboxContract(constraints),
-  );
+  runnerMetadataFor(urlInspectAdapter, source, "fly", urlInspectSandboxContract(constraints));
 
 const repoSnapshotRunnerMetadata = (
   source: UrlInspectRunSource,
@@ -805,7 +803,7 @@ export const insertToolRunRecords = async (
       "running",
       toJson(execution),
       "observe",
-      "cloudflare-control-plane",
+      "cloudflare",
       timestamp,
       timestamp,
       toJson({
@@ -957,7 +955,7 @@ const insertRepoSnapshotRunRecords = async (
       "running",
       toJson(execution),
       "observe",
-      "fly-tool-runner",
+      "cloudflare",
       timestamp,
       timestamp,
       toJson({
@@ -1112,7 +1110,7 @@ const insertApprovalInterruptedRun = async (
       "interrupted",
       toJson(execution),
       "observe",
-      "cloudflare-control-plane",
+      "cloudflare",
       timestamp,
       timestamp,
       toJson({
@@ -1376,22 +1374,27 @@ export const executeUrlInspectRunner = async (
 ) => {
   const runner = runIdentity.runner ?? urlInspectRunnerMetadata(env, runIdentity.source ?? "admin");
   const runnerStartedAtMs = Date.now();
-  const runnerResult =
-    runner.transport === "fly"
-      ? await invokeFlyToolRunner(env, runIdentity, {
-          scope: runIdentity.scope,
-          agentId: runIdentity.agentId,
-          runId: runIdentity.runId,
-          workflowIntentId: runIdentity.workflowIntentId,
-          toolName: urlInspectToolName,
-          execution: { mode: input.executionMode, policy: urlInspectPolicy },
-          input: { url: url.toString() },
-          runner,
-          policyDecisionId: input.policyDecisionId,
-          source: runIdentity.source ?? "admin",
-          traceId: input.traceId,
-        })
-      : await inspectUrl(url);
+  const runnerResult = isFlyRunnerConfigured(env)
+    ? await invokeFlyToolRunner(env, runIdentity, {
+        scope: runIdentity.scope,
+        agentId: runIdentity.agentId,
+        runId: runIdentity.runId,
+        workflowIntentId: runIdentity.workflowIntentId,
+        toolName: urlInspectToolName,
+        execution: { mode: input.executionMode, policy: urlInspectPolicy },
+        input: { url: url.toString() },
+        runner,
+        policyDecisionId: input.policyDecisionId,
+        source: runIdentity.source ?? "admin",
+        traceId: input.traceId,
+      })
+    : {
+        ok: false as const,
+        error: urlInspectError(
+          "runner_not_configured",
+          "url.inspect requires the configured signed Fly runner.",
+        ),
+      };
   const result = isUrlInspectResult(runnerResult)
     ? runnerResult
     : ({
@@ -1823,7 +1826,7 @@ const insertConformanceToolRunRecords = async (
       "running",
       toJson(execution),
       "observe",
-      runner.transport === "fly" ? "fly-tool-runner" : "cloudflare-control-plane",
+      "cloudflare",
       timestamp,
       timestamp,
       toJson({

@@ -27,12 +27,14 @@ export type PackWorkflowFieldDefinition = {
 
 export type PackWorkflowBinding = {
   workflowType: string;
+  engine: "cloudflare" | "langgraph";
   label: string;
   description: string;
   requiredPackId: string;
   workerRoute: string;
   route: string;
   artifactKind: string;
+  cancellation: { adapter: "none"; physicalAbort: "unsupported" };
   smokeCommand: string;
   defaultInput: Record<string, string | number | boolean>;
   fields: PackWorkflowFieldName[];
@@ -159,12 +161,14 @@ const buildSwordfishRequest = (input: Record<string, unknown>): PackWorkflowRequ
 export const packWorkflowBindings = {
   "repo.readiness_report": {
     workflowType: "repo.readiness_report",
+    engine: "cloudflare",
     label: "Readiness report",
     description: "Inspect repository structure and produce a bounded release-readiness report.",
     requiredPackId: "repo-analyst",
     workerRoute: "/workflows/repo/readiness-report",
     route: "/api/workbench/workflows/repo/readiness-report",
     artifactKind: "repo_readiness_report",
+    cancellation: { adapter: "none", physicalAbort: "unsupported" },
     smokeCommand: "pnpm smoke:fly-tool-runner",
     defaultInput: { includeDocs: true, includeScripts: true, includeConfig: true },
     fields: ["includeDocs", "includeScripts", "includeConfig"],
@@ -172,12 +176,14 @@ export const packWorkflowBindings = {
   },
   "polymancer.market_research": {
     workflowType: "polymancer.market_research",
+    engine: "cloudflare",
     label: "Market research",
     description: "Search public Polymarket markets and write a compact read-only report.",
     requiredPackId: "baby-polymancer",
     workerRoute: "/workflows/polymancer/market-research",
     route: "/api/workbench/workflows/polymancer/market-research",
     artifactKind: "market_research_report",
+    cancellation: { adapter: "none", physicalAbort: "unsupported" },
     smokeCommand: "pnpm smoke:polymarket-readonly",
     defaultInput: { query: "GTA" },
     fields: ["query"],
@@ -185,12 +191,14 @@ export const packWorkflowBindings = {
   },
   "swordfish.runtime_research": {
     workflowType: "swordfish.runtime_research",
+    engine: "cloudflare",
     label: "Runtime research",
     description: "Check public Swordfish runtime state and write a compact read-only report.",
     requiredPackId: "baby-swordfish",
     workerRoute: "/workflows/swordfish/runtime-research",
     route: "/api/workbench/workflows/swordfish/runtime-research",
     artifactKind: "runtime_research_report",
+    cancellation: { adapter: "none", physicalAbort: "unsupported" },
     smokeCommand: "pnpm smoke:swordfish-readonly",
     defaultInput: { tf: "1m", lookbackMinutes: 60, maxBars: 25, includeBars: true },
     fields: ["symbol", "tf", "lookbackMinutes", "maxBars", "includeBars"],

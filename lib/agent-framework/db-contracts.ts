@@ -107,7 +107,7 @@ export type RunRecord = ScopedRecord & {
   execution: ExecutionPolicy;
   stage?: WorkflowStage;
   relation?: RunRelation;
-  engine?: string;
+  engine?: "cloudflare" | "langgraph";
   externalRunId?: string;
   currentInterruptId?: Id;
   heartbeatAt?: string;

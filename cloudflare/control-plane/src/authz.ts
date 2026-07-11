@@ -150,7 +150,7 @@ const upsertDefaultWorkspace = async (
      ON CONFLICT(id) DO UPDATE SET
        account_id = excluded.account_id,
        account_source = excluded.account_source,
-       name = COALESCE(excluded.name, workspaces.name),
+       name = CASE WHEN ? = 1 THEN excluded.name ELSE workspaces.name END,
        is_default = excluded.is_default,
        updated_at = excluded.updated_at`,
   )
@@ -168,6 +168,7 @@ const upsertDefaultWorkspace = async (
       }),
       timestamp,
       timestamp,
+      input.name ? 1 : 0,
     )
     .run();
 };
@@ -368,6 +369,30 @@ const bootstrapAuthz = async (
   });
 };
 
+const createLocalExplicitAgentIfMissing = async (
+  env: Env,
+  input: { userId: string; workspaceId: string; agentId: string },
+) => {
+  const timestamp = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO agents (
+       id, workspace_id, name, description, status, is_default, created_by_user_id,
+       data_json, created_at, updated_at
+     ) VALUES (?, ?, ?, ?, 'active', 0, ?, ?, ?, ?)`,
+  )
+    .bind(
+      input.agentId,
+      input.workspaceId,
+      "Local Development Agent",
+      "Explicit local-development workbench agent.",
+      input.userId,
+      toJson({ bootstrap: "local-dev", profile: "default" }),
+      timestamp,
+      timestamp,
+    )
+    .run();
+};
+
 const selectActiveWorkspaceId = async (
   env: Env,
   input: { userId: string; accountId: string; defaultWorkspaceId: string },
@@ -469,11 +494,82 @@ export const resolveAgentIdentity = async (
         ),
       };
     }
+    let resolvedAgentId = explicitAgentId;
+    if (auth.mode === "dev_token") {
+      if (!accountId || !accountSource) {
+        return {
+          ok: false,
+          response: json(
+            { ok: false, error: "Local explicit identity requires account headers" },
+            { status: 400 },
+          ),
+        };
+      }
+      await bootstrapAuthz(env, request, { userId, accountId, accountSource, workspaceId });
+      await createLocalExplicitAgentIfMissing(env, {
+        userId,
+        workspaceId,
+        agentId: explicitAgentId,
+      });
+      await upsertActiveWorkspacePreference(env, {
+        userId,
+        accountId,
+        workspaceId,
+        reason: "local-dev-bootstrap",
+      });
+      const activeAgentPreference = await selectActiveAgentPreference(env, { userId, workspaceId });
+      if (activeAgentPreference) {
+        resolvedAgentId = activeAgentPreference.agent_id;
+      } else {
+        await upsertActiveAgentPreference(env, {
+          userId,
+          workspaceId,
+          agentId: explicitAgentId,
+          reason: "local-dev-bootstrap",
+        });
+      }
+    }
+
+    const [user, workspace, membership, agent] = await Promise.all([
+      selectUser(env, userId),
+      selectWorkspace(env, workspaceId),
+      selectMembership(env, userId, workspaceId),
+      selectAgent(env, resolvedAgentId, workspaceId),
+    ]);
+    if (!user || user.status !== "active") {
+      return {
+        ok: false,
+        response: json({ ok: false, error: "User is not active" }, { status: 403 }),
+      };
+    }
+    if (
+      !workspace ||
+      workspace.status !== "active" ||
+      (accountId && workspace.account_id !== accountId) ||
+      (accountSource && workspace.account_source !== accountSource)
+    ) {
+      return {
+        ok: false,
+        response: json({ ok: false, error: "Workspace is not active" }, { status: 403 }),
+      };
+    }
+    if (!membership || membership.status !== "active") {
+      return {
+        ok: false,
+        response: json({ ok: false, error: "Workspace membership is not active" }, { status: 403 }),
+      };
+    }
+    if (!agent || agent.status !== "active") {
+      return {
+        ok: false,
+        response: json({ ok: false, error: "Agent is not active" }, { status: 403 }),
+      };
+    }
     return {
       ok: true,
       identity: {
         scope: { userId, workspaceId },
-        agentId: explicitAgentId,
+        agentId: resolvedAgentId,
         accountId: accountId ?? undefined,
         accountSource: accountSource ?? undefined,
         authMode: auth.mode,

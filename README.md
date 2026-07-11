@@ -3,7 +3,7 @@
 A code-first agent workbench for durable runs, approvals, tool policy, artifacts,
 audit, and tenant-safe operations.
 
-[![Version](https://img.shields.io/badge/version-1.0.0-111827)](#release-status)
+[![Version](https://img.shields.io/badge/version-1.0.0--preview.1-111827)](#release-status)
 [![Verify](https://github.com/dawi369/assistant-mk1/actions/workflows/verify.yml/badge.svg)](https://github.com/dawi369/assistant-mk1/actions/workflows/verify.yml)
 [![License](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-2563eb)](LICENSE)
 
@@ -13,9 +13,10 @@ audit, and tenant-safe operations.
 
 ## Release Status
 
-Assistant-mk1 is under active development and is not ready for public release.
-The repository is pinned at version `1.0.0` as its current product baseline; that
-version is not a release announcement or a promise of retained production data.
+Assistant-mk1 is preparing `1.0.0-preview.1` as a developer preview. It is
+production-oriented source-available software, not a retained production service.
+All remote D1 records and metadata artifacts must be treated as disposable; no
+upgrade-safe retention is promised between preview versions.
 
 The implemented surface is an authenticated, read-only workbench. External
 mutation, encrypted credential brokerage, artifact blob storage, and retained
@@ -66,7 +67,8 @@ application assumptions.
 | ---------------- | -------------------------------------------------------------------------------------------- |
 | Vercel / Next.js | WorkOS browser session, workbench UI, and signed same-origin facades                         |
 | Cloudflare       | Authorization, D1 control state, Durable Object chat, policy, audit, events, and normal chat |
-| Fly / LangGraph  | Graph-shaped workflows and signed heavy tool execution                                       |
+| Fly              | Signed heavy tool execution; runner transport is recorded separately from run orchestration  |
+| LangGraph        | Graph-shaped orchestration only when an actual delegated run and external run id exist       |
 
 Trusted tenant scope is derived server-side. The browser never chooses trusted
 `userId`, `workspaceId`, `agentId`, or provider credentials.
@@ -93,6 +95,7 @@ transport tokens match. Initialize the disposable local D1 database once:
 
 ```bash
 pnpm db:cloudflare:rebuild:local
+pnpm workbench:doctor --offline
 ```
 
 This command drops local Worker tables. Do not use either rebuild command when
@@ -103,6 +106,9 @@ Start the complete workbench:
 ```bash
 pnpm dev:workbench
 ```
+
+Then run `pnpm workbench:doctor` in another terminal to verify Worker reachability,
+the D1 binding, matching transport secrets, and the bootstrapped local identity.
 
 | Service           | Local URL               |
 | ----------------- | ----------------------- |
@@ -130,7 +136,8 @@ mutating older agent snapshots.
 ```bash
 pnpm agent-packs:validate
 pnpm agent-packs:inspect --pack repo-analyst
-pnpm agent-packs:smoke --pack repo-analyst
+pnpm agent-packs:smoke --pack repo-analyst # static manifest/catalog mapping smoke
+pnpm test:service-boundaries               # live local Worker/Fly/browser workflow smoke
 ```
 
 The current contract supports local checked-in packs. See [Agent Packs](docs/agent-packs.md),
@@ -142,7 +149,7 @@ the [Capability Model](docs/capability-model.md), and
 ```bash
 pnpm docs:check     # validate local documentation and image links
 pnpm verify:fast   # packs, eval posture, unit tests, types, lint, format
-pnpm verify        # fast gate plus production build
+pnpm verify        # fast gate, high-severity audit, and production build
 pnpm test:e2e      # signed-out and trusted-local browser journeys
 pnpm release:check # complete repository and browser release gate
 ```
@@ -171,8 +178,9 @@ Deploy Cloudflare and Fly before a Vercel release that depends on them:
 - [Cloudflare and local infrastructure](docs/dev-infrastructure-readiness.md)
 - [Fly](docs/deployment-fly.md)
 
-Remote D1 is currently disposable validation state. Forward-only migrations and
-retention remain tracked in [Migrations and Retention](docs/migrations-and-retention.md).
+Remote D1 records and D1-backed artifact metadata are disposable preview state.
+Forward-only migrations and retention remain tracked in
+[Migrations and Retention](docs/migrations-and-retention.md).
 
 ## Contributing and Security
 

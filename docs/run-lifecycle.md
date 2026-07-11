@@ -28,8 +28,8 @@ A run should link to:
 - `threadId`: conversation or task continuity when available.
 - `workflowIntentId`: typed escalation request when the run came from an
   intent.
-- `externalRunId`: workflow engine, LangGraph, Fly job, or future execution
-  backend ID.
+- `externalRunId`: workflow-orchestrator run id, such as a delegated LangGraph
+  run. Fly tool-job ids belong in runner/tool-call metadata instead.
 - `relation`: `parentRunId`, `rootRunId`, depth, and durable-child flag.
 - Durable outputs: tool call IDs, artifacts, decision records, ledger entries,
   and audit events.
@@ -133,10 +133,16 @@ Cancellation rules:
 
 - Transition active run to `cancelled`.
 - Set `cancelledAt`.
+- Atomically revoke the run's authority to publish tool results or artifacts.
+- Reject late completion, failure, and artifact promotion from cancelled work.
 - Emit `run.cancelled`.
 - Attempt best-effort cancellation of workflow engine run or tool process.
 - Write audit event with actor, source, and reason.
 - Cascade cancellation to non-durable child runs unless policy says otherwise.
+
+For the preview, bounded inline work has no physical abort adapter. Cancellation
+is still authoritative because it durably revokes publication authority. Future
+LangGraph and Fly job adapters may use external run ids for best-effort abort.
 
 ## Child Runs
 

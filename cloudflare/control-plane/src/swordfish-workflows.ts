@@ -280,6 +280,7 @@ export const handleSwordfishRuntimeResearch = async (
     packId: babySwordfishPackId,
     toolInput: parsed.input as Record<string, unknown>,
     executionMode: parsed.mode,
+    engine: "cloudflare",
     intentCreatedSummary: "Created Swordfish runtime research workflow intent.",
   });
 
@@ -294,13 +295,19 @@ export const handleSwordfishRuntimeResearch = async (
   });
 
   if (!overview.ok) {
-    await finishPackWorkflowRun(env, identity, {
+    const finished = await finishPackWorkflowRun(env, identity, {
       ...workflow,
       workflowType,
       ok: false,
       summary: overview.error.message,
       data: { error: overview.error, packId: babySwordfishPackId, workflowType },
     });
+    if (!finished.applied) {
+      return json(
+        { ok: false, error: "Run output was discarded after cancellation." },
+        { status: 409 },
+      );
+    }
     return json({ ok: false, error: overview.error.message, run: workflow }, { status: 502 });
   }
 
@@ -382,7 +389,7 @@ export const handleSwordfishRuntimeResearch = async (
     data: artifactData,
   };
 
-  await finishPackWorkflowRun(env, identity, {
+  const finished = await finishPackWorkflowRun(env, identity, {
     ...workflow,
     workflowType,
     ok: true,
@@ -396,6 +403,12 @@ export const handleSwordfishRuntimeResearch = async (
       symbol: selectedSymbol ?? null,
     },
   });
+  if (!finished.applied) {
+    return json(
+      { ok: false, error: "Run output was discarded after cancellation." },
+      { status: 409 },
+    );
+  }
 
   return json(
     {
@@ -404,7 +417,7 @@ export const handleSwordfishRuntimeResearch = async (
         id: workflow.runId,
         workflowIntentId: workflow.workflowIntentId,
         status: "completed",
-        engine: "langgraph-declared",
+        engine: "cloudflare",
         workflowType,
       },
       artifact: {

@@ -191,6 +191,7 @@ export type ControlRunRow = {
   last_event_at: string | null;
   completed_at: string | null;
   failed_at: string | null;
+  cancelled_at?: string | null;
   data_json: string;
   created_at: string;
   updated_at: string;

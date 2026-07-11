@@ -8,8 +8,8 @@ import {
   type PackWorkflowHandler as RetryWorkflowHandler,
 } from "./pack-workflow-runtime";
 import { dispatchWorkbenchSessionEvent } from "./session-coordinator";
-import type { PackWorkflowType } from "../../../agent-packs/workflow-catalog";
-import { toJson, type AgentIdentity, type ControlRunRow, type D1Result, type Env } from "./types";
+import { packWorkflowBindings, type PackWorkflowType } from "../../../agent-packs/workflow-catalog";
+import { toJson, type AgentIdentity, type ControlRunRow, type Env } from "./types";
 
 type ControllableRunRow = ControlRunRow & {
   workflow_type: string | null;
@@ -24,7 +24,7 @@ const selectControllableRun = (env: Env, identity: AgentIdentity, runId: string)
   env.DB.prepare(
     `SELECT r.id, r.user_id, r.workspace_id, r.agent_id, r.workflow_intent_id, r.status,
             r.execution_json, r.stage, r.engine, r.heartbeat_at, r.last_event_at,
-            r.completed_at, r.failed_at, r.data_json, r.created_at, r.updated_at,
+            r.completed_at, r.failed_at, r.cancelled_at, r.data_json, r.created_at, r.updated_at,
             i.type AS workflow_type, i.payload_json
      FROM control_runs r
      LEFT JOIN control_workflow_intents i
@@ -52,7 +52,12 @@ export const handleCancelExecutionRun = async (
 
   const run = await selectControllableRun(env, identity, runId);
   if (!run) return json({ ok: false, error: "Run not found" }, { status: 404 });
-  if (run.status !== "queued" && run.status !== "running" && run.status !== "waiting") {
+  if (
+    run.status !== "queued" &&
+    run.status !== "running" &&
+    run.status !== "waiting" &&
+    run.status !== "interrupted"
+  ) {
     return json(
       { ok: false, error: "Run cannot be cancelled in its current state" },
       { status: 409 },
@@ -61,45 +66,71 @@ export const handleCancelExecutionRun = async (
 
   const timestamp = new Date().toISOString();
   const data = parseDataJson(run.data_json);
-  const cancelResult = (await env.DB.prepare(
-    `UPDATE control_runs
-     SET status = 'cancelled', last_event_at = ?, completed_at = ?, data_json = ?, updated_at = ?
-     WHERE user_id = ? AND workspace_id = ? AND id = ?
-       AND status IN ('queued', 'running', 'waiting')`,
-  )
-    .bind(
+  const workflowBinding = run.workflow_type
+    ? packWorkflowBindings[run.workflow_type as PackWorkflowType]
+    : undefined;
+  const [cancelResult] = await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE control_runs
+       SET status = 'cancelled', last_event_at = ?, cancelled_at = ?, data_json = ?, updated_at = ?
+       WHERE user_id = ? AND workspace_id = ? AND id = ?
+         AND status IN ('queued', 'running', 'waiting', 'interrupted')`,
+    ).bind(
       timestamp,
       timestamp,
       toJson({
         ...data,
         summary: "Cancelled by the user.",
         cancelledByUserId: identity.scope.userId,
+        physicalCancellation: workflowBinding?.cancellation.physicalAbort ?? "unsupported",
       }),
       timestamp,
       identity.scope.userId,
       identity.scope.workspaceId,
       run.id,
-    )
-    .run()) as D1Result;
+    ),
+    env.DB.prepare(
+      `UPDATE control_workflow_intents
+       SET status = 'cancelled', updated_at = ?
+       WHERE user_id = ? AND workspace_id = ? AND id = ?
+         AND status IN ('queued', 'running', 'waiting', 'interrupted')
+         AND EXISTS (
+           SELECT 1 FROM control_runs
+           WHERE user_id = ? AND workspace_id = ? AND id = ? AND status = 'cancelled'
+         )`,
+    ).bind(
+      timestamp,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      run.workflow_intent_id,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      run.id,
+    ),
+    env.DB.prepare(
+      `UPDATE control_tool_calls
+       SET status = 'cancelled', finished_at = ?
+       WHERE user_id = ? AND workspace_id = ? AND run_id = ? AND status = 'running'
+         AND EXISTS (
+           SELECT 1 FROM control_runs
+           WHERE user_id = ? AND workspace_id = ? AND id = ? AND status = 'cancelled'
+         )`,
+    ).bind(
+      timestamp,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      run.id,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      run.id,
+    ),
+  ]);
   if (cancelResult.meta?.changes === 0) {
     return json(
       { ok: false, error: "Run cannot be cancelled in its current state" },
       { status: 409 },
     );
   }
-
-  await env.DB.batch([
-    env.DB.prepare(
-      `UPDATE control_workflow_intents
-       SET status = 'cancelled', updated_at = ?
-       WHERE user_id = ? AND workspace_id = ? AND id = ?`,
-    ).bind(timestamp, identity.scope.userId, identity.scope.workspaceId, run.workflow_intent_id),
-    env.DB.prepare(
-      `UPDATE control_tool_calls
-       SET status = 'cancelled', finished_at = ?
-       WHERE user_id = ? AND workspace_id = ? AND run_id = ? AND status = 'running'`,
-    ).bind(timestamp, identity.scope.userId, identity.scope.workspaceId, run.id),
-  ]);
 
   const summary = "Cancelled run.";
   await appendControlAudit(env, {
@@ -123,7 +154,14 @@ export const handleCancelExecutionRun = async (
     data: { runId: run.id, workflowIntentId: run.workflow_intent_id, status: "cancelled" },
   });
 
-  return json({ ok: true, run: { id: run.id, status: "cancelled" } });
+  return json({
+    ok: true,
+    run: {
+      id: run.id,
+      status: "cancelled",
+      physicalCancellation: workflowBinding?.cancellation.physicalAbort ?? "unsupported",
+    },
+  });
 };
 
 export const handleRetryExecutionRun = async (

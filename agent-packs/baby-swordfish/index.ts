@@ -73,11 +73,11 @@ export const babySwordfishPack = defineAgentPack({
   workflows: [
     {
       type: "swordfish.runtime_research",
-      engine: "langgraph",
+      engine: "cloudflare",
       status: "declared",
       userInvocable: true,
       description:
-        "Future LangGraph job for multi-step read-only Swordfish runtime and market-data reporting.",
+        "Cloudflare workflow for multi-step read-only Swordfish runtime and market-data reporting.",
     },
   ],
   ui: {

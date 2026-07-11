@@ -64,7 +64,7 @@ describe("history surface helpers", () => {
         ...runs[1],
         displayName: "Runtime research",
         summary: "Swordfish ESH6 bars.",
-        engine: "fly",
+        engine: "langgraph",
       },
     ] satisfies ExecutionHistoryRunSummary[];
 

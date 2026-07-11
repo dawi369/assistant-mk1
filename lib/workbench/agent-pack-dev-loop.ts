@@ -92,11 +92,12 @@ export type AgentPackSmokeResult =
 
 export const knownAgentPackWorkflowBindings: Record<
   string,
-  Omit<AgentPackRuntimeWorkflowBinding, "type" | "engine" | "registered">
+  Omit<AgentPackRuntimeWorkflowBinding, "type" | "registered">
 > = Object.fromEntries(
   Object.values(packWorkflowBindings).map((binding) => [
     binding.workflowType,
     {
+      engine: binding.engine,
       workerRoute: binding.workerRoute,
       vercelRoute: binding.route,
       smokeCommand: binding.smokeCommand,
@@ -414,9 +415,9 @@ export const inspectAgentPackForDeveloperLoop = (
       const binding = knownAgentPackWorkflowBindings[workflow.type];
       return {
         type: workflow.type,
-        engine: workflow.engine,
         registered: Boolean(binding),
         ...binding,
+        engine: workflow.engine,
       };
     }),
     validation,

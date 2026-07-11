@@ -4,6 +4,7 @@ import { repoAnalystPack } from "./repo-analyst";
 
 import type { LocalAgentPackManifest } from "./types";
 import { agentPackProfiles, agentPackToolInvocations } from "./types";
+import { packWorkflowBindings } from "./workflow-catalog";
 
 export const localAgentPacks = [repoAnalystPack, babyPolymancerPack, babySwordfishPack] as const;
 
@@ -122,6 +123,12 @@ export const validateLocalAgentPack = (pack: LocalAgentPackManifest) => {
     }
     if (!workflow.description.trim()) {
       throw new Error(`Agent pack ${pack.id} workflow ${workflow.type} description is required.`);
+    }
+    const binding = packWorkflowBindings[workflow.type as keyof typeof packWorkflowBindings];
+    if (binding && binding.engine !== workflow.engine) {
+      throw new Error(
+        `Agent pack ${pack.id} workflow ${workflow.type} engine must match registered binding ${binding.engine}.`,
+      );
     }
   }
   if (!["chat", "workbench", "admin"].includes(pack.ui.primarySurface)) {

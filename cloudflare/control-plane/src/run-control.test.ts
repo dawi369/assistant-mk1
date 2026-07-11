@@ -43,11 +43,12 @@ const runRow = (
   status,
   execution_json: '{"mode":"dry_run"}',
   stage: "analyze",
-  engine: "langgraph-declared",
+  engine: "cloudflare",
   heartbeat_at: timestamp,
   last_event_at: timestamp,
   completed_at: null,
   failed_at: null,
+  cancelled_at: null,
   data_json: '{"displayName":"Research"}',
   created_at: timestamp,
   updated_at: timestamp,
@@ -87,8 +88,9 @@ const makeEnv = (status: ControlRunRow["status"], cancelChanges = 1) => {
     DB: {
       prepare: makeStatement,
       async batch(batchStatements: D1PreparedStatement[]) {
-        for (const statement of batchStatements) await statement.run();
-        return batchStatements.map(() => ({ success: true })) as D1Result[];
+        return Promise.all(batchStatements.map((statement) => statement.run())) as Promise<
+          D1Result[]
+        >;
       },
     },
   } satisfies Partial<Env>;
@@ -130,8 +132,10 @@ describe("run control", () => {
 
     expect(response.status).toBe(409);
     expect(
-      statements.some((statement) => statement.query.includes("UPDATE control_workflow_intents")),
-    ).toBe(false);
+      statements
+        .filter((statement) => !statement.query.includes("UPDATE control_runs"))
+        .every((statement) => statement.query.includes("EXISTS")),
+    ).toBe(true);
   });
 
   it("retries a supported workflow from its stored typed input", async () => {

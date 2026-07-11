@@ -141,7 +141,7 @@ export const handleRepoReadinessReport = async (
     packId: repoAnalystPackId,
     toolInput: parsed.snapshotInput,
     executionMode: parsed.mode,
-    engine: "fly-tool-runner",
+    engine: "cloudflare",
     intentCreatedSummary: "Created Repository Analyst readiness workflow intent.",
   });
   const runner = runnerMetadataFor(
@@ -159,6 +159,10 @@ export const handleRepoReadinessReport = async (
     execution: { mode: parsed.mode, policy: repoSnapshotPolicy },
     input: parsed.snapshotInput,
     runner,
+    callback: {
+      url: `${new URL(request.url).origin}/workbench/run-callbacks`,
+      protocolVersion: "workflow-callback-v0",
+    },
     source: "agent-pack",
   });
   const result: RepoSnapshotResult =
@@ -175,6 +179,31 @@ export const handleRepoReadinessReport = async (
             ),
           };
 
+  const callbackMetrics = isRecord(rawResult.metrics?.callback) ? rawResult.metrics.callback : null;
+  if (callbackMetrics?.status === "completed") {
+    if (!result.ok) {
+      return json({ ok: false, error: result.error.message, run: workflow }, { status: 502 });
+    }
+    const artifactId = `${workflow.runId}-artifact-repo-snapshot`;
+    return json({
+      ok: true,
+      run: {
+        id: workflow.runId,
+        workflowIntentId: workflow.workflowIntentId,
+        status: "completed",
+        engine: "cloudflare",
+        workflowType: repoReadinessWorkflowType,
+      },
+      artifact: {
+        id: artifactId,
+        kind: "repo_snapshot_report",
+        uri: `d1://control-plane/${workflow.runId}/repo-snapshot-report.json`,
+        title: "Repository snapshot report",
+        mimeType: "application/json",
+      },
+    });
+  }
+
   await recordPackWorkflowToolCall(env, identity, {
     ...workflow,
     toolName: repoSnapshotToolName,
@@ -185,13 +214,19 @@ export const handleRepoReadinessReport = async (
   });
 
   if (!result.ok) {
-    await finishPackWorkflowRun(env, identity, {
+    const finished = await finishPackWorkflowRun(env, identity, {
       ...workflow,
       workflowType: repoReadinessWorkflowType,
       ok: false,
       summary: result.error.message,
       data: { packId: repoAnalystPackId, error: result.error },
     });
+    if (!finished.applied) {
+      return json(
+        { ok: false, error: "Run output was discarded after cancellation." },
+        { status: 409 },
+      );
+    }
     return json({ ok: false, error: result.error.message, run: workflow }, { status: 502 });
   }
 
@@ -211,7 +246,7 @@ export const handleRepoReadinessReport = async (
     sizeBytes: JSON.stringify(artifactData).length,
     data: artifactData,
   };
-  await finishPackWorkflowRun(env, identity, {
+  const finished = await finishPackWorkflowRun(env, identity, {
     ...workflow,
     workflowType: repoReadinessWorkflowType,
     ok: true,
@@ -224,6 +259,12 @@ export const handleRepoReadinessReport = async (
       outputSummary: report.summary,
     },
   });
+  if (!finished.applied) {
+    return json(
+      { ok: false, error: "Run output was discarded after cancellation." },
+      { status: 409 },
+    );
+  }
 
   return json(
     {
@@ -232,7 +273,7 @@ export const handleRepoReadinessReport = async (
         id: workflow.runId,
         workflowIntentId: workflow.workflowIntentId,
         status: "completed",
-        engine: "fly-tool-runner",
+        engine: "cloudflare",
         workflowType: repoReadinessWorkflowType,
       },
       artifact: {

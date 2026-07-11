@@ -1,4 +1,4 @@
-import type { AgentIdentity } from "./types";
+import type { AgentIdentity, AgentRow, ChatThreadRow } from "./types";
 
 export type AgentConnectionClaims = {
   v: 1;
@@ -109,3 +109,24 @@ export const claimsToIdentity = (claims: AgentConnectionClaims): AgentIdentity =
   accountId: claims.accountId,
   accountSource: claims.accountSource,
 });
+
+export const assertCurrentAgentConnectionScope = (
+  claims: AgentConnectionClaims,
+  thread: ChatThreadRow,
+  agent: AgentRow | null,
+) => {
+  if (
+    thread.thread_id !== claims.threadId ||
+    thread.session_id !== claims.sessionId ||
+    thread.agent_id !== claims.agentId ||
+    thread.status !== "active"
+  ) {
+    throw new Error("Agent token thread scope is stale");
+  }
+  if (!agent || agent.status !== "active" || agent.id !== claims.agentId) {
+    throw new Error("Agent token agent is inactive");
+  }
+  if (claims.agentUpdatedAt && claims.agentUpdatedAt !== agent.updated_at) {
+    throw new Error("Agent token agent version is stale");
+  }
+};

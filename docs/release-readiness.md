@@ -1,10 +1,11 @@
-# 1.0 Read-Only Baseline Readiness
+# 1.0.0-preview.1 Developer Preview Readiness
 
 Document status: current release contract.
 
-The Assistant-mk1 1.0 baseline is an authenticated, tenant-scoped, read-only agent
-workbench. It is not a commitment to external mutation, durable customer-data
-retention, encrypted credential brokerage, or artifact blob storage.
+The Assistant-mk1 preview is an authenticated, tenant-scoped, read-only agent
+workbench. Remote D1 state and D1-backed artifact metadata are disposable. This
+release makes no commitment to upgrade-safe customer-data retention, external
+mutation, encrypted credential brokerage, or artifact blob storage.
 
 ## Included
 
@@ -20,15 +21,17 @@ retention, encrypted credential brokerage, or artifact blob storage.
 
 ## Release Evidence
 
-| Gate                     | Evidence                                                                    |
-| ------------------------ | --------------------------------------------------------------------------- |
-| Repository               | `pnpm release:check`                                                        |
-| Real-session contract    | `pnpm eval:real-session-posture`                                            |
-| Cloudflare authorization | `pnpm smoke:cloudflare-authz` and `pnpm smoke:cloudflare-membership-policy` |
-| Tenant isolation         | `pnpm smoke:tenant-isolation` and the boundary smokes                       |
-| Run recovery             | run-control unit tests, history smoke, and hosted browser acceptance        |
-| Browser UX               | `pnpm test:e2e` plus signed-in Dia acceptance                               |
-| Documentation            | `docs/README.md` current-state map and deploy runbooks                      |
+| Gate                         | Evidence                                                                    |
+| ---------------------------- | --------------------------------------------------------------------------- |
+| Repository                   | `pnpm release:check`                                                        |
+| Static real-session contract | `pnpm eval:real-session-posture`                                            |
+| Deterministic services       | `pnpm test:service-boundaries`                                              |
+| Dependency security          | `pnpm verify:security`                                                      |
+| Cloudflare authorization     | `pnpm smoke:cloudflare-authz` and `pnpm smoke:cloudflare-membership-policy` |
+| Tenant isolation             | `pnpm smoke:tenant-isolation` and the boundary smokes                       |
+| Run recovery                 | run-control unit tests, history smoke, and hosted browser acceptance        |
+| Browser UX                   | `pnpm test:e2e` plus signed-in Dia acceptance                               |
+| Documentation                | `docs/README.md` current-state map and deploy runbooks                      |
 
 ## Deferred Gates
 
@@ -44,6 +47,26 @@ The following are intentionally outside the 1.0 read-only baseline:
 Remote D1 remains disposable development validation state until
 `docs/migrations-and-retention.md` is implemented. A release must not describe
 that state as retained customer history.
+
+## Preview Release Checklist
+
+- [ ] A clean clone installs with `pnpm install --frozen-lockfile`, initializes
+      disposable D1, passes `pnpm workbench:doctor`, and reaches usable chat by
+      following only the README.
+- [ ] `pnpm release:check` and both GitHub Actions jobs are green.
+- [ ] `pnpm verify:security` reports no high-severity advisory.
+- [ ] Docker context inspection proves synthetic sentinels under ignored local
+      state and secret paths do not enter the image; the runtime runs non-root.
+- [ ] Hosted Vercel, Cloudflare, and Fly unauthenticated health boundaries match
+      their runbooks and disclose no tenant or configuration data.
+- [ ] Signed-in manual acceptance covers pack activation, Repository Analyst
+      completion, structured History inspection, cancel/late-result rejection,
+      retry lineage, approval denial/recovery, and agent handoff.
+- [ ] Review whether any prior Fly build included local credentials; rotate every
+      affected credential class before tagging if exposure cannot be disproved.
+- [ ] Capture current workbench, History, and Agent Pack screenshots.
+- [ ] Confirm `CHANGELOG.md` and the disposable-data preview contract are current.
+- [ ] Create the `v1.0.0-preview.1` prerelease tag only after all preceding gates pass.
 
 ## Hosted Acceptance
 

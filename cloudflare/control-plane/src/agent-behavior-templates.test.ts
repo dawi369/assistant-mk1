@@ -152,7 +152,7 @@ describe("agent behavior authoring metadata", () => {
     expect(template?.pack?.workflows).toEqual([
       expect.objectContaining({
         type: "polymancer.market_research",
-        engine: "langgraph",
+        engine: "cloudflare",
         status: "declared",
       }),
     ]);
@@ -185,7 +185,7 @@ describe("agent behavior authoring metadata", () => {
     expect(template?.pack?.workflows).toEqual([
       expect.objectContaining({
         type: "swordfish.runtime_research",
-        engine: "langgraph",
+        engine: "cloudflare",
         status: "declared",
       }),
     ]);

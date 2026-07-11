@@ -4,9 +4,10 @@ Assistant-mk1 grows through explicit capability levels rather than by giving a
 model ambient authority. Each level adds a class of work and requires the
 control-plane guarantees needed to operate it safely.
 
-Document status: north-star target contract. The current release-candidate
-baseline implements levels 0 through 2 for bounded read-only work. Higher
-levels describe intended platform behavior, not shipped production authority.
+Document status: north-star target contract. Levels 0 and 1 are implemented.
+Level 2 is preview-complete only when the repository release gates pass; it does
+not imply retained data or mutation authority. Higher levels describe intended
+platform behavior, not shipped production authority.
 
 ## Capability Levels
 

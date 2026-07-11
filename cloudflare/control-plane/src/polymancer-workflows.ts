@@ -184,6 +184,7 @@ export const handlePolymancerMarketResearch = async (
       ? (parsed.searchInput ?? parsed.snapshotInput)
       : {},
     executionMode: parsed.mode,
+    engine: "cloudflare",
     intentCreatedSummary: "Created Polymancer market research workflow intent.",
   });
 
@@ -216,13 +217,19 @@ export const handlePolymancerMarketResearch = async (
       snapshot && !snapshot.ok
         ? snapshot.error.message
         : (searchResult?.error ?? "Market snapshot could not be created.");
-    await finishPackWorkflowRun(env, identity, {
+    const finished = await finishPackWorkflowRun(env, identity, {
       ...workflow,
       workflowType,
       ok: false,
       summary,
       data: { error: summary },
     });
+    if (!finished.applied) {
+      return json(
+        { ok: false, error: "Run output was discarded after cancellation." },
+        { status: 409 },
+      );
+    }
     return json({ ok: false, error: summary, run: workflow }, { status: 502 });
   }
 
@@ -270,7 +277,7 @@ export const handlePolymancerMarketResearch = async (
     data: artifactData,
   };
 
-  await finishPackWorkflowRun(env, identity, {
+  const finished = await finishPackWorkflowRun(env, identity, {
     ...workflow,
     workflowType,
     ok: true,
@@ -285,6 +292,12 @@ export const handlePolymancerMarketResearch = async (
       tokenId,
     },
   });
+  if (!finished.applied) {
+    return json(
+      { ok: false, error: "Run output was discarded after cancellation." },
+      { status: 409 },
+    );
+  }
 
   return json(
     {
@@ -293,7 +306,7 @@ export const handlePolymancerMarketResearch = async (
         id: workflow.runId,
         workflowIntentId: workflow.workflowIntentId,
         status: "completed",
-        engine: "langgraph-declared",
+        engine: "cloudflare",
         workflowType,
       },
       artifact: {

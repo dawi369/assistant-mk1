@@ -65,6 +65,7 @@ const toRunHistoryItem = (
     lastEventAt: row.last_event_at ?? undefined,
     completedAt: row.completed_at ?? undefined,
     failedAt: row.failed_at ?? undefined,
+    cancelledAt: row.cancelled_at ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     controls: {
@@ -94,7 +95,7 @@ export const listExecutionHistory = async (env: Env, identity: AgentIdentity, ur
     `SELECT
        r.id, r.user_id, r.workspace_id, r.agent_id, r.workflow_intent_id, r.status,
        r.execution_json, r.stage, r.engine, r.heartbeat_at, r.last_event_at,
-       r.completed_at, r.failed_at, r.data_json, r.created_at, r.updated_at,
+       r.completed_at, r.failed_at, r.cancelled_at, r.data_json, r.created_at, r.updated_at,
        i.type AS workflow_type,
        COUNT(DISTINCT tc.id) AS tool_call_count,
        COUNT(DISTINCT CASE WHEN ar.status = 'requested' THEN ar.id END) AS pending_approval_count

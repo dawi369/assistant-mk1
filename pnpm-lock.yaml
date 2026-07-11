@@ -6,7 +6,10 @@ settings:
 
 overrides:
   esbuild: 0.28.1
+  hono: 4.12.25
   shell-quote: 1.8.4
+  undici: 7.28.0
+  ws: 8.21.0
 
 importers:
 
@@ -24,9 +27,15 @@ importers:
       '@cloudflare/ai-chat':
         specifier: 0.8.6
         version: 0.8.6(@ai-sdk/react@3.0.221(react@19.2.6)(zod@4.4.3))(agents@0.16.0)(ai@6.0.208(zod@4.4.3))(react@19.2.6)(zod@4.4.3)
+      '@langchain/core':
+        specifier: ^1.1.48
+        version: 1.1.48(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.7.1(@opentelemetry/api@1.9.1))(openai@6.39.1(ws@8.21.0)(zod@4.4.3))(ws@8.21.0)
       '@langchain/langgraph':
         specifier: ^1.3.2
         version: 1.3.2(@langchain/core@1.1.48(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.7.1(@opentelemetry/api@1.9.1))(openai@6.39.1(ws@8.21.0)(zod@4.4.3))(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(zod-to-json-schema@3.25.2(zod@4.4.3))(zod@4.4.3)
+      '@langchain/langgraph-cli':
+        specifier: ^1.2.3
+        version: 1.2.3(25bd60f1d22007ea287a887e2cf1e743)
       '@langchain/langgraph-sdk':
         specifier: ^1.9.6
         version: 1.9.10(@langchain/core@1.1.48(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.7.1(@opentelemetry/api@1.9.1))(openai@6.39.1(ws@8.21.0)(zod@4.4.3))(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -75,6 +84,9 @@ importers:
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
+      concurrently:
+        specifier: ^9.2.1
+        version: 9.2.1
       lucide-react:
         specifier: ^1.16.0
         version: 1.17.0(react@19.2.6)
@@ -96,6 +108,9 @@ importers:
       tailwind-merge:
         specifier: ^3.6.0
         version: 3.6.0
+      tsx:
+        specifier: ^4.22.4
+        version: 4.22.4
       tw-animate-css:
         specifier: ^1.4.0
         version: 1.4.0
@@ -106,12 +121,6 @@ importers:
         specifier: ^5.0.13
         version: 5.0.14(@types/react@19.2.15)(react@19.2.6)(use-sync-external-store@1.6.0(react@19.2.6))
     devDependencies:
-      '@langchain/core':
-        specifier: ^1.1.48
-        version: 1.1.48(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.7.1(@opentelemetry/api@1.9.1))(openai@6.39.1(ws@8.21.0)(zod@4.4.3))(ws@8.21.0)
-      '@langchain/langgraph-cli':
-        specifier: ^1.2.3
-        version: 1.2.3(25bd60f1d22007ea287a887e2cf1e743)
       '@playwright/test':
         specifier: ^1.61.1
         version: 1.61.1
@@ -127,9 +136,6 @@ importers:
       '@types/react-dom':
         specifier: ^19.2.3
         version: 19.2.3(@types/react@19.2.15)
-      concurrently:
-        specifier: ^9.2.1
-        version: 9.2.1
       oxfmt:
         specifier: ^0.51.0
         version: 0.51.0
@@ -139,9 +145,6 @@ importers:
       tailwindcss:
         specifier: ^4.3.0
         version: 4.3.0
-      tsx:
-        specifier: ^4.22.4
-        version: 4.22.4
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -675,19 +678,19 @@ packages:
     resolution: {integrity: sha512-GwtvgtXxnWsucXvbQXkRgqksiH2Qed37H9xHZocE5sA3N8O8O8/8FA3uclQXxXVzc9XBZuEOMK7+r02FmSpHtw==}
     engines: {node: '>=18.14.1'}
     peerDependencies:
-      hono: ^4
+      hono: 4.12.25
 
   '@hono/node-ws@1.3.1':
     resolution: {integrity: sha512-vo/MwCnpJAVHBkGzWjCJ28wF45fYHAfbPZcH2rodZODHtch2GHA94KtMfusmVycTUtsLAsaNsHhtY6P8X3RQsA==}
     engines: {node: '>=18.14.1'}
     peerDependencies:
       '@hono/node-server': ^1.19.11
-      hono: ^4.6.0
+      hono: 4.12.25
 
   '@hono/zod-validator@0.7.6':
     resolution: {integrity: sha512-Io1B6d011Gj1KknV4rXYz4le5+5EubcWEU/speUjuw9XMMIaP3n78yXLhjd2A3PXaXaUwEAluOiAyLqhBEJgsw==}
     peerDependencies:
-      hono: '>=3.9.0'
+      hono: 4.12.25
       zod: ^3.25.0 || ^4.0.0
 
   '@img/colour@1.1.0':
@@ -4335,8 +4338,8 @@ packages:
   hast-util-whitespace@3.0.0:
     resolution: {integrity: sha512-88JUN06ipLwsnv+dVn+OIYOvAuvBMy/Qoi6O7mQHxdPXpjy+Cd6xRkWwux7DKO+4sYILtLBRIKgsdpS2gQc7qw==}
 
-  hono@4.12.23:
-    resolution: {integrity: sha512-eIaZ9qDgu7XV0pxOCrg7/WhnQ6Ivm22UcxhXx/A3dcbqbbYgBEkc6e/J/s7j2tS96zoB0S9VBdLwQNCWwUo4LA==}
+  hono@4.12.25:
+    resolution: {integrity: sha512-2NFaIyNVgJmBs/ecmtGzlmluTFs5cHEWGTdu0t1HBwYzoGXOL5nUQBRMXsXWla5i4KkG//QMzVP88m1+I3fdAQ==}
     engines: {node: '>=16.9.0'}
 
   html-url-attributes@3.0.1:
@@ -4524,7 +4527,7 @@ packages:
       '@opentelemetry/exporter-trace-otlp-proto': '*'
       '@opentelemetry/sdk-trace-base': '*'
       openai: '*'
-      ws: '>=7'
+      ws: 8.21.0
     peerDependenciesMeta:
       '@opentelemetry/api':
         optional: true
@@ -4544,7 +4547,7 @@ packages:
       '@opentelemetry/exporter-trace-otlp-proto': '*'
       '@opentelemetry/sdk-trace-base': '*'
       openai: '*'
-      ws: '>=7'
+      ws: 8.21.0
     peerDependenciesMeta:
       '@opentelemetry/api':
         optional: true
@@ -4564,7 +4567,7 @@ packages:
       '@opentelemetry/exporter-trace-otlp-proto': '*'
       '@opentelemetry/sdk-trace-base': '*'
       openai: '*'
-      ws: '>=7'
+      ws: 8.21.0
     peerDependenciesMeta:
       '@opentelemetry/api':
         optional: true
@@ -5005,7 +5008,7 @@ packages:
     resolution: {integrity: sha512-z3dO9fEWOXBzlXynVb/xZ/tujzUjFWQWn3C0n0mw6Vo0zJTbEkaN4b2cLWjhJ6haJQx8LlREoafHRl+Gu/Hl+A==}
     hasBin: true
     peerDependencies:
-      ws: ^8.18.0
+      ws: 8.21.0
       zod: ^3.25 || ^4.0
     peerDependenciesMeta:
       ws:
@@ -5770,8 +5773,8 @@ packages:
   undici-types@7.24.6:
     resolution: {integrity: sha512-WRNW+sJgj5OBN4/0JpHFqtqzhpbnV0GuB+OozA9gCL7a993SmU+1JBZCzLNxYsbMfIeDL+lTsphD5jN5N+n0zg==}
 
-  undici@7.24.8:
-    resolution: {integrity: sha512-6KQ/+QxK49Z/p3HO6E5ZCZWNnCasyZLa5ExaVYyvPxUwKtbCPMKELJOqh7EqOle0t9cH/7d2TaaTRRa6Nhs4YQ==}
+  undici@7.28.0:
+    resolution: {integrity: sha512-cRZYrTDwWznlnRiPjggAGxZXanty6M8RV1ff8Wm4LWXBp7/IG8v5DnOm74DtUBp9OONpK75YlPnIjQqX0dBDtA==}
     engines: {node: '>=20.18.1'}
 
   unenv@2.0.0-rc.24:
@@ -6050,18 +6053,6 @@ packages:
 
   wrappy@1.0.2:
     resolution: {integrity: sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ==}
-
-  ws@8.20.1:
-    resolution: {integrity: sha512-It4dO0K5v//JtTXuPkfEOaI3uUN87iYPnqo/ZzqCoG3g8uhA66QUMs/SrM0YK7/NAu+r4LMh/9dq2A7k+rHs+w==}
-    engines: {node: '>=10.0.0'}
-    peerDependencies:
-      bufferutil: ^4.0.1
-      utf-8-validate: '>=5.0.2'
-    peerDependenciesMeta:
-      bufferutil:
-        optional: true
-      utf-8-validate:
-        optional: true
 
   ws@8.21.0:
     resolution: {integrity: sha512-Vsp28b7DRcimFQvrqu2Wek3z1iYxDCWqHYB8Qsnk/S4RfaCQzPGPyBNuVjJV3cd6UiKtUtp6sNM77gWvzcCH+g==}
@@ -6662,22 +6653,22 @@ snapshots:
 
   '@floating-ui/utils@0.2.11': {}
 
-  '@hono/node-server@1.19.14(hono@4.12.23)':
+  '@hono/node-server@1.19.14(hono@4.12.25)':
     dependencies:
-      hono: 4.12.23
+      hono: 4.12.25
 
-  '@hono/node-ws@1.3.1(@hono/node-server@1.19.14(hono@4.12.23))(hono@4.12.23)':
+  '@hono/node-ws@1.3.1(@hono/node-server@1.19.14(hono@4.12.25))(hono@4.12.25)':
     dependencies:
-      '@hono/node-server': 1.19.14(hono@4.12.23)
-      hono: 4.12.23
+      '@hono/node-server': 1.19.14(hono@4.12.25)
+      hono: 4.12.25
       ws: 8.21.0
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@hono/zod-validator@0.7.6(hono@4.12.23)(zod@4.4.3)':
+  '@hono/zod-validator@0.7.6(hono@4.12.25)(zod@4.4.3)':
     dependencies:
-      hono: 4.12.23
+      hono: 4.12.25
       zod: 4.4.3
 
   '@img/colour@1.1.0': {}
@@ -6846,9 +6837,9 @@ snapshots:
   '@langchain/langgraph-api@1.2.3(25bd60f1d22007ea287a887e2cf1e743)':
     dependencies:
       '@babel/code-frame': 7.29.7
-      '@hono/node-server': 1.19.14(hono@4.12.23)
-      '@hono/node-ws': 1.3.1(@hono/node-server@1.19.14(hono@4.12.23))(hono@4.12.23)
-      '@hono/zod-validator': 0.7.6(hono@4.12.23)(zod@4.4.3)
+      '@hono/node-server': 1.19.14(hono@4.12.25)
+      '@hono/node-ws': 1.3.1(@hono/node-server@1.19.14(hono@4.12.25))(hono@4.12.25)
+      '@hono/zod-validator': 0.7.6(hono@4.12.25)(zod@4.4.3)
       '@langchain/core': 1.1.48(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.7.1(@opentelemetry/api@1.9.1))(openai@6.39.1(ws@8.21.0)(zod@4.4.3))(ws@8.21.0)
       '@langchain/langgraph': 1.3.2(@langchain/core@1.1.48(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.7.1(@opentelemetry/api@1.9.1))(openai@6.39.1(ws@8.21.0)(zod@4.4.3))(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(zod-to-json-schema@3.25.2(zod@4.4.3))(zod@4.4.3)
       '@langchain/langgraph-checkpoint': 1.0.3(@langchain/core@1.1.48(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.7.1(@opentelemetry/api@1.9.1))(openai@6.39.1(ws@8.21.0)(zod@4.4.3))(ws@8.21.0))
@@ -6859,7 +6850,7 @@ snapshots:
       dedent: 1.7.2
       dotenv: 16.6.1
       exit-hook: 4.0.0
-      hono: 4.12.23
+      hono: 4.12.25
       langsmith: 0.7.5(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.7.1(@opentelemetry/api@1.9.1))(openai@6.39.1(ws@8.21.0)(zod@4.4.3))(ws@8.21.0)
       open: 10.2.0
       semver: 7.8.2
@@ -6991,7 +6982,7 @@ snapshots:
 
   '@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3)':
     dependencies:
-      '@hono/node-server': 1.19.14(hono@4.12.23)
+      '@hono/node-server': 1.19.14(hono@4.12.25)
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
       content-type: 1.0.5
@@ -7001,7 +6992,7 @@ snapshots:
       eventsource-parser: 3.1.0
       express: 5.2.1
       express-rate-limit: 8.5.2(express@5.2.1)
-      hono: 4.12.23
+      hono: 4.12.25
       jose: 6.2.3
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
@@ -10198,7 +10189,7 @@ snapshots:
     dependencies:
       '@types/hast': 3.0.4
 
-  hono@4.12.23: {}
+  hono@4.12.25: {}
 
   html-url-attributes@3.0.1: {}
 
@@ -10850,9 +10841,9 @@ snapshots:
     dependencies:
       '@cspotcode/source-map-support': 0.8.1
       sharp: 0.34.5
-      undici: 7.24.8
+      undici: 7.28.0
       workerd: 1.20260603.1
-      ws: 8.20.1
+      ws: 8.21.0
       youch: 4.1.0-beta.10
     transitivePeerDependencies:
       - bufferutil
@@ -11941,7 +11932,7 @@ snapshots:
 
   undici-types@7.24.6: {}
 
-  undici@7.24.8: {}
+  undici@7.28.0: {}
 
   unenv@2.0.0-rc.24:
     dependencies:
@@ -12224,8 +12215,6 @@ snapshots:
       strip-ansi: 7.2.0
 
   wrappy@1.0.2: {}
-
-  ws@8.20.1: {}
 
   ws@8.21.0: {}
 

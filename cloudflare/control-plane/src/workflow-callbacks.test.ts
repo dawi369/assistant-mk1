@@ -22,7 +22,7 @@ const runRow = (input?: { status?: string; workflowType?: string }) => ({
   status: input?.status ?? "queued",
   execution_json: "{}",
   stage: "observe",
-  engine: "test",
+  engine: "cloudflare",
   heartbeat_at: null,
   last_event_at: null,
   completed_at: null,

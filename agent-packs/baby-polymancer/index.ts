@@ -74,11 +74,11 @@ export const babyPolymancerPack = defineAgentPack({
   workflows: [
     {
       type: "polymancer.market_research",
-      engine: "langgraph",
+      engine: "cloudflare",
       status: "declared",
       userInvocable: true,
       description:
-        "Future LangGraph job for multi-step read-only market research and report synthesis.",
+        "Cloudflare workflow for multi-step read-only market research and report synthesis.",
     },
   ],
   ui: {

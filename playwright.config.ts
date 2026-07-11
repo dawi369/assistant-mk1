@@ -8,11 +8,13 @@ if (releaseMode !== "signed-out" && releaseMode !== "local-session") {
 
 const appOrigin = "http://localhost:3100";
 const redirectEnv = `NEXT_PUBLIC_WORKOS_REDIRECT_URI=${appOrigin}/auth/callback`;
+const syntheticAuthEnv =
+  "WORKOS_API_KEY='' WORKOS_CLIENT_ID=client_e2e_synthetic NEXT_PUBLIC_WORKOS_CLIENT_ID=client_e2e_synthetic WORKOS_COOKIE_PASSWORD=e2e-cookie-password-000000000000001";
 
 const frontendCommand =
   releaseMode === "signed-out"
-    ? `${redirectEnv} WORKOS_API_KEY='' WORKBENCH_ALLOW_LOCAL_DEV_IDENTITY=false pnpm exec next dev --turbopack -p 3100`
-    : `${redirectEnv} WORKOS_API_KEY='' WORKBENCH_ALLOW_LOCAL_DEV_IDENTITY=true WORKBENCH_DEV_USER_ID=e2e-owner WORKBENCH_DEV_WORKSPACE_ID=e2e-workspace WORKBENCH_DEV_AGENT_ID=e2e-agent WORKBENCH_ADMIN_USER_IDS=e2e-owner CLOUDFLARE_CONTROL_PLANE_URL=http://127.0.0.1:8788 pnpm exec next dev --turbopack -p 3100`;
+    ? `${redirectEnv} ${syntheticAuthEnv} WORKBENCH_ALLOW_LOCAL_DEV_IDENTITY=false pnpm exec next dev --turbopack -p 3100`
+    : `${redirectEnv} ${syntheticAuthEnv} WORKBENCH_ALLOW_LOCAL_DEV_IDENTITY=true WORKBENCH_DEV_USER_ID=e2e-owner WORKBENCH_DEV_WORKSPACE_ID=e2e-workspace WORKBENCH_DEV_AGENT_ID=e2e-agent WORKBENCH_ADMIN_USER_IDS=e2e-owner CLOUDFLARE_CONTROL_PLANE_URL=http://127.0.0.1:8788 CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=e2e-control-plane-token pnpm exec next dev --turbopack -p 3100`;
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -31,6 +33,12 @@ export default defineConfig({
   webServer: [
     ...(releaseMode === "local-session"
       ? [
+          {
+            command: "pnpm e2e:serve:runner",
+            url: "http://127.0.0.1:3101/health/live",
+            reuseExistingServer: false,
+            timeout: 60_000,
+          },
           {
             command: "pnpm e2e:serve:worker",
             url: "http://127.0.0.1:8788/health/live",

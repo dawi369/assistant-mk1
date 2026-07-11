@@ -15,7 +15,8 @@ import {
   signFacadeRequest,
   sha256Base64Url,
 } from "../lib/workbench/control-plane-signing";
-import { inspectUrl, validateUrlInspectInput } from "../lib/workbench/url-inspect";
+import { validateUrlInspectInput } from "../lib/workbench/url-inspect";
+import { inspectPublicUrl } from "./public-url-inspect";
 import {
   adminTestToolError,
   runnerEchoToolName,
@@ -1175,7 +1176,12 @@ const handleToolRunnerInvocation = async (
   }
 
   const startedAt = Date.now();
-  const result = await inspectUrl(validated.url);
+  const sandbox = isRecord(parsed.runner?.sandbox) ? parsed.runner.sandbox : null;
+  const network = isRecord(sandbox?.network) ? sandbox.network : null;
+  const result = await inspectPublicUrl(validated.url, {
+    allowedHosts: stringList(network?.allowedHosts),
+    deniedHosts: stringList(network?.deniedHosts),
+  });
   json(response, result.ok ? 200 : 502, {
     ...result,
     runner: parsed.runner,

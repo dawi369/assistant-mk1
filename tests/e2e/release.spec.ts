@@ -62,10 +62,8 @@ test("trusted local session is immediately usable and exposes release controls",
 
   await page.getByRole("button", { name: "Workspace access" }).click();
   await expect(page.getByRole("dialog", { name: "Workspace" })).toBeVisible();
-  await expect(page.getByText("Release Workspace", { exact: true })).toBeVisible();
-  await expect(page.getByRole("combobox", { name: "Role for Release Test Owner" })).toHaveValue(
-    "owner",
-  );
+  await expect(page.getByText("Default Workspace", { exact: true })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Role for e2e-owner" })).toHaveValue("owner");
   await page.getByRole("button", { name: "Close" }).click();
 
   const composer = page.getByRole("textbox", { name: /Message input|Draft message/ });
@@ -111,13 +109,19 @@ test("trusted local session is immediately usable and exposes release controls",
   await page.getByRole("button", { name: /Assess release readiness/i }).click();
   await expect(page.getByRole("dialog", { name: "Readiness report" })).toBeVisible();
   await expect(page.getByText("Documentation", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Close" }).click();
-
-  await page.getByRole("button", { name: "History" }).click();
+  await page.getByRole("button", { name: "Run dry-run" }).click();
   await expect(page.getByRole("dialog", { name: "Workbench History" })).toBeVisible();
+  await expect(page.getByText("Repository snapshot report", { exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
   await expect(
     page.getByRole("listitem").filter({ hasText: "Release recovery fixture" }),
   ).toBeVisible();
+  await page
+    .getByRole("listitem")
+    .filter({ hasText: "Release recovery fixture" })
+    .getByRole("button", { name: "Inspect" })
+    .click();
   await expect(page.getByRole("button", { name: "Retry run" })).toBeVisible();
 
   expect(hydrationErrors).toEqual([]);

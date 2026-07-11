@@ -42,7 +42,7 @@ export const examplePack = defineAgentPack({
   workflows: [
     {
       type: "example.research",
-      engine: "langgraph",
+      engine: "cloudflare",
       status: "declared",
       userInvocable: true,
       description: "Run bounded example research.",
@@ -80,6 +80,13 @@ Pack definitions may declare capabilities but cannot implement trusted runtime
 code. The shared workflow catalog owns bounded forms, input normalization,
 same-origin and Worker routes, artifact kinds, and smoke commands. The Worker
 handler registry is exhaustive over runnable catalog entries.
+
+The manifest engine must match the registered workflow binding. `cloudflare`
+means Cloudflare owns orchestration even when a step uses the signed Fly runner.
+`langgraph` is persisted only after delegation creates a real LangGraph run and
+records its external run id. Runner transport (`cloudflare-inline` or `fly`) is
+separate tool-call metadata. Unknown workflow declarations remain inspectable
+but are not runnable.
 
 Each tool declares who invokes it:
 
@@ -161,10 +168,13 @@ in the background. Legacy and non-pack agents use the generic welcome.
 pnpm agent-packs:validate
 pnpm agent-packs:inspect --pack <pack-id>
 pnpm agent-packs:smoke --pack <pack-id>
+pnpm test:service-boundaries
 pnpm verify:fast
 ```
 
-Use `--json` on the pack scripts when integrating them into automation. Live
+Use `--json` on the pack scripts when integrating them into automation.
+`agent-packs:smoke` is a static manifest/catalog mapping smoke; the separate
+service-boundary command exercises the deterministic local runtime. Live
 provider smokes remain explicit and are never triggered by local validation.
 
 ## Safety Rules
