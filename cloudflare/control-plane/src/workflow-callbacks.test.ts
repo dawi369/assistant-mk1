@@ -33,7 +33,11 @@ const runRow = (input?: { status?: string; workflowType?: string }) => ({
   workflow_type: input?.workflowType ?? "workflow.test",
 });
 
-const createRecordingEnv = (input?: { status?: string; workflowType?: string }) => {
+const createRecordingEnv = (input?: {
+  status?: string;
+  workflowType?: string;
+  runChanges?: number;
+}) => {
   const statements: RecordedStatement[] = [];
   const nonces = new Set<unknown>();
   const createStatement = (query: string): D1PreparedStatement & RecordedStatement => {
@@ -76,7 +80,14 @@ const createRecordingEnv = (input?: { status?: string; workflowType?: string }) 
             values: statement.values ?? [],
           });
         }
-        return batchStatements.map(() => ({ success: true })) as D1Result[];
+        return batchStatements.map((statement) => ({
+          success: true,
+          meta: {
+            changes: statement.query?.includes("UPDATE control_runs")
+              ? (input?.runChanges ?? 1)
+              : 1,
+          },
+        })) as D1Result[];
       },
     },
   } satisfies Partial<Env>;
@@ -229,6 +240,32 @@ describe("workflow callback ingestion", () => {
     expect(await result.response.json()).toMatchObject({
       details: { code: "run_terminal" },
     });
+  });
+
+  it("rejects a callback that loses the active-run compare-and-set", async () => {
+    const { env, statements } = createRecordingEnv({ runChanges: 0 });
+    const result = await applyWorkflowCallbackPayload(env, {
+      event: "run.completed",
+      runId: "run-1",
+      workflowIntentId: "intent-1",
+      summary: "late completion",
+      artifact: {
+        id: "late-artifact",
+        kind: "report",
+        uri: "d1://late-artifact",
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.response.status).toBe(409);
+    expect(await result.response.json()).toMatchObject({ details: { code: "run_terminal" } });
+    expect(
+      statements
+        .filter((statement) =>
+          /control_artifacts|control_audit_events|control_plane_events/.test(statement.query),
+        )
+        .every((statement) => statement.query.includes("WHERE EXISTS")),
+    ).toBe(true);
   });
 
   it("persists repo.snapshot artifact and tool-call metadata from callbacks", async () => {

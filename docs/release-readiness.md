@@ -26,6 +26,9 @@ mutation, encrypted credential brokerage, or artifact blob storage.
 | Repository                   | `pnpm release:check`                                                        |
 | Static real-session contract | `pnpm eval:real-session-posture`                                            |
 | Deterministic services       | `pnpm test:service-boundaries`                                              |
+| Level 2 conformance          | `pnpm conformance:level2` and `docs/level-2-conformance.md`                 |
+| Docker boundary              | `pnpm verify:docker`                                                        |
+| Hosted public boundaries     | `pnpm acceptance:hosted:public`                                             |
 | Dependency security          | `pnpm verify:security`                                                      |
 | Cloudflare authorization     | `pnpm smoke:cloudflare-authz` and `pnpm smoke:cloudflare-membership-policy` |
 | Tenant isolation             | `pnpm smoke:tenant-isolation` and the boundary smokes                       |
@@ -53,7 +56,8 @@ that state as retained customer history.
 - [ ] A clean clone installs with `pnpm install --frozen-lockfile`, initializes
       disposable D1, passes `pnpm workbench:doctor`, and reaches usable chat by
       following only the README.
-- [ ] `pnpm release:check` and both GitHub Actions jobs are green.
+- [ ] `pnpm release:check` and all GitHub Actions jobs are green.
+- [ ] `pnpm conformance:level2` is green and its report names the release commit.
 - [ ] `pnpm verify:security` reports no high-severity advisory.
 - [ ] Docker context inspection proves synthetic sentinels under ignored local
       state and secret paths do not enter the image; the runtime runs non-root.

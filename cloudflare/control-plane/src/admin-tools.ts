@@ -2338,23 +2338,69 @@ const updateApprovalStatus = async (
     .run();
 };
 
-const markInterruptedRunRunning = async (
+export const approveApprovalAndResumeRun = async (
   env: Env,
   identity: AgentIdentity,
   approval: ControlApprovalRequestRow,
+  policyDecisionId: string,
 ) => {
   const timestamp = new Date().toISOString();
   const approvalData = parseDataJson(approval.data_json);
   const runner = isRecord(approvalData.runner)
     ? approvalData.runner
     : urlInspectRunnerMetadata(env, "approval");
-  await env.DB.prepare(
-    `UPDATE control_runs
-     SET status = ?, heartbeat_at = ?, last_event_at = ?, data_json = ?, updated_at = ?
-     WHERE id = ? AND user_id = ? AND workspace_id = ? AND agent_id = ?`,
-  )
-    .bind(
-      "running",
+  const results = await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE control_approval_requests
+       SET status = 'approved', data_json = ?, updated_at = ?
+       WHERE id = ? AND user_id = ? AND workspace_id = ? AND status = 'requested'
+         AND EXISTS (
+           SELECT 1 FROM control_runs
+           WHERE id = ? AND user_id = ? AND workspace_id = ? AND agent_id = ?
+             AND status = 'interrupted'
+         )`,
+    ).bind(
+      toJson({
+        ...approvalData,
+        decidedByUserId: identity.scope.userId,
+        policyDecisionId,
+        decidedAt: timestamp,
+      }),
+      timestamp,
+      approval.id,
+      approval.user_id,
+      approval.workspace_id,
+      approval.run_id,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.agentId,
+    ),
+    env.DB.prepare(
+      `UPDATE control_workflow_intents
+       SET status = 'running', updated_at = ?
+       WHERE id = ? AND user_id = ? AND workspace_id = ? AND agent_id = ?
+         AND EXISTS (
+           SELECT 1 FROM control_runs
+           WHERE id = ? AND user_id = ? AND workspace_id = ? AND agent_id = ?
+             AND status = 'interrupted'
+         )`,
+    ).bind(
+      timestamp,
+      approval.workflow_intent_id,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.agentId,
+      approval.run_id,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.agentId,
+    ),
+    env.DB.prepare(
+      `UPDATE control_runs
+       SET status = 'running', heartbeat_at = ?, last_event_at = ?, data_json = ?, updated_at = ?
+       WHERE id = ? AND user_id = ? AND workspace_id = ? AND agent_id = ?
+         AND status = 'interrupted'`,
+    ).bind(
       timestamp,
       timestamp,
       toJson({
@@ -2369,23 +2415,77 @@ const markInterruptedRunRunning = async (
       identity.scope.userId,
       identity.scope.workspaceId,
       identity.agentId,
-    )
-    .run();
-
-  await env.DB.prepare(
-    `UPDATE control_workflow_intents
-     SET status = ?, updated_at = ?
-     WHERE id = ? AND user_id = ? AND workspace_id = ? AND agent_id = ?`,
-  )
-    .bind(
-      "running",
-      timestamp,
-      approval.workflow_intent_id,
-      identity.scope.userId,
-      identity.scope.workspaceId,
-      identity.agentId,
-    )
-    .run();
+    ),
+    ...[
+      ["approval.approved", "approvalRequest", approval.id],
+      ["run.resumed", "run", approval.run_id],
+    ].flatMap(([action, targetType, targetId]) => [
+      env.DB.prepare(
+        `INSERT INTO control_audit_events (
+           id, user_id, workspace_id, action, summary, target_type, target_id, data_json, created_at
+         ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+         WHERE EXISTS (
+           SELECT 1 FROM control_runs
+           WHERE id = ? AND user_id = ? AND workspace_id = ? AND status = 'running'
+             AND updated_at = ?
+         )`,
+      ).bind(
+        createId("cf-audit"),
+        identity.scope.userId,
+        identity.scope.workspaceId,
+        action,
+        "Approved url.inspect execution.",
+        targetType,
+        targetId,
+        toJson({
+          eventName: action,
+          runId: approval.run_id,
+          workflowIntentId: approval.workflow_intent_id,
+          toolName: urlInspectToolName,
+          approvalRequestId: approval.id,
+          policyDecisionId,
+        }),
+        timestamp,
+        approval.run_id,
+        identity.scope.userId,
+        identity.scope.workspaceId,
+        timestamp,
+      ),
+      env.DB.prepare(
+        `INSERT INTO control_plane_events (
+           id, user_id, workspace_id, agent_id, type, summary, target_type, target_id,
+           data_json, created_at
+         ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+         WHERE EXISTS (
+           SELECT 1 FROM control_runs
+           WHERE id = ? AND user_id = ? AND workspace_id = ? AND status = 'running'
+             AND updated_at = ?
+         )`,
+      ).bind(
+        createId("cf-event"),
+        identity.scope.userId,
+        identity.scope.workspaceId,
+        identity.agentId,
+        action,
+        "Approved url.inspect execution.",
+        targetType,
+        targetId,
+        toJson({
+          runId: approval.run_id,
+          workflowIntentId: approval.workflow_intent_id,
+          toolName: urlInspectToolName,
+          approvalRequestId: approval.id,
+          policyDecisionId,
+        }),
+        timestamp,
+        approval.run_id,
+        identity.scope.userId,
+        identity.scope.workspaceId,
+        timestamp,
+      ),
+    ]),
+  ]);
+  return results[2]?.meta?.changes !== 0;
 };
 
 const markInterruptedRunCancelled = async (
@@ -2401,9 +2501,10 @@ const markInterruptedRunCancelled = async (
     : urlInspectRunnerMetadata(env, "approval");
   await env.DB.prepare(
     `UPDATE control_runs
-     SET status = ?, heartbeat_at = ?, last_event_at = ?, completed_at = ?, data_json = ?,
+     SET status = ?, heartbeat_at = ?, last_event_at = ?, cancelled_at = ?, data_json = ?,
          updated_at = ?
-     WHERE id = ? AND user_id = ? AND workspace_id = ? AND agent_id = ?`,
+     WHERE id = ? AND user_id = ? AND workspace_id = ? AND agent_id = ?
+       AND status = 'interrupted'`,
   )
     .bind(
       "cancelled",
@@ -2439,6 +2540,156 @@ const markInterruptedRunCancelled = async (
       identity.agentId,
     )
     .run();
+};
+
+export const denyApprovalAndCancelRun = async (
+  env: Env,
+  identity: AgentIdentity,
+  approval: ControlApprovalRequestRow,
+  denyReason: string,
+) => {
+  const timestamp = new Date().toISOString();
+  const approvalData = parseDataJson(approval.data_json);
+  const runner = isRecord(approvalData.runner)
+    ? approvalData.runner
+    : urlInspectRunnerMetadata(env, "approval");
+  const results = await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE control_approval_requests
+       SET status = 'denied', data_json = ?, updated_at = ?
+       WHERE id = ? AND user_id = ? AND workspace_id = ? AND status = 'requested'
+         AND EXISTS (
+           SELECT 1 FROM control_runs
+           WHERE id = ? AND user_id = ? AND workspace_id = ? AND agent_id = ?
+             AND status = 'interrupted'
+         )`,
+    ).bind(
+      toJson({
+        ...approvalData,
+        decidedByUserId: identity.scope.userId,
+        denyReason,
+        decidedAt: timestamp,
+      }),
+      timestamp,
+      approval.id,
+      approval.user_id,
+      approval.workspace_id,
+      approval.run_id,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.agentId,
+    ),
+    env.DB.prepare(
+      `UPDATE control_workflow_intents
+       SET status = 'cancelled', updated_at = ?
+       WHERE id = ? AND user_id = ? AND workspace_id = ? AND agent_id = ?
+         AND EXISTS (
+           SELECT 1 FROM control_runs
+           WHERE id = ? AND user_id = ? AND workspace_id = ? AND agent_id = ?
+             AND status = 'interrupted'
+         )`,
+    ).bind(
+      timestamp,
+      approval.workflow_intent_id,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.agentId,
+      approval.run_id,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.agentId,
+    ),
+    env.DB.prepare(
+      `UPDATE control_runs
+       SET status = 'cancelled', heartbeat_at = ?, last_event_at = ?, cancelled_at = ?,
+           data_json = ?, updated_at = ?
+       WHERE id = ? AND user_id = ? AND workspace_id = ? AND agent_id = ?
+         AND status = 'interrupted'`,
+    ).bind(
+      timestamp,
+      timestamp,
+      timestamp,
+      toJson({
+        displayName: "URL inspect",
+        summary: denyReason,
+        toolName: urlInspectToolName,
+        approvalRequestId: approval.id,
+        runner,
+      }),
+      timestamp,
+      approval.run_id,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.agentId,
+    ),
+    ...[
+      ["approval.denied", "approvalRequest", approval.id],
+      ["run.cancelled", "run", approval.run_id],
+    ].flatMap(([action, targetType, targetId]) => [
+      env.DB.prepare(
+        `INSERT INTO control_audit_events (
+           id, user_id, workspace_id, action, summary, target_type, target_id, data_json, created_at
+         ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+         WHERE EXISTS (
+           SELECT 1 FROM control_runs
+           WHERE id = ? AND user_id = ? AND workspace_id = ? AND status = 'cancelled'
+             AND updated_at = ?
+         )`,
+      ).bind(
+        createId("cf-audit"),
+        identity.scope.userId,
+        identity.scope.workspaceId,
+        action,
+        denyReason,
+        targetType,
+        targetId,
+        toJson({
+          eventName: action,
+          runId: approval.run_id,
+          workflowIntentId: approval.workflow_intent_id,
+          toolName: urlInspectToolName,
+          approvalRequestId: approval.id,
+        }),
+        timestamp,
+        approval.run_id,
+        identity.scope.userId,
+        identity.scope.workspaceId,
+        timestamp,
+      ),
+      env.DB.prepare(
+        `INSERT INTO control_plane_events (
+           id, user_id, workspace_id, agent_id, type, summary, target_type, target_id,
+           data_json, created_at
+         ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+         WHERE EXISTS (
+           SELECT 1 FROM control_runs
+           WHERE id = ? AND user_id = ? AND workspace_id = ? AND status = 'cancelled'
+             AND updated_at = ?
+         )`,
+      ).bind(
+        createId("cf-event"),
+        identity.scope.userId,
+        identity.scope.workspaceId,
+        identity.agentId,
+        action,
+        denyReason,
+        targetType,
+        targetId,
+        toJson({
+          runId: approval.run_id,
+          workflowIntentId: approval.workflow_intent_id,
+          toolName: urlInspectToolName,
+          approvalRequestId: approval.id,
+        }),
+        timestamp,
+        approval.run_id,
+        identity.scope.userId,
+        identity.scope.workspaceId,
+        timestamp,
+      ),
+    ]),
+  ]);
+  return results[2]?.meta?.changes !== 0;
 };
 
 const insertApprovedToolCallRecord = async (
@@ -3157,33 +3408,21 @@ export const handleApproveToolApproval = async (
     );
   }
 
-  await updateApprovalStatus(env, approval, "approved", {
-    decidedByUserId: identity.scope.userId,
-    policyDecisionId,
-  });
-  await markInterruptedRunRunning(env, identity, approval);
-  await appendControlAudit(env, {
-    ...identity,
-    runId: approval.run_id,
-    workflowIntentId: approval.workflow_intent_id,
-    action: "approval.approved",
-    summary: "Approved url.inspect execution.",
-    targetType: "approvalRequest",
-    targetId: approval.id,
-    data: { toolName: urlInspectToolName, policyDecisionId },
-  });
-  await appendControlPlaneEvent(env, identity, {
-    type: "approval.approved",
-    summary: "Approved url.inspect execution.",
-    targetType: "approvalRequest",
-    targetId: approval.id,
-    data: {
-      runId: approval.run_id,
-      workflowIntentId: approval.workflow_intent_id,
-      toolName: urlInspectToolName,
-      policyDecisionId,
-    },
-  });
+  const resumed = await approveApprovalAndResumeRun(env, identity, approval, policyDecisionId);
+  if (!resumed) {
+    return json(
+      {
+        ok: false,
+        error: "Run is already terminal",
+        details: toolError(
+          "run_terminal",
+          "The run can no longer be resumed because publication authority was revoked.",
+          false,
+        ),
+      },
+      { status: 409 },
+    );
+  }
   await dispatchApprovalUpdated(env, identity, {
     approvalRequestId: approval.id,
     status: "approved",
@@ -3326,54 +3565,21 @@ export const handleDenyToolApproval = async (
     isRecord(body) && typeof body.reason === "string" && body.reason.trim()
       ? body.reason.trim().slice(0, 240)
       : "Approval denied by workspace admin.";
-  await updateApprovalStatus(env, approval, "denied", {
-    decidedByUserId: identity.scope.userId,
-    denyReason,
-  });
-  await markInterruptedRunCancelled(env, identity, approval, denyReason);
-  await appendControlAudit(env, {
-    ...identity,
-    runId: approval.run_id,
-    workflowIntentId: approval.workflow_intent_id,
-    action: "approval.denied",
-    summary: denyReason,
-    targetType: "approvalRequest",
-    targetId: approval.id,
-    data: { toolName: urlInspectToolName },
-  });
-  await appendControlAudit(env, {
-    ...identity,
-    runId: approval.run_id,
-    workflowIntentId: approval.workflow_intent_id,
-    action: "run.cancelled",
-    summary: denyReason,
-    targetType: "run",
-    targetId: approval.run_id,
-    data: { toolName: urlInspectToolName, approvalRequestId: approval.id },
-  });
-  await appendControlPlaneEvent(env, identity, {
-    type: "approval.denied",
-    summary: denyReason,
-    targetType: "approvalRequest",
-    targetId: approval.id,
-    data: {
-      runId: approval.run_id,
-      workflowIntentId: approval.workflow_intent_id,
-      toolName: urlInspectToolName,
-    },
-  });
-  await appendControlPlaneEvent(env, identity, {
-    type: "run.cancelled",
-    summary: denyReason,
-    targetType: "run",
-    targetId: approval.run_id,
-    data: {
-      runId: approval.run_id,
-      workflowIntentId: approval.workflow_intent_id,
-      toolName: urlInspectToolName,
-      approvalRequestId: approval.id,
-    },
-  });
+  const denied = await denyApprovalAndCancelRun(env, identity, approval, denyReason);
+  if (!denied) {
+    return json(
+      {
+        ok: false,
+        error: "Approval run is already terminal",
+        details: toolError(
+          "run_terminal",
+          "The approval can no longer change a terminal run.",
+          false,
+        ),
+      },
+      { status: 409 },
+    );
+  }
   await dispatchApprovalUpdated(env, identity, {
     approvalRequestId: approval.id,
     status: "denied",

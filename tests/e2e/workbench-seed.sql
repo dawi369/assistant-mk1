@@ -19,6 +19,43 @@ VALUES (
   '2026-07-09T20:05:00.000Z'
 );
 
+INSERT INTO control_workflow_intents (
+  id, user_id, workspace_id, agent_id, stage, type, execution_json, payload_json,
+  status, created_at, updated_at
+)
+VALUES (
+  'e2e-approval-intent', 'e2e-owner', 'e2e-workspace', 'e2e-agent', 'observe',
+  'tool.url.inspect', '{"mode":"dry_run","policy":"url.inspect.public-read.v1"}',
+  '{"input":{"url":"https://example.com"}}', 'interrupted',
+  '2026-07-09T20:06:00.000Z', '2026-07-09T20:06:00.000Z'
+);
+
+INSERT INTO control_runs (
+  id, user_id, workspace_id, agent_id, workflow_intent_id, status, execution_json,
+  stage, engine, heartbeat_at, last_event_at, completed_at, failed_at, cancelled_at,
+  data_json, created_at, updated_at
+)
+VALUES (
+  'e2e-approval-run', 'e2e-owner', 'e2e-workspace', 'e2e-agent',
+  'e2e-approval-intent', 'interrupted',
+  '{"mode":"dry_run","policy":"url.inspect.public-read.v1"}', 'observe', 'cloudflare',
+  '2026-07-09T20:06:00.000Z', '2026-07-09T20:06:00.000Z', NULL, NULL, NULL,
+  '{"displayName":"Approval recovery fixture","summary":"Waiting for operator approval."}',
+  '2026-07-09T20:06:00.000Z', '2026-07-09T20:06:00.000Z'
+);
+
+INSERT INTO control_approval_requests (
+  id, user_id, workspace_id, agent_id, workflow_intent_id, run_id, tool_id, status,
+  reason, data_json, created_at, updated_at
+)
+VALUES (
+  'e2e-approval', 'e2e-owner', 'e2e-workspace', 'e2e-agent',
+  'e2e-approval-intent', 'e2e-approval-run', 'url.inspect', 'requested',
+  'Confirm public URL inspection.',
+  '{"input":{"url":"https://example.com"},"runner":{"transport":"fly"}}',
+  '2026-07-09T20:06:00.000Z', '2026-07-09T20:06:00.000Z'
+);
+
 INSERT INTO control_runs (
   id, user_id, workspace_id, agent_id, workflow_intent_id, status, execution_json,
   stage, engine, heartbeat_at, last_event_at, completed_at, failed_at, data_json,

@@ -9,6 +9,9 @@ Level 2 is preview-complete only when the repository release gates pass; it does
 not imply retained data or mutation authority. Higher levels describe intended
 platform behavior, not shipped production authority.
 
+The executable evidence for Levels 0 through 2 is mapped in
+`level-2-conformance.md`.
+
 ## Capability Levels
 
 | Level | Capability                  | Required platform guarantees                                                                             |

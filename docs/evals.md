@@ -8,19 +8,20 @@ user or operator hits and assert on durable product state: messages, runs,
 threads, tool calls, approvals, HITL state, events, traces, artifacts, and
 tenant isolation.
 
-## Current v0
+## Current Level 2 Gate
 
-The current v0 is a manifest plus verifier:
+The release gate executes the required unit and real service/browser boundaries:
 
 ```bash
-pnpm eval:real-session-posture
+pnpm conformance:level2
 ```
 
-The manifest lives in `lib/workbench/real-session-evals.ts`. The verifier checks
-that required real-session assertions are covered and that each referenced
-package script still exists.
+The registry lives in `lib/workbench/level2-conformance.ts`. The runner writes
+`output/conformance/level2.json` and fails unless every required guarantee is
+covered by a suite that actually passed. `eval:real-session-posture` remains a
+legacy manifest diagnostic and is not a release gate.
 
-Current real-session suites:
+Additional opt-in service smokes:
 
 - `pnpm smoke:cloudflare-chat-session-lifecycle`
 - `pnpm smoke:cloudflare-membership-policy`
@@ -29,17 +30,14 @@ Current real-session suites:
 - `pnpm smoke:cloudflare-event-stream`
 - `pnpm smoke:fly-tool-runner`
 
-Supporting contract checks are allowed, but they are not counted as real-session
-evals. Today `pnpm test:unit -- lib/workbench/schedule-dispatch.test.ts` guards
-the schedule-dispatch contract until a live LangGraph-backed external-signal
-smoke exists.
+Provider-dependent smokes and Swordfish remain outside the deterministic gate.
 
 ## Not In v0
 
 - No LLM judge.
 - No new eval service.
 - No production schedule replay harness.
-- No browser automation grading loop.
+- No LLM-judged browser grading loop.
 - No stored prompt/message corpus.
 
 Add those only after the runtime contract gaps are visible in the current smoke

@@ -1,6 +1,7 @@
 import { appendControlPlaneEvent } from "./control-plane-events";
 import { appendControlAudit, recordDemoRunCompleted, recordDemoRunStarted } from "./demo-run-store";
 import { dispatchWorkbenchSessionEvent } from "./session-coordinator";
+import { activeRunStatusSql, isTerminalRunStatus } from "./run-transitions";
 import { isRecord, json, parseDataJson, parseJson, type ControlPlaneAuthContext } from "./http";
 import { demoWorkflowType } from "./types";
 import { getRuntimeTraceSnapshot, recordSpan, type RuntimeSpanStatus } from "./runtime-traces";
@@ -84,7 +85,6 @@ const signatureWindowMs = 5 * 60 * 1000;
 const maxCallbackBodyBytes = 64 * 1024;
 const maxSummaryLength = 240;
 const maxErrorLength = 500;
-const terminalStatuses = new Set<RunStatus>(["completed", "failed", "cancelled"]);
 const supportedEvents = new Set<WorkflowCallbackEvent>([
   "run.started",
   "run.progress",
@@ -444,12 +444,12 @@ const updateRunState = async (
     lastCallbackAt: timestamp,
     ...input.data,
   };
-  await env.DB.batch([
+  const results = await env.DB.batch([
     env.DB.prepare(
       `UPDATE control_runs
        SET status = ?, heartbeat_at = ?, last_event_at = ?, completed_at = ?,
            failed_at = ?, data_json = ?, updated_at = ?
-       WHERE user_id = ? AND workspace_id = ? AND id = ?`,
+       WHERE user_id = ? AND workspace_id = ? AND id = ? AND status IN ${activeRunStatusSql}`,
     ).bind(
       status,
       timestamp,
@@ -465,113 +465,24 @@ const updateRunState = async (
     env.DB.prepare(
       `UPDATE control_workflow_intents
        SET status = ?, updated_at = ?
-       WHERE user_id = ? AND workspace_id = ? AND id = ?`,
+       WHERE user_id = ? AND workspace_id = ? AND id = ?
+         AND EXISTS (
+           SELECT 1 FROM control_runs
+           WHERE user_id = ? AND workspace_id = ? AND id = ? AND updated_at = ?
+         )`,
     ).bind(
       input.intentStatus ?? status,
       timestamp,
       identity.scope.userId,
       identity.scope.workspaceId,
       identity.workflowIntentId,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.runId,
+      timestamp,
     ),
   ]);
-};
-
-const upsertArtifact = async (
-  env: Env,
-  identity: StoredCallbackRun,
-  payload: WorkflowCallbackPayload,
-) => {
-  if (!payload.artifact) return undefined;
-  const timestamp = new Date().toISOString();
-  const artifactId =
-    payload.artifact.id ??
-    `${identity.runId}-artifact-callback-${payload.sequence ?? createId("cf-artifact")}`;
-  await env.DB.prepare(
-    `INSERT INTO control_artifacts (
-       id, user_id, workspace_id, kind, uri, title, mime_type, size_bytes, data_json, created_at
-     )
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(id) DO UPDATE SET data_json = excluded.data_json`,
-  )
-    .bind(
-      artifactId,
-      identity.scope.userId,
-      identity.scope.workspaceId,
-      payload.artifact.kind,
-      payload.artifact.uri,
-      payload.artifact.title ?? null,
-      payload.artifact.mimeType ?? null,
-      payload.artifact.sizeBytes ?? null,
-      toJson({
-        source: "workflow_callback",
-        callbackEvent: payload.event,
-        ...payload.artifact.data,
-      }),
-      timestamp,
-    )
-    .run();
-  return artifactId;
-};
-
-const upsertToolCall = async (
-  env: Env,
-  identity: StoredCallbackRun,
-  payload: WorkflowCallbackPayload,
-) => {
-  if (!payload.toolCall) return;
-  const timestamp = new Date().toISOString();
-  const existing = await env.DB.prepare(
-    `SELECT data_json
-     FROM control_tool_calls
-     WHERE user_id = ? AND workspace_id = ? AND id = ?
-     LIMIT 1`,
-  )
-    .bind(identity.scope.userId, identity.scope.workspaceId, payload.toolCall.id)
-    .first<{ data_json: string }>();
-  const existingData = existing ? parseDataJson(existing.data_json) : {};
-  const status =
-    payload.toolCall.status ??
-    (payload.event === "run.completed"
-      ? "completed"
-      : payload.event === "run.failed"
-        ? "failed"
-        : "running");
-  await env.DB.prepare(
-    `INSERT INTO control_tool_calls (
-       id, user_id, workspace_id, agent_id, workflow_intent_id, run_id, tool_id, status,
-       input_summary, output_summary, artifact_refs_json, data_json, started_at, finished_at,
-       created_at
-     )
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(id) DO UPDATE SET
-       status = excluded.status,
-       output_summary = excluded.output_summary,
-       artifact_refs_json = excluded.artifact_refs_json,
-       data_json = excluded.data_json,
-       finished_at = excluded.finished_at`,
-  )
-    .bind(
-      payload.toolCall.id,
-      identity.scope.userId,
-      identity.scope.workspaceId,
-      identity.agentId,
-      identity.workflowIntentId,
-      identity.runId,
-      payload.toolCall.toolId,
-      status,
-      null,
-      payload.toolCall.outputSummary ?? payload.outputSummary ?? payload.summary ?? null,
-      toJson(payload.toolCall.artifactRefs ?? []),
-      toJson({
-        ...existingData,
-        callback: { source: "workflow_callback", event: payload.event },
-        ...payload.toolCall.data,
-      }),
-      timestamp,
-      status === "completed" || status === "failed" ? timestamp : null,
-      timestamp,
-    )
-    .run();
+  return results[0]?.meta?.changes !== 0;
 };
 
 const recordCallbackTraceSpan = async (
@@ -603,23 +514,25 @@ const emitCallbackEvents = async (
   env: Env,
   identity: StoredCallbackRun,
   payload: WorkflowCallbackPayload,
-  input: { summary: string; artifactId?: string },
+  input: { summary: string; artifactId?: string; controlPlaneEventId?: string },
 ) => {
-  const controlPlaneEventId = await appendControlPlaneEvent(env, identity, {
-    type: payload.event,
-    summary: input.summary,
-    targetType: payload.event === "artifact.created" ? "artifact" : "run",
-    targetId: input.artifactId ?? identity.runId,
-    data: {
-      runId: identity.runId,
-      workflowIntentId: identity.workflowIntentId,
-      event: payload.event,
-      sequence: payload.sequence,
-      progress: payload.progress,
-      artifactId: input.artifactId,
-      toolCallId: payload.toolCall?.id,
-    },
-  });
+  const controlPlaneEventId =
+    input.controlPlaneEventId ??
+    (await appendControlPlaneEvent(env, identity, {
+      type: payload.event,
+      summary: input.summary,
+      targetType: payload.event === "artifact.created" ? "artifact" : "run",
+      targetId: input.artifactId ?? identity.runId,
+      data: {
+        runId: identity.runId,
+        workflowIntentId: identity.workflowIntentId,
+        event: payload.event,
+        sequence: payload.sequence,
+        progress: payload.progress,
+        artifactId: input.artifactId,
+        toolCallId: payload.toolCall?.id,
+      },
+    }));
   await dispatchWorkbenchSessionEvent(env, identity, {
     type: "workflow.run.updated",
     data: {
@@ -666,9 +579,12 @@ const applyGenericCallback = async (
   identity: StoredCallbackRun,
   payload: WorkflowCallbackPayload,
 ) => {
+  const timestamp = new Date().toISOString();
   const summary = payload.summary ?? payload.outputSummary ?? `Accepted ${payload.event}.`;
-  const artifactId = await upsertArtifact(env, identity, payload);
-  await upsertToolCall(env, identity, payload);
+  const artifactId = payload.artifact
+    ? (payload.artifact.id ??
+      `${identity.runId}-artifact-callback-${payload.sequence ?? createId("cf-artifact")}`)
+    : undefined;
 
   const baseData = {
     lastCallback: {
@@ -685,69 +601,219 @@ const applyGenericCallback = async (
     error: payload.error ?? identity.data.error,
   };
 
-  if (payload.event === "run.started") {
-    await updateRunState(env, identity, { status: "running", summary, data: baseData });
-    await appendControlAudit(env, {
-      ...identity,
-      action: "run.started",
-      summary,
-      targetType: "run",
-      targetId: identity.runId,
-    });
-  } else if (payload.event === "run.progress") {
-    await updateRunState(env, identity, { summary, data: baseData });
-    await appendControlAudit(env, {
-      ...identity,
-      action: "run.progress",
-      summary,
-      targetType: "run",
-      targetId: identity.runId,
-      data: { progress: payload.progress },
-    });
-  } else if (payload.event === "artifact.created") {
-    await updateRunState(env, identity, { summary, data: baseData });
-    await appendControlAudit(env, {
-      ...identity,
-      action: "artifact.created",
-      summary,
-      targetType: "artifact",
-      targetId: artifactId,
-    });
-  } else if (payload.event === "run.completed") {
-    await updateRunState(env, identity, {
-      status: "completed",
-      intentStatus: "completed",
-      terminal: "completed",
-      summary,
-      data: baseData,
-    });
-    await appendControlAudit(env, {
-      ...identity,
-      action: "run.completed",
-      summary,
-      targetType: "run",
-      targetId: identity.runId,
-      data: { outputSummary: payload.outputSummary },
-    });
-  } else if (payload.event === "run.failed") {
-    await updateRunState(env, identity, {
-      status: "failed",
-      intentStatus: "failed",
-      terminal: "failed",
-      summary,
-      data: baseData,
-    });
-    await appendControlAudit(env, {
-      ...identity,
-      action: "run.failed",
-      summary,
-      targetType: "run",
-      targetId: identity.runId,
-      data: { error: payload.error },
-    });
+  const status: RunStatus =
+    payload.event === "run.completed"
+      ? "completed"
+      : payload.event === "run.failed"
+        ? "failed"
+        : payload.event === "run.started"
+          ? "running"
+          : identity.status;
+  const auditAction = payload.event;
+  const targetType = payload.event === "artifact.created" ? "artifact" : "run";
+  const targetId = artifactId ?? identity.runId;
+  const controlPlaneEventId = createId("cf-event");
+  const statements = [];
+
+  if (payload.artifact && artifactId) {
+    statements.push(
+      env.DB.prepare(
+        `INSERT INTO control_artifacts (
+           id, user_id, workspace_id, kind, uri, title, mime_type, size_bytes, data_json, created_at
+         )
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+         WHERE EXISTS (
+           SELECT 1 FROM control_runs
+           WHERE user_id = ? AND workspace_id = ? AND id = ? AND status IN ${activeRunStatusSql}
+         )
+         ON CONFLICT(id) DO UPDATE SET data_json = excluded.data_json`,
+      ).bind(
+        artifactId,
+        identity.scope.userId,
+        identity.scope.workspaceId,
+        payload.artifact.kind,
+        payload.artifact.uri,
+        payload.artifact.title ?? null,
+        payload.artifact.mimeType ?? null,
+        payload.artifact.sizeBytes ?? null,
+        toJson({
+          source: "workflow_callback",
+          callbackEvent: payload.event,
+          ...payload.artifact.data,
+        }),
+        timestamp,
+        identity.scope.userId,
+        identity.scope.workspaceId,
+        identity.runId,
+      ),
+    );
   }
 
-  return { summary, artifactId };
+  if (payload.toolCall) {
+    const toolStatus =
+      payload.toolCall.status ??
+      (payload.event === "run.completed"
+        ? "completed"
+        : payload.event === "run.failed"
+          ? "failed"
+          : "running");
+    statements.push(
+      env.DB.prepare(
+        `INSERT INTO control_tool_calls (
+           id, user_id, workspace_id, agent_id, workflow_intent_id, run_id, tool_id, status,
+           input_summary, output_summary, artifact_refs_json, data_json, started_at, finished_at,
+           created_at
+         )
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+         WHERE EXISTS (
+           SELECT 1 FROM control_runs
+           WHERE user_id = ? AND workspace_id = ? AND id = ? AND status IN ${activeRunStatusSql}
+         )
+         ON CONFLICT(id) DO UPDATE SET
+           status = excluded.status,
+           output_summary = excluded.output_summary,
+           artifact_refs_json = excluded.artifact_refs_json,
+           data_json = json_patch(control_tool_calls.data_json, excluded.data_json),
+           finished_at = excluded.finished_at`,
+      ).bind(
+        payload.toolCall.id,
+        identity.scope.userId,
+        identity.scope.workspaceId,
+        identity.agentId,
+        identity.workflowIntentId,
+        identity.runId,
+        payload.toolCall.toolId,
+        toolStatus,
+        null,
+        payload.toolCall.outputSummary ?? payload.outputSummary ?? summary,
+        toJson(payload.toolCall.artifactRefs ?? []),
+        toJson({
+          callback: { source: "workflow_callback", event: payload.event },
+          ...payload.toolCall.data,
+        }),
+        timestamp,
+        toolStatus === "completed" || toolStatus === "failed" ? timestamp : null,
+        timestamp,
+        identity.scope.userId,
+        identity.scope.workspaceId,
+        identity.runId,
+      ),
+    );
+  }
+
+  statements.push(
+    env.DB.prepare(
+      `UPDATE control_workflow_intents
+       SET status = ?, updated_at = ?
+       WHERE user_id = ? AND workspace_id = ? AND id = ?
+         AND EXISTS (
+           SELECT 1 FROM control_runs
+           WHERE user_id = ? AND workspace_id = ? AND id = ? AND status IN ${activeRunStatusSql}
+         )`,
+    ).bind(
+      status,
+      timestamp,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.workflowIntentId,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.runId,
+    ),
+    env.DB.prepare(
+      `UPDATE control_runs
+       SET status = ?, heartbeat_at = ?, last_event_at = ?, completed_at = ?, failed_at = ?,
+           data_json = ?, updated_at = ?
+       WHERE user_id = ? AND workspace_id = ? AND id = ? AND status IN ${activeRunStatusSql}`,
+    ).bind(
+      status,
+      timestamp,
+      timestamp,
+      status === "completed" ? timestamp : null,
+      status === "failed" ? timestamp : null,
+      toJson({ ...identity.data, summary, lastCallbackAt: timestamp, ...baseData }),
+      timestamp,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.runId,
+    ),
+  );
+  const runResultIndex = statements.length - 1;
+  statements.push(
+    env.DB.prepare(
+      `INSERT INTO control_audit_events (
+         id, user_id, workspace_id, action, summary, target_type, target_id, data_json, created_at
+       ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+       WHERE EXISTS (
+         SELECT 1 FROM control_runs
+         WHERE user_id = ? AND workspace_id = ? AND id = ? AND status = ? AND updated_at = ?
+       )`,
+    ).bind(
+      createId("cf-audit"),
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      auditAction,
+      summary,
+      targetType,
+      targetId,
+      toJson({
+        eventName: auditAction,
+        runId: identity.runId,
+        workflowIntentId: identity.workflowIntentId,
+        progress: payload.progress,
+        outputSummary: payload.outputSummary,
+        error: payload.error,
+      }),
+      timestamp,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.runId,
+      status,
+      timestamp,
+    ),
+    env.DB.prepare(
+      `INSERT INTO control_plane_events (
+         id, user_id, workspace_id, agent_id, type, summary, target_type, target_id,
+         data_json, created_at
+       ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+       WHERE EXISTS (
+         SELECT 1 FROM control_runs
+         WHERE user_id = ? AND workspace_id = ? AND id = ? AND status = ? AND updated_at = ?
+       )`,
+    ).bind(
+      controlPlaneEventId,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.agentId,
+      payload.event,
+      summary,
+      targetType,
+      targetId,
+      toJson({
+        runId: identity.runId,
+        workflowIntentId: identity.workflowIntentId,
+        event: payload.event,
+        sequence: payload.sequence,
+        progress: payload.progress,
+        artifactId,
+        toolCallId: payload.toolCall?.id,
+      }),
+      timestamp,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.runId,
+      status,
+      timestamp,
+    ),
+  );
+
+  const results = await env.DB.batch(statements);
+  return {
+    applied: results[runResultIndex]?.meta?.changes !== 0,
+    summary,
+    artifactId,
+    controlPlaneEventId,
+  };
 };
 
 const applyDemoCallback = async (
@@ -798,7 +864,7 @@ export const applyWorkflowCallbackPayload = async (env: Env, payload: WorkflowCa
     };
   }
 
-  if (terminalStatuses.has(identity.status)) {
+  if (isTerminalRunStatus(identity.status)) {
     return {
       ok: false as const,
       response: errorResponse(
@@ -812,6 +878,15 @@ export const applyWorkflowCallbackPayload = async (env: Env, payload: WorkflowCa
     identity.workflowType === demoWorkflowType
       ? await applyDemoCallback(env, identity, payload)
       : await applyGenericCallback(env, identity, payload);
+  if ("applied" in applied && !applied.applied) {
+    return {
+      ok: false as const,
+      response: errorResponse(
+        callbackError("run_terminal", "Callback run is already terminal."),
+        409,
+      ),
+    };
+  }
   await recordCallbackTraceSpan(env, identity, payload);
   const controlPlaneEventId = await emitCallbackEvents(env, identity, payload, applied);
 

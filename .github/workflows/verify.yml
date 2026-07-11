@@ -40,8 +40,33 @@ jobs:
         env:
           SENTRY_AUTH_TOKEN: ""
 
-  browser:
+  docker:
     needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.33.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify production Docker boundary
+        run: pnpm verify:docker
+
+  browser:
+    needs: [verify, docker]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -65,8 +90,8 @@ jobs:
       - name: Install Chromium
         run: pnpm exec playwright install --with-deps chromium
 
-      - name: Verify browser journeys
-        run: pnpm test:e2e
+      - name: Verify Level 2 conformance
+        run: pnpm conformance:level2
 
       - name: Upload browser failure evidence
         if: failure()
@@ -75,5 +100,6 @@ jobs:
           name: browser-failure-evidence
           if-no-files-found: ignore
           path: |
+            output/conformance
             output/playwright
             cloudflare/control-plane/.wrangler/logs

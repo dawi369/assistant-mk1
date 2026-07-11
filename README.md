@@ -151,7 +151,10 @@ pnpm docs:check     # validate local documentation and image links
 pnpm verify:fast   # packs, eval posture, unit tests, types, lint, format
 pnpm verify        # fast gate, high-severity audit, and production build
 pnpm test:e2e      # signed-out and trusted-local browser journeys
-pnpm release:check # complete repository and browser release gate
+pnpm conformance:level2       # executable Level 0-2 evidence report
+pnpm verify:docker            # non-root image and excluded-context proof
+pnpm acceptance:hosted:public # hosted unauthenticated health parity
+pnpm release:check            # repository, Docker, and Level 2 release gate
 ```
 
 The browser suite uses isolated D1 state under `output/playwright/`. Runtime

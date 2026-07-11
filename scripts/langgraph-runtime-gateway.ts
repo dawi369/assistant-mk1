@@ -45,6 +45,16 @@ const langGraphUpstreamUrl = (
 const runnerInvocationPath = "/workbench/tool-runners/invocations";
 const signatureWindowMs = 5 * 60 * 1000;
 const runnerNonces = new Map<string, number>();
+const e2eMode = process.env.WORKBENCH_E2E_MODE === "true";
+const requestedE2eDelayMs = Number(process.env.WORKBENCH_E2E_RUNNER_DELAY_MS ?? "0");
+if (requestedE2eDelayMs > 0 && !e2eMode) {
+  throw new Error("WORKBENCH_E2E_RUNNER_DELAY_MS requires WORKBENCH_E2E_MODE=true");
+}
+const e2eRunnerDelayMs = e2eMode
+  ? Math.min(5_000, Math.max(0, Math.trunc(requestedE2eDelayMs || 0)))
+  : 0;
+const delay = (milliseconds: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 
 const json = (response: ServerResponse, status: number, body: unknown) => {
   response.writeHead(status, { "content-type": "application/json; charset=utf-8" });
@@ -1013,6 +1023,8 @@ const handleToolRunnerInvocation = async (
       });
       return;
     }
+
+    if (e2eRunnerDelayMs > 0) await delay(e2eRunnerDelayMs);
 
     const result = await runRepoSnapshot(parsed.input);
     const runId = typeof parsed.runId === "string" ? parsed.runId : "unknown-run";

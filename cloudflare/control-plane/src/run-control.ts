@@ -8,6 +8,7 @@ import {
   type PackWorkflowHandler as RetryWorkflowHandler,
 } from "./pack-workflow-runtime";
 import { dispatchWorkbenchSessionEvent } from "./session-coordinator";
+import { activeRunStatusSql, activeRunStatuses, isTerminalRunStatus } from "./run-transitions";
 import { packWorkflowBindings, type PackWorkflowType } from "../../../agent-packs/workflow-catalog";
 import { toJson, type AgentIdentity, type ControlRunRow, type Env } from "./types";
 
@@ -52,12 +53,7 @@ export const handleCancelExecutionRun = async (
 
   const run = await selectControllableRun(env, identity, runId);
   if (!run) return json({ ok: false, error: "Run not found" }, { status: 404 });
-  if (
-    run.status !== "queued" &&
-    run.status !== "running" &&
-    run.status !== "waiting" &&
-    run.status !== "interrupted"
-  ) {
+  if (!activeRunStatuses.includes(run.status as (typeof activeRunStatuses)[number])) {
     return json(
       { ok: false, error: "Run cannot be cancelled in its current state" },
       { status: 409 },
@@ -74,7 +70,7 @@ export const handleCancelExecutionRun = async (
       `UPDATE control_runs
        SET status = 'cancelled', last_event_at = ?, cancelled_at = ?, data_json = ?, updated_at = ?
        WHERE user_id = ? AND workspace_id = ? AND id = ?
-         AND status IN ('queued', 'running', 'waiting', 'interrupted')`,
+         AND status IN ${activeRunStatusSql}`,
     ).bind(
       timestamp,
       timestamp,
@@ -176,7 +172,7 @@ export const handleRetryExecutionRun = async (
 
   const run = await selectControllableRun(env, identity, runId);
   if (!run) return json({ ok: false, error: "Run not found" }, { status: 404 });
-  if (run.status !== "failed" && run.status !== "cancelled") {
+  if (!isTerminalRunStatus(run.status) || run.status === "completed") {
     return json(
       { ok: false, error: "Only failed or cancelled runs can be retried" },
       { status: 409 },

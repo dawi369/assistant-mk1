@@ -37,6 +37,7 @@ These files should stay aligned with code changes:
   resource checklist.
 - `evals.md`: real-session eval posture, manifest, and verifier command.
 - `release-readiness.md`: 1.0 read-only baseline, deferred gates, and release evidence.
+- `level-2-conformance.md`: executable Level 0-2 guarantees and release evidence mapping.
 - `deployment-vercel.md` and `deployment-fly.md`: deployment runbooks.
 - `diagrams/current-implementation-topology.mmd`: current topology source.
 

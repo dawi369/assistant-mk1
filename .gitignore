@@ -54,3 +54,5 @@ cloudflare/control-plane/.wrangler/
 .jj
 /.playwright-cli/
 /output/playwright/
+/output/conformance/
+/output/release/
