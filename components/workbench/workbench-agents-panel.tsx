@@ -73,7 +73,7 @@ export function WorkbenchAgentsPanel({
   }, [loadAgents, open]);
 
   const currentThread = session?.activeThread ?? null;
-  const hasCurrentThread = Boolean(currentThread && !isLocalNewSession);
+  const hasCurrentThread = Boolean(currentThread?.status === "active" && !isLocalNewSession);
   const sessionActiveAgent = session?.activeAgent ?? null;
   const effectiveActiveAgentId = sessionActiveAgent?.id ?? activeAgentId;
   const pendingAgentId = pendingAgent?.id ?? null;

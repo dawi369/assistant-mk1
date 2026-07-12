@@ -114,12 +114,14 @@ export const assertCurrentAgentConnectionScope = (
   claims: AgentConnectionClaims,
   thread: ChatThreadRow,
   agent: AgentRow | null,
+  options: { allowedThreadStatuses?: readonly string[] } = {},
 ) => {
+  const allowedThreadStatuses = options.allowedThreadStatuses ?? ["active"];
   if (
     thread.thread_id !== claims.threadId ||
     thread.session_id !== claims.sessionId ||
     thread.agent_id !== claims.agentId ||
-    thread.status !== "active"
+    !allowedThreadStatuses.includes(thread.status)
   ) {
     throw new Error("Agent token thread scope is stale");
   }

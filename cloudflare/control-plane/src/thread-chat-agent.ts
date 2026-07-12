@@ -140,7 +140,9 @@ export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
     );
     if (!thread) throw new Error("Agent token thread not found");
     const activeAgent = await selectAgent(this.getEnv(), claims.agentId, claims.workspaceId);
-    assertCurrentAgentConnectionScope(claims, thread, activeAgent);
+    assertCurrentAgentConnectionScope(claims, thread, activeAgent, {
+      allowedThreadStatuses: ["active", "draft"],
+    });
     const expectedInstanceName = await resolveThreadAgentInstanceName(thread);
     if (claims.instanceName !== expectedInstanceName || claims.instanceName !== this.name) {
       throw new Error("Agent token scope mismatch");

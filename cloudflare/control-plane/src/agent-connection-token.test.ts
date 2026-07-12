@@ -81,6 +81,34 @@ describe("agent connection token", () => {
     ).toThrow("Agent token thread scope is stale");
   });
 
+  it("allows an exact staged thread only when draft access is explicit", () => {
+    const draftThread = thread({ status: "draft" });
+
+    expect(() => assertCurrentAgentConnectionScope(claims(), draftThread, agent())).toThrow(
+      "Agent token thread scope is stale",
+    );
+    expect(() =>
+      assertCurrentAgentConnectionScope(claims(), draftThread, agent(), {
+        allowedThreadStatuses: ["active", "draft"],
+      }),
+    ).not.toThrow();
+  });
+
+  it("keeps draft access scoped to the signed session and selected agent", () => {
+    const draftThread = thread({ status: "draft" });
+
+    expect(() =>
+      assertCurrentAgentConnectionScope(claims({ sessionId: "session-b" }), draftThread, agent(), {
+        allowedThreadStatuses: ["active", "draft"],
+      }),
+    ).toThrow("Agent token thread scope is stale");
+    expect(() =>
+      assertCurrentAgentConnectionScope(claims(), draftThread, agent({ id: "agent-b" }), {
+        allowedThreadStatuses: ["active", "draft"],
+      }),
+    ).toThrow("Agent token agent is inactive");
+  });
+
   it("rejects inactive and stale agent versions", () => {
     expect(() =>
       assertCurrentAgentConnectionScope(claims(), thread(), agent({ status: "inactive" })),

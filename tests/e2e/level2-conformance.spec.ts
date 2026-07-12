@@ -185,5 +185,22 @@ test.describe.serial("Level 2 executable conformance", () => {
     });
     expect(otherArtifacts.ok()).toBe(true);
     expect(JSON.stringify(await otherArtifacts.json())).not.toContain(retriedRunId);
+
+    const stagedResponse = await page.request.post(
+      "/api/workbench/chat-session/stage-thread?source=level2-conformance",
+    );
+    expect(stagedResponse.ok()).toBe(true);
+    const staged = (await stagedResponse.json()) as {
+      activeThread?: { status?: string };
+      connection?: { token?: string; instanceName?: string };
+    };
+    expect(staged.activeThread?.status).toBe("draft");
+    expect(staged.connection?.token).toBeTruthy();
+    expect(staged.connection?.instanceName).toBeTruthy();
+
+    const stagedAgentResponse = await request.get(
+      `${workerOrigin}/agents/workbench-thread-chat-agent/${encodeURIComponent(staged.connection!.instanceName!)}/get-messages?token=${encodeURIComponent(staged.connection!.token!)}`,
+    );
+    expect(stagedAgentResponse.status()).toBe(200);
   });
 });
