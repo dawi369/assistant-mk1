@@ -1,8 +1,16 @@
 import {
   loadLocalAgentPacks,
+  type AgentPackArtifactRenderer,
   type AgentPackCapabilityLevel,
+  type AgentPackCompatibility,
+  type AgentPackContextSource,
   type AgentPackDeclaredTool,
+  type AgentPackEval,
+  type AgentPackHealthCheck,
+  type AgentPackManagedStateDescriptor,
+  type AgentPackResourceLimits,
   type AgentPackRisk,
+  type AgentPackTrigger,
   type AgentPackUiHints,
   type AgentPackWorkflow,
   type LocalAgentPackManifest,
@@ -59,7 +67,7 @@ export type AgentBehaviorAuthoringMetadata =
     };
 
 export type AgentPackTemplateMetadata = {
-  apiVersion: 1;
+  apiVersion: 2;
   id: string;
   name: string;
   description: string;
@@ -72,7 +80,14 @@ export type AgentPackTemplateMetadata = {
   workflows: AgentPackWorkflow[];
   ui: AgentPackUiHints;
   risk: AgentPackRisk;
-  context: string[];
+  context: AgentPackContextSource[];
+  managedState: AgentPackManagedStateDescriptor[];
+  triggers: AgentPackTrigger[];
+  artifactRenderers: AgentPackArtifactRenderer[];
+  healthChecks: AgentPackHealthCheck[];
+  evals: AgentPackEval[];
+  compatibility: AgentPackCompatibility;
+  resourceLimits: AgentPackResourceLimits;
   smokeScenarios: Array<{
     id: string;
     prompt: string;
@@ -128,7 +143,21 @@ const toPackTemplate = (pack: LocalAgentPackManifest): AgentBehaviorTemplate => 
       },
     },
     risk: { ...pack.risk },
-    context: [...pack.context],
+    context: pack.context.map((source) => ({ ...source })),
+    managedState: pack.managedState.map((descriptor) => ({
+      ...descriptor,
+      recordKinds: [...descriptor.recordKinds],
+      views: descriptor.views.map((view) => ({ ...view })),
+    })),
+    triggers: pack.triggers.map((trigger) => ({ ...trigger })),
+    artifactRenderers: pack.artifactRenderers.map((renderer) => ({ ...renderer })),
+    healthChecks: pack.healthChecks.map((check) => ({
+      ...check,
+      target: { ...check.target },
+    })),
+    evals: pack.evals.map((evaluation) => ({ ...evaluation })),
+    compatibility: { ...pack.compatibility },
+    resourceLimits: { ...pack.resourceLimits },
     smokeScenarios: pack.smokeScenarios.map((scenario) => ({ ...scenario })),
   },
   prompt: pack.prompt,

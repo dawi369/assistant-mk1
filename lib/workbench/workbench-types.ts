@@ -560,7 +560,7 @@ export type AgentBehaviorAuthoringMetadata = {
 };
 
 export type AgentPackTemplateMetadata = {
-  apiVersion?: 1;
+  apiVersion?: 1 | 2;
   id: string;
   name?: string;
   description?: string;
@@ -605,7 +605,60 @@ export type AgentPackTemplateMetadata = {
     requiresSecrets?: boolean;
     productionGate?: string;
   };
-  context: string[];
+  context: Array<
+    | string
+    | {
+        id: string;
+        trust: "trusted" | "retrieved" | "untrusted";
+        description: string;
+        required: boolean;
+        runtimeBinding: string;
+      }
+  >;
+  managedState?: Array<{
+    namespace: string;
+    schemaVersion: number;
+    description: string;
+    recordKinds: string[];
+    views: Array<{ id: string; title: string; recordKind: string }>;
+  }>;
+  triggers?: Array<{
+    id: string;
+    kind: "schedule" | "webhook" | "monitor";
+    description: string;
+    workflowType: string;
+    enabledByDefault: false;
+  }>;
+  artifactRenderers?: Array<{
+    artifactKind: string;
+    renderer: "json" | "markdown" | "table";
+    title: string;
+    version: number;
+  }>;
+  healthChecks?: Array<{
+    id: string;
+    target: { kind: "tool"; id: string } | { kind: "workflow"; type: string };
+    description: string;
+    required: boolean;
+  }>;
+  evals?: Array<{
+    id: string;
+    kind: "static_smoke" | "deterministic_runtime";
+    scenarioId: string;
+    description: string;
+    required: boolean;
+  }>;
+  compatibility?: {
+    packApi: 2;
+    minimumWorkbenchVersion: string;
+    maximumWorkbenchVersion?: string;
+  };
+  resourceLimits?: {
+    maxRunSeconds: number;
+    maxToolCallsPerRun: number;
+    maxConcurrentRuns: number;
+    maxArtifactBytes: number;
+  };
   smokeScenarios: Array<{
     id: string;
     prompt: string;
@@ -1093,5 +1146,108 @@ export type CloudflareAgentMutationResponse = {
   ok?: boolean;
   activeAgentId?: Id;
   agent?: AgentSummary | null;
+  error?: string;
+};
+
+export type TriggerSummary = {
+  id: Id;
+  publicId?: string;
+  agentId: Id;
+  packId: string;
+  packTriggerId: string;
+  kind: "schedule" | "monitor" | "webhook";
+  workflowType: string;
+  status: "enabled" | "paused" | "disabled";
+  execution: Record<string, unknown>;
+  config: Record<string, unknown>;
+  input: Record<string, unknown>;
+  maxConcurrentRuns: number;
+  version: number;
+  nextTriggerAt?: string;
+  lastTriggeredAt?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CreateTriggerInput = {
+  packId: string;
+  packTriggerId: string;
+  status?: "enabled" | "paused";
+  input?: Record<string, unknown>;
+};
+
+export type UpdateTriggerInput = {
+  expectedVersion: number;
+  status?: "enabled" | "paused" | "disabled";
+  input?: Record<string, unknown>;
+};
+
+export type CreateTriggerDispatchInput = {
+  idempotencyKey: string;
+  payload?: Record<string, unknown>;
+  scheduledFor?: string;
+};
+
+export type TriggerDispatchSummary = {
+  id: Id;
+  triggerId: Id;
+  agentId: Id;
+  idempotencyKey: string;
+  source: "manual" | "schedule" | "monitor" | "webhook" | "replay";
+  status: "pending" | "leased" | "running" | "completed" | "failed" | "cancelled";
+  attemptCount: number;
+  runId?: Id;
+  previousRunId?: Id;
+  scheduledFor?: string;
+  receivedAt: string;
+  payload: Record<string, unknown>;
+  error: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ManagedStateSummary = {
+  id: Id;
+  agentId: Id;
+  namespace: string;
+  stateType: string;
+  stateKey: string;
+  type: string;
+  name: string;
+  status: string;
+  summary?: string;
+  version: number;
+  artifactRefs: Id[];
+  data: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CloudflareTriggersResponse = {
+  ok?: boolean;
+  triggers?: TriggerSummary[];
+  trigger?: TriggerSummary;
+  created?: boolean;
+  webhookSecret?: string;
+  limit?: number;
+  error?: string;
+};
+
+export type CloudflareTriggerDispatchesResponse = {
+  ok?: boolean;
+  dispatches?: TriggerDispatchSummary[];
+  dispatch?: Partial<TriggerDispatchSummary> &
+    Pick<TriggerDispatchSummary, "id" | "triggerId" | "status" | "attemptCount">;
+  created?: boolean;
+  duplicate?: boolean;
+  limit?: number;
+  error?: string;
+};
+
+export type CloudflareManagedStateResponse = {
+  ok?: boolean;
+  states?: ManagedStateSummary[];
+  state?: ManagedStateSummary;
+  limit?: number;
   error?: string;
 };

@@ -6,7 +6,9 @@ import {
   recordPackWorkflowToolCall,
   startPackWorkflowRun,
 } from "./pack-workflow-lifecycle";
+import type { WorkflowInvocationContext } from "./pack-workflow-runtime";
 import type { AgentIdentity, Env, ExecutionMode } from "./types";
+import { authorizeWorkflowTools } from "./workflow-tool-policy";
 import {
   runSwordfishBarsRange,
   runSwordfishRuntimeOverview,
@@ -266,12 +268,25 @@ export const handleSwordfishRuntimeResearch = async (
   request: Request,
   env: Env,
   identity: AgentIdentity,
+  invocation: WorkflowInvocationContext = { source: "user" },
 ) => {
   const pack = await requireBabySwordfishPack(env, identity);
   if (!pack.ok) return pack.response;
 
   const parsed = readInput(parseJson(await request.text()));
   if (!parsed.ok) return parsed.response;
+
+  const authorization = await authorizeWorkflowTools(env, identity, {
+    toolNames: [
+      swordfishRuntimeOverviewToolName,
+      swordfishSymbolSnapshotToolName,
+      swordfishBarsRangeToolName,
+    ],
+    executionMode: parsed.mode,
+    requestedRuntimeMs: 8_000,
+    requestedArtifactBytes: 64 * 1024,
+  });
+  if (!authorization.ok) return authorization.response;
 
   const workflow = await startPackWorkflowRun(env, identity, {
     workflowType,
@@ -281,6 +296,7 @@ export const handleSwordfishRuntimeResearch = async (
     toolInput: parsed.input as Record<string, unknown>,
     executionMode: parsed.mode,
     engine: "cloudflare",
+    invocation,
     intentCreatedSummary: "Created Swordfish runtime research workflow intent.",
   });
 

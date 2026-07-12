@@ -6,6 +6,8 @@ import {
   recordPackWorkflowToolCall,
   startPackWorkflowRun,
 } from "./pack-workflow-lifecycle";
+import { readManagedStateVersion, upsertManagedState } from "./managed-state";
+import type { WorkflowInvocationContext } from "./pack-workflow-runtime";
 import {
   invokeFlyToolRunner,
   repoSnapshotSandboxContract,
@@ -13,6 +15,7 @@ import {
   type ToolAdapterMetadata,
 } from "./tool-runner";
 import type { AgentIdentity, Env, ExecutionMode } from "./types";
+import { authorizeWorkflowTools } from "./workflow-tool-policy";
 import {
   repoSnapshotAdapterVersion,
   repoSnapshotError,
@@ -25,6 +28,11 @@ import {
 
 export const repoReadinessWorkflowType = "repo.readiness_report";
 const repoAnalystPackId = "repo-analyst";
+const repoMonitorState = {
+  namespace: "repo-monitor",
+  stateType: "repository-readiness",
+  stateKey: "current",
+} as const;
 
 const repoSnapshotAdapter: ToolAdapterMetadata = {
   toolName: repoSnapshotToolName,
@@ -128,11 +136,20 @@ export const handleRepoReadinessReport = async (
   request: Request,
   env: Env,
   identity: AgentIdentity,
+  invocation: WorkflowInvocationContext = { source: "user" },
 ) => {
   const pack = await requireRepoAnalystPack(env, identity);
   if (!pack.ok) return pack.response;
   const parsed = readInput(parseJson(await request.text()));
   if (!parsed.ok) return parsed.response;
+  const authorization = await authorizeWorkflowTools(env, identity, {
+    toolNames: [repoSnapshotToolName],
+    executionMode: parsed.mode,
+    requestedRuntimeMs: 10_000,
+    requestedArtifactBytes: 128 * 1024,
+  });
+  if (!authorization.ok) return authorization.response;
+  const managedStateVersion = await readManagedStateVersion(env, identity, repoMonitorState);
 
   const workflow = await startPackWorkflowRun(env, identity, {
     workflowType: repoReadinessWorkflowType,
@@ -142,6 +159,7 @@ export const handleRepoReadinessReport = async (
     toolInput: parsed.snapshotInput,
     executionMode: parsed.mode,
     engine: "cloudflare",
+    invocation,
     intentCreatedSummary: "Created Repository Analyst readiness workflow intent.",
   });
   const runner = runnerMetadataFor(
@@ -185,6 +203,16 @@ export const handleRepoReadinessReport = async (
       return json({ ok: false, error: result.error.message, run: workflow }, { status: 502 });
     }
     const artifactId = `${workflow.runId}-artifact-repo-snapshot`;
+    const report = buildRepoReadinessReport(result.output);
+    await upsertManagedState(env, identity, {
+      id: `${identity.agentId}-repo-readiness-current`,
+      ...repoMonitorState,
+      status: report.status,
+      summary: report.summary,
+      artifactRefs: [artifactId],
+      data: { report, runId: workflow.runId, workflowIntentId: workflow.workflowIntentId },
+      expectedVersion: managedStateVersion,
+    });
     return json({
       ok: true,
       run: {
@@ -227,6 +255,18 @@ export const handleRepoReadinessReport = async (
         { status: 409 },
       );
     }
+    await upsertManagedState(env, identity, {
+      id: `${identity.agentId}-repo-readiness-current`,
+      ...repoMonitorState,
+      status: "failed",
+      summary: result.error.message,
+      data: {
+        errorCode: result.error.code,
+        runId: workflow.runId,
+        workflowIntentId: workflow.workflowIntentId,
+      },
+      expectedVersion: managedStateVersion,
+    });
     return json({ ok: false, error: result.error.message, run: workflow }, { status: 502 });
   }
 
@@ -265,6 +305,16 @@ export const handleRepoReadinessReport = async (
       { status: 409 },
     );
   }
+
+  await upsertManagedState(env, identity, {
+    id: `${identity.agentId}-repo-readiness-current`,
+    ...repoMonitorState,
+    status: report.status,
+    summary: report.summary,
+    artifactRefs: [artifact.id],
+    data: { report, runId: workflow.runId, workflowIntentId: workflow.workflowIntentId },
+    expectedVersion: managedStateVersion,
+  });
 
   return json(
     {

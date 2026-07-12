@@ -6,11 +6,13 @@ control-plane guarantees needed to operate it safely.
 
 Document status: north-star target contract. Levels 0 and 1 are implemented.
 Level 2 is preview-complete only when the repository release gates pass; it does
-not imply retained data or mutation authority. Higher levels describe intended
-platform behavior, not shipped production authority.
+not imply retained data or mutation authority. Level 3 now has a checked-in,
+read-only implementation foundation, but is not a release-conformant or
+production-unattended capability. Levels 4 and 5 remain target behavior.
 
-The executable evidence for Levels 0 through 2 is mapped in
-`level-2-conformance.md`.
+Executable evidence is mapped in `level-2-conformance.md` and
+`level-3-conformance.md`. A local Level 3 pass still requires separate hosted
+unattended-operation evidence before release.
 
 ## Capability Levels
 
@@ -26,6 +28,27 @@ The executable evidence for Levels 0 through 2 is mapped in
 Levels are cumulative. A pack cannot claim a higher level by prompt wording or
 manifest metadata alone. Its runtime bindings, workspace policy, deployment,
 and verification evidence must satisfy every required lower-level guarantee.
+
+## Current Level 3 Boundary
+
+The checked-in Level 3 foundation currently provides:
+
+- API v2 schedule, monitor, and webhook declarations bound only to registered
+  checked-in pack workflows.
+- Tenant-scoped D1 trigger and dispatch records, operator CRUD, optimistic
+  versioning, audit/events, idempotency keys, and per-trigger concurrency limits.
+- A Cloudflare cron tick for due schedule/monitor dispatch, bounded occurrence
+  coalescing, lease/heartbeat timestamps, callback-owned completion,
+  expired-lease recovery, and replay of failed or cancelled dispatches.
+- Public webhook ids with a secret returned only at creation, only a hash stored
+  in D1, constant-time verification, bounded normalized input, and idempotent
+  dispatch creation.
+
+This is not yet a Level 3 release claim. Hosted schedule/webhook conformance,
+long-duration lease-renewal and soak evidence, alerting and exhausted-run
+operations, retained backup/restore, and an operator-ready unattended-production
+runbook remain gates. Trigger execution remains read-only and does not grant
+credentials or external mutation authority.
 
 ## Agent Pack Composition
 

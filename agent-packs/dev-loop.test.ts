@@ -44,6 +44,82 @@ describe("agent pack developer loop", () => {
     expect(result.ok).toBe(true);
     expect(result.packCount).toBe(3);
     expect(result.errors).toEqual([]);
+    expect(localAgentPacks.every((pack) => pack.apiVersion === 2)).toBe(true);
+    expect(() => JSON.stringify(localAgentPacks)).not.toThrow();
+  });
+
+  it("validates executable v2 extension descriptors with default authority disabled", () => {
+    const pack = withPack({
+      managedState: [
+        {
+          namespace: "example.watchlist",
+          schemaVersion: 1,
+          description: "Example namespaced state declaration.",
+          recordKinds: ["watch"],
+          views: [{ id: "watchlist", title: "Watchlist", recordKind: "watch" }],
+        },
+      ],
+      triggers: [
+        {
+          id: "watch.poll",
+          kind: "monitor",
+          description: "A declarative monitor with no runtime authority.",
+          workflowType: "repo.readiness_report",
+          enabledByDefault: false,
+          intervalSeconds: 300,
+        },
+      ],
+    });
+
+    expect(() => validateLocalAgentPack(pack)).not.toThrow();
+    const inspection = inspectAgentPackForDeveloperLoop(pack.id, {
+      rootDir,
+      packs: [pack],
+    });
+    expect(inspection.ok).toBe(true);
+    if (!inspection.ok) throw new Error("expected inspection success");
+    expect(inspection.pack.managedState[0]?.namespace).toBe("example.watchlist");
+    expect(inspection.pack.triggers[0]).toMatchObject({
+      id: "watch.poll",
+      enabledByDefault: false,
+    });
+    expect(inspection.validation.warnings).toEqual([]);
+  });
+
+  it("rejects invalid v2 references, limits, and executable manifest values", () => {
+    expect(() =>
+      validateLocalAgentPack(
+        withPack({
+          healthChecks: [
+            {
+              id: "missing.binding",
+              target: { kind: "tool", id: "missing.tool" },
+              description: "Missing target.",
+              required: true,
+            },
+          ],
+        }),
+      ),
+    ).toThrow("target is undeclared");
+
+    expect(() =>
+      validateLocalAgentPack(
+        withPack({
+          resourceLimits: { ...repoAnalystPack.resourceLimits, maxConcurrentRuns: 0 },
+        }),
+      ),
+    ).toThrow("must be a positive integer");
+
+    expect(() =>
+      validateLocalAgentPack(
+        withPack({
+          compatibility: {
+            ...repoAnalystPack.compatibility,
+            probe: () => "not serializable",
+          } as LocalAgentPackManifest["compatibility"],
+        }),
+      ),
+    ).toThrow("JSON-serializable");
   });
 
   it("rejects duplicate ids and template ids", () => {

@@ -10,14 +10,20 @@
     "OPENROUTER_MODEL": "deepseek/deepseek-v4-flash",
     "OPENROUTER_SITE_URL": "https://assistant-mk1.vercel.app",
     "OPENROUTER_APP_NAME": "assistant-mk1-cloudflare-chat",
+    "WORKBENCH_CALLBACK_URL": "https://assistant-mk1-dev-control-plane.david-erwin-cz68.workers.dev/workbench/run-callbacks",
     "SENTRY_ENVIRONMENT": "production",
     "SENTRY_TRACES_SAMPLE_RATE": "0.02",
+  },
+  "triggers": {
+    "crons": ["* * * * *"],
   },
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "assistant_mk1_dev",
       "database_id": "1b5ba1b2-e19e-4db4-825b-d911b1ddf9db",
+      "migrations_dir": "migrations",
+      "migrations_table": "d1_migrations",
     },
   ],
   "durable_objects": {

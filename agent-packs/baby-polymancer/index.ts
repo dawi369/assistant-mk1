@@ -133,11 +133,61 @@ export const babyPolymancerPack = defineAgentPack({
     productionGate: "none",
   },
   context: [
-    "public Polymarket market metadata",
-    "public CLOB read endpoints",
-    "runtime history",
-    "risk posture",
+    {
+      id: "polymarket.public_market_data",
+      trust: "untrusted",
+      description: "Public market and CLOB evidence returned by registered read-only adapters.",
+      required: true,
+      runtimeBinding: "polymarket.public",
+    },
+    {
+      id: "runtime.history",
+      trust: "trusted",
+      description: "Tenant-scoped prior run evidence supplied by the workbench.",
+      required: false,
+      runtimeBinding: "workbench.history",
+    },
   ],
+  managedState: [],
+  triggers: [],
+  artifactRenderers: [
+    {
+      artifactKind: "market_research_report",
+      renderer: "json",
+      title: "Market research report",
+      version: 1,
+    },
+  ],
+  healthChecks: [
+    {
+      id: "market.search.binding",
+      target: { kind: "tool", id: "polymarket.market.search" },
+      description: "Verify that public market discovery is registered.",
+      required: true,
+    },
+    {
+      id: "market.research.binding",
+      target: { kind: "workflow", type: "polymancer.market_research" },
+      description: "Verify that the bounded research workflow is registered.",
+      required: true,
+    },
+  ],
+  evals: [
+    {
+      id: "market.discovery.static",
+      kind: "static_smoke",
+      scenarioId: "market-discovery",
+      description: "Validate the checked-in market-discovery declarations and mappings.",
+      required: true,
+    },
+  ],
+  compatibility: { packApi: 2, minimumWorkbenchVersion: "1.0.0-preview.1" },
+  resourceLimits: {
+    maxRunSeconds: 30,
+    maxToolCallsPerRun: 6,
+    maxConcurrentRuns: 1,
+    maxArtifactBytes: 131072,
+  },
   smokeScenarios: [
     {
       id: "market-discovery",

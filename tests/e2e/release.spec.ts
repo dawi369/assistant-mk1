@@ -77,7 +77,7 @@ test("trusted local session is immediately usable and exposes release controls",
 
   await page.getByRole("tab", { name: "Agents & Packs" }).click();
   const repositoryPack = page.locator("article").filter({ hasText: "Repository Analyst" });
-  await expect(repositoryPack).toContainText("Version 1.1.0");
+  await expect(repositoryPack).toContainText("Version 1.2.0");
   await expect(page.getByText("Polymancer Research", { exact: true })).toBeVisible();
   await expect(page.getByText("Swordfish Runtime", { exact: true })).toBeVisible();
   await repositoryPack.getByRole("button", { name: "Use pack" }).click();

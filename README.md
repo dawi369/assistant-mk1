@@ -41,11 +41,13 @@ tenant scope are visible outside the model conversation.
 
 ### Agent Operations
 
-- Code-first agent packs with behavior, tools, workflows, risk, and smoke metadata.
+- Code-first Agent Pack API v2 with behavior, tools, workflows, managed state,
+  read-only schedules/webhooks, risk, health, eval, and resource metadata.
 - Current-agent Tools separates user-run workflows, agent-only tools, and
   workflow-internal adapters.
 - Typed read-only workflows with bounded inputs and inspectable artifacts.
-- Signed external signals and callback-backed Fly/LangGraph execution.
+- Signed per-trigger webhooks, Cloudflare schedules, and callback-backed
+  Fly/LangGraph execution.
 - Sentry and first-party runtime traces across Vercel, Cloudflare, and Fly.
 
 <!-- Add the Agent Packs and workspace policy screenshot here before release. -->
@@ -91,15 +93,16 @@ cp cloudflare/control-plane/.dev.vars.example cloudflare/control-plane/.dev.vars
 ```
 
 Set `OPENROUTER_API_KEY` in both local environment files and make the local
-transport tokens match. Initialize the disposable local D1 database once:
+transport tokens match. Apply the local D1 migrations:
 
 ```bash
-pnpm db:cloudflare:rebuild:local
+pnpm db:cloudflare:migrate:local
 pnpm workbench:doctor --offline
 ```
 
-This command drops local Worker tables. Do not use either rebuild command when
-you need to preserve existing development data.
+The migration command preserves existing development data. The separate
+`db:cloudflare:rebuild:*` commands drop Worker tables and are only for an
+intentional reset.
 
 Start the complete workbench:
 
@@ -125,7 +128,7 @@ Agent packs are the code-first extension boundary. Each checked-in pack declares
 behavior, tools, workflows, UI hints, risk posture, context, and smoke scenarios
 without bypassing workspace policy or tenant authorization.
 
-The bundled v1 examples are **Repository Analyst**, **Polymancer Research**, and
+The bundled API v2 examples are **Repository Analyst**, **Polymancer Research**, and
 **Swordfish Runtime**. Each includes an immediate pack-specific welcome and a
 bounded read-only workflow contract. Repository Analyst and Polymancer provide
 live examples; Swordfish is packaged but its reference backend is intentionally
@@ -152,9 +155,10 @@ pnpm verify:fast   # packs, eval posture, unit tests, types, lint, format
 pnpm verify        # fast gate, high-severity audit, and production build
 pnpm test:e2e      # signed-out and trusted-local browser journeys
 pnpm conformance:level2       # executable Level 0-2 evidence report
+pnpm conformance:level3       # executable local Level 3 evidence report
 pnpm verify:docker            # non-root image and excluded-context proof
 pnpm acceptance:hosted:public # hosted unauthenticated health parity
-pnpm release:check            # repository, Docker, and Level 2 release gate
+pnpm release:check            # repository, Docker, and Level 2-3 local gates
 ```
 
 The browser suite uses isolated D1 state under `output/playwright/`. Runtime
@@ -182,7 +186,7 @@ Deploy Cloudflare and Fly before a Vercel release that depends on them:
 - [Fly](docs/deployment-fly.md)
 
 Remote D1 records and D1-backed artifact metadata are disposable preview state.
-Forward-only migrations and retention remain tracked in
+Forward-only migrations are implemented; retention gates remain tracked in
 [Migrations and Retention](docs/migrations-and-retention.md).
 
 ## Contributing and Security

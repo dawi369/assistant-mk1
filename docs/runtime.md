@@ -153,92 +153,44 @@ part of the first implementation.
 
 ## Crons
 
-Recurring starts should create typed workflow intents. In the current starter,
-cron creation can use the LangGraph Agent Server API. In the target
-architecture, schedules may live in a Cloudflare-style stateful control plane
-and escalate to LangGraph or tool runners only when needed.
+Recurring starts are retained Cloudflare trigger records bound to an exact
+installed Agent Pack snapshot, trigger declaration, workflow binding, tenant,
+and active agent. Cloudflare's scheduled handler scans due records, coalesces
+the scheduled occurrence into an idempotency key, creates a dispatch, obtains a
+bounded lease, and invokes the registered read-only workflow. Every invocation
+creates the same typed intent/run/audit/event records used by foreground work.
 
-Schedule Dispatch Ergonomics v0 keeps the public facade at the existing
-token-protected `/api/external-signals` ingress. Vercel validates the external
-token and forwards server-owned trigger identity to Cloudflare. Cloudflare
-creates typed workflow intent, run, audit, and control-plane event records
-before delegating to LangGraph where needed. `create_cron` still registers a
-LangGraph cron. `dispatch_schedule` starts or enqueues a run immediately with
-root-owned schedule metadata so local/dev and operator-triggered wakeups can
-exercise the same run path without waiting for production cron. This slice does
-not add a schedule table, trigger UI, or Cloudflare-owned cron dispatcher.
+Schedules are disabled until an authorized operator explicitly creates and
+enables them in Admin. Cron expressions and IANA timezones come from the trusted
+pack declaration. Pausing or disabling a trigger prevents new leases; disabling
+also revokes active linked runs. Expired leases are recovered by the scheduler.
 
 ## External Signals
 
-`POST /api/external-signals` is the public token-protected facade for outside
-systems. The browser or external caller does not provide trusted tenant scope.
-Vercel maps the request to server-owned trigger identity and forwards it to
-Cloudflare `POST /external-signals`. Cloudflare resolves the default/active
-workspace and agent, creates canonical workflow intent/run/audit/event records,
-then delegates to LangGraph for `start`, `resume`, `create_cron`, and
-`dispatch_schedule` behavior where needed.
+Agent Pack webhook triggers use `POST /api/external-signals/:publicId`. Creating
+the trigger returns a one-time secret. Vercel signs the complete facade request
+to Cloudflare; Cloudflare verifies both the facade signature and the stored
+per-trigger secret hash. The retained trigger supplies tenant, agent, pack, and
+workflow identity. The external caller cannot select any of them.
 
 Authentication:
 
 ```http
-Authorization: Bearer $EXTERNAL_SIGNAL_TOKEN
+Authorization: Bearer <one-time-trigger-secret>
+Idempotency-Key: provider-event-id
 ```
 
-Start or enqueue work:
+Deliver a declared trigger payload:
 
 ```json
 {
-  "action": "start",
-  "input": {
-    "messages": [{ "role": "user", "content": "Run the nightly project check." }]
-  },
-  "metadata": {
-    "sourceId": "nightly-check"
-  }
+  "repositoryPath": "."
 }
 ```
 
-Resume interrupted work:
-
-```json
-{
-  "action": "resume",
-  "threadId": "thread-id",
-  "command": {
-    "resume": { "approved": true }
-  }
-}
-```
-
-Create a cron:
-
-```json
-{
-  "action": "create_cron",
-  "scheduleId": "weekday-check",
-  "schedule": "0 9 * * 1-5",
-  "timezone": "Europe/Prague",
-  "input": {
-    "messages": [{ "role": "user", "content": "Run the weekday check." }]
-  }
-}
-```
-
-Dispatch a schedule immediately:
-
-```json
-{
-  "action": "dispatch_schedule",
-  "scheduleId": "weekday-check",
-  "scheduledFor": "2026-06-17T13:00:00.000Z",
-  "input": {
-    "messages": [{ "role": "user", "content": "Run the weekday check." }]
-  },
-  "metadata": {
-    "reason": "local-dev-smoke"
-  }
-}
-```
+Duplicate idempotency keys return the original dispatch. Payload size and the
+pack workflow input schema are checked before durable acceptance. The unscoped
+legacy `/api/external-signals` endpoint returns `410` and cannot start work.
 
 ## Persistence
 

@@ -114,6 +114,20 @@ const createRecordingEnv = (input?: {
         return statement;
       },
       async first<T = unknown>() {
+        if (query.includes("FROM memberships")) {
+          return {
+            id: "membership-1",
+            user_id: identity.scope.userId,
+            workspace_id: identity.scope.workspaceId,
+            role: "member",
+            status: "active",
+            roles_json: "[]",
+            permissions_json: "[]",
+            data_json: "{}",
+            created_at: "2026-07-10T00:00:00.000Z",
+            updated_at: "2026-07-10T00:00:00.000Z",
+          } as T;
+        }
         if (query.includes("FROM agents")) return agentRow(behavior) as T;
         return null as T | null;
       },

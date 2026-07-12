@@ -155,7 +155,7 @@ Cloudflare remote deploy sequence:
 ```bash
 pnpm wrangler d1 list
 pnpm wrangler d1 create assistant_mk1_dev --config cloudflare/control-plane/wrangler.jsonc
-pnpm db:cloudflare:rebuild:remote
+pnpm db:cloudflare:migrate:remote
 pnpm deploy:cloudflare
 CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
 CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \

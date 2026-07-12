@@ -68,10 +68,12 @@ observe -> analyze -> propose -> execute -> review
   mode, and approval state.
 - Server-side execution: browser code can request, approve, and inspect tools,
   but secrets and tool credentials stay server-side.
-- Run control: foreground, background, workflow, child execution, interrupts,
-  cancellation, heartbeat, and recovery are tracked as durable state.
+- Run control: foreground/workflow runs and read-only trigger dispatches track
+  cancellation, retry/replay, leases, heartbeats, concurrency, and recovery as
+  durable state. Delegated parent/child execution remains a target capability.
 - Canonical state: outputs return as scoped decision records, managed state,
-  ledgers, artifacts, audit events, traces, and UI events.
+  artifacts, audit events, traces, and UI events. Mutation/action ledgers remain
+  a target capability.
 - Observability: Admin and D1 runtime summaries are product truth; Sentry and
   external tracing are downstream visibility layers.
 
@@ -85,11 +87,13 @@ observe -> analyze -> propose -> execute -> review
   Admin surfaces.
 - `app/api/[..._path]/route.ts`: LangGraph API proxy.
 - `app/api/workbench/*`: Vercel same-origin facades over Cloudflare.
-- `app/api/external-signals/route.ts`: token-protected external starts,
-  resumes, cron creation, and local/dev schedule dispatch.
+- `app/api/external-signals/[publicId]/route.ts`: signed public facade for
+  per-trigger Agent Pack webhooks. Tenant scope comes from the retained trigger,
+  never the caller.
 - `backend/agent.ts`: LangGraph graph/provider seam.
-- `cloudflare/control-plane/*`: Worker, D1 schema, Durable Object Agents,
-  authz, policy, chat, tools, events, and traces.
+- `cloudflare/control-plane/*`: Worker, D1 schema/migrations, Durable Object
+  Agents, authz, policy, chat, tools, events, traces, and the canonical
+  schedule/monitor/webhook trigger runtime.
 
 ## Deployment Boundary
 

@@ -26,11 +26,9 @@ describe("real-session eval posture", () => {
   });
 
   it("keeps supporting contract checks separate from real-session suites", () => {
-    expect(realSessionEvalSuites.some((suite) => suite.id.includes("schedule-dispatch"))).toBe(
-      false,
-    );
+    expect(realSessionEvalSuites.some((suite) => suite.id.includes("level3-trigger"))).toBe(false);
     expect(
-      supportingEvalContractChecks.some((check) => check.id === "schedule-dispatch-contract"),
+      supportingEvalContractChecks.some((check) => check.id === "level3-trigger-contract"),
     ).toBe(true);
   });
 });

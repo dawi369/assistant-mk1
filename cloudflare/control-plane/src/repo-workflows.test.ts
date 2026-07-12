@@ -57,6 +57,20 @@ const createEnv = () => {
         return statement;
       },
       async first<T = unknown>() {
+        if (query.includes("FROM memberships")) {
+          return {
+            id: "membership-1",
+            user_id: identity.scope.userId,
+            workspace_id: identity.scope.workspaceId,
+            role: "member",
+            status: "active",
+            roles_json: "[]",
+            permissions_json: "[]",
+            data_json: "{}",
+            created_at: "2026-07-10T00:00:00.000Z",
+            updated_at: "2026-07-10T00:00:00.000Z",
+          } as T;
+        }
         if (query.includes("FROM agents")) {
           return {
             id: identity.agentId,
@@ -67,6 +81,27 @@ const createEnv = () => {
             is_default: 0,
             created_by_user_id: identity.scope.userId,
             data_json: JSON.stringify({ profile: "analyst", behavior }),
+            created_at: "2026-07-10T00:00:00.000Z",
+            updated_at: "2026-07-10T00:00:00.000Z",
+          } as T;
+        }
+        if (query.includes("SELECT version") && query.includes("control_managed_state")) {
+          return null as T | null;
+        }
+        if (query.includes("FROM control_managed_state")) {
+          return {
+            id: `${identity.agentId}-repo-readiness-current`,
+            user_id: identity.scope.userId,
+            workspace_id: identity.scope.workspaceId,
+            agent_id: identity.agentId,
+            namespace: "repo-monitor",
+            state_type: "repository-readiness",
+            state_key: "current",
+            status: "ready",
+            summary: "Repository is ready.",
+            version: 1,
+            artifact_refs_json: "[]",
+            data_json: "{}",
             created_at: "2026-07-10T00:00:00.000Z",
             updated_at: "2026-07-10T00:00:00.000Z",
           } as T;

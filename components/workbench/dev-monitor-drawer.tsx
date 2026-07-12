@@ -52,6 +52,7 @@ import type {
   ToolApprovalRequestSummary,
   ToolSummary,
 } from "@/lib/workbench/workbench-types";
+import { WorkbenchAutomationsPanel } from "@/components/workbench/workbench-automations-panel";
 
 const behaviorTemplatesPath = "/api/workbench/agent-behavior-templates";
 const agentsPath = "/api/workbench/agents";
@@ -97,7 +98,7 @@ export function AdminPanel({
   onCloseAutoFocus?: (event: Event) => void;
   onOpenWorkspace: () => void;
   onOpenAgents: () => void;
-  onOpenHistory: () => void;
+  onOpenHistory: (runId?: string) => void;
 }) {
   const {
     connection,
@@ -187,6 +188,11 @@ export function AdminPanel({
   const pendingApprovals = approvals.filter((approval) => approval.status === "requested");
   const importantError =
     error ?? summaryError ?? liveRuntime.errorMessage ?? summary?.lastError?.message;
+  const currentPack =
+    session?.activeAgent?.behavior.pack ?? summary?.activeAgent?.behavior.pack ?? null;
+  const canManageAutomations = ["owner", "admin"].includes(
+    summary?.membership?.role?.toLowerCase() ?? "",
+  );
 
   const usePack = async (template: AgentBehaviorTemplate) => {
     if (!template.pack) return;
@@ -448,7 +454,11 @@ export function AdminPanel({
                     <Button variant="outline" className="justify-between" onClick={onOpenAgents}>
                       Agents <ExternalLinkIcon />
                     </Button>
-                    <Button variant="outline" className="justify-between" onClick={onOpenHistory}>
+                    <Button
+                      variant="outline"
+                      className="justify-between"
+                      onClick={() => onOpenHistory()}
+                    >
                       History <ExternalLinkIcon />
                     </Button>
                   </div>
@@ -538,6 +548,12 @@ export function AdminPanel({
               {packTemplates.length === 0 ? (
                 <EmptyPanelText>No installed packs were returned.</EmptyPanelText>
               ) : null}
+              <WorkbenchAutomationsPanel
+                open={open}
+                pack={currentPack}
+                canManage={canManageAutomations}
+                onOpenHistory={(runId) => onOpenHistory(runId)}
+              />
             </TabsContent>
 
             <TabsContent value="tools" className="overflow-y-auto p-5">

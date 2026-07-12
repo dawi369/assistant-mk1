@@ -501,8 +501,11 @@ function WorkbenchShellContent({
               setAdminOpen(false);
               setAgentsOpen(true);
             }}
-            onOpenHistory={() => {
+            onOpenHistory={(runId) => {
               setAdminOpen(false);
+              if (runId) {
+                setHistoryFocus({ runId, createdAt: Date.now() });
+              }
               setHistoryOpen(true);
             }}
           />

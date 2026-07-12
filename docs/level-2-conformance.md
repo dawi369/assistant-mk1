@@ -15,7 +15,7 @@ acceptance. The generated machine-readable report is
 | 1     | Structured results         | signed runner and callback contracts         | Repository Analyst callback journey               | History artifact inspection       | D1 metadata, no artifact blobs         |
 | 1     | Audit and redaction        | Cloudflare audit/event writers               | callback and approval assertions                  | Admin/History audit inspection    | Preview retention is disposable        |
 | 2     | Typed intents              | Agent Pack catalog and Worker handlers       | pack activation and workflow submission           | Repository Analyst submission     | Unknown declarations are non-runnable  |
-| 2     | Durable runs and artifacts | D1 control records                           | signed callback and History journey               | run/artifact IDs recorded         | No forward migration guarantee         |
+| 2     | Durable runs and artifacts | D1 control records                           | signed callback and History journey               | run/artifact IDs recorded         | No backup/retention guarantee          |
 | 2     | Approval recovery          | History and approval policy boundary         | deterministic denial fixture                      | signed-in History denial          | Approval execution stays read-only     |
 | 2     | Cancellation authority     | conditional D1 transitions                   | cancel-versus-late-callback journey               | hosted cancellation check         | Physical executor abort is best effort |
 | 2     | Retry lineage              | run-control retry handler                    | cancelled-run retry journey                       | new and original run IDs recorded | Only registered pack workflows retry   |
@@ -38,6 +38,9 @@ session. Record commit SHA, operator, endpoint results, run ID, artifact ID, and
 screenshots under `output/release/`. Do not tag the preview until credential
 rotation review is complete for any image built before Docker-context hardening.
 
-Levels 3 through 5 remain deferred. Swordfish is packaged but parked and is not
-part of this conformance gate. `agent-packs:smoke` remains static
-manifest/catalog validation rather than runtime evidence.
+Level 3 has a separate executable local contract in `level-3-conformance.md`.
+Hosted schedule/webhook and unattended-operations evidence remain a release
+gate rather than a local implementation gap. Levels 4 and 5 remain target-only. Swordfish is
+packaged but parked and is not part of this conformance gate.
+`agent-packs:smoke` remains static manifest/catalog validation rather than
+runtime evidence.

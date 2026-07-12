@@ -9,13 +9,21 @@ import { packWorkflowBindings } from "./workflow-catalog";
 export const localAgentPacks = [repoAnalystPack, babyPolymancerPack, babySwordfishPack] as const;
 
 export type {
+  AgentPackArtifactRenderer,
   AgentPackCapabilityLevel,
+  AgentPackCompatibility,
+  AgentPackContextSource,
   AgentPackDeclaredTool,
+  AgentPackEval,
   AgentPackExecutionMode,
+  AgentPackHealthCheck,
+  AgentPackManagedStateDescriptor,
   AgentPackProfile,
+  AgentPackResourceLimits,
   AgentPackRisk,
   AgentPackStarter,
   AgentPackToolInvocation,
+  AgentPackTrigger,
   AgentPackUiHints,
   AgentPackWorkflow,
   LocalAgentPackManifest,
@@ -36,6 +44,52 @@ export type {
 } from "./workflow-catalog";
 
 const semanticVersionPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/;
+const descriptorIdPattern = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/;
+
+const requireDescriptorId = (packId: string, field: string, value: string) => {
+  if (!descriptorIdPattern.test(value)) {
+    throw new Error(`Agent pack ${packId} ${field} must be a stable lowercase identifier.`);
+  }
+};
+
+const requirePositiveInteger = (packId: string, field: string, value: number) => {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(`Agent pack ${packId} ${field} must be a positive integer.`);
+  }
+};
+
+const requireUnique = (packId: string, field: string, values: readonly string[]) => {
+  if (new Set(values).size !== values.length) {
+    throw new Error(`Agent pack ${packId} ${field} contains duplicate identifiers.`);
+  }
+};
+
+const assertSerializable = (pack: LocalAgentPackManifest) => {
+  const seen = new Set<object>();
+  const visit = (value: unknown, path: string) => {
+    if (
+      value === undefined ||
+      typeof value === "function" ||
+      typeof value === "symbol" ||
+      typeof value === "bigint" ||
+      (typeof value === "number" && !Number.isFinite(value))
+    ) {
+      throw new Error(`Agent pack ${pack.id} ${path} must be JSON-serializable.`);
+    }
+    if (!value || typeof value !== "object") return;
+    if (seen.has(value)) {
+      throw new Error(`Agent pack ${pack.id} ${path} must not contain circular references.`);
+    }
+    seen.add(value);
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => visit(item, `${path}[${index}]`));
+    } else {
+      for (const [key, item] of Object.entries(value)) visit(item, `${path}.${key}`);
+    }
+    seen.delete(value);
+  };
+  visit(pack, "manifest");
+};
 
 export const validateLocalAgentPack = (pack: LocalAgentPackManifest) => {
   const requiredStrings = [
@@ -57,8 +111,8 @@ export const validateLocalAgentPack = (pack: LocalAgentPackManifest) => {
   if (pack.kind !== "agent_pack") {
     throw new Error(`Agent pack ${pack.id} kind must be "agent_pack".`);
   }
-  if (pack.apiVersion !== 1) {
-    throw new Error(`Agent pack ${pack.id} apiVersion must be 1.`);
+  if (pack.apiVersion !== 2) {
+    throw new Error(`Agent pack ${pack.id} apiVersion must be 2.`);
   }
   if (pack.templateId !== `pack-${pack.id}`) {
     throw new Error(`Agent pack ${pack.id} templateId must be derived from its id.`);
@@ -79,7 +133,7 @@ export const validateLocalAgentPack = (pack: LocalAgentPackManifest) => {
     throw new Error(`Agent pack ${pack.id} prompt must include an identity section.`);
   }
   if (pack.risk.requiresSecrets) {
-    throw new Error(`Agent pack ${pack.id} cannot require secrets in pack contract v1.`);
+    throw new Error(`Agent pack ${pack.id} cannot require secrets in checked-in pack contract v2.`);
   }
   if (!pack.tools.length) {
     throw new Error(`Agent pack ${pack.id} must declare at least one tool.`);
@@ -110,6 +164,7 @@ export const validateLocalAgentPack = (pack: LocalAgentPackManifest) => {
       throw new Error(`Agent pack ${pack.id} tool ${tool.id} purpose is required.`);
     }
   }
+  const workflowTypes = new Set(pack.workflows.map((workflow) => workflow.type));
   for (const workflow of pack.workflows) {
     if (!workflow.type.trim()) throw new Error(`Agent pack ${pack.id} workflow type is required.`);
     if (!["cloudflare", "langgraph"].includes(workflow.engine)) {
@@ -131,6 +186,147 @@ export const validateLocalAgentPack = (pack: LocalAgentPackManifest) => {
       );
     }
   }
+  requireUnique(
+    pack.id,
+    "context",
+    pack.context.map((source) => source.id),
+  );
+  for (const source of pack.context) {
+    requireDescriptorId(pack.id, "context source id", source.id);
+    requireDescriptorId(
+      pack.id,
+      `context source ${source.id} runtimeBinding`,
+      source.runtimeBinding,
+    );
+    if (!source.description.trim()) {
+      throw new Error(`Agent pack ${pack.id} context source ${source.id} description is required.`);
+    }
+    if (!["trusted", "retrieved", "untrusted"].includes(source.trust)) {
+      throw new Error(`Agent pack ${pack.id} context source ${source.id} trust is invalid.`);
+    }
+  }
+  requireUnique(
+    pack.id,
+    "managedState",
+    pack.managedState.map((descriptor) => descriptor.namespace),
+  );
+  for (const descriptor of pack.managedState) {
+    requireDescriptorId(pack.id, "managed-state namespace", descriptor.namespace);
+    requirePositiveInteger(
+      pack.id,
+      `${descriptor.namespace} schemaVersion`,
+      descriptor.schemaVersion,
+    );
+    if (!descriptor.description.trim() || !descriptor.recordKinds.length) {
+      throw new Error(`Agent pack ${pack.id} managed state ${descriptor.namespace} is incomplete.`);
+    }
+    requireUnique(pack.id, `${descriptor.namespace} recordKinds`, descriptor.recordKinds);
+    requireUnique(
+      pack.id,
+      `${descriptor.namespace} views`,
+      descriptor.views.map((view) => view.id),
+    );
+    const recordKinds = new Set(descriptor.recordKinds);
+    for (const view of descriptor.views) {
+      requireDescriptorId(pack.id, `${descriptor.namespace} view id`, view.id);
+      if (!view.title.trim() || !recordKinds.has(view.recordKind)) {
+        throw new Error(`Agent pack ${pack.id} managed-state view ${view.id} is invalid.`);
+      }
+    }
+  }
+  requireUnique(
+    pack.id,
+    "triggers",
+    pack.triggers.map((trigger) => trigger.id),
+  );
+  for (const trigger of pack.triggers) {
+    requireDescriptorId(pack.id, "trigger id", trigger.id);
+    if (!["schedule", "webhook", "monitor"].includes(trigger.kind)) {
+      throw new Error(`Agent pack ${pack.id} trigger ${trigger.id} kind is invalid.`);
+    }
+    if (!trigger.description.trim() || !workflowTypes.has(trigger.workflowType)) {
+      throw new Error(`Agent pack ${pack.id} trigger ${trigger.id} is invalid.`);
+    }
+    if (trigger.enabledByDefault !== false) {
+      throw new Error(`Agent pack ${pack.id} trigger ${trigger.id} must be disabled by default.`);
+    }
+    if (trigger.kind === "schedule" && (!trigger.cron.trim() || !trigger.timezone.trim())) {
+      throw new Error(`Agent pack ${pack.id} schedule trigger ${trigger.id} is incomplete.`);
+    }
+    if (trigger.kind === "webhook" && !trigger.eventType.trim()) {
+      throw new Error(`Agent pack ${pack.id} webhook trigger ${trigger.id} eventType is required.`);
+    }
+    if (trigger.kind === "monitor") {
+      requirePositiveInteger(
+        pack.id,
+        `trigger ${trigger.id} intervalSeconds`,
+        trigger.intervalSeconds,
+      );
+    }
+  }
+  requireUnique(
+    pack.id,
+    "artifactRenderers",
+    pack.artifactRenderers.map((renderer) => renderer.artifactKind),
+  );
+  for (const renderer of pack.artifactRenderers) {
+    requireDescriptorId(pack.id, "artifact kind", renderer.artifactKind);
+    if (!renderer.title.trim() || !["json", "markdown", "table"].includes(renderer.renderer)) {
+      throw new Error(
+        `Agent pack ${pack.id} artifact renderer ${renderer.artifactKind} is invalid.`,
+      );
+    }
+    requirePositiveInteger(pack.id, `${renderer.artifactKind} renderer version`, renderer.version);
+  }
+  requireUnique(
+    pack.id,
+    "healthChecks",
+    pack.healthChecks.map((check) => check.id),
+  );
+  for (const check of pack.healthChecks) {
+    requireDescriptorId(pack.id, "health check id", check.id);
+    if (!check.description.trim()) {
+      throw new Error(`Agent pack ${pack.id} health check ${check.id} description is required.`);
+    }
+    const targetExists =
+      check.target.kind === "tool"
+        ? toolIds.has(check.target.id)
+        : workflowTypes.has(check.target.type);
+    if (!targetExists) {
+      throw new Error(`Agent pack ${pack.id} health check ${check.id} target is undeclared.`);
+    }
+  }
+  requireUnique(
+    pack.id,
+    "evals",
+    pack.evals.map((evaluation) => evaluation.id),
+  );
+  const smokeIds = new Set(pack.smokeScenarios.map((scenario) => scenario.id));
+  for (const evaluation of pack.evals) {
+    requireDescriptorId(pack.id, "eval id", evaluation.id);
+    if (
+      !["static_smoke", "deterministic_runtime"].includes(evaluation.kind) ||
+      !evaluation.description.trim() ||
+      !smokeIds.has(evaluation.scenarioId)
+    ) {
+      throw new Error(`Agent pack ${pack.id} eval ${evaluation.id} is invalid.`);
+    }
+  }
+  if (pack.compatibility.packApi !== 2) {
+    throw new Error(`Agent pack ${pack.id} compatibility.packApi must be 2.`);
+  }
+  if (!semanticVersionPattern.test(pack.compatibility.minimumWorkbenchVersion)) {
+    throw new Error(`Agent pack ${pack.id} minimum workbench compatibility must be semantic.`);
+  }
+  if (
+    pack.compatibility.maximumWorkbenchVersion &&
+    !semanticVersionPattern.test(pack.compatibility.maximumWorkbenchVersion)
+  ) {
+    throw new Error(`Agent pack ${pack.id} maximum workbench compatibility must be semantic.`);
+  }
+  for (const [field, value] of Object.entries(pack.resourceLimits)) {
+    requirePositiveInteger(pack.id, `resourceLimits.${field}`, value);
+  }
   if (!["chat", "workbench", "admin"].includes(pack.ui.primarySurface)) {
     throw new Error(`Agent pack ${pack.id} ui.primarySurface is invalid.`);
   }
@@ -144,7 +340,6 @@ export const validateLocalAgentPack = (pack: LocalAgentPackManifest) => {
     throw new Error(`Agent pack ${pack.id} must declare exactly two or four welcome starters.`);
   }
   const starterIds = new Set<string>();
-  const workflowTypes = new Set(pack.workflows.map((workflow) => workflow.type));
   for (const starter of pack.ui.welcome.starters) {
     if (!starter.id.trim() || !starter.title.trim() || !starter.description.trim()) {
       throw new Error(`Agent pack ${pack.id} welcome starter fields are required.`);
@@ -162,6 +357,8 @@ export const validateLocalAgentPack = (pack: LocalAgentPackManifest) => {
       );
     }
   }
+
+  assertSerializable(pack);
 
   return pack;
 };

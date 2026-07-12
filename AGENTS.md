@@ -21,7 +21,7 @@ This repo is a reusable agent workbench built from the assistant-ui LangGraph st
 - `components/assistant-ui/*` should stay reusable and mostly product-agnostic.
 - `backend/agent.ts` is the LangGraph graph/provider seam.
 - `app/api/[..._path]/route.ts` proxies browser requests to the LangGraph API.
-- `app/api/external-signals/route.ts` is the token-protected ingress for external starts, resumes, and cron creation.
+- `app/api/external-signals/[publicId]/route.ts` is the signed facade for per-trigger Agent Pack webhooks; the unscoped legacy route is retired.
 - LangGraph threads/runs/interrupts/crons/webhooks are the default primitives for long-running work.
 
 ## Verification

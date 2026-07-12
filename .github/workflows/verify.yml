@@ -96,6 +96,9 @@ jobs:
       - name: Verify Level 2 conformance
         run: pnpm conformance:level2
 
+      - name: Verify Level 3 conformance
+        run: pnpm conformance:level3
+
       - name: Upload browser failure evidence
         if: failure()
         uses: actions/upload-artifact@v4

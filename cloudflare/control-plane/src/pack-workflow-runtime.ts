@@ -4,10 +4,25 @@ import { handleRepoReadinessReport } from "./repo-workflows";
 import { handleSwordfishRuntimeResearch } from "./swordfish-workflows";
 import type { AgentIdentity, Env } from "./types";
 
+export type WorkflowInvocationContext =
+  | { source: "user" }
+  | {
+      source: "trigger";
+      triggerId: string;
+      dispatchId: string;
+      leaseOwner: string;
+      triggerSource: "manual" | "schedule" | "monitor" | "webhook" | "replay";
+      attemptCount: number;
+      idempotencyKey: string;
+      scheduledFor: string | null;
+      previousRunId: string | null;
+    };
+
 export type PackWorkflowHandler = (
   request: Request,
   env: Env,
   identity: AgentIdentity,
+  invocation: WorkflowInvocationContext,
 ) => Promise<Response>;
 
 export const packWorkflowHandlers = {

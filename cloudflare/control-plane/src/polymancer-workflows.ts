@@ -6,7 +6,9 @@ import {
   recordPackWorkflowToolCall,
   startPackWorkflowRun,
 } from "./pack-workflow-lifecycle";
+import type { WorkflowInvocationContext } from "./pack-workflow-runtime";
 import type { AgentIdentity, Env, ExecutionMode } from "./types";
+import { authorizeWorkflowTools } from "./workflow-tool-policy";
 import {
   polymarketMarketSearchToolName,
   polymarketMarketSnapshotToolName,
@@ -168,12 +170,25 @@ export const handlePolymancerMarketResearch = async (
   request: Request,
   env: Env,
   identity: AgentIdentity,
+  invocation: WorkflowInvocationContext = { source: "user" },
 ) => {
   const pack = await requireBabyPolymancerPack(env, identity);
   if (!pack.ok) return pack.response;
 
   const parsed = readInput(parseJson(await request.text()));
   if (!parsed.ok) return parsed.response;
+
+  const authorization = await authorizeWorkflowTools(env, identity, {
+    toolNames: [
+      polymarketMarketSearchToolName,
+      polymarketMarketSnapshotToolName,
+      polymarketOrderbookSnapshotToolName,
+    ],
+    executionMode: parsed.mode,
+    requestedRuntimeMs: 8_000,
+    requestedArtifactBytes: 64 * 1024,
+  });
+  if (!authorization.ok) return authorization.response;
 
   const workflow = await startPackWorkflowRun(env, identity, {
     workflowType,
@@ -185,6 +200,7 @@ export const handlePolymancerMarketResearch = async (
       : {},
     executionMode: parsed.mode,
     engine: "cloudflare",
+    invocation,
     intentCreatedSummary: "Created Polymancer market research workflow intent.",
   });
 

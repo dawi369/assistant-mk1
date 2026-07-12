@@ -739,7 +739,38 @@ const applyGenericCallback = async (
     ),
   );
   const runResultIndex = statements.length - 1;
+  const terminalCallback = status === "completed" || status === "failed";
+  const leaseExpiresAt = new Date(Date.parse(timestamp) + 2 * 60 * 1000).toISOString();
   statements.push(
+    env.DB.prepare(
+      `UPDATE control_trigger_dispatches
+       SET status = ?, heartbeat_at = ?,
+           lease_owner = CASE WHEN ? THEN NULL ELSE lease_owner END,
+           lease_expires_at = ?,
+           error_json = ?, updated_at = ?
+       WHERE user_id = ? AND workspace_id = ? AND agent_id = ? AND run_id = ?
+         AND status = 'running'
+         AND EXISTS (
+           SELECT 1 FROM control_runs
+           WHERE user_id = ? AND workspace_id = ? AND id = ? AND status = ? AND updated_at = ?
+         )`,
+    ).bind(
+      terminalCallback ? status : "running",
+      timestamp,
+      terminalCallback ? 1 : 0,
+      terminalCallback ? null : leaseExpiresAt,
+      status === "failed" ? toJson(payload.error ?? { code: "workflow_failed" }) : "{}",
+      timestamp,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.agentId,
+      identity.runId,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.runId,
+      status,
+      timestamp,
+    ),
     env.DB.prepare(
       `INSERT INTO control_audit_events (
          id, user_id, workspace_id, action, summary, target_type, target_id, data_json, created_at

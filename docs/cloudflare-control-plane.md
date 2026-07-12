@@ -41,12 +41,12 @@ other server-side execution services.
 - R2: future artifacts such as logs, reports, screenshots, exports, and
   research bundles.
 
-The current D1 schema is early-dev and rebuildable. Keep the active schema in
-`cloudflare/control-plane/schema.sql`; it intentionally starts by dropping dev
-tables. Rebuild local or remote D1 only when deliberately resetting dev state.
-The migration and retained-data gate is tracked in
-`docs/migrations-and-retention.md`; do not treat remote D1 as durable customer
-history until that gate is implemented.
+Forward-only D1 changes live in `cloudflare/control-plane/migrations/` and use
+Wrangler's migration ledger. `cloudflare/control-plane/schema.sql` remains the
+destructive reset snapshot for deliberate dev resets. The remaining backup,
+retention, export, and deletion gates are tracked in
+`docs/migrations-and-retention.md`; the migration path alone does not make
+remote D1 durable customer history.
 
 ## Tenant Boundary
 

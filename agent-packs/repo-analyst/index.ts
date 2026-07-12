@@ -41,7 +41,7 @@ export const repoAnalystPack = defineAgentPack({
   name: "Repository Analyst",
   description: "Repository readiness, architecture analysis, and implementation planning.",
   profile: "analyst",
-  version: "1.1.0",
+  version: "1.2.0",
   capabilityLevel: "single_agent_app",
   format: "xml",
   folderPath: "agent-packs/repo-analyst",
@@ -128,7 +128,101 @@ export const repoAnalystPack = defineAgentPack({
     requiresSecrets: false,
     productionGate: "none",
   },
-  context: ["package scripts", "docs map", "architecture docs", "runtime history"],
+  context: [
+    {
+      id: "repository.snapshot",
+      trust: "retrieved",
+      description: "Bounded files and metadata returned by the registered repository adapter.",
+      required: true,
+      runtimeBinding: "repo.snapshot",
+    },
+    {
+      id: "runtime.history",
+      trust: "trusted",
+      description: "Tenant-scoped run and artifact history supplied by the workbench.",
+      required: false,
+      runtimeBinding: "workbench.history",
+    },
+  ],
+  managedState: [
+    {
+      namespace: "repo-monitor",
+      schemaVersion: 1,
+      description: "Current bounded readiness state for the repository visible to this agent.",
+      recordKinds: ["repository-readiness"],
+      views: [
+        {
+          id: "readiness-status",
+          title: "Repository readiness",
+          recordKind: "repository-readiness",
+        },
+      ],
+    },
+  ],
+  triggers: [
+    {
+      id: "scheduled-readiness",
+      kind: "schedule",
+      description: "Create a periodic read-only repository readiness report.",
+      workflowType: "repo.readiness_report",
+      enabledByDefault: false,
+      cron: "0 9 * * 1",
+      timezone: "UTC",
+    },
+    {
+      id: "readiness-requested",
+      kind: "webhook",
+      description: "Create a read-only repository readiness report for a trusted webhook event.",
+      workflowType: "repo.readiness_report",
+      enabledByDefault: false,
+      eventType: "repository.readiness_requested",
+    },
+  ],
+  artifactRenderers: [
+    {
+      artifactKind: "repo_readiness_report",
+      renderer: "json",
+      title: "Repository readiness report",
+      version: 1,
+    },
+  ],
+  healthChecks: [
+    {
+      id: "snapshot.binding",
+      target: { kind: "tool", id: "repo.snapshot" },
+      description: "Verify that the required repository snapshot adapter is registered.",
+      required: true,
+    },
+    {
+      id: "readiness.binding",
+      target: { kind: "workflow", type: "repo.readiness_report" },
+      description: "Verify that the readiness workflow has a registered route binding.",
+      required: true,
+    },
+  ],
+  evals: [
+    {
+      id: "repo.status.static",
+      kind: "static_smoke",
+      scenarioId: "repo-status",
+      description: "Validate the checked-in behavior, tool, workflow, and template mapping.",
+      required: true,
+    },
+    {
+      id: "repo.plan.runtime",
+      kind: "deterministic_runtime",
+      scenarioId: "implementation-plan",
+      description: "Exercise the signed local runner and structured artifact path.",
+      required: true,
+    },
+  ],
+  compatibility: { packApi: 2, minimumWorkbenchVersion: "1.0.0-preview.1" },
+  resourceLimits: {
+    maxRunSeconds: 30,
+    maxToolCallsPerRun: 4,
+    maxConcurrentRuns: 1,
+    maxArtifactBytes: 131072,
+  },
   smokeScenarios: [
     {
       id: "repo-status",

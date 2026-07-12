@@ -14,6 +14,8 @@ mutation, encrypted credential brokerage, or artifact blob storage.
 - Customer-facing workspace switching and owner/admin member administration.
 - Cloudflare Agents chat, local-new first paint, recent chats, and agent switching.
 - Typed read-only pack workflows and policy-gated read-only tools.
+- Checked-in read-only schedule/webhook trigger foundations; these do not yet
+  carry a production-unattended Level 3 release claim.
 - Searchable execution history, metadata artifacts, approvals, cancellation,
   retry for supported pack workflows, and reconnect recovery.
 - Unit, contract, service-boundary, and browser release checks.
@@ -27,6 +29,7 @@ mutation, encrypted credential brokerage, or artifact blob storage.
 | Static real-session contract | `pnpm eval:real-session-posture`                                            |
 | Deterministic services       | `pnpm test:service-boundaries`                                              |
 | Level 2 conformance          | `pnpm conformance:level2` and `docs/level-2-conformance.md`                 |
+| Level 3 local conformance    | `pnpm conformance:level3` and `docs/level-3-conformance.md`                 |
 | Docker boundary              | `pnpm verify:docker`                                                        |
 | Hosted public boundaries     | `pnpm acceptance:hosted:public`                                             |
 | Dependency security          | `pnpm verify:security`                                                      |
@@ -40,24 +43,29 @@ mutation, encrypted credential brokerage, or artifact blob storage.
 
 The following are intentionally outside the 1.0 read-only baseline:
 
-- forward-only D1 migrations, backup/restore, and retained customer history
-- the broader unattended-production operations gate
+- backup/restore, retention automation, and retained customer history
+- hosted Level 3 conformance and the broader unattended-production operations gate
 - encrypted credential custody and refresh brokerage
 - mutation-capable tools and external side effects
 - R2 artifact blobs, export, and deletion workflows
 - plugin marketplace and multi-region deployment
 
-Remote D1 remains disposable development validation state until
-`docs/migrations-and-retention.md` is implemented. A release must not describe
-that state as retained customer history.
+Forward-only D1 migrations are implemented. Remote D1 remains development
+validation state until the remaining backup, retention, export, and deletion
+gates in `docs/migrations-and-retention.md` are implemented. A release must not
+describe that state as retained customer history.
 
 ## Preview Release Checklist
 
-- [ ] A clean clone installs with `pnpm install --frozen-lockfile`, initializes
-      disposable D1, passes `pnpm workbench:doctor`, and reaches usable chat by
+- [ ] A clean clone installs with `pnpm install --frozen-lockfile`, applies
+      local D1 migrations, passes `pnpm workbench:doctor`, and reaches usable chat by
       following only the README.
 - [ ] `pnpm release:check` and all GitHub Actions jobs are green.
 - [ ] `pnpm conformance:level2` is green and its report names the release commit.
+- [ ] `pnpm conformance:level3` is green and its report names the release commit.
+- [ ] Hosted trigger evidence proves one real schedule, signed webhook duplicate,
+      expired-lease recovery, cancellation, replay, logs, and alert delivery for
+      the same commit before unattended work is enabled.
 - [ ] `pnpm verify:security` reports no high-severity advisory.
 - [ ] Docker context inspection proves synthetic sentinels under ignored local
       state and secret paths do not enter the image; the runtime runs non-root.

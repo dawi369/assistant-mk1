@@ -63,6 +63,7 @@ export type ToolPolicySurface =
   | "admin_list"
   | "admin_run"
   | "admin_resume"
+  | "workflow"
   | "model_exposure"
   | "model_tool_call";
 
@@ -821,6 +822,45 @@ export const evaluateToolPolicy = async (
       code: "model_exposure_blocked",
       reason: "Tool is hidden from model exposure by workspace policy.",
       modelVisible: false,
+    };
+  }
+
+  if (input.surface === "workflow") {
+    if (approvalRequired) {
+      return {
+        ...base,
+        decision: "block",
+        status: 403,
+        code: "approval_required",
+        reason: approvalReason ?? "Tool requires approval before workflow execution.",
+        adminVisible: adminVisibleFlag,
+        modelVisible: modelVisibleFlag,
+      };
+    }
+    const resourceBlock = await evaluateResourceAndLimitPolicy(env, identity, input.toolName, {
+      constraints,
+      resource: input.resource,
+      requestedRuntimeMs: input.requestedRuntimeMs,
+      requestedArtifactBytes: input.requestedArtifactBytes,
+    });
+    if (resourceBlock) {
+      return {
+        ...base,
+        decision: "block",
+        status: 403,
+        ...resourceBlock,
+        adminVisible: adminVisibleFlag,
+        modelVisible: modelVisibleFlag,
+      };
+    }
+    return {
+      ...base,
+      decision: "allow",
+      status: 200,
+      code: "allowed",
+      reason: `${input.toolName} is enabled for workflow dry-run execution.`,
+      adminVisible: adminVisibleFlag,
+      modelVisible: modelVisibleFlag,
     };
   }
 

@@ -83,11 +83,11 @@ export const realSessionEvalSuites = [
 
 export const supportingEvalContractChecks = [
   {
-    id: "schedule-dispatch-contract",
-    command: "pnpm test:unit -- lib/workbench/schedule-dispatch.test.ts",
-    requiredAssertions: ["schedule_dispatch", "runs"],
+    id: "level3-trigger-contract",
+    command: "pnpm conformance:level3",
+    requiredAssertions: ["schedule_dispatch", "runs", "tenant_isolation"],
     description:
-      "Guards the external-signal schedule dispatch contract until a live LangGraph smoke exists.",
+      "Exercises the retained trigger, scheduler, signed webhook, replay, and recovery boundaries.",
   },
 ] as const satisfies SupportingEvalContractCheck[];
 

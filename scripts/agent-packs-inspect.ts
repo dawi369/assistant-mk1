@@ -24,6 +24,7 @@ if (json) {
   console.log(formatAgentPackIssues(result.errors));
 } else {
   console.log(`${result.pack.name} (${result.pack.id})`);
+  console.log(`pack api: v${result.pack.apiVersion}`);
   console.log(`template: ${result.pack.templateId}`);
   console.log(`capability: ${result.pack.capabilityLevel}`);
   console.log(`prompt: ${result.pack.promptPath}`);
@@ -31,6 +32,15 @@ if (json) {
     `risk: financialData=${result.pack.risk.financialData} externalMutation=${result.pack.risk.externalMutation} requiresSecrets=${result.pack.risk.requiresSecrets} gate=${result.pack.risk.productionGate}`,
   );
   console.log(`ui: ${result.pack.ui.primarySurface} / ${result.pack.ui.configurationMode}`);
+  console.log(
+    `extensions: context=${result.pack.context.length} state=${result.pack.managedState.length} triggers=${result.pack.triggers.length} renderers=${result.pack.artifactRenderers.length} health=${result.pack.healthChecks.length} evals=${result.pack.evals.length}`,
+  );
+  console.log(
+    `compatibility: workbench>=${result.pack.compatibility.minimumWorkbenchVersion} packApi=${result.pack.compatibility.packApi}`,
+  );
+  console.log(
+    `limits: run=${result.pack.resourceLimits.maxRunSeconds}s tools=${result.pack.resourceLimits.maxToolCallsPerRun} concurrency=${result.pack.resourceLimits.maxConcurrentRuns} artifact=${result.pack.resourceLimits.maxArtifactBytes}B`,
+  );
   console.log("tools:");
   for (const tool of result.tools) {
     console.log(

@@ -8,7 +8,7 @@ const identity = {
   agentId: "agent-1",
 } satisfies AgentIdentity;
 
-const makeEnv = (runChanges = 1) => {
+const makeEnv = (runChanges = 1, dispatchChanges = 1) => {
   const batches: Array<Array<{ query: string; values: unknown[] }>> = [];
   const prepared = new Map<D1PreparedStatement, { query: string; values: unknown[] }>();
   const env = {
@@ -40,7 +40,9 @@ const makeEnv = (runChanges = 1) => {
           meta: {
             changes: prepared.get(statement)?.query.includes("UPDATE control_runs")
               ? runChanges
-              : 1,
+              : prepared.get(statement)?.query.includes("UPDATE control_trigger_dispatches")
+                ? dispatchChanges
+                : 1,
           },
         })) satisfies D1Result[];
       },
@@ -69,6 +71,79 @@ describe("pack workflow lifecycle", () => {
       expect.stringContaining("INSERT INTO control_audit_events"),
       expect.stringContaining("INSERT INTO control_plane_events"),
     ]);
+  });
+
+  it("atomically claims a leased trigger dispatch and records trigger retry lineage", async () => {
+    const { env, batches } = makeEnv();
+    await startPackWorkflowRun(env, identity, {
+      workflowType: "repo.readiness_report",
+      policyReference: "repo.snapshot.v1",
+      displayName: "Triggered readiness report",
+      packId: "repo-analyst",
+      toolInput: { depth: 2 },
+      executionMode: "dry_run",
+      engine: "cloudflare",
+      invocation: {
+        source: "trigger",
+        triggerId: "trigger-1",
+        dispatchId: "dispatch-1",
+        leaseOwner: "scheduler-1",
+        triggerSource: "replay",
+        attemptCount: 2,
+        idempotencyKey: "tick-1",
+        scheduledFor: "2026-06-20T12:00:00.000Z",
+        previousRunId: "run-previous",
+      },
+    });
+
+    expect(batches).toHaveLength(1);
+    expect(batches[0]).toHaveLength(5);
+    expect(batches[0][0]).toMatchObject({
+      query: expect.stringContaining("status = 'leased' AND lease_owner = ?"),
+    });
+    expect(batches[0].slice(1).every(({ query }) => query.includes("WHERE EXISTS"))).toBe(true);
+    const serializedValues = batches[0]
+      .flatMap(({ values }) => values)
+      .filter((value): value is string => typeof value === "string");
+    expect(serializedValues.some((value) => value.includes('"dispatchId":"dispatch-1"'))).toBe(
+      true,
+    );
+    expect(serializedValues.some((value) => value.includes('"retryOfRunId":"run-previous"'))).toBe(
+      true,
+    );
+  });
+
+  it("creates no unconditional run records after losing the trigger lease", async () => {
+    const { env, batches } = makeEnv(1, 0);
+    await expect(
+      startPackWorkflowRun(env, identity, {
+        workflowType: "repo.readiness_report",
+        policyReference: "repo.snapshot.v1",
+        displayName: "Stale trigger",
+        packId: "repo-analyst",
+        toolInput: {},
+        executionMode: "dry_run",
+        engine: "cloudflare",
+        invocation: {
+          source: "trigger",
+          triggerId: "trigger-1",
+          dispatchId: "dispatch-stale",
+          leaseOwner: "stale-owner",
+          triggerSource: "schedule",
+          attemptCount: 1,
+          idempotencyKey: "tick-stale",
+          scheduledFor: null,
+          previousRunId: null,
+        },
+      }),
+    ).rejects.toThrow("trigger_dispatch_lease_lost");
+
+    expect(batches).toHaveLength(1);
+    expect(
+      batches[0]
+        .filter(({ query }) => query.includes("INSERT INTO control_"))
+        .every(({ query }) => query.includes("WHERE EXISTS")),
+    ).toBe(true);
   });
 
   it("discards final output when the run loses the active-state compare-and-set", async () => {

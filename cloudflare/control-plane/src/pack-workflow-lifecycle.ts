@@ -1,5 +1,6 @@
 import { buildControlRunRelation, toControlRunRelationEventData } from "./run-relations";
 import type { ControlRunRelation } from "./run-relations";
+import type { WorkflowInvocationContext } from "./pack-workflow-runtime";
 import { createId, toJson, type AgentIdentity, type Env, type ExecutionMode } from "./types";
 
 export type PackWorkflowRun = {
@@ -7,6 +8,15 @@ export type PackWorkflowRun = {
   workflowIntentId: string;
   relation: ControlRunRelation;
 };
+
+export class TriggerDispatchLeaseLostError extends Error {
+  readonly code = "trigger_dispatch_lease_lost";
+
+  constructor() {
+    super("trigger_dispatch_lease_lost");
+    this.name = "TriggerDispatchLeaseLostError";
+  }
+}
 
 type PackWorkflowArtifact = {
   id: string;
@@ -27,6 +37,7 @@ type StartPackWorkflowInput = {
   executionMode: ExecutionMode;
   stage?: string;
   engine: "cloudflare" | "langgraph";
+  invocation?: WorkflowInvocationContext;
   source?: string;
   intentCreatedSummary?: string;
 };
@@ -67,8 +78,166 @@ export const startPackWorkflowRun = async (
   const stage = input.stage ?? "analyze";
   const engine = input.engine;
   const source = input.source ?? "agent-pack";
+  const invocation = input.invocation ?? { source: "user" };
   const summary = input.intentCreatedSummary ?? `Created ${input.displayName} workflow intent.`;
   const execution = { mode: input.executionMode, policy: input.policyReference };
+  const triggerData =
+    invocation.source === "trigger"
+      ? {
+          trigger: {
+            triggerId: invocation.triggerId,
+            dispatchId: invocation.dispatchId,
+            source: invocation.triggerSource,
+            attemptCount: invocation.attemptCount,
+            idempotencyKey: invocation.idempotencyKey,
+            scheduledFor: invocation.scheduledFor,
+          },
+          ...(invocation.previousRunId ? { retryOfRunId: invocation.previousRunId } : {}),
+        }
+      : {};
+
+  const intentPayload = toJson({
+    input: input.toolInput,
+    invocation: invocation.source,
+    ...triggerData,
+  });
+  const runData = toJson({
+    displayName: input.displayName,
+    workflowType: input.workflowType,
+    source: invocation.source === "trigger" ? "trigger" : source,
+    packId: input.packId,
+    relation,
+    ...triggerData,
+  });
+  const auditData = toJson({
+    eventName: "intent.created",
+    runId,
+    workflowIntentId,
+    relation: relationData,
+    ...triggerData,
+  });
+  const eventData = toJson({
+    runId,
+    workflowIntentId,
+    workflowType: input.workflowType,
+    relation: relationData,
+    ...triggerData,
+  });
+
+  if (invocation.source === "trigger") {
+    const dispatchGuard = `SELECT 1 FROM control_trigger_dispatches
+      WHERE id = ? AND trigger_id = ? AND user_id = ? AND workspace_id = ? AND agent_id = ?
+        AND status = 'running' AND lease_owner = ? AND run_id = ?`;
+    const guardValues = [
+      invocation.dispatchId,
+      invocation.triggerId,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.agentId,
+      invocation.leaseOwner,
+      runId,
+    ];
+    const results = await env.DB.batch([
+      env.DB.prepare(
+        `UPDATE control_trigger_dispatches
+         SET status = 'running', run_id = ?, heartbeat_at = ?, updated_at = ?
+         WHERE id = ? AND trigger_id = ? AND user_id = ? AND workspace_id = ? AND agent_id = ?
+           AND status = 'leased' AND lease_owner = ? AND run_id IS NULL
+           AND lease_expires_at IS NOT NULL AND lease_expires_at > ?`,
+      ).bind(
+        runId,
+        timestamp,
+        timestamp,
+        invocation.dispatchId,
+        invocation.triggerId,
+        identity.scope.userId,
+        identity.scope.workspaceId,
+        identity.agentId,
+        invocation.leaseOwner,
+        timestamp,
+      ),
+      env.DB.prepare(
+        `INSERT INTO control_workflow_intents (
+         id, user_id, workspace_id, agent_id, stage, type, execution_json, payload_json,
+         status, created_at, updated_at
+       ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (${dispatchGuard})`,
+      ).bind(
+        workflowIntentId,
+        identity.scope.userId,
+        identity.scope.workspaceId,
+        identity.agentId,
+        stage,
+        input.workflowType,
+        toJson(execution),
+        intentPayload,
+        "running",
+        timestamp,
+        timestamp,
+        ...guardValues,
+      ),
+      env.DB.prepare(
+        `INSERT INTO control_runs (
+         id, user_id, workspace_id, agent_id, workflow_intent_id, status, execution_json,
+         stage, engine, heartbeat_at, last_event_at, data_json, created_at, updated_at
+       ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (${dispatchGuard})`,
+      ).bind(
+        runId,
+        identity.scope.userId,
+        identity.scope.workspaceId,
+        identity.agentId,
+        workflowIntentId,
+        "running",
+        toJson(execution),
+        stage,
+        engine,
+        timestamp,
+        timestamp,
+        runData,
+        timestamp,
+        timestamp,
+        ...guardValues,
+      ),
+      env.DB.prepare(
+        `INSERT INTO control_audit_events (
+         id, user_id, workspace_id, action, summary, target_type, target_id, data_json, created_at
+       ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (${dispatchGuard})`,
+      ).bind(
+        createId("cf-audit"),
+        identity.scope.userId,
+        identity.scope.workspaceId,
+        "intent.created",
+        summary,
+        "workflowIntent",
+        workflowIntentId,
+        auditData,
+        timestamp,
+        ...guardValues,
+      ),
+      env.DB.prepare(
+        `INSERT INTO control_plane_events (
+         id, user_id, workspace_id, agent_id, type, summary, target_type, target_id,
+         data_json, created_at
+       ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (${dispatchGuard})`,
+      ).bind(
+        createId("cf-event"),
+        identity.scope.userId,
+        identity.scope.workspaceId,
+        identity.agentId,
+        "workflow.intent.created",
+        summary,
+        "workflowIntent",
+        workflowIntentId,
+        eventData,
+        timestamp,
+        ...guardValues,
+      ),
+    ]);
+
+    if ((results[0]?.meta?.changes ?? 0) !== 1) {
+      throw new TriggerDispatchLeaseLostError();
+    }
+    return { runId, workflowIntentId, relation };
+  }
 
   await env.DB.batch([
     env.DB.prepare(
@@ -85,7 +254,7 @@ export const startPackWorkflowRun = async (
       stage,
       input.workflowType,
       toJson(execution),
-      toJson({ input: input.toolInput }),
+      intentPayload,
       "running",
       timestamp,
       timestamp,
@@ -108,13 +277,7 @@ export const startPackWorkflowRun = async (
       engine,
       timestamp,
       timestamp,
-      toJson({
-        displayName: input.displayName,
-        workflowType: input.workflowType,
-        source,
-        packId: input.packId,
-        relation,
-      }),
+      runData,
       timestamp,
       timestamp,
     ),
@@ -130,12 +293,7 @@ export const startPackWorkflowRun = async (
       summary,
       "workflowIntent",
       workflowIntentId,
-      toJson({
-        eventName: "intent.created",
-        runId,
-        workflowIntentId,
-        relation: relationData,
-      }),
+      auditData,
       timestamp,
     ),
     env.DB.prepare(
@@ -152,7 +310,7 @@ export const startPackWorkflowRun = async (
       summary,
       "workflowIntent",
       workflowIntentId,
-      toJson({ runId, workflowIntentId, workflowType: input.workflowType, relation: relationData }),
+      eventData,
       timestamp,
     ),
   ]);
@@ -314,6 +472,31 @@ export const finishPackWorkflowRun = async (
   const runResultIndex = statements.length - 1;
   const terminalStatus = input.ok ? "completed" : "failed";
   statements.push(
+    env.DB.prepare(
+      `UPDATE control_trigger_dispatches
+       SET status = ?, heartbeat_at = ?, lease_owner = NULL, lease_expires_at = NULL,
+           error_json = ?, updated_at = ?
+       WHERE user_id = ? AND workspace_id = ? AND agent_id = ? AND run_id = ?
+         AND status = 'running'
+         AND EXISTS (
+           SELECT 1 FROM control_runs
+           WHERE user_id = ? AND workspace_id = ? AND id = ? AND status = ? AND updated_at = ?
+         )`,
+    ).bind(
+      terminalStatus,
+      timestamp,
+      input.ok ? "{}" : toJson({ code: "workflow_failed", message: input.summary }),
+      timestamp,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.agentId,
+      input.runId,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      input.runId,
+      terminalStatus,
+      timestamp,
+    ),
     env.DB.prepare(
       `INSERT INTO control_audit_events (
          id, user_id, workspace_id, action, summary, target_type, target_id, data_json, created_at

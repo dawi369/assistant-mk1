@@ -68,7 +68,7 @@ export const level2ConformanceSuites: Level2ConformanceSuite[] = [
   },
   {
     id: "level2-local-service-boundary",
-    command: "pnpm test:service-boundaries",
+    command: "pnpm test:service-boundaries:level2",
     guarantees: [
       "scoped_identity",
       "thread_continuity",

@@ -1,0 +1,224 @@
+import {
+  buildPackWorkflowRequest,
+  packWorkflowBindings,
+  type PackWorkflowType,
+} from "../../../agent-packs/workflow-catalog";
+import { parseDataJson } from "./http";
+import { TriggerDispatchLeaseLostError } from "./pack-workflow-lifecycle";
+import { packWorkflowHandlers } from "./pack-workflow-runtime";
+import {
+  toJson,
+  type AgentIdentity,
+  type ControlTriggerDispatchRow,
+  type ControlTriggerRow,
+  type Env,
+} from "./types";
+
+const leaseDurationMs = 2 * 60 * 1000;
+const defaultLeaseLimit = 10;
+
+export type LeasedTriggerDispatch = {
+  trigger: ControlTriggerRow;
+  dispatch: ControlTriggerDispatchRow;
+};
+
+const readLeasedDispatch = async (env: Env, dispatchId: string, leaseOwner: string) => {
+  const dispatchRow = await env.DB.prepare(
+    `SELECT id, trigger_id, user_id, workspace_id, agent_id, idempotency_key, source, status,
+            attempt_count, run_id, previous_run_id, scheduled_for, received_at, lease_owner,
+            lease_expires_at, heartbeat_at, payload_json, error_json, created_at, updated_at
+     FROM control_trigger_dispatches
+     WHERE id = ? AND status = 'leased' AND lease_owner = ? LIMIT 1`,
+  )
+    .bind(dispatchId, leaseOwner)
+    .first<ControlTriggerDispatchRow>();
+  if (!dispatchRow) return null;
+  const triggerRow = await env.DB.prepare(
+    `SELECT id, public_id, secret_hash, user_id, workspace_id, agent_id, pack_id, pack_trigger_id, kind,
+            workflow_type, status, execution_json, config_json, input_json,
+            max_concurrent_runs, version, next_trigger_at, last_triggered_at,
+            created_by_user_id, created_at, updated_at
+     FROM control_triggers
+     WHERE id = ? AND user_id = ? AND workspace_id = ? AND agent_id = ?
+       AND status = 'enabled' LIMIT 1`,
+  )
+    .bind(
+      dispatchRow.trigger_id,
+      dispatchRow.user_id,
+      dispatchRow.workspace_id,
+      dispatchRow.agent_id,
+    )
+    .first<ControlTriggerRow>();
+  return dispatchRow && triggerRow ? { trigger: triggerRow, dispatch: dispatchRow } : null;
+};
+
+export const leasePendingTriggerDispatches = async (
+  env: Env,
+  input: { leaseOwner: string; now?: Date; limit?: number; dispatchId?: string },
+) => {
+  const now = input.now ?? new Date();
+  const timestamp = now.toISOString();
+  const leaseExpiresAt = new Date(now.getTime() + leaseDurationMs).toISOString();
+  const limit = Math.min(Math.max(Math.trunc(input.limit ?? defaultLeaseLimit), 1), 25);
+  const candidates = await env.DB.prepare(
+    `SELECT d.id
+     FROM control_trigger_dispatches d
+     INNER JOIN control_triggers t ON t.id = d.trigger_id
+     WHERE d.status = 'pending' AND t.status = 'enabled'
+       AND (? IS NULL OR d.id = ?)
+     ORDER BY d.received_at ASC
+     LIMIT ?`,
+  )
+    .bind(input.dispatchId ?? null, input.dispatchId ?? null, limit)
+    .all<{ id: string }>();
+
+  const leased: LeasedTriggerDispatch[] = [];
+  for (const candidate of candidates.results) {
+    const result = await env.DB.prepare(
+      `UPDATE control_trigger_dispatches
+       SET status = 'leased', attempt_count = attempt_count + 1, lease_owner = ?,
+           lease_expires_at = ?, heartbeat_at = ?, error_json = '{}', updated_at = ?
+       WHERE id = ? AND status = 'pending'
+         AND EXISTS (
+           SELECT 1 FROM control_triggers t
+           WHERE t.id = control_trigger_dispatches.trigger_id AND t.status = 'enabled'
+             AND (
+               SELECT COUNT(*) FROM control_trigger_dispatches active
+               WHERE active.trigger_id = t.id AND active.status IN ('leased', 'running')
+             ) < t.max_concurrent_runs
+             AND (
+               SELECT COUNT(*) FROM control_runs r
+               WHERE r.user_id = t.user_id AND r.workspace_id = t.workspace_id
+                 AND r.agent_id = t.agent_id
+                 AND r.status IN ('queued', 'running', 'waiting', 'interrupted')
+             ) < t.max_concurrent_runs
+         )`,
+    )
+      .bind(input.leaseOwner, leaseExpiresAt, timestamp, timestamp, candidate.id)
+      .run();
+    if ((result as { meta?: { changes?: number } }).meta?.changes !== 1) continue;
+    const row = await readLeasedDispatch(env, candidate.id, input.leaseOwner);
+    if (row) leased.push(row);
+  }
+  return leased;
+};
+
+const failUnfinishedDispatch = async (
+  env: Env,
+  item: LeasedTriggerDispatch,
+  error: { code: string; message: string },
+) => {
+  const timestamp = new Date().toISOString();
+  await env.DB.prepare(
+    `UPDATE control_trigger_dispatches
+     SET status = 'failed', lease_owner = NULL, lease_expires_at = NULL,
+         error_json = ?, updated_at = ?
+     WHERE id = ? AND user_id = ? AND workspace_id = ?
+       AND status IN ('leased', 'running') AND lease_owner = ? AND attempt_count = ?`,
+  )
+    .bind(
+      toJson(error),
+      timestamp,
+      item.dispatch.id,
+      item.dispatch.user_id,
+      item.dispatch.workspace_id,
+      item.dispatch.lease_owner,
+      item.dispatch.attempt_count,
+    )
+    .run();
+};
+
+export const executeLeasedTriggerDispatch = async (env: Env, item: LeasedTriggerDispatch) => {
+  const binding = packWorkflowBindings[item.trigger.workflow_type as PackWorkflowType];
+  const handler = packWorkflowHandlers[item.trigger.workflow_type as PackWorkflowType];
+  if (!binding || !handler || binding.requiredPackId !== item.trigger.pack_id) {
+    await failUnfinishedDispatch(env, item, {
+      code: "trigger_binding_unavailable",
+      message: "The registered trigger workflow is unavailable.",
+    });
+    return { ok: false as const, code: "trigger_binding_unavailable" };
+  }
+  const callbackUrl = env.WORKBENCH_CALLBACK_URL?.trim();
+  if (!callbackUrl) {
+    await failUnfinishedDispatch(env, item, {
+      code: "trigger_callback_unavailable",
+      message: "The trigger callback URL is not configured.",
+    });
+    return { ok: false as const, code: "trigger_callback_unavailable" };
+  }
+  const triggerInput = parseDataJson(item.trigger.input_json);
+  const dispatchPayload = parseDataJson(item.dispatch.payload_json);
+  const request = buildPackWorkflowRequest(item.trigger.workflow_type, {
+    ...triggerInput,
+    ...dispatchPayload,
+  });
+  if (!request) {
+    await failUnfinishedDispatch(env, item, {
+      code: "trigger_input_invalid",
+      message: "The trigger workflow input is invalid.",
+    });
+    return { ok: false as const, code: "trigger_input_invalid" };
+  }
+  const identity: AgentIdentity = {
+    scope: { userId: item.trigger.user_id, workspaceId: item.trigger.workspace_id },
+    agentId: item.trigger.agent_id,
+  };
+  try {
+    const response = await handler(
+      new Request(new URL(binding.workerRoute, callbackUrl), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(request),
+      }),
+      env,
+      identity,
+      {
+        source: "trigger",
+        triggerId: item.trigger.id,
+        dispatchId: item.dispatch.id,
+        leaseOwner: item.dispatch.lease_owner ?? "",
+        triggerSource: item.dispatch.source,
+        attemptCount: item.dispatch.attempt_count,
+        idempotencyKey: item.dispatch.idempotency_key,
+        scheduledFor: item.dispatch.scheduled_for,
+        previousRunId: item.dispatch.previous_run_id,
+      },
+    );
+    if (!response.ok) {
+      await failUnfinishedDispatch(env, item, {
+        code: "trigger_workflow_rejected",
+        message: "The trigger workflow rejected the dispatch.",
+      });
+    }
+    return { ok: response.ok, status: response.status };
+  } catch (error) {
+    if (error instanceof TriggerDispatchLeaseLostError) {
+      return { ok: false as const, code: error.code };
+    }
+    await failUnfinishedDispatch(env, item, {
+      code: "trigger_execution_failed",
+      message: "The trigger workflow could not be executed.",
+    });
+    return { ok: false as const, code: "trigger_execution_failed" };
+  }
+};
+
+export const executeTriggerDispatchByLease = async (
+  env: Env,
+  input: { dispatchId: string; leaseOwner: string },
+) => {
+  const item = await readLeasedDispatch(env, input.dispatchId, input.leaseOwner);
+  return item
+    ? executeLeasedTriggerDispatch(env, item)
+    : { ok: false as const, code: "trigger_dispatch_lease_lost" };
+};
+
+export const processPendingTriggerDispatches = async (
+  env: Env,
+  input: { leaseOwner: string; dispatchId?: string; limit?: number },
+) => {
+  const leased = await leasePendingTriggerDispatches(env, input);
+  const results = [];
+  for (const item of leased) results.push(await executeLeasedTriggerDispatch(env, item));
+  return { leased: leased.length, results };
+};

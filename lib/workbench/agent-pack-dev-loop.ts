@@ -53,6 +53,7 @@ export type AgentPackValidationResult = {
 export type AgentPackInspection = {
   ok: true;
   pack: {
+    apiVersion: number;
     id: string;
     templateId: string;
     name: string;
@@ -65,7 +66,14 @@ export type AgentPackInspection = {
     promptPath: string;
     ui: LocalAgentPackManifest["ui"];
     risk: LocalAgentPackManifest["risk"];
-    context: readonly string[];
+    context: LocalAgentPackManifest["context"];
+    managedState: LocalAgentPackManifest["managedState"];
+    triggers: LocalAgentPackManifest["triggers"];
+    artifactRenderers: LocalAgentPackManifest["artifactRenderers"];
+    healthChecks: LocalAgentPackManifest["healthChecks"];
+    evals: LocalAgentPackManifest["evals"];
+    compatibility: LocalAgentPackManifest["compatibility"];
+    resourceLimits: LocalAgentPackManifest["resourceLimits"];
     smokeScenarios: readonly { id: string; prompt: string }[];
   };
   tools: AgentPackRuntimeToolBinding[];
@@ -384,6 +392,7 @@ export const inspectAgentPackForDeveloperLoop = (
   return {
     ok: true,
     pack: {
+      apiVersion: pack.apiVersion,
       id: pack.id,
       templateId: pack.templateId,
       name: pack.name,
@@ -397,6 +406,13 @@ export const inspectAgentPackForDeveloperLoop = (
       ui: pack.ui,
       risk: pack.risk,
       context: pack.context,
+      managedState: pack.managedState,
+      triggers: pack.triggers,
+      artifactRenderers: pack.artifactRenderers,
+      healthChecks: pack.healthChecks,
+      evals: pack.evals,
+      compatibility: pack.compatibility,
+      resourceLimits: pack.resourceLimits,
       smokeScenarios: pack.smokeScenarios,
     },
     tools: pack.tools.map((tool) => {

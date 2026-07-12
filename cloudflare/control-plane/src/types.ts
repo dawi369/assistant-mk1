@@ -65,6 +65,7 @@ export type Env = {
   WORKBENCH_EXECUTOR_URL?: string;
   WORKBENCH_EXECUTOR_TOKEN?: string;
   WORKBENCH_CALLBACK_SIGNING_SECRET?: string;
+  WORKBENCH_CALLBACK_URL?: string;
   WORKBENCH_RUNNER_TRANSPORT?: "inline" | "fly";
   WORKBENCH_RUNNER_URL?: string;
   WORKBENCH_RUNNER_SIGNING_SECRET?: string;
@@ -73,6 +74,11 @@ export type Env = {
 
 export type WorkerExecutionContext = {
   waitUntil(promise: Promise<unknown>): void;
+};
+
+export type WorkerScheduledController = {
+  scheduledTime: number;
+  cron: string;
 };
 
 export type TenantScope = {
@@ -284,6 +290,70 @@ export type ControlDecisionRow = {
   status: string;
   provenance_refs_json: string;
   artifact_refs_json: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ControlManagedStateRow = {
+  id: string;
+  user_id: string;
+  workspace_id: string;
+  agent_id: string;
+  namespace: string;
+  state_type: string;
+  state_key: string;
+  status: string;
+  summary: string | null;
+  version: number;
+  artifact_refs_json: string;
+  data_json: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ControlTriggerRow = {
+  id: string;
+  public_id: string | null;
+  secret_hash: string | null;
+  user_id: string;
+  workspace_id: string;
+  agent_id: string;
+  pack_id: string;
+  pack_trigger_id: string;
+  kind: "schedule" | "monitor" | "webhook";
+  workflow_type: string;
+  status: "enabled" | "paused" | "disabled";
+  execution_json: string;
+  config_json: string;
+  input_json: string;
+  max_concurrent_runs: number;
+  version: number;
+  next_trigger_at: string | null;
+  last_triggered_at: string | null;
+  created_by_user_id: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ControlTriggerDispatchRow = {
+  id: string;
+  trigger_id: string;
+  user_id: string;
+  workspace_id: string;
+  agent_id: string;
+  idempotency_key: string;
+  source: "manual" | "schedule" | "monitor" | "webhook" | "replay";
+  status: "pending" | "leased" | "running" | "completed" | "failed" | "cancelled";
+  attempt_count: number;
+  run_id: string | null;
+  previous_run_id: string | null;
+  scheduled_for: string | null;
+  received_at: string;
+  lease_owner: string | null;
+  lease_expires_at: string | null;
+  heartbeat_at: string | null;
+  payload_json: string;
+  error_json: string;
   created_at: string;
   updated_at: string;
 };

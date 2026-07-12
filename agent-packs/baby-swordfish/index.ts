@@ -132,12 +132,61 @@ export const babySwordfishPack = defineAgentPack({
     productionGate: "none",
   },
   context: [
-    "public Swordfish runtime health",
-    "public Swordfish snapshots and symbols",
-    "public bounded bar data",
-    "runtime history",
-    "risk posture",
+    {
+      id: "swordfish.public_runtime",
+      trust: "untrusted",
+      description: "Public runtime health and market-data evidence from the parked adapter.",
+      required: true,
+      runtimeBinding: "swordfish.public",
+    },
+    {
+      id: "runtime.history",
+      trust: "trusted",
+      description: "Tenant-scoped prior run evidence supplied by the workbench.",
+      required: false,
+      runtimeBinding: "workbench.history",
+    },
   ],
+  managedState: [],
+  triggers: [],
+  artifactRenderers: [
+    {
+      artifactKind: "runtime_research_report",
+      renderer: "json",
+      title: "Runtime research report",
+      version: 1,
+    },
+  ],
+  healthChecks: [
+    {
+      id: "runtime.overview.binding",
+      target: { kind: "tool", id: "swordfish.runtime.overview" },
+      description: "Verify that the public runtime overview adapter is registered.",
+      required: true,
+    },
+    {
+      id: "runtime.research.binding",
+      target: { kind: "workflow", type: "swordfish.runtime_research" },
+      description: "Verify that the bounded research workflow is registered.",
+      required: true,
+    },
+  ],
+  evals: [
+    {
+      id: "runtime.overview.static",
+      kind: "static_smoke",
+      scenarioId: "runtime-overview",
+      description: "Validate the parked pack's declarations without contacting Swordfish.",
+      required: true,
+    },
+  ],
+  compatibility: { packApi: 2, minimumWorkbenchVersion: "1.0.0-preview.1" },
+  resourceLimits: {
+    maxRunSeconds: 30,
+    maxToolCallsPerRun: 6,
+    maxConcurrentRuns: 1,
+    maxArtifactBytes: 131072,
+  },
   smokeScenarios: [
     {
       id: "runtime-overview",

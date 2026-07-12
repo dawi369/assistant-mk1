@@ -16,7 +16,7 @@ flowchart LR
     assistantUi["assistant-ui thread"]
     slashSurfaces["/agents / active-agent actions /history"]
     agentConnection["agent connection route"]
-    signalApi["external-signals API"]
+    signalApi["signed pack webhook API"]
     workbenchApi["workbench API facades"]
   end
 
@@ -51,7 +51,7 @@ flowchart LR
     d1Control["D1 runs/tools/artifacts/audit"]
     durableObject["DO SQLite hot messages"]
     r2["R2 artifacts planned"]
-    migrations["D1 migrations planned"]
+    migrations["D1 forward migrations"]
     workflowState["workflow checkpoints planned"]
   end
 
@@ -108,12 +108,12 @@ flowchart LR
   agentGraph -- "model call" --> openrouter
 
   worker -. "planned storage" .-> r2
-  worker -. "planned migration gate" .-> migrations
+  worker -- "migration apply" --> migrations
   langgraph -. "planned checkpoints" .-> workflowState
 
   class nextApp,authKit,assistantUi,slashSurfaces,agentConnection,signalApi,workbenchApi vercel
   class worker,scopeResolver,authz,sessionAgent,threadAgent,workbenchControl,packWorkflows,toolPolicy,historyApi,sessionEvents,callback,demoRuns cloudflare
   class gateway,langgraph,agentGraph,runner fly
-  class d1Identity,d1Chat,d1Control,durableObject data
-  class r2,migrations,workflowState planned
+  class d1Identity,d1Chat,d1Control,durableObject,migrations data
+  class r2,workflowState planned
   class externalTriggers,readonlySources,openrouter sidecar

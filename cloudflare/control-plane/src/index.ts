@@ -48,7 +48,6 @@ import {
   handleLangGraphFacade,
   handleLatestChatSession,
 } from "./langgraph-facade";
-import { handleExternalSignal } from "./external-signals";
 import { packWorkflowHandlerForPath } from "./pack-workflow-runtime";
 import {
   getTraceId,
@@ -71,9 +70,22 @@ import {
 } from "./workspace-members";
 import { resolveAgentIdentity } from "./authz";
 import { internalErrorResponse, json, requireControlPlaneAuth, requireDevToken } from "./http";
-import type { Env, WorkerExecutionContext } from "./types";
+import type { Env, WorkerExecutionContext, WorkerScheduledController } from "./types";
 import { WorkbenchThreadChatAgent } from "./thread-chat-agent";
 import { WorkbenchSessionAgent } from "./session-agent";
+import { handleGetManagedState, handleListManagedState } from "./managed-state";
+import { runTriggerSchedulerTick } from "./trigger-scheduler";
+import { handleTriggerWebhookIngress } from "./trigger-webhook";
+import {
+  handleCreateTrigger,
+  handleCreateTriggerDispatch,
+  handleGetTrigger,
+  handleGetTriggerDispatch,
+  handleListTriggerDispatches,
+  handleListTriggers,
+  handleReplayTriggerDispatch,
+  handleUpdateTrigger,
+} from "./triggers";
 
 export { WorkbenchThreadChatAgent };
 export { WorkbenchSessionAgent };
@@ -128,6 +140,18 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
     return handleWorkflowCallback(request, env);
   }
 
+  const triggerIngressMatch = url.pathname.match(/^\/trigger-ingress\/([^/]+)$/);
+  if (request.method === "POST" && triggerIngressMatch?.[1]) {
+    const authResult = await requireControlPlaneAuth(request, env);
+    if (!authResult.ok) return authResult.response;
+    return handleTriggerWebhookIngress(
+      request,
+      env,
+      decodeURIComponent(triggerIngressMatch[1]),
+      ctx,
+    );
+  }
+
   const authResult = await requireControlPlaneAuth(request, env);
   if (!authResult.ok) return authResult.response;
 
@@ -163,13 +187,20 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
   }
 
   if (request.method === "POST" && url.pathname === "/external-signals") {
-    return handleExternalSignal(request, env, identity);
+    return json(
+      {
+        ok: false,
+        error: "The deployment-wide external-signal endpoint has been retired.",
+        migration: "Use a configured Agent Pack trigger webhook.",
+      },
+      { status: 410 },
+    );
   }
 
   const packWorkflowHandler =
     request.method === "POST" ? packWorkflowHandlerForPath(url.pathname) : null;
   if (packWorkflowHandler) {
-    return packWorkflowHandler(request, env, identity);
+    return packWorkflowHandler(request, env, identity, { source: "user" });
   }
 
   if (request.method === "POST" && url.pathname === "/tools/policy") {
@@ -297,6 +328,59 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
 
   if (request.method === "GET" && url.pathname === "/workbench/history/artifacts") {
     return listArtifactHistory(env, identity, url);
+  }
+
+  if (request.method === "GET" && url.pathname === "/workbench/managed-state") {
+    return handleListManagedState(env, identity, url);
+  }
+
+  if (url.pathname === "/triggers") {
+    if (request.method === "GET") return handleListTriggers(env, identity, url);
+    if (request.method === "POST") return handleCreateTrigger(request, env, identity);
+  }
+
+  if (request.method === "GET" && url.pathname === "/trigger-dispatches") {
+    return handleListTriggerDispatches(env, identity, url);
+  }
+
+  const triggerDispatchMatch = url.pathname.match(/^\/trigger-dispatches\/([^/]+)$/);
+  if (request.method === "GET" && triggerDispatchMatch?.[1]) {
+    return handleGetTriggerDispatch(env, identity, decodeURIComponent(triggerDispatchMatch[1]));
+  }
+
+  const triggerReceiptMatch = url.pathname.match(/^\/triggers\/([^/]+)\/dispatches$/);
+  if (request.method === "POST" && triggerReceiptMatch?.[1]) {
+    return handleCreateTriggerDispatch(
+      request,
+      env,
+      identity,
+      decodeURIComponent(triggerReceiptMatch[1]),
+      ctx,
+    );
+  }
+
+  const replayTriggerDispatchMatch = url.pathname.match(/^\/trigger-dispatches\/([^/]+)\/replay$/);
+  if (request.method === "POST" && replayTriggerDispatchMatch?.[1]) {
+    return handleReplayTriggerDispatch(
+      env,
+      identity,
+      decodeURIComponent(replayTriggerDispatchMatch[1]),
+      ctx,
+    );
+  }
+
+  const triggerMatch = url.pathname.match(/^\/triggers\/([^/]+)$/);
+  if (triggerMatch?.[1]) {
+    const triggerId = decodeURIComponent(triggerMatch[1]);
+    if (request.method === "GET") return handleGetTrigger(env, identity, triggerId);
+    if (request.method === "PATCH") {
+      return handleUpdateTrigger(request, env, identity, triggerId);
+    }
+  }
+
+  const managedStateMatch = url.pathname.match(/^\/workbench\/managed-state\/([^/]+)$/);
+  if (request.method === "GET" && managedStateMatch?.[1]) {
+    return handleGetManagedState(env, identity, decodeURIComponent(managedStateMatch[1]));
   }
 
   if (request.method === "GET" && url.pathname === "/workspaces") {
@@ -443,6 +527,14 @@ export default Sentry.withSentry<Env>(
         Sentry.captureException(error);
         return internalErrorResponse("Unhandled control-plane error", error);
       }
+    },
+    async scheduled(controller: WorkerScheduledController, env: Env, ctx: WorkerExecutionContext) {
+      ctx.waitUntil(
+        runTriggerSchedulerTick(env, {
+          now: new Date(controller.scheduledTime),
+          leaseOwner: `cron:${controller.cron}:${controller.scheduledTime}`,
+        }),
+      );
     },
   },
 );

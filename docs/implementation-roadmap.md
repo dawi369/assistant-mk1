@@ -63,13 +63,18 @@ scoped.
 - Generic signed workflow callbacks are implemented at
   `POST /workbench/run-callbacks` for delegated work to report compact
   lifecycle/artifact metadata back into Cloudflare-owned D1 state.
+- A read-only Level 3 foundation now binds checked-in pack schedule/webhook
+  descriptors to tenant-scoped triggers and dispatches. It includes the
+  Cloudflare cron tick, idempotency, concurrency limits, lease/heartbeat
+  timestamps, callback-owned completion, expired-lease recovery, replay, and
+  hashed webhook secrets.
 - Admin is organized into Overview, Agents & Packs, Tools & Approvals, and
   Diagnostics. Normal workspace, agent, and history operations link to their
   dedicated product surfaces instead of being duplicated in Admin.
-- The current dev schema is rebuildable. Keep the active schema in
-  `cloudflare/control-plane/schema.sql` until the project explicitly introduces
-  migrations and remote data retention. The migration/retention gate is now
-  tracked in `docs/migrations-and-retention.md`.
+- Forward-only D1 migrations use Wrangler's ledger and are verified against the
+  rebuildable `cloudflare/control-plane/schema.sql` reset snapshot. Remote data
+  retention still requires the backup, retention, export, and deletion gates in
+  `docs/migrations-and-retention.md`.
 - The repo now has a GitHub Actions verification gate for clean installs and
   the full pack, eval, unit, typecheck, lint, and production-build suite. A
   deterministic Playwright release gate covers signed-out and trusted-local UX.
@@ -81,9 +86,9 @@ scoped.
    materialization, and background reconciliation with Cloudflare-owned truth.
 2. Keep model-visible tools narrow and policy-gated; harden model-side tool
    rendering and approval explanations before broader model tool use.
-3. Prove one complete pack-owned vertical slice across typed context, a user or
-   agent tool, a workflow, an artifact renderer, managed state, a trusted
-   trigger, eval evidence, and failure recovery.
+3. Finish the first complete pack-owned vertical with executable eval/health
+   evidence and hosted trigger recovery; typed context, a workflow/tool,
+   artifact metadata, managed state, and trusted read-only triggers now exist.
 4. Validate the resulting Agent Pack contract and capability levels with downstream repositories
    before publishing an external SDK or adding remote installation.
 5. Keep promoting execution history and artifact metadata from read-only
@@ -101,8 +106,9 @@ scoped.
 
 Mutation-capable tools stay blocked until the platform has:
 
-- A non-destructive D1 migration path and retention policy for any table or
-  artifact class the tool needs to preserve.
+- A retention policy, backup/restore path, and export/delete behavior for any
+  table or artifact class the tool needs to preserve. Forward-only D1
+  migrations are already implemented.
 - WorkOS-backed invitation and customer-lifecycle administration beyond the
   current organization switcher and Cloudflare workspace/member controls.
 - Cloudflare-owned membership and tool authorization for customer-facing roles.

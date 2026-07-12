@@ -97,6 +97,11 @@ cron creation and manual dispatch. This lets scheduled work exercise the same
 LangGraph run path without adding Cloudflare trigger tables, production cron
 ownership, or trigger UI in this slice.
 
+This v0 compatibility slice was superseded by the retained Agent Pack trigger
+runtime documented in `../level-3-conformance.md`. The unscoped endpoint now
+returns `410`; schedules and webhooks are Cloudflare-owned, tenant-scoped, and
+operator-managed.
+
 Real-Session Eval Posture v0 is a manifest and verifier, not an eval platform.
 `lib/workbench/real-session-evals.ts` defines which existing smoke commands
 count as real-session eval suites and which durable assertions they cover:
@@ -145,8 +150,8 @@ template migrations, and browser prompt editing remain deferred.
 - Full integration-auth and secret-custody contract.
 - Sandbox lifecycle implementation on Fly runners.
 - Deeper child-run orchestration and autonomous subagent execution.
-- Production schedule registry, trigger lifecycle UI, and Cloudflare-owned cron
-  dispatch.
+- Hosted unattended-operation evidence and operations runbook for the retained
+  schedule/webhook runtime.
 - LLM-judged eval framework, stored prompt corpus, and browser automation
   grading loop.
 - Any Eve executor spike. If a real execution gap appears, Eve may be spiked

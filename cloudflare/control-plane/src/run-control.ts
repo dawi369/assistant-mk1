@@ -120,6 +120,28 @@ export const handleCancelExecutionRun = async (
       identity.scope.workspaceId,
       run.id,
     ),
+    env.DB.prepare(
+      `UPDATE control_trigger_dispatches
+       SET status = 'cancelled', heartbeat_at = ?, lease_owner = NULL, lease_expires_at = NULL,
+           error_json = ?, updated_at = ?
+       WHERE user_id = ? AND workspace_id = ? AND agent_id = ? AND run_id = ?
+         AND status IN ('leased', 'running')
+         AND EXISTS (
+           SELECT 1 FROM control_runs
+           WHERE user_id = ? AND workspace_id = ? AND id = ? AND status = 'cancelled'
+         )`,
+    ).bind(
+      timestamp,
+      toJson({ code: "run_cancelled", message: "Run was cancelled by the user." }),
+      timestamp,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      run.agent_id,
+      run.id,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      run.id,
+    ),
   ]);
   if (cancelResult.meta?.changes === 0) {
     return json(
@@ -190,7 +212,9 @@ export const handleRetryExecutionRun = async (
   });
   const retryIdentity = { ...identity, agentId: run.agent_id };
   const retryHandler = handlers[run.workflow_type as PackWorkflowType];
-  const response = retryHandler ? await retryHandler(retryRequest, env, retryIdentity) : null;
+  const response = retryHandler
+    ? await retryHandler(retryRequest, env, retryIdentity, { source: "user" })
+    : null;
   if (!response) {
     return json({ ok: false, error: "This run type does not support retry" }, { status: 409 });
   }

@@ -135,14 +135,14 @@ when the touched slice changes those paths.
 
 ## Approval/tool policy deploy validation
 
-For approval or model-exposure changes, use this destructive remote-dev order:
+For approval or model-exposure changes, use this remote-dev order:
 
 ```bash
 PATH=/opt/homebrew/bin:$PATH pnpm typecheck
 PATH=/opt/homebrew/bin:$PATH pnpm test:unit
 PATH=/opt/homebrew/bin:$PATH pnpm lint
 PATH=/opt/homebrew/bin:$PATH SENTRY_AUTH_TOKEN= pnpm build
-PATH=/opt/homebrew/bin:$PATH pnpm db:cloudflare:rebuild:remote
+PATH=/opt/homebrew/bin:$PATH pnpm db:cloudflare:migrate:remote
 PATH=/opt/homebrew/bin:$PATH pnpm deploy:cloudflare
 CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
 CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
@@ -153,9 +153,9 @@ curl https://assistant-mk1.vercel.app/api/health
 node -e "fetch('https://assistant-mk1.vercel.app/sign-in',{redirect:'manual'}).then(r=>console.log(r.status,r.headers.get('location')))"
 ```
 
-`pnpm db:cloudflare:rebuild:remote` drops and recreates the remote
-`assistant_mk1_dev` D1 database. That data loss is intentional during the
-current pre-production phase.
+`pnpm db:cloudflare:migrate:remote` applies only unapplied forward migrations.
+The separate rebuild command remains destructive and is not part of a normal
+deploy.
 
 Hosted Admin manual QA after sign-in:
 

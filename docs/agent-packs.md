@@ -6,10 +6,10 @@ risk metadata, and verification scenarios. Creating an agent snapshots the
 installed pack version into the workspace-scoped D1 agent record.
 
 The complete target composition boundary is defined in
-`capability-model.md`. API v1 intentionally implements only the subset that can
-be validated and enforced today.
+`capability-model.md`. API v2 implements serializable extension descriptors and
+the subset of runtime bindings that can be validated and enforced today.
 
-Document status: Agent Pack API v1 is implemented for trusted, checked-in
+Document status: Agent Pack API v2 is implemented for trusted, checked-in
 packs. Remote installation, a marketplace, arbitrary executable uploads,
 secret binding, and automatic snapshot upgrades are not implemented.
 
@@ -66,13 +66,35 @@ export const examplePack = defineAgentPack({
     requiresSecrets: false,
     productionGate: "none",
   },
-  context: [],
+  context: [
+    {
+      id: "example.evidence",
+      trust: "retrieved",
+      description: "Bounded evidence returned by the registered adapter.",
+      required: true,
+      runtimeBinding: "example.lookup",
+    },
+  ],
+  managedState: [],
+  triggers: [],
+  artifactRenderers: [
+    { artifactKind: "example_report", renderer: "json", title: "Example report", version: 1 },
+  ],
+  healthChecks: [],
+  evals: [],
+  compatibility: { packApi: 2, minimumWorkbenchVersion: "1.0.0-preview.1" },
+  resourceLimits: {
+    maxRunSeconds: 30,
+    maxToolCallsPerRun: 4,
+    maxConcurrentRuns: 1,
+    maxArtifactBytes: 131072,
+  },
   smokeScenarios: [],
   prompt: examplePrompt,
 });
 ```
 
-`defineAgentPack()` adds `apiVersion: 1`, `kind: "agent_pack"`, and the derived
+`defineAgentPack()` adds `apiVersion: 2`, `kind: "agent_pack"`, and the derived
 template id `pack-<id>`. Versions must be semantic. The adjacent `prompt.xml`
 must match the inline prompt exactly.
 
@@ -98,14 +120,31 @@ Workflows remain separate, explicit user actions. The normal **Tools** panel and
 `/tools` command show runnable workflow launchers, agent-only tools, and
 workflow-internal adapters for the current agent without conflating them.
 
-## Target Composition
+## API v2 Extension Descriptors
 
-Future pack versions may declare context sources, managed-state and decision
-extensions, artifact renderers, triggers, connection requirements, policy
-defaults, budgets, evals, health checks, migrations, and compatibility bounds.
-Those declarations remain inert until trusted platform code registers the
-runtime binding and workspace policy allows it. Pack installation never grants
-credentials, model exposure, trigger authority, or mutation rights.
+API v2 declares typed context sources, namespaced managed state,
+schedules/webhooks/monitors, artifact renderers, health checks, eval mappings,
+compatibility bounds, and resource ceilings. These are data, not executable
+callbacks. They are snapshotted with the behavior template and visible through
+`agent-packs:inspect`.
+
+Declarations remain inert until trusted platform code supplies a runtime
+binding and workspace policy allows it. Managed-state descriptors now bind to
+the generic tenant-scoped managed-state repository. Schedule, monitor, and
+webhook descriptors can bind to registered checked-in workflows through the
+Cloudflare trigger repository and dispatch runtime. They must remain disabled
+by default; installing or activating a pack does not create or enable a trigger.
+An authorized operator creates and enables each trigger explicitly.
+
+Schedule and monitor dispatches use the Cloudflare cron tick. Webhook creation
+returns its secret once and persists only the hash; ingress uses a public id,
+constant-time secret verification, bounded normalized input, and an idempotency
+key. Pack installation never grants credentials, model exposure, trigger
+authority, or mutation rights. Validation rejects non-serializable values,
+invalid references, duplicate identifiers, and non-positive limits.
+
+Connections, secret classes, decision extensions, policy defaults, migrations,
+and remote installation remain future contract work.
 
 Pack-owned descriptors compose into generic workbench surfaces. They do not add
 unscoped routes, arbitrary executable uploads, domain tables, or private
@@ -121,7 +160,9 @@ earns a shared platform contract.
 | Swordfish Runtime   | `baby-swordfish`  | `swordfish.runtime_research` | `runtime_research_report` |
 
 Repository Analyst calls the signed Fly `repo.snapshot` adapter and produces a
-bounded repository-readiness report. Polymancer Research uses public no-auth
+bounded repository-readiness report. It also declares disabled-by-default
+schedule and webhook bindings for that same read-only workflow. Polymancer
+Research uses public no-auth
 Polymarket discovery, snapshot, and CLOB reads. Swordfish Runtime preserves a
 bounded public-health/snapshot/bars reference contract, but its backend is
 intentionally parked and may return `404`; it is not a live release smoke.
@@ -186,7 +227,7 @@ provider smokes remain explicit and are never triggered by local validation.
 - A tool's invocation class is descriptive, not an authorization bypass. User,
   agent, and workflow calls still require a registered runtime binding and
   Cloudflare policy approval.
-- Secret-requiring packs fail v1 validation.
+- Secret-requiring packs fail v2 validation.
 - Execute-mode tools require mutation risk and a production gate.
 - Missing runtime workflow bindings remain visible as declared-only and cannot
   execute.

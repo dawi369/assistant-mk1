@@ -116,11 +116,13 @@ WORKBENCH_EXECUTOR_URL=http://localhost:3000/api/workbench/executors/demo-inspec
 WORKBENCH_EXECUTOR_TOKEN=local-executor-token
 WORKBENCH_CALLBACK_SIGNING_SECRET=local-callback-signing-secret
 EOF
-pnpm db:cloudflare:rebuild:local
+pnpm db:cloudflare:migrate:local
 pnpm dev:cloudflare
 ```
 
-The rebuild command is destructive for local dev D1 state.
+The migration command applies only unapplied files and preserves local dev D1
+state. Use `pnpm db:cloudflare:rebuild:local` only for a deliberate destructive
+reset.
 
 In another terminal, run the Next app and local LangGraph dev server with:
 
@@ -196,19 +198,15 @@ Provisioning and deploy commands:
 ```bash
 pnpm wrangler d1 list
 pnpm wrangler d1 create assistant_mk1_dev --config cloudflare/control-plane/wrangler.jsonc
-pnpm db:cloudflare:rebuild:remote
+pnpm db:cloudflare:migrate:remote
 pnpm deploy:cloudflare
 ```
 
-The rebuild command is destructive for remote dev D1 state. That is intentional
-while this schema is still early-dev and disposable.
-
-During the current pre-production framework phase, destructive remote dev D1
-rebuilds are welcome when they keep the live schema aligned with the checked-in
-control-plane contract. Treat `assistant_mk1_dev` as disposable validation
-state until the project explicitly introduces a migration system and promotes
-remote data retention to a requirement. The production gate for that handoff is
-tracked in `docs/migrations-and-retention.md`.
+The migration command uses Wrangler's `d1_migrations` ledger and preserves
+existing rows. `pnpm db:cloudflare:rebuild:remote` remains available only for a
+deliberate destructive dev reset. Backup/restore, retention, and customer
+export/delete remain production gates in `docs/migrations-and-retention.md`, so
+`assistant_mk1_dev` is not yet durable customer storage.
 
 Only run `d1 create` when `assistant_mk1_dev` is missing. After creation, copy
 the returned `database_id` into `cloudflare/control-plane/wrangler.jsonc`.

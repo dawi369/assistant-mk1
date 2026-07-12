@@ -58,7 +58,7 @@ agent to update adjacent docs or code without needing the old graph generator.
   the active chat session, recent threads, and Cloudflare-signed Agent token
 - `app/api/[..._path]/route.ts`: legacy/transition Next.js proxy to LangGraph
   API for workflow escalation paths
-- `app/api/external-signals/route.ts`: token-protected external-signal ingress
+- `app/api/external-signals/[publicId]/route.ts`: signed per-trigger webhook facade
 - `app/api/workbench/cloudflare-demo-runs/route.ts`: Vercel workbench facade to
   the Cloudflare control-plane Worker
 - `app/api/workbench/*`: Vercel same-origin facades for workspace, agent, admin
@@ -101,7 +101,7 @@ Use four visibly separated pillars plus one sidecar cluster:
 
 - `Vercel / Frontend`: Next.js app, WorkOS AuthKit session, assistant-ui
   thread, `/agents`, active-agent slash actions, `/history` local workbench
-  surfaces, Agent connection route, `external-signals` API, and workbench API
+  surfaces, Agent connection route, pack webhook API, and workbench API
   facades.
 - `Cloudflare / Worker Control Plane`: control-plane Worker, WorkOS scope
   resolver, workspace and agent authorization, `WorkbenchSessionAgent`,
@@ -112,7 +112,7 @@ Use four visibly separated pillars plus one sidecar cluster:
   `backend/agent.ts`, and signed tool runner.
 - `Durable Data Plane`: current D1 user/workspace/agent records, D1 chat state,
   D1 run/tool/artifact/audit records, Durable Object SQLite hot messages, plus
-  planned R2, D1 migration, and workflow checkpoint responsibilities.
+  current forward-only D1 migrations and planned R2/workflow checkpoints.
 - `External sidecars`: external triggers, public read-only data sources, and
   OpenRouter provider. Keep this as one sidecar cluster, not a fifth pillar.
 
@@ -139,9 +139,9 @@ Typed arrow categories:
   Cloudflare callback endpoint.
 - `canonical write`: Cloudflare writes user/workspace/agent, chat, run, tool,
   event, artifact, decision, and audit data to D1.
-- `planned storage`: R2 artifact blobs, D1 migration/retention, and workflow
+- `planned storage`: R2 artifact blobs, retention automation, and workflow
   checkpoints are shown as planned responsibilities, not current durable
-  implementation.
+  implementation. D1 migrations are a current data-plane responsibility.
 
 ## Visual Rules
 
