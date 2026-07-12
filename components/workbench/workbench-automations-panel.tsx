@@ -28,18 +28,13 @@ import type {
   TriggerSummary,
 } from "@/lib/workbench/workbench-types";
 import { canReplayDispatch, configuredTriggerFor } from "@/lib/workbench/automations-surface";
+import { readJsonResponse } from "@/lib/workbench/read-json-response";
 
 const triggersPath = "/api/workbench/triggers";
 const dispatchesPath = "/api/workbench/trigger-dispatches";
 const sectionClass = "border-border rounded-lg border bg-background";
 
 type DeclaredTrigger = NonNullable<AgentPackTemplateMetadata["triggers"]>[number];
-
-const readResponse = async <T,>(response: Response, fallback: string): Promise<T> => {
-  const body = (await response.json().catch(() => ({}))) as T & { error?: unknown };
-  if (!response.ok) throw new Error(typeof body.error === "string" ? body.error : fallback);
-  return body;
-};
 
 export function WorkbenchAutomationsPanel({
   open,
@@ -70,11 +65,11 @@ export function WorkbenchAutomationsPanel({
     setLoading(true);
     try {
       const [triggerBody, dispatchBody] = await Promise.all([
-        readResponse<CloudflareTriggersResponse>(
+        readJsonResponse<CloudflareTriggersResponse>(
           await fetch(`${triggersPath}?limit=100`, { cache: "no-store" }),
           "Failed to load automations",
         ),
-        readResponse<CloudflareTriggerDispatchesResponse>(
+        readJsonResponse<CloudflareTriggerDispatchesResponse>(
           await fetch(`${dispatchesPath}?limit=10`, { cache: "no-store" }),
           "Failed to load automation activity",
         ),
@@ -105,7 +100,7 @@ export function WorkbenchAutomationsPanel({
     setBusyId(trigger.id);
     setError(null);
     try {
-      const body = await readResponse<CloudflareTriggersResponse & { webhookSecret?: string }>(
+      const body = await readJsonResponse<CloudflareTriggersResponse & { webhookSecret?: string }>(
         await fetch(triggersPath, {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -135,7 +130,7 @@ export function WorkbenchAutomationsPanel({
     setBusyId(trigger.id);
     setError(null);
     try {
-      await readResponse<CloudflareTriggersResponse>(
+      await readJsonResponse<CloudflareTriggersResponse>(
         await fetch(`${triggersPath}/${encodeURIComponent(trigger.id)}`, {
           method: "PATCH",
           headers: { "content-type": "application/json" },
@@ -155,7 +150,7 @@ export function WorkbenchAutomationsPanel({
     setBusyId(trigger.id);
     setError(null);
     try {
-      await readResponse<CloudflareTriggerDispatchesResponse>(
+      await readJsonResponse<CloudflareTriggerDispatchesResponse>(
         await fetch(`${triggersPath}/${encodeURIComponent(trigger.id)}/dispatches`, {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -180,7 +175,7 @@ export function WorkbenchAutomationsPanel({
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
         throw new Error("Automation input must be a JSON object.");
       }
-      await readResponse<CloudflareTriggersResponse>(
+      await readJsonResponse<CloudflareTriggersResponse>(
         await fetch(`${triggersPath}/${encodeURIComponent(trigger.id)}`, {
           method: "PATCH",
           headers: { "content-type": "application/json" },
@@ -200,7 +195,7 @@ export function WorkbenchAutomationsPanel({
     setBusyId(dispatch.id);
     setError(null);
     try {
-      await readResponse<CloudflareTriggerDispatchesResponse>(
+      await readJsonResponse<CloudflareTriggerDispatchesResponse>(
         await fetch(`${dispatchesPath}/${encodeURIComponent(dispatch.id)}/replay`, {
           method: "POST",
         }),

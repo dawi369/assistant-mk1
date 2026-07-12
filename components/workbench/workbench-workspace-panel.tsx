@@ -27,17 +27,10 @@ import type {
   WorkspaceMemberSummary,
   WorkspaceSummary,
 } from "@/lib/workbench/workbench-types";
+import { readJsonResponse } from "@/lib/workbench/read-json-response";
 
 const accountsPath = "/api/workbench/accounts";
 const workspacesPath = "/api/workbench/workspaces";
-
-const readJsonResponse = async <T,>(response: Response, fallback: string): Promise<T> => {
-  const body = (await response.json().catch(() => ({}))) as T & { error?: unknown };
-  if (!response.ok) {
-    throw new Error(typeof body.error === "string" ? body.error : fallback);
-  }
-  return body;
-};
 
 export function WorkbenchWorkspacePanel({
   open,

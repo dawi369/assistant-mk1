@@ -39,6 +39,7 @@ import {
 import { resolveAdminAgentPackState } from "@/lib/workbench/admin-agent-packs";
 import { requestWorkbenchSummaryRefresh } from "@/lib/workbench/admin-summary-events";
 import { deriveRuntimeState } from "@/lib/workbench/chat-runtime-live-state";
+import { readJsonResponse } from "@/lib/workbench/read-json-response";
 import { useAdminSummaryResource } from "@/lib/workbench/use-admin-summary-resource";
 import { useWorkbenchAgentConnection } from "@/lib/workbench/use-agent-connection";
 import type {
@@ -59,20 +60,6 @@ const agentsPath = "/api/workbench/agents";
 const toolRunsPath = "/api/workbench/tools/runs";
 const toolPolicyPath = "/api/workbench/tools/policy";
 const toolApprovalsPath = "/api/workbench/tools/approvals";
-
-const readJsonResponse = async <T,>(response: Response, fallback: string): Promise<T> => {
-  const body = (await response.json().catch(() => ({}))) as T & { error?: unknown };
-  if (!response.ok) {
-    const message =
-      typeof body.error === "string"
-        ? body.error
-        : body.error && typeof body.error === "object" && "message" in body.error
-          ? String(body.error.message)
-          : fallback;
-    throw new Error(message);
-  }
-  return body;
-};
 
 const packStateLabel = {
   current: "Current",

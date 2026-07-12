@@ -40,6 +40,7 @@ import {
   type HistoryFilter,
   type HistoryFocusRequest,
 } from "@/lib/workbench/history-surface";
+import { readJsonResponse } from "@/lib/workbench/read-json-response";
 import { cn } from "@/lib/utils";
 import type {
   ArtifactSummary,
@@ -52,14 +53,6 @@ import type {
 
 const historyRunsPath = "/api/workbench/history/runs";
 const historyArtifactsPath = "/api/workbench/history/artifacts";
-
-const readJsonResponse = async <T,>(response: Response, fallback: string): Promise<T> => {
-  const body = (await response.json().catch(() => ({}))) as T & { error?: unknown };
-  if (!response.ok) {
-    throw new Error(typeof body.error === "string" ? body.error : fallback);
-  }
-  return body;
-};
 
 const runHistoryTitle = (run: ExecutionHistoryRunSummary) =>
   run.displayName ?? run.summary ?? run.id;

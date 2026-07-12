@@ -7,7 +7,7 @@
  * consistent while preserving assistant-ui's streaming states and scroll-lock
  * behavior.
  */
-import { memo, useCallback, useRef, useState, type FC, type PropsWithChildren } from "react";
+import { useCallback, useRef, useState } from "react";
 import { ChevronDownIcon, LoaderIcon } from "lucide-react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { useScrollLock } from "@assistant-ui/react";
@@ -27,10 +27,7 @@ const toolGroupVariants = cva("aui-tool-group-root group/tool-group w-full", {
   defaultVariants: { variant: "outline" },
 });
 
-export type ToolGroupRootProps = Omit<
-  React.ComponentProps<typeof Collapsible>,
-  "open" | "onOpenChange"
-> &
+type ToolGroupRootProps = Omit<React.ComponentProps<typeof Collapsible>, "open" | "onOpenChange"> &
   VariantProps<typeof toolGroupVariants> & {
     open?: boolean;
     onOpenChange?: (open: boolean) => void;
@@ -180,38 +177,4 @@ function ToolGroupContent({
   );
 }
 
-type ToolGroupComponent = FC<PropsWithChildren<{ startIndex: number; endIndex: number }>> & {
-  Root: typeof ToolGroupRoot;
-  Trigger: typeof ToolGroupTrigger;
-  Content: typeof ToolGroupContent;
-};
-
-const ToolGroupImpl: FC<PropsWithChildren<{ startIndex: number; endIndex: number }>> = ({
-  children,
-  startIndex,
-  endIndex,
-}) => {
-  const toolCount = endIndex - startIndex + 1;
-
-  return (
-    <ToolGroupRoot>
-      <ToolGroupTrigger count={toolCount} />
-      <ToolGroupContent>{children}</ToolGroupContent>
-    </ToolGroupRoot>
-  );
-};
-
-/**
- * @deprecated This wrapper targets the legacy `components.ToolGroup` prop
- * on `<MessagePrimitive.Parts>`. Use `<MessagePrimitive.GroupedParts>` with
- * a `groupBy` returning `"group-tool"` and compose `ToolGroupRoot` /
- * `ToolGroupTrigger` / `ToolGroupContent` directly. See `thread.tsx`.
- */
-const ToolGroup = memo(ToolGroupImpl) as unknown as ToolGroupComponent;
-
-ToolGroup.displayName = "ToolGroup";
-ToolGroup.Root = ToolGroupRoot;
-ToolGroup.Trigger = ToolGroupTrigger;
-ToolGroup.Content = ToolGroupContent;
-
-export { ToolGroup, ToolGroupRoot, ToolGroupTrigger, ToolGroupContent, toolGroupVariants };
+export { ToolGroupRoot, ToolGroupTrigger, ToolGroupContent };

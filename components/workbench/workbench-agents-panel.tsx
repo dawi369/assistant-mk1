@@ -19,6 +19,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { requestWorkbenchSummaryRefresh } from "@/lib/workbench/admin-summary-events";
+import { readJsonResponse } from "@/lib/workbench/read-json-response";
 import { useWorkbenchAgentConnection } from "@/lib/workbench/use-agent-connection";
 import type {
   AgentSwitchTarget,
@@ -27,14 +28,6 @@ import type {
 } from "@/lib/workbench/workbench-types";
 
 const agentsPath = "/api/workbench/agents";
-
-const readJsonResponse = async <T,>(response: Response, fallback: string): Promise<T> => {
-  const body = (await response.json().catch(() => ({}))) as T & { error?: unknown };
-  if (!response.ok) {
-    throw new Error(typeof body.error === "string" ? body.error : fallback);
-  }
-  return body;
-};
 
 export function WorkbenchAgentsPanel({
   open,

@@ -5,6 +5,7 @@ import {
 } from "./admin-summary-events";
 import type { AdminSummaryProjection } from "./admin-summary-projection";
 import type { CloudflareAdminSummaryResponse } from "./workbench-types";
+import { readJsonResponse } from "./read-json-response";
 
 const adminSummaryPath = "/api/workbench/admin-summary";
 const automatedRefreshCooldownMs = 900;
@@ -53,9 +54,6 @@ let latestRequestSequence = 0;
 let projectionPreference: AdminSummaryProjection = "compact";
 const listeners = new Set<() => void>();
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
 const notify = () => {
   for (const listener of listeners) listener();
 };
@@ -63,21 +61,6 @@ const notify = () => {
 const setSnapshot = (next: AdminSummaryResourceSnapshot) => {
   snapshot = next;
   notify();
-};
-
-const readJsonResponse = async (response: Response): Promise<CloudflareAdminSummaryResponse> => {
-  const body = (await response.json().catch(() => ({}))) as unknown;
-  if (!response.ok) {
-    const responseError = isRecord(body) ? body.error : undefined;
-    const error =
-      typeof responseError === "string"
-        ? responseError
-        : isRecord(responseError) && typeof responseError.message === "string"
-          ? responseError.message
-          : "Failed to load Cloudflare admin summary";
-    throw new Error(error);
-  }
-  return body as CloudflareAdminSummaryResponse;
 };
 
 export const getAdminSummarySnapshot = () => snapshot;
@@ -131,7 +114,12 @@ export const refreshAdminSummary = async (
   const request = fetch(`${adminSummaryPath}?projection=${encodeURIComponent(projection)}`, {
     cache: "no-store",
   })
-    .then(readJsonResponse)
+    .then((response) =>
+      readJsonResponse<CloudflareAdminSummaryResponse>(
+        response,
+        "Failed to load Cloudflare admin summary",
+      ),
+    )
     .then((body) => {
       const next = {
         summary: body.summary ?? null,

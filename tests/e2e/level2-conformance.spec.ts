@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { activateRepositoryAnalyst } from "./workbench-helpers";
+
 const releaseMode = process.env.E2E_RELEASE_MODE;
 const workerOrigin = "http://127.0.0.1:8788";
 
@@ -14,16 +16,6 @@ const historyRuns = async (page: Page) => {
   const response = await page.request.get("/api/workbench/history/runs");
   expect(response.ok()).toBe(true);
   return ((await response.json()) as { runs?: HistoryRun[] }).runs ?? [];
-};
-
-const activateRepositoryAnalyst = async (page: Page) => {
-  const composer = page.getByRole("textbox", { name: /Message input|Draft message/ });
-  await composer.fill("/admin");
-  await composer.press("Enter");
-  await page.getByRole("tab", { name: "Agents & Packs" }).click();
-  const repositoryPack = page.locator("article").filter({ hasText: "Repository Analyst" });
-  await repositoryPack.getByRole("button", { name: "Use pack" }).click();
-  await expect(page.getByRole("heading", { name: "Repository Analyst" })).toBeVisible();
 };
 
 test.describe.serial("Level 2 executable conformance", () => {
