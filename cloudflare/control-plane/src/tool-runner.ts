@@ -321,6 +321,7 @@ export const invokeFlyToolRunner = async (
     const code = safeRunnerDispatchErrorCode(invocation.toolName, runnerCode);
     const durationMs = Math.max(0, Math.round(Date.now() - startedAtMs));
     const runnerMessage = parsedRunnerErrorMessage(parsed);
+    const runnerMetrics = isRecord(parsed) && isRecord(parsed.metrics) ? parsed.metrics : {};
     console.warn("tool_runner.dispatch_failed", {
       component: "cloudflare-control-plane",
       event: "runner.dispatch.failed",
@@ -341,15 +342,13 @@ export const invokeFlyToolRunner = async (
         redacted: true,
       },
       runner: invocation.runner,
-      metrics:
-        parsed && typeof parsed === "object" && !Array.isArray(parsed)
-          ? {
-              status: response.status,
-              durationMs,
-              code,
-              runnerCode,
-            }
-          : { status: response.status, durationMs, code },
+      metrics: {
+        ...runnerMetrics,
+        status: response.status,
+        durationMs,
+        code,
+        runnerCode,
+      },
     };
   }
 

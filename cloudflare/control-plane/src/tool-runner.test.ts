@@ -156,6 +156,10 @@ describe("tool runner sandbox contracts", () => {
               retryable: false,
               redacted: true,
             },
+            metrics: {
+              callback: { status: "completed" },
+              transport: "fly",
+            },
           },
           { status: 500 },
         ),
@@ -201,6 +205,8 @@ describe("tool runner sandbox contracts", () => {
       status: 500,
       code: "runner_callback_signing_not_configured",
       runnerCode: "runner_callback_signing_not_configured",
+      callback: { status: "completed" },
+      transport: "fly",
     });
   });
 });
