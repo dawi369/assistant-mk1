@@ -62,6 +62,7 @@ describe("trigger lease recovery", () => {
       expect.stringContaining("UPDATE control_trigger_dispatches"),
       expect.stringContaining("INSERT INTO control_audit_events"),
       expect.stringContaining("INSERT INTO control_plane_events"),
+      expect.stringContaining("INSERT OR IGNORE INTO control_operator_alerts"),
     ]);
     expect(statements[2]?.query).toContain("lease_expires_at <= ?");
     expect(statements[2]?.values).toContain("dispatch-1");

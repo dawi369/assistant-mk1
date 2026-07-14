@@ -88,8 +88,10 @@ stronger runtime requirements rather than progressively broader prompt access.
   and history work to their dedicated surfaces.
 - Cloudflare exposes backend execution and artifact history metadata through
   scoped workbench APIs. The normal `/history` surface can inspect recent runs
-  and metadata-only artifacts; Admin remains the deeper diagnostic surface.
-  There is no blob artifact storage yet.
+  and artifact metadata; Admin remains the deeper diagnostic surface. A
+  mediated D1/R2 API now stores, reads, exports, and expires bounded blobs, but
+  History does not yet render those object bodies and hosted recovery remains
+  a release gate.
 - The diagnostic `demo.inspect` path exists only as compatibility coverage for
   the original Cloudflare-owned run slice. It should not shape the product.
 
@@ -99,8 +101,8 @@ stronger runtime requirements rather than progressively broader prompt access.
    draft input, responsive thread switching, and background Cloudflare
    reconciliation.
 2. Expand `/history` from metadata summaries into richer artifact previews,
-   filtering, export/delete behavior, and blob-backed storage once migration
-   and retention gates exist.
+   filtering, and user-facing export/delete behavior over the existing bounded
+   D1/R2 lifecycle API.
 3. Prove one complete pack-owned application slice across context, tools,
    workflow, artifact rendering, managed state, trigger handling, evals, and
    recovery before widening the external pack contract.

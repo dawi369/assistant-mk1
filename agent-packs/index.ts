@@ -12,6 +12,7 @@ export type {
   AgentPackArtifactRenderer,
   AgentPackCapabilityLevel,
   AgentPackCompatibility,
+  AgentPackConnectionDescriptor,
   AgentPackContextSource,
   AgentPackDeclaredTool,
   AgentPackEval,
@@ -162,6 +163,40 @@ export const validateLocalAgentPack = (pack: LocalAgentPackManifest) => {
     }
     if (!tool.purpose.trim()) {
       throw new Error(`Agent pack ${pack.id} tool ${tool.id} purpose is required.`);
+    }
+  }
+  requireUnique(
+    pack.id,
+    "connections",
+    pack.connections.map((connection) => connection.id),
+  );
+  for (const connection of pack.connections) {
+    requireDescriptorId(pack.id, "connection id", connection.id);
+    requireDescriptorId(pack.id, `connection ${connection.id} provider`, connection.provider);
+    if (!connection.toolIds.length) {
+      throw new Error(`Agent pack ${pack.id} connection ${connection.id} must bind a tool.`);
+    }
+    requireUnique(pack.id, `connection ${connection.id} tools`, connection.toolIds);
+    requireUnique(pack.id, `connection ${connection.id} scopes`, connection.scopes);
+    for (const toolId of connection.toolIds) {
+      if (!toolIds.has(toolId)) {
+        throw new Error(
+          `Agent pack ${pack.id} connection ${connection.id} references undeclared tool ${toolId}.`,
+        );
+      }
+    }
+    const noCredential = connection.credentialClass === "none";
+    if (
+      (noCredential && (connection.principal !== "none" || connection.custody !== "none")) ||
+      (!noCredential &&
+        (connection.principal === "none" || connection.custody !== "external_broker"))
+    ) {
+      throw new Error(`Agent pack ${pack.id} connection ${connection.id} custody is inconsistent.`);
+    }
+    if (!noCredential && pack.risk.productionGate === "none") {
+      throw new Error(
+        `Agent pack ${pack.id} connection ${connection.id} requires a production connection gate.`,
+      );
     }
   }
   const workflowTypes = new Set(pack.workflows.map((workflow) => workflow.type));

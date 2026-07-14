@@ -26,6 +26,13 @@
       "migrations_table": "d1_migrations",
     },
   ],
+  "r2_buckets": [
+    {
+      "binding": "ARTIFACTS",
+      "bucket_name": "assistant-mk1-dev-artifacts",
+      "preview_bucket_name": "assistant-mk1-local-artifacts",
+    },
+  ],
   "durable_objects": {
     "bindings": [
       {

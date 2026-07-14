@@ -73,10 +73,47 @@ if (worker.WORKBENCH_RUNNER_TRANSPORT === "fly") {
     failures.push("frontend runner signing secret does not match the Worker runner secret");
   }
 }
+const alertWebhookUrl = worker.WORKBENCH_OPERATOR_ALERT_WEBHOOK_URL?.trim();
+const alertSigningSecret = worker.WORKBENCH_OPERATOR_ALERT_SIGNING_SECRET?.trim();
+if (Boolean(alertWebhookUrl) !== Boolean(alertSigningSecret)) {
+  failures.push("Worker operator alert webhook URL and signing secret must be configured together");
+}
+if (alertWebhookUrl) {
+  try {
+    const url = new URL(alertWebhookUrl);
+    if (
+      url.protocol !== "https:" ||
+      url.username ||
+      url.password ||
+      (url.port && url.port !== "443")
+    ) {
+      failures.push(
+        "Worker operator alert webhook must use HTTPS on the standard port without credentials in the URL",
+      );
+    }
+  } catch {
+    failures.push("Worker operator alert webhook URL is invalid");
+  }
+}
+if (
+  frontend.WORKBENCH_OPERATOR_ALERT_SIGNING_SECRET &&
+  alertSigningSecret &&
+  frontend.WORKBENCH_OPERATOR_ALERT_SIGNING_SECRET !== alertSigningSecret
+) {
+  failures.push("Vercel and Worker operator alert signing secrets do not match");
+}
 if (!existsSync(path.join(root, "cloudflare/control-plane/schema.sql"))) {
   failures.push("rebuildable D1 schema is missing");
 } else {
   checks.push("rebuildable D1 schema found");
+}
+const wranglerConfigPath = path.join(root, "cloudflare/control-plane/wrangler.jsonc");
+if (!existsSync(wranglerConfigPath)) {
+  failures.push("Cloudflare Worker configuration is missing");
+} else if (!readFileSync(wranglerConfigPath, "utf8").includes('"binding": "ARTIFACTS"')) {
+  failures.push("Cloudflare Worker configuration is missing the ARTIFACTS R2 binding");
+} else {
+  checks.push("artifact R2 binding declaration found");
 }
 
 const runOnlineChecks = async () => {

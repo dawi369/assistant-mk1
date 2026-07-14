@@ -82,8 +82,9 @@ data-client, authz, redaction, and audit rules.
   state.
 - D1: users, workspaces, memberships, agents, preferences, chat/control run
   envelopes, tool permissions, approvals, audit events, traces, and events.
-- R2: future durable artifacts such as logs, screenshots, reports, exports, and
-  research bundles.
+- R2: bounded artifact bodies such as logs, screenshots, reports, exports, and
+  research bundles, mediated through tenant-scoped Cloudflare APIs. Hosted
+  provisioning and recovery evidence remain release gates.
 - LangGraph runtime storage: workflow-engine state for graph-shaped execution,
   not product authorization truth.
 

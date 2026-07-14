@@ -1,3 +1,5 @@
+import type { AgentPackConnectionDescriptor } from "../../../agent-packs";
+
 export type ConnectionAuthPrincipal = "none" | "app" | "user";
 
 export type ConnectionAuthStatus =
@@ -46,3 +48,18 @@ export const connectionAuthorizationRequired = (input: {
 
 export const connectionAuthForTool = (toolName: string): ConnectionAuthBrokerage =>
   noConnectionAuthRequired(toolName);
+
+export const connectionAuthForPackTool = (
+  toolName: string,
+  connections: readonly AgentPackConnectionDescriptor[],
+): ConnectionAuthBrokerage => {
+  const connection = connections.find((candidate) => candidate.toolIds.includes(toolName));
+  if (!connection || connection.credentialClass === "none") {
+    return noConnectionAuthRequired(toolName);
+  }
+  return connectionAuthorizationRequired({
+    toolName,
+    principal: connection.principal === "user" ? "user" : "app",
+    connectionName: connection.id,
+  });
+};

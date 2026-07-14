@@ -25,6 +25,10 @@ evidence.
 | Workflow tool policy     | internal policy check before every tool      | `workflow-tool-policy.ts`                     | built-in workflow policy tests          | denied tool audit inspection      | read-only tools only               |
 | Tenant isolation         | Cloudflare scope predicates                  | all trigger/state routes                      | cross-tenant 404 journey                | separate WorkOS account check     | preview tenancy model              |
 | Operator visibility      | Admin Automations and History                | `workbench-automations-panel.tsx`             | browser visibility assertions           | screenshots and IDs               | compact operator surface           |
+| Failure alerting         | durable D1 alert plus signed HTTPS delivery  | `operator-alerts.ts`, trigger failure paths   | alert delivery and fencing unit tests   | received alert ID and resolution  | one operator webhook destination   |
+| Retained-data lifecycle  | D1 policy plus mediated R2 custody           | `artifact-lifecycle.ts`, migration `0005`     | local R2 browser plus backup tests      | R2 restore and hosted export      | deletion plan is non-executable    |
+| Pack authoring           | Pack API v2 generator and validator          | `agent-pack-scaffold.ts`, pack dev loop       | scaffold and validation tests           | downstream pack trial             | trusted checked-in packs only      |
+| Connection declaration   | secret-free Pack descriptor validation       | Pack API v2 plus `connection-auth.ts`         | descriptor and projection tests         | broker integration required       | no credential custody or refresh   |
 
 ## Commands
 
@@ -39,3 +43,6 @@ trigger and dispatch IDs, run and artifact IDs, webhook duplicate result,
 recovery result, screenshots, logs, and alert destination under
 `output/release/`. Swordfish remains parked and excluded. Levels 4 and 5 remain
 target-only.
+
+The exact hosted enablement, failure recovery, alert redelivery, soak, and kill
+procedure is in `unattended-operations.md`.

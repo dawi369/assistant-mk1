@@ -85,6 +85,11 @@ const toArtifactHistoryItem = (row: ControlArtifactRow) => ({
   title: row.title ?? undefined,
   mimeType: row.mime_type ?? undefined,
   sizeBytes: row.size_bytes ?? undefined,
+  storageProvider: row.storage_provider,
+  contentSha256: row.content_sha256 ?? undefined,
+  retentionClass: row.retention_class,
+  expiresAt: row.expires_at ?? undefined,
+  deletedAt: row.deleted_at ?? undefined,
   data: parseDataJson(row.data_json),
   createdAt: row.created_at,
 });
@@ -142,9 +147,11 @@ export const getExecutionHistoryRun = async (env: Env, identity: AgentIdentity, 
 export const listArtifactHistory = async (env: Env, identity: AgentIdentity, url: URL) => {
   const limit = readHistoryLimit(url);
   const rows = await env.DB.prepare(
-    `SELECT id, user_id, workspace_id, kind, uri, title, mime_type, size_bytes, data_json, created_at
+    `SELECT id, user_id, workspace_id, kind, uri, title, mime_type, size_bytes,
+            storage_provider, storage_key, content_sha256, retention_class, expires_at, deleted_at,
+            data_json, created_at
      FROM control_artifacts
-     WHERE user_id = ? AND workspace_id = ?
+     WHERE user_id = ? AND workspace_id = ? AND deleted_at IS NULL
      ORDER BY created_at DESC
      LIMIT ?`,
   )

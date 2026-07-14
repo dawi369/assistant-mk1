@@ -53,6 +53,21 @@ R2 should hold object data:
 
 R2 should not be treated as the app database. Store searchable metadata in D1 and blobs in R2.
 
+### Why Workflow Storage Is Not Enough
+
+LangGraph checkpoints and executor-local files belong to an execution attempt.
+They do not provide the workspace-scoped authorization, retention, export, and
+deletion boundary required for customer-owned outputs. Canonical artifacts
+therefore use D1 metadata plus a Cloudflare-mediated R2 object key. This keeps
+the lifecycle independent from a specific workflow engine and prevents Fly or
+an Agent Pack from acquiring broad storage credentials.
+
+The Worker configuration declares the `ARTIFACTS` R2 binding. Wrangler supplies
+an isolated local preview bucket for development and Level 3 conformance; each
+hosted environment must explicitly provision the named bucket before deploy.
+Blob creation and deep health fail closed when the binding is absent. The
+workbench does not silently fall back to D1, local disk, or a public URL.
+
 ## Workflow Backend Responsibilities
 
 Workflow engines may keep in-flight execution state, retries, checkpoints, and intermediate step state. Final important outputs must be written back to canonical D1/R2-backed state so the conversational agent can explain them later.

@@ -43,8 +43,29 @@ export type DurableObjectNamespace = {
   get(id: DurableObjectId): DurableObjectStub;
 };
 
+export type R2ObjectBody = {
+  body: ReadableStream;
+  arrayBuffer(): Promise<ArrayBuffer>;
+  httpMetadata?: { contentType?: string };
+  customMetadata?: Record<string, string>;
+};
+
+export type R2Bucket = {
+  put(
+    key: string,
+    value: ArrayBuffer | ArrayBufferView | ReadableStream | string,
+    options?: {
+      httpMetadata?: { contentType?: string };
+      customMetadata?: Record<string, string>;
+    },
+  ): Promise<unknown>;
+  get(key: string): Promise<R2ObjectBody | null>;
+  delete(key: string): Promise<void>;
+};
+
 export type Env = {
   DB: D1Database;
+  ARTIFACTS?: R2Bucket;
   WorkbenchThreadChatAgent?: DurableObjectNamespace;
   WorkbenchSessionAgent?: DurableObjectNamespace;
   CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN?: string;
@@ -69,6 +90,9 @@ export type Env = {
   WORKBENCH_RUNNER_TRANSPORT?: "inline" | "fly";
   WORKBENCH_RUNNER_URL?: string;
   WORKBENCH_RUNNER_SIGNING_SECRET?: string;
+  WORKBENCH_OPERATOR_ALERT_WEBHOOK_URL?: string;
+  WORKBENCH_OPERATOR_ALERT_SIGNING_SECRET?: string;
+  WORKBENCH_E2E_MODE?: string;
   ALLOWED_ORIGINS?: string;
 };
 
@@ -275,8 +299,44 @@ export type ControlArtifactRow = {
   title: string | null;
   mime_type: string | null;
   size_bytes: number | null;
+  storage_provider: "external" | "r2";
+  storage_key: string | null;
+  content_sha256: string | null;
+  retention_class: "standard" | "permanent";
+  expires_at: string | null;
+  deleted_at: string | null;
   data_json: string;
   created_at: string;
+};
+
+export type ControlRetentionPolicyRow = {
+  user_id: string;
+  workspace_id: string;
+  artifact_retention_days: number;
+  operational_event_retention_days: number;
+  runtime_trace_retention_days: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ControlOperatorAlertRow = {
+  id: string;
+  user_id: string;
+  workspace_id: string;
+  agent_id: string | null;
+  severity: "warning" | "critical";
+  code: string;
+  summary: string;
+  target_type: string | null;
+  target_id: string | null;
+  status: "open" | "acknowledged" | "resolved";
+  dedup_key: string;
+  delivery_status: "pending" | "delivered" | "failed";
+  delivery_attempts: number;
+  last_delivery_at: string | null;
+  data_json: string;
+  created_at: string;
+  updated_at: string;
 };
 
 export type ControlDecisionRow = {

@@ -9,8 +9,10 @@ memberships, active workspace preferences, workspace-scoped agents, active
 agent preferences, normal chat coordination, Admin summaries, diagnostic runs,
 tool policy, approvals, runtime traces, execution/artifact history metadata,
 customer-facing workspace/member administration, run recovery controls, and
-control-plane events. Secret custody, invitation lifecycle, mutation-capable
-tools, and richer artifact storage remain target work.
+control-plane events. The retained-data foundation now includes artifact
+lifecycle metadata, bounded retention sweeps, and durable operator alerts.
+Secret custody, invitation lifecycle, mutation-capable tools, provisioned R2,
+and complete customer export/delete remain target work.
 
 ## Responsibilities
 
@@ -38,15 +40,17 @@ other server-side execution services.
 - D1: relational product/control-plane state: users, workspaces, memberships,
   agents, preferences, chat/control runs, tool permissions, approvals, audit
   events, traces, and events.
-- R2: future artifacts such as logs, reports, screenshots, exports, and
-  research bundles.
+- R2: mediated blobs such as logs, reports, screenshots, exports, and research
+  bundles. `ARTIFACTS` is declared in Wrangler and exercised through local R2;
+  hosted environments must provision the named bucket before deployment.
 
 Forward-only D1 changes live in `cloudflare/control-plane/migrations/` and use
 Wrangler's migration ledger. `cloudflare/control-plane/schema.sql` remains the
-destructive reset snapshot for deliberate dev resets. The remaining backup,
-retention, export, and deletion gates are tracked in
-`docs/migrations-and-retention.md`; the migration path alone does not make
-remote D1 durable customer history.
+destructive reset snapshot for deliberate dev resets. Standard artifacts
+expire after 90 days, operational events after 30, and runtime traces after 14
+unless a workspace admin sets a bounded policy. The remaining hosted restore,
+R2 recovery, export, and deletion gates are tracked in
+`docs/migrations-and-retention.md`.
 
 ## Tenant Boundary
 
@@ -62,6 +66,11 @@ workspace, membership, and active agent before reading or writing state.
 Local development can fall back to server-derived `WORKBENCH_DEV_*` identity
 only when `WORKBENCH_ALLOW_LOCAL_DEV_IDENTITY=true` and the runtime is not
 production. Hosted production fails closed if WorkOS is incomplete.
+
+`GET /health/live` remains a shallow process liveness check. `GET /health`
+requires the D1 query, `ARTIFACTS` R2 binding, and both Cloudflare Agent Durable
+Object bindings to be present without returning their names, ids, or tenant
+data.
 
 Current customer access routes:
 
@@ -173,13 +182,57 @@ metadata reads for execution and artifact history:
 - Vercel `GET /api/workbench/history/artifacts`
 
 These endpoints expose run summaries, action availability, tool-call counts,
-compact stored run snapshots, pending approval interventions, and metadata-only
-artifacts. Cancellation is accepted only for queued/running/waiting runs.
+compact stored run snapshots, pending approval interventions, and artifact
+metadata. Cancellation is accepted only for queued/running/waiting runs.
 Retry is implemented for failed/cancelled Polymancer and Swordfish pack
 workflows and creates a new run from the stored typed input. They do not provide
-blob/R2 storage, raw logs, prompts, or secrets. The `/history` workbench surface
-makes this product-visible state and recovery available outside Admin, while
+raw logs, prompts, or secrets. Mediated blob writes and reads are available at
+`POST /workbench/artifacts` and `GET /workbench/artifacts/:id/content` only when
+the Worker has an `ARTIFACTS` R2 binding; missing storage fails closed. The
+`/history` workbench surface makes this product-visible state and recovery available outside Admin, while
 Admin still carries deeper diagnostics.
+
+## Unattended Failure Alerts
+
+Trigger execution rejection and expired-lease recovery atomically create a
+deduplicated `control_operator_alerts` record with the dispatch failure. This
+means a terminal unattended failure cannot exist only in logs. Workspace
+owners/admins can inspect alerts at `GET /admin/operator-alerts` and acknowledge
+or resolve them with `PATCH /admin/operator-alerts/:id`; resolution writes an
+audit event. The Agent & Packs Automations panel exposes the same scoped alert
+list, failed-delivery retry, acknowledgement, and resolution controls through
+the Vercel facade; ordinary members do not fetch the admin-only resource.
+
+When `WORKBENCH_OPERATOR_ALERT_WEBHOOK_URL` and
+`WORKBENCH_OPERATOR_ALERT_SIGNING_SECRET` are both configured, the scheduled
+Worker delivers open alerts in bounded batches. The destination must be HTTPS
+on port 443 without URL credentials. Redirects are rejected, delivery times out
+after five seconds, payloads are HMAC-signed, and compare-and-set attempt counts
+cap automatic delivery at five tries. The receiver must deduplicate on
+`x-assistant-mk1-alert-id`. An unconfigured destination leaves durable alerts
+visible for operators rather than discarding them.
+
+The first-party receiver is
+`POST /api/workbench/operator-alerts/ingest` on Vercel. It shares only the
+server-side signing secret, rejects bodies over 64 KiB, verifies HMAC and a
+ten-minute freshness window, and forwards redacted alert metadata to Sentry
+with an alert-id fingerprint. It does not persist credentials or tenant scope.
+Set the Worker webhook URL to this route and configure the same
+`WORKBENCH_OPERATOR_ALERT_SIGNING_SECRET` in Vercel and the Worker.
+
+## Data Portability
+
+`GET /workbench/data-export` gives workspace owners/admins a bounded scoped D1
+and R2 export and records the action in audit history.
+`GET /workbench/data-deletion-plan` inventories the same data without deleting
+it. The plan remains explicitly non-executable until Durable Object chat state
+and resumable two-phase deletion are covered; see
+`docs/migrations-and-retention.md`.
+
+Level 3 service-boundary conformance creates a real local R2 blob through the
+Vercel facade, reads it back, verifies History metadata and a checksum-backed
+workspace export, shortens the retention policy, advances the scheduled Worker,
+and proves the expired content is no longer readable.
 
 ## Tools And Policy
 

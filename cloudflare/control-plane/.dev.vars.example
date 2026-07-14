@@ -13,6 +13,10 @@ WORKBENCH_RUNNER_TRANSPORT=inline
 WORKBENCH_RUNNER_URL=
 WORKBENCH_RUNNER_SIGNING_SECRET=
 
+# Optional signed operator alert delivery. Configure both or neither.
+WORKBENCH_OPERATOR_ALERT_WEBHOOK_URL=
+WORKBENCH_OPERATOR_ALERT_SIGNING_SECRET=
+
 # Local development accepts the bearer token above when facade signing is absent.
 CLOUDFLARE_CONTROL_PLANE_REQUIRE_FACADE_SIGNATURE=false
 ALLOWED_ORIGINS=http://localhost:3000

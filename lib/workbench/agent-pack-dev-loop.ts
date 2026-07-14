@@ -66,6 +66,7 @@ export type AgentPackInspection = {
     promptPath: string;
     ui: LocalAgentPackManifest["ui"];
     risk: LocalAgentPackManifest["risk"];
+    connections: LocalAgentPackManifest["connections"];
     context: LocalAgentPackManifest["context"];
     managedState: LocalAgentPackManifest["managedState"];
     triggers: LocalAgentPackManifest["triggers"];
@@ -405,6 +406,7 @@ export const inspectAgentPackForDeveloperLoop = (
       promptPath: pack.promptPath,
       ui: pack.ui,
       risk: pack.risk,
+      connections: pack.connections,
       context: pack.context,
       managedState: pack.managedState,
       triggers: pack.triggers,

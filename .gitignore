@@ -56,3 +56,4 @@ cloudflare/control-plane/.wrangler/
 /output/playwright/
 /output/conformance/
 /output/release/
+/output/backups/

@@ -73,8 +73,16 @@ scoped.
   dedicated product surfaces instead of being duplicated in Admin.
 - Forward-only D1 migrations use Wrangler's ledger and are verified against the
   rebuildable `cloudflare/control-plane/schema.sql` reset snapshot. Remote data
-  retention still requires the backup, retention, export, and deletion gates in
-  `docs/migrations-and-retention.md`.
+  now has a deterministic backup/restore verifier, bounded artifact/event/trace
+  retention, a scoped D1/R2 export, and an exact deletion inventory. Hosted R2
+  recovery, streaming export, Durable Object coverage, and executable deletion
+  remain in `docs/migrations-and-retention.md`.
+- Unattended trigger failures and expired leases create durable deduplicated
+  operator alerts. Optional signed HTTPS delivery is retried and fenced; alert
+  acknowledgement/resolution is tenant-scoped and audited.
+- `pnpm agent-packs:create` now scaffolds and registers a conservative Pack API
+  v2 starter. Pack connection descriptors can declare public or externally
+  brokered provider requirements without storing credentials.
 - The repo now has a GitHub Actions verification gate for clean installs and
   the full pack, eval, unit, typecheck, lint, and production-build suite. A
   deterministic Playwright release gate covers signed-out and trusted-local UX.
@@ -91,9 +99,9 @@ scoped.
    artifact metadata, managed state, and trusted read-only triggers now exist.
 4. Validate the resulting Agent Pack contract and capability levels with downstream repositories
    before publishing an external SDK or adding remote installation.
-5. Keep promoting execution history and artifact metadata from read-only
-   metadata into richer product surfaces: previews, filters, export/delete
-   behavior, and artifact blob storage when retention gates exist.
+5. Keep promoting execution history and artifact metadata into richer product
+   surfaces: previews, filters, and user-facing export/delete behavior over the
+   existing bounded D1/R2 lifecycle API.
 6. Add pack-contributed domain context, managed-state descriptors, and shared
    views for downstream apps without introducing a committed `Project` entity.
 7. Move more Fly/LangGraph producers onto scoped callbacks and session-event

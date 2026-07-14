@@ -201,6 +201,7 @@ function main(): void {
       const previousMigrations = migrationFiles.slice(0, -1);
       const previousMarkerId = "previous-baseline-managed-state";
       const previousTriggerId = "previous-baseline-trigger";
+      const previousArtifactId = "previous-baseline-artifact";
       applyMigrationPrefix(previousState, tempRoot, previousMigrations);
       executeJson(
         previousState,
@@ -209,6 +210,10 @@ function main(): void {
       executeJson(
         previousState,
         `INSERT INTO control_triggers (id, user_id, workspace_id, agent_id, pack_id, pack_trigger_id, kind, workflow_type, status, execution_json, config_json, input_json, max_concurrent_runs, created_by_user_id, created_at, updated_at) VALUES ('${previousTriggerId}', 'migration-user', 'migration-workspace', 'migration-agent', 'repo-analyst', 'scheduled-readiness', 'schedule', 'repo.readiness_report', 'paused', '{}', '{}', '{}', 1, 'migration-user', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z') RETURNING id`,
+      );
+      executeJson(
+        previousState,
+        `INSERT INTO control_artifacts (id, user_id, workspace_id, kind, uri, data_json, created_at) VALUES ('${previousArtifactId}', 'migration-user', 'migration-workspace', 'report', 'artifact://${previousArtifactId}', '{}', '2026-01-01T00:00:00.000Z') RETURNING id`,
       );
       applyMigrations(previousState);
       applyMigrations(previousState);
@@ -237,6 +242,25 @@ function main(): void {
       ) {
         throw new Error(
           "Upgrading the previous trigger baseline did not preserve the trigger with empty webhook credentials.",
+        );
+      }
+
+      const upgradedArtifact = executeJson<{
+        storage_provider: string;
+        retention_class: string;
+        expires_at: string | null;
+      }>(
+        previousState,
+        `SELECT storage_provider, retention_class, expires_at FROM control_artifacts WHERE id = '${previousArtifactId}'`,
+      );
+      if (
+        upgradedArtifact.length !== 1 ||
+        upgradedArtifact[0]?.storage_provider !== "external" ||
+        upgradedArtifact[0]?.retention_class !== "standard" ||
+        upgradedArtifact[0]?.expires_at !== "2026-04-01T00:00:00.000Z"
+      ) {
+        throw new Error(
+          "Upgrading the previous artifact baseline did not apply safe storage and retention defaults.",
         );
       }
 

@@ -66,6 +66,18 @@ export const examplePack = defineAgentPack({
     requiresSecrets: false,
     productionGate: "none",
   },
+  connections: [
+    {
+      id: "example.public-data",
+      provider: "example",
+      principal: "none",
+      credentialClass: "none",
+      custody: "none",
+      required: true,
+      toolIds: ["example.lookup"],
+      scopes: [],
+    },
+  ],
   context: [
     {
       id: "example.evidence",
@@ -143,8 +155,17 @@ key. Pack installation never grants credentials, model exposure, trigger
 authority, or mutation rights. Validation rejects non-serializable values,
 invalid references, duplicate identifiers, and non-positive limits.
 
-Connections, secret classes, decision extensions, policy defaults, migrations,
-and remote installation remain future contract work.
+Connection descriptors are now part of Pack API v2. They bind declared tools
+to a provider, principal, credential class, scopes, required/optional posture,
+and either `none` or `external_broker` custody. Public no-auth descriptors are
+active metadata today. Credentialed descriptors are declaration-only: they
+must name external broker custody and a production connection gate, and the
+workbench projects them into a secret-free `authorization_required` status.
+No Pack receives tokens or broad broker credentials.
+
+Actual OAuth/API-key custody, authorization completion, refresh and revocation
+workers, connection health persistence, decision extensions, policy defaults,
+migrations, and remote installation remain future contract work.
 
 Pack-owned descriptors compose into generic workbench surfaces. They do not add
 unscoped routes, arbitrary executable uploads, domain tables, or private
@@ -195,15 +216,33 @@ in the background. Legacy and non-pack agents use the generic welcome.
 
 ## Adding A Pack
 
-1. Add `agent-packs/<pack-id>/index.ts` and `prompt.xml`.
-2. Define the manifest with `defineAgentPack()` and export it from the pack
-   index.
-3. Register the pack in `agent-packs/index.ts`.
-4. If it has a runnable workflow, add one shared workflow-catalog descriptor
+Start with the conservative Pack API v2 scaffold:
+
+```bash
+pnpm agent-packs:create --id trade-watcher --name "Trade Watcher" --dry-run
+pnpm agent-packs:create --id trade-watcher --name "Trade Watcher"
+```
+
+The command validates the id/name before writing, refuses to overwrite an
+existing directory or registration, creates matching `index.ts` and
+`prompt.xml` files, and registers the pack. The starter is deliberately
+read-only, secret-free, disabled from model tool use, resource-bounded, and
+equipped with a static eval and health declaration. Replace its placeholder
+purpose and remove the optional `repo.snapshot` declaration if it does not fit.
+Add connection descriptors before introducing a provider-backed tool; a
+credentialed descriptor does not become usable until a broker adapter and
+health contract exist.
+
+Then:
+
+1. Refine the generated manifest and prompt together.
+2. If it has a runnable workflow, add one shared workflow-catalog descriptor
    and one exhaustive Worker handler.
-5. Add report-derivation, authorization, retry, artifact-preview, and input
-   bound tests.
-6. Run:
+3. Register every tool in the runtime catalog and keep model exposure off until
+   policy explicitly allows it.
+4. Add report-derivation, authorization, retry, artifact-preview, resource-bound,
+   and input-bound tests.
+5. Run:
 
 ```bash
 pnpm agent-packs:validate

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   connectionAuthForTool,
+  connectionAuthForPackTool,
   connectionAuthorizationRequired,
   noConnectionAuthRequired,
 } from "./connection-auth";
@@ -24,6 +25,32 @@ describe("connection auth brokerage", () => {
       principal: "none",
       tokenRefresh: "not_applicable",
     });
+  });
+
+  it("projects credentialed Pack descriptors into a secret-free authorization requirement", () => {
+    const auth = connectionAuthForPackTool("broker.positions.read", [
+      {
+        id: "broker.user-account",
+        provider: "example-broker",
+        principal: "user",
+        credentialClass: "oauth2",
+        custody: "external_broker",
+        required: true,
+        toolIds: ["broker.positions.read"],
+        scopes: ["positions:read"],
+      },
+    ]);
+
+    expect(auth).toMatchObject({
+      required: true,
+      status: "authorization_required",
+      principal: "user",
+      connectionName: "broker.user-account",
+      tokenRefresh: "brokered",
+      toolFilter: "connection_scoped",
+      approvalOrder: "connection_before_policy",
+    });
+    expect(JSON.stringify(auth)).not.toMatch(/oauth|positions:read|tokenValue|secret/i);
   });
 
   it("defines the future authorization-required event shape without secrets", () => {

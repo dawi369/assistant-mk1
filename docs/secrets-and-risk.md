@@ -16,13 +16,15 @@ Secrets must be:
 
 Secrets include model keys, account keys, API tokens, webhook signing keys, OAuth refresh tokens, and any credential that can spend money, move assets, mutate production systems, or access private data.
 
-Connection auth brokering v0 is metadata-only. Tool summaries and capability
-decisions expose a compact `connectionAuth` posture that distinguishes whether
-a tool needs an external connection, which principal would own it, whether token
-refresh is brokered, how tool filters apply, and whether connection
-authorization must happen before policy approval. Current tools report
-`not_required`; no OAuth flow, encrypted credential store, token refresh worker,
-or browser-visible secret surface is added in this slice.
+Connection auth brokering is metadata-only. Pack API v2 may declare provider,
+principal, credential class, scopes, tool bindings, and external-broker custody.
+Tool summaries and capability decisions expose only the compact
+`connectionAuth` posture: whether authorization is required, which principal
+owns it, whether refresh is brokered, how tool filters apply, and whether
+connection authorization precedes policy approval. Public tools report
+`not_required`; credentialed declarations report `authorization_required`.
+There is no OAuth flow, encrypted credential store, refresh/revocation worker,
+or browser-visible secret surface.
 
 ## Execution Modes
 

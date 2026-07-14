@@ -39,6 +39,8 @@ These files should stay aligned with code changes:
 - `release-readiness.md`: 1.0 read-only baseline, deferred gates, and release evidence.
 - `level-2-conformance.md`: executable Level 0-2 guarantees and release evidence mapping.
 - `level-3-conformance.md`: executable read-only background-work guarantees and evidence mapping.
+- `unattended-operations.md`: Level 3 enablement, alert/replay recovery, soak,
+  and escalation runbook.
 - `deployment-vercel.md` and `deployment-fly.md`: deployment runbooks.
 - `diagrams/current-implementation-topology.mmd`: current topology source.
 

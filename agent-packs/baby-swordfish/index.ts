@@ -131,6 +131,18 @@ export const babySwordfishPack = defineAgentPack({
     requiresSecrets: false,
     productionGate: "none",
   },
+  connections: [
+    {
+      id: "swordfish.public-runtime",
+      provider: "swordfish",
+      principal: "none",
+      credentialClass: "none",
+      custody: "none",
+      required: false,
+      toolIds: ["swordfish.runtime.overview", "swordfish.symbol.snapshot", "swordfish.bars.range"],
+      scopes: [],
+    },
+  ],
   context: [
     {
       id: "swordfish.public_runtime",

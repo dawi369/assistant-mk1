@@ -3,9 +3,9 @@
 Document status: current release contract.
 
 The Assistant-mk1 preview is an authenticated, tenant-scoped, read-only agent
-workbench. Remote D1 state and D1-backed artifact metadata are disposable. This
-release makes no commitment to upgrade-safe customer-data retention, external
-mutation, encrypted credential brokerage, or artifact blob storage.
+workbench. Remote D1 and R2 state are disposable. This release makes no
+commitment to upgrade-safe customer-data retention, external mutation,
+encrypted credential brokerage, or hosted artifact recovery.
 
 ## Included
 
@@ -19,6 +19,8 @@ mutation, encrypted credential brokerage, or artifact blob storage.
 - Searchable execution history, metadata artifacts, approvals, cancellation,
   retry for supported pack workflows, and reconnect recovery.
 - Unit, contract, service-boundary, and browser release checks.
+- Local R2 create/read/export/expiry conformance behind the Vercel and
+  Cloudflare authorization boundary.
 - Vercel, Cloudflare, Fly, WorkOS, Sentry, and local-development runbooks.
 
 ## Release Evidence
@@ -32,6 +34,7 @@ mutation, encrypted credential brokerage, or artifact blob storage.
 | Level 3 local conformance    | `pnpm conformance:level3` and `docs/level-3-conformance.md`                 |
 | Docker boundary              | `pnpm verify:docker`                                                        |
 | Hosted public boundaries     | `pnpm acceptance:hosted:public`                                             |
+| Hosted Level 3 preflight     | `pnpm acceptance:hosted:level3:preflight`                                   |
 | Dependency security          | `pnpm verify:security`                                                      |
 | Cloudflare authorization     | `pnpm smoke:cloudflare-authz` and `pnpm smoke:cloudflare-membership-policy` |
 | Tenant isolation             | `pnpm smoke:tenant-isolation` and the boundary smokes                       |
@@ -43,17 +46,19 @@ mutation, encrypted credential brokerage, or artifact blob storage.
 
 The following are intentionally outside the 1.0 read-only baseline:
 
-- backup/restore, retention automation, and retained customer history
+- hosted D1 backup/restore evidence, R2 disaster recovery, and retained customer history
 - hosted Level 3 conformance and the broader unattended-production operations gate
 - encrypted credential custody and refresh brokerage
 - mutation-capable tools and external side effects
-- R2 artifact blobs, export, and deletion workflows
+- streaming exports and executable deletion including Durable Objects
 - plugin marketplace and multi-region deployment
 
-Forward-only D1 migrations are implemented. Remote D1 remains development
-validation state until the remaining backup, retention, export, and deletion
-gates in `docs/migrations-and-retention.md` are implemented. A release must not
-describe that state as retained customer history.
+Forward-only D1 migrations, a deterministic D1 backup/restore verifier, and
+bounded artifact/event/trace retention are implemented. Remote D1 remains
+development validation state until hosted restore evidence plus the remaining
+R2 recovery, export, and deletion gates in `docs/migrations-and-retention.md`
+are implemented. A release must not describe that state as retained customer
+history.
 
 ## Preview Release Checklist
 

@@ -205,6 +205,107 @@ test.describe.serial("Level 3 executable conformance", () => {
     await expect(page.getByText("scheduled-readiness", { exact: true })).toBeVisible();
     await expect(page.getByText("readiness-requested", { exact: true })).toBeVisible();
     await expect(page.getByText("Recent dispatches", { exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Operator alerts" })).toBeVisible();
+    const operatorAlert = page.locator(
+      '[data-testid="operator-alert-row"][data-alert-id="e2e-operator-alert"]',
+    );
+    await expect(operatorAlert).toContainText("level3_soak_fixture");
+    await expect(operatorAlert).toContainText("failed");
+    await operatorAlert.getByRole("button", { name: "Retry delivery" }).click();
+    await expect
+      .poll(async () => {
+        const response = await page.request.get("/api/workbench/operator-alerts?limit=25");
+        const body = (await response.json()) as {
+          alerts?: Array<{ id: string; deliveryStatus: string; deliveryAttempts: number }>;
+        };
+        return body.alerts?.find((alert) => alert.id === "e2e-operator-alert");
+      })
+      .toMatchObject({ deliveryStatus: "pending", deliveryAttempts: 0 });
+    await operatorAlert.getByRole("button", { name: "Resolve" }).click();
+    await expect
+      .poll(async () => {
+        const response = await page.request.get("/api/workbench/operator-alerts?limit=25");
+        const body = (await response.json()) as {
+          alerts?: Array<{ id: string; status: string }>;
+        };
+        return body.alerts?.find((alert) => alert.id === "e2e-operator-alert")?.status;
+      })
+      .toBe("resolved");
+
+    const artifactContent = "Level 3 retained artifact service-boundary evidence.";
+    const createArtifact = await page.request.post("/api/workbench/artifacts", {
+      data: {
+        kind: "level3_conformance_report",
+        title: "Level 3 retained artifact",
+        mimeType: "text/plain",
+        contentBase64: Buffer.from(artifactContent).toString("base64"),
+        data: { testId: "level3-artifact-lifecycle" },
+      },
+    });
+    expect(createArtifact.status()).toBe(201);
+    const createdArtifact = (await createArtifact.json()) as {
+      artifact?: { id: string; contentSha256: string; retentionClass: string };
+    };
+    expect(createdArtifact.artifact).toMatchObject({
+      contentSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+      retentionClass: "standard",
+    });
+    const artifactId = createdArtifact.artifact!.id;
+    const artifactRead = await page.request.get(
+      `/api/workbench/artifacts/${encodeURIComponent(artifactId)}/content`,
+    );
+    expect(artifactRead.ok()).toBe(true);
+    expect(await artifactRead.text()).toBe(artifactContent);
+
+    const artifactHistory = await page.request.get("/api/workbench/history/artifacts?limit=25");
+    expect(artifactHistory.ok()).toBe(true);
+    expect(await artifactHistory.json()).toMatchObject({
+      artifacts: expect.arrayContaining([
+        expect.objectContaining({
+          id: artifactId,
+          storageProvider: "r2",
+          contentSha256: createdArtifact.artifact!.contentSha256,
+          retentionClass: "standard",
+          expiresAt: expect.any(String),
+        }),
+      ]),
+    });
+
+    const workspaceExport = await page.request.get("/api/workbench/data-export");
+    expect(workspaceExport.ok()).toBe(true);
+    expect(await workspaceExport.json()).toMatchObject({
+      artifactBlobs: expect.arrayContaining([
+        expect.objectContaining({
+          artifactId,
+          contentSha256: createdArtifact.artifact!.contentSha256,
+          contentBase64: Buffer.from(artifactContent).toString("base64"),
+        }),
+      ]),
+    });
+
+    const retentionPolicy = await page.request.patch("/api/workbench/retention-policy", {
+      data: {
+        artifactRetentionDays: 1,
+        operationalEventRetentionDays: 30,
+        runtimeTraceRetentionDays: 14,
+      },
+    });
+    expect(retentionPolicy.ok()).toBe(true);
+    const retentionTick = await request.get(
+      `${workerOrigin}/cdn-cgi/handler/scheduled?cron=*+*+*+*+*&time=${Date.now() + 2 * 24 * 60 * 60 * 1000}&format=json`,
+    );
+    expect(retentionTick.ok()).toBe(true);
+    await expect
+      .poll(
+        async () =>
+          (
+            await page.request.get(
+              `/api/workbench/artifacts/${encodeURIComponent(artifactId)}/content`,
+            )
+          ).status(),
+        { timeout: 10_000 },
+      )
+      .toBe(404);
 
     const otherHeaders = {
       authorization: "Bearer e2e-control-plane-token",
@@ -227,6 +328,14 @@ test.describe.serial("Level 3 executable conformance", () => {
           `${workerOrigin}/trigger-dispatches/${encodeURIComponent(manualDispatch.id)}`,
           { headers: otherHeaders },
         )
+      ).status(),
+    ).toBe(404);
+    expect(
+      (
+        await request.patch(`${workerOrigin}/admin/operator-alerts/e2e-operator-alert`, {
+          headers: otherHeaders,
+          data: { status: "resolved" },
+        })
       ).status(),
     ).toBe(404);
   });

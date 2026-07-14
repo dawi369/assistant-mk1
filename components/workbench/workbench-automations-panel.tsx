@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  BellRingIcon,
+  CheckCircle2Icon,
   Clock3Icon,
   CopyIcon,
   ExternalLinkIcon,
@@ -22,8 +24,10 @@ import {
 } from "@/components/workbench/dev-monitor-primitives";
 import type {
   AgentPackTemplateMetadata,
+  CloudflareOperatorAlertsResponse,
   CloudflareTriggerDispatchesResponse,
   CloudflareTriggersResponse,
+  OperatorAlertSummary,
   TriggerDispatchSummary,
   TriggerSummary,
 } from "@/lib/workbench/workbench-types";
@@ -32,7 +36,12 @@ import { readJsonResponse } from "@/lib/workbench/read-json-response";
 
 const triggersPath = "/api/workbench/triggers";
 const dispatchesPath = "/api/workbench/trigger-dispatches";
+const operatorAlertsPath = "/api/workbench/operator-alerts";
 const sectionClass = "border-border rounded-lg border bg-background";
+const alertSeverityTone = (severity: OperatorAlertSummary["severity"]) =>
+  severity === "critical" ? "failed" : "queued";
+const alertDeliveryTone = (status: OperatorAlertSummary["deliveryStatus"]) =>
+  status === "delivered" ? "completed" : status === "failed" ? "failed" : "queued";
 
 type DeclaredTrigger = NonNullable<AgentPackTemplateMetadata["triggers"]>[number];
 
@@ -49,6 +58,7 @@ export function WorkbenchAutomationsPanel({
 }) {
   const [triggers, setTriggers] = useState<TriggerSummary[]>([]);
   const [dispatches, setDispatches] = useState<TriggerDispatchSummary[]>([]);
+  const [alerts, setAlerts] = useState<OperatorAlertSummary[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -64,7 +74,7 @@ export function WorkbenchAutomationsPanel({
     if (!open || !pack) return;
     setLoading(true);
     try {
-      const [triggerBody, dispatchBody] = await Promise.all([
+      const [triggerBody, dispatchBody, alertBody] = await Promise.all([
         readJsonResponse<CloudflareTriggersResponse>(
           await fetch(`${triggersPath}?limit=100`, { cache: "no-store" }),
           "Failed to load automations",
@@ -73,9 +83,16 @@ export function WorkbenchAutomationsPanel({
           await fetch(`${dispatchesPath}?limit=10`, { cache: "no-store" }),
           "Failed to load automation activity",
         ),
+        canManage
+          ? readJsonResponse<CloudflareOperatorAlertsResponse>(
+              await fetch(`${operatorAlertsPath}?limit=25`, { cache: "no-store" }),
+              "Failed to load operator alerts",
+            )
+          : Promise.resolve({ alerts: [] } satisfies CloudflareOperatorAlertsResponse),
       ]);
       setTriggers(triggerBody.triggers ?? []);
       setDispatches(dispatchBody.dispatches ?? []);
+      setAlerts(alertBody.alerts ?? []);
       setInputDrafts((current) => {
         const next = { ...current };
         for (const trigger of triggerBody.triggers ?? []) {
@@ -89,7 +106,7 @@ export function WorkbenchAutomationsPanel({
     } finally {
       setLoading(false);
     }
-  }, [open, pack]);
+  }, [canManage, open, pack]);
 
   useEffect(() => {
     void load();
@@ -205,6 +222,44 @@ export function WorkbenchAutomationsPanel({
       window.setTimeout(() => void load(), 1200);
     } catch (replayError) {
       setError(replayError instanceof Error ? replayError.message : "Failed to replay automation");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const updateAlert = async (alert: OperatorAlertSummary, status: "acknowledged" | "resolved") => {
+    setBusyId(alert.id);
+    setError(null);
+    try {
+      await readJsonResponse<CloudflareOperatorAlertsResponse>(
+        await fetch(`${operatorAlertsPath}/${encodeURIComponent(alert.id)}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ status }),
+        }),
+        `Failed to mark alert ${status}`,
+      );
+      await load();
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : "Failed to update alert");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const retryAlertDelivery = async (alert: OperatorAlertSummary) => {
+    setBusyId(alert.id);
+    setError(null);
+    try {
+      await readJsonResponse<CloudflareOperatorAlertsResponse>(
+        await fetch(`${operatorAlertsPath}/${encodeURIComponent(alert.id)}/retry-delivery`, {
+          method: "POST",
+        }),
+        "Failed to retry alert delivery",
+      );
+      await load();
+    } catch (retryError) {
+      setError(retryError instanceof Error ? retryError.message : "Failed to retry alert delivery");
     } finally {
       setBusyId(null);
     }
@@ -374,6 +429,87 @@ export function WorkbenchAutomationsPanel({
           </div>
         ) : null}
       </div>
+
+      {canManage ? (
+        <>
+          <div className="border-border border-t px-4 py-3">
+            <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide">
+              <BellRingIcon className="size-3.5" /> Operator alerts
+            </h3>
+            <p className="text-muted-foreground mt-1 text-xs">
+              Durable unattended failures remain visible until an operator resolves them.
+            </p>
+          </div>
+          <div className="divide-border divide-y">
+            {alerts.map((alert) => (
+              <div
+                key={alert.id}
+                data-testid="operator-alert-row"
+                data-alert-id={alert.id}
+                className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusPill status={alert.status} tone={alertSeverityTone(alert.severity)} />
+                    <StatusPill
+                      status={alert.deliveryStatus}
+                      tone={alertDeliveryTone(alert.deliveryStatus)}
+                    />
+                    <span className="font-mono text-xs">{alert.code}</span>
+                  </div>
+                  <p className="mt-1 text-sm">{alert.summary}</p>
+                  <p className="text-muted-foreground mt-1 truncate text-xs">
+                    {alert.targetType ?? "runtime"}
+                    {alert.targetId ? ` · ${alert.targetId}` : ""} · {formatTime(alert.createdAt)}
+                    {alert.deliveryAttempts ? ` · ${alert.deliveryAttempts} delivery attempts` : ""}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {alert.deliveryStatus === "failed" && alert.status !== "resolved" ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={busyId === alert.id}
+                      onClick={() => void retryAlertDelivery(alert)}
+                    >
+                      <RotateCcwIcon /> Retry delivery
+                    </Button>
+                  ) : null}
+                  {alert.status === "open" ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={busyId === alert.id}
+                      onClick={() => void updateAlert(alert, "acknowledged")}
+                    >
+                      Acknowledge
+                    </Button>
+                  ) : null}
+                  {alert.status !== "resolved" ? (
+                    <Button
+                      size="sm"
+                      disabled={busyId === alert.id}
+                      onClick={() => void updateAlert(alert, "resolved")}
+                    >
+                      {busyId === alert.id ? (
+                        <Loader2Icon className="animate-spin" />
+                      ) : (
+                        <CheckCircle2Icon />
+                      )}
+                      Resolve
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+            {!alerts.length ? (
+              <div className="p-4">
+                <EmptyPanelText>No operator alerts for this workspace.</EmptyPanelText>
+              </div>
+            ) : null}
+          </div>
+        </>
+      ) : null}
 
       <div className="border-border border-t px-4 py-3">
         <h3 className="text-xs font-semibold uppercase tracking-wide">Recent dispatches</h3>

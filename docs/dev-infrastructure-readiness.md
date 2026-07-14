@@ -379,40 +379,34 @@ resolver. `demo.inspect` is exposed only for dry-run observe workflows. This is
 the server-side seam that future Cloudflare/Fly tool execution should preserve;
 it is not a durable tool registry or permission store yet.
 
-## Future Cloudflare Resources
+## Artifact R2 Resource
 
-The Worker and D1 resources above are now the remote dev baseline. Do not create
-R2, Durable Object, Access, or production auth resources until the first
-remote-backed repository group is explicitly scoped.
+Wrangler now declares `ARTIFACTS` with hosted bucket name
+`assistant-mk1-dev-artifacts` and local preview name
+`assistant-mk1-local-artifacts`. Local development and Level 3 conformance use
+Wrangler's isolated R2 persistence. The hosted bucket is not created by normal
+development or verification commands.
 
-Planned dev resource names:
+The object key is
+`tenants/<userId>/<workspaceId>/artifacts/<artifactId>`. Cloudflare alone owns
+the binding; Fly/LangGraph do not receive broad R2 credentials. D1 stores the
+provider, key, SHA-256, size, retention class, expiry, and tombstone. Reads and
+exports re-authorize the tenant through Cloudflare.
 
-- R2 bucket: `assistant-mk1-dev-artifacts`
-- Durable Object namespace: `ASSISTANT_MK1_DEV_AGENTS`
+Before the first hosted R2 deployment:
 
-Planned bindings:
-
-- `ARTIFACTS` for R2 artifact blobs.
-- `AGENTS` for per-agent hot coordination state.
-
-## Provisioning Gates
-
-Before creating additional Cloudflare resources, define:
-
-- Which `AgentFrameworkDataClient` repository group is implemented first.
-- The richer production authorization policy beyond current WorkOS-backed
-  membership policy and agent routing.
-- The minimum D1 tables or Durable Object storage required for that repository
-  group.
-- The R2 object key convention for artifact metadata produced by the demo slice.
-- A smoke command that proves two dev tenants cannot read each other's state.
+- export/checksum remote D1 and apply migration `0005`;
+- create `assistant-mk1-dev-artifacts` in the correct Cloudflare account;
+- deploy the Worker only after `pnpm release:check` passes;
+- prove create/read/export/expiry and cross-tenant denial on the deployed commit;
+- configure bucket recovery/versioning and perform a restore drill.
 
 ## Out Of Scope For This Step
 
 - Production authorization policy beyond WorkOS sign-in.
 - Secret custody implementation.
-- R2 schema/resource provisioning.
+- Hosted R2 resource provisioning and restore evidence.
 - Durable Object provisioning.
 - Direct D1/R2 access from Fly or LangGraph workers.
 - Mutation-capable tools.
-- Cloudflare Agent, R2, or Durable Object deployment.
+- New Cloudflare Agent or Durable Object deployment outside the existing bindings.

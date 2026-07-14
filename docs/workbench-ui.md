@@ -369,7 +369,8 @@ Next UI targets:
 - Customer-facing run/status strip only when a real workflow produces state
   richer than the compact chat hint.
 - Richer artifact/history surfaces beyond metadata summaries: previews,
-  filters, export/delete behavior, and R2-backed blobs after retention gates.
+  filters, and user-facing export/delete behavior over the bounded D1/R2
+  lifecycle API.
 - Chat-side approval display through assistant-ui tool rendering when a
   model-side workflow needs approve/deny/resume.
 - Broader policy visibility for durable limits, cooldowns, richer approvals,

@@ -3,6 +3,7 @@ import {
   type AgentPackArtifactRenderer,
   type AgentPackCapabilityLevel,
   type AgentPackCompatibility,
+  type AgentPackConnectionDescriptor,
   type AgentPackContextSource,
   type AgentPackDeclaredTool,
   type AgentPackEval,
@@ -80,6 +81,7 @@ export type AgentPackTemplateMetadata = {
   workflows: AgentPackWorkflow[];
   ui: AgentPackUiHints;
   risk: AgentPackRisk;
+  connections: AgentPackConnectionDescriptor[];
   context: AgentPackContextSource[];
   managedState: AgentPackManagedStateDescriptor[];
   triggers: AgentPackTrigger[];
@@ -143,6 +145,11 @@ const toPackTemplate = (pack: LocalAgentPackManifest): AgentBehaviorTemplate => 
       },
     },
     risk: { ...pack.risk },
+    connections: pack.connections.map((connection) => ({
+      ...connection,
+      toolIds: [...connection.toolIds],
+      scopes: [...connection.scopes],
+    })),
     context: pack.context.map((source) => ({ ...source })),
     managedState: pack.managedState.map((descriptor) => ({
       ...descriptor,

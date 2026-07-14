@@ -19,8 +19,11 @@ All remote D1 records and metadata artifacts must be treated as disposable; no
 upgrade-safe retention is promised between preview versions.
 
 The implemented surface is an authenticated, read-only workbench. External
-mutation, encrypted credential brokerage, artifact blob storage, and retained
-customer-data migrations remain explicit production gates.
+mutation, encrypted credential brokerage, hosted artifact recovery, and
+upgrade-safe retained customer-data migrations remain explicit production
+gates. Mediated D1/R2 artifact custody is implemented and exercised locally;
+the preview still promises disposable data until hosted restore and deletion
+evidence exists.
 
 ## Product Tour
 
@@ -42,7 +45,10 @@ tenant scope are visible outside the model conversation.
 ### Agent Operations
 
 - Code-first Agent Pack API v2 with behavior, tools, workflows, managed state,
-  read-only schedules/webhooks, risk, health, eval, and resource metadata.
+  read-only schedules/webhooks, connection declarations, risk, health, eval,
+  and resource metadata.
+- Durable unattended-failure alerts, bounded retention, and deterministic D1
+  backup/restore evidence.
 - Current-agent Tools separates user-run workflows, agent-only tools, and
   workflow-internal adapters.
 - Typed read-only workflows with bounded inputs and inspectable artifacts.
@@ -137,6 +143,7 @@ operators can reuse or instantiate the current pack version from Admin without
 mutating older agent snapshots.
 
 ```bash
+pnpm agent-packs:create --id my-agent --name "My Agent" --dry-run
 pnpm agent-packs:validate
 pnpm agent-packs:inspect --pack repo-analyst
 pnpm agent-packs:smoke --pack repo-analyst # static manifest/catalog mapping smoke
@@ -185,8 +192,10 @@ Deploy Cloudflare and Fly before a Vercel release that depends on them:
 - [Cloudflare and local infrastructure](docs/dev-infrastructure-readiness.md)
 - [Fly](docs/deployment-fly.md)
 
-Remote D1 records and D1-backed artifact metadata are disposable preview state.
-Forward-only migrations are implemented; retention gates remain tracked in
+Remote D1 and R2 records remain disposable preview state. Forward-only
+migrations, bounded artifact/event/trace retention, a scoped D1/R2 export, and
+a deterministic D1 backup/restore verifier are implemented; hosted R2 recovery
+and complete export/deletion gates remain tracked in
 [Migrations and Retention](docs/migrations-and-retention.md).
 
 ## Contributing and Security

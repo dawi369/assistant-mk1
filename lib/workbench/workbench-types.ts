@@ -1233,6 +1233,72 @@ export type CloudflareTriggersResponse = {
   error?: string;
 };
 
+export type OperatorAlertSummary = {
+  id: Id;
+  severity: "warning" | "critical";
+  code: string;
+  summary: string;
+  targetType?: string;
+  targetId?: Id;
+  status: "open" | "acknowledged" | "resolved";
+  deliveryStatus: "pending" | "delivered" | "failed";
+  deliveryAttempts: number;
+  lastDeliveryAt?: string;
+  data: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CloudflareOperatorAlertsResponse = {
+  ok?: boolean;
+  alerts?: OperatorAlertSummary[];
+  alert?: {
+    id: Id;
+    status?: OperatorAlertSummary["status"];
+    deliveryStatus?: OperatorAlertSummary["deliveryStatus"];
+    updatedAt: string;
+  };
+  limit?: number;
+  error?: string;
+};
+
+export type CreateArtifactBlobInput = {
+  kind: string;
+  title?: string;
+  mimeType: string;
+  contentBase64: string;
+  retentionClass?: "standard";
+  data?: Record<string, unknown>;
+};
+
+export type CloudflareArtifactBlobResponse = {
+  ok?: boolean;
+  artifact?: {
+    id: Id;
+    kind: string;
+    uri: string;
+    title?: string;
+    mimeType: string;
+    sizeBytes: number;
+    contentSha256: string;
+    retentionClass: "standard";
+    createdAt: string;
+  };
+  error?: string;
+};
+
+export type CloudflareRetentionPolicyResponse = {
+  ok?: boolean;
+  policy?: {
+    artifactRetentionDays: number;
+    operationalEventRetentionDays: number;
+    runtimeTraceRetentionDays: number;
+    source: "default" | "workspace";
+    updatedAt?: string;
+  };
+  error?: string;
+};
+
 export type CloudflareTriggerDispatchesResponse = {
   ok?: boolean;
   dispatches?: TriggerDispatchSummary[];

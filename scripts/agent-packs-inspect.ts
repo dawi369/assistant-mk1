@@ -35,6 +35,12 @@ if (json) {
   console.log(
     `extensions: context=${result.pack.context.length} state=${result.pack.managedState.length} triggers=${result.pack.triggers.length} renderers=${result.pack.artifactRenderers.length} health=${result.pack.healthChecks.length} evals=${result.pack.evals.length}`,
   );
+  console.log(`connections: ${result.pack.connections.length}`);
+  for (const connection of result.pack.connections) {
+    console.log(
+      `- ${connection.id}: provider=${connection.provider} credential=${connection.credentialClass} custody=${connection.custody} required=${connection.required}`,
+    );
+  }
   console.log(
     `compatibility: workbench>=${result.pack.compatibility.minimumWorkbenchVersion} packApi=${result.pack.compatibility.packApi}`,
   );

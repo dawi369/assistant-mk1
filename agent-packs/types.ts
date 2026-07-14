@@ -133,6 +133,17 @@ export type AgentPackRisk = {
   productionGate: "none" | "mutation_gate" | string;
 };
 
+export type AgentPackConnectionDescriptor = {
+  id: string;
+  provider: string;
+  principal: "none" | "app" | "user";
+  credentialClass: "none" | "oauth2" | "api_key";
+  custody: "none" | "external_broker";
+  required: boolean;
+  toolIds: readonly string[];
+  scopes: readonly string[];
+};
+
 export type LocalAgentPackManifest = {
   apiVersion: 2;
   kind: "agent_pack";
@@ -151,6 +162,7 @@ export type LocalAgentPackManifest = {
   workflows: readonly AgentPackWorkflow[];
   ui: AgentPackUiHints;
   risk: AgentPackRisk;
+  connections: readonly AgentPackConnectionDescriptor[];
   context: readonly AgentPackContextSource[];
   managedState: readonly AgentPackManagedStateDescriptor[];
   triggers: readonly AgentPackTrigger[];

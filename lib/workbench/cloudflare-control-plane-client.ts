@@ -30,14 +30,18 @@ import type {
   ChatSessionResponse,
   ChatRuntimeSummaryResponse,
   CloudflareArtifactHistoryResponse,
+  CloudflareArtifactBlobResponse,
   CloudflareExecutionHistoryResponse,
   CloudflareExecutionHistoryRunResponse,
   ControlPlaneEventsResponse,
   CloudflareManagedStateResponse,
+  CloudflareOperatorAlertsResponse,
+  CloudflareRetentionPolicyResponse,
   CloudflareTriggerDispatchesResponse,
   CloudflareTriggersResponse,
   CreateTriggerDispatchInput,
   CreateTriggerInput,
+  CreateArtifactBlobInput,
   UpdateTriggerInput,
   WorkspaceContextResponse,
 } from "@/lib/workbench/workbench-types";
@@ -67,15 +71,19 @@ export type {
   ChatThreadsResponse,
   ChatThreadSummary,
   CloudflareArtifactHistoryResponse,
+  CloudflareArtifactBlobResponse,
   CloudflareExecutionHistoryResponse,
   CloudflareExecutionHistoryRunResponse,
   ControlPlaneEvent,
   ControlPlaneEventsResponse,
   CloudflareManagedStateResponse,
+  CloudflareOperatorAlertsResponse,
+  CloudflareRetentionPolicyResponse,
   CloudflareTriggerDispatchesResponse,
   CloudflareTriggersResponse,
   CreateTriggerDispatchInput,
   CreateTriggerInput,
+  CreateArtifactBlobInput,
   ExecutionHistoryRunSummary,
   ToolApprovalRequestSummary,
   TriggerDispatchSummary,
@@ -184,6 +192,15 @@ const requestControlPlane = async <T>(path: string, init?: RequestInit): Promise
   return (await response.json()) as T;
 };
 
+const requestControlPlaneResponse = async (path: string, init?: RequestInit) => {
+  const request = await controlPlaneRequest(path, init);
+  const response = await fetchWithTimeout(request.url, request.init);
+  if (!response.ok) {
+    throw new ControlPlaneRequestError(await parseErrorBody(response), response.status);
+  }
+  return response;
+};
+
 export const startCloudflareOwnedDemoRun = () =>
   requestControlPlane<CloudflareOwnedDemoRunResponse>("/workbench/demo-runs", {
     method: "POST",
@@ -270,6 +287,31 @@ export const getArtifactHistory = (limit = 25) =>
     `/workbench/history/artifacts?limit=${encodeURIComponent(String(limit))}`,
   );
 
+export const createCloudflareArtifactBlob = (input: CreateArtifactBlobInput) =>
+  requestControlPlane<CloudflareArtifactBlobResponse>("/workbench/artifacts", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+
+export const getCloudflareArtifactContentResponse = (artifactId: Id) =>
+  requestControlPlaneResponse(`/workbench/artifacts/${encodeURIComponent(artifactId)}/content`);
+
+export const getCloudflareWorkspaceDataExportResponse = () =>
+  requestControlPlaneResponse("/workbench/data-export");
+
+export const getCloudflareRetentionPolicy = () =>
+  requestControlPlane<CloudflareRetentionPolicyResponse>("/workbench/retention-policy");
+
+export const updateCloudflareRetentionPolicy = (input: {
+  artifactRetentionDays: number;
+  operationalEventRetentionDays: number;
+  runtimeTraceRetentionDays: number;
+}) =>
+  requestControlPlane<CloudflareRetentionPolicyResponse>("/workbench/retention-policy", {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+
 export const getCloudflareTriggers = (limit = 50) =>
   requestControlPlane<CloudflareTriggersResponse>(
     `/triggers?limit=${encodeURIComponent(String(limit))}`,
@@ -314,6 +356,26 @@ export const createCloudflareTriggerDispatch = (triggerId: Id, input: CreateTrig
 export const replayCloudflareTriggerDispatch = (dispatchId: Id) =>
   requestControlPlane<CloudflareTriggerDispatchesResponse>(
     `/trigger-dispatches/${encodeURIComponent(dispatchId)}/replay`,
+    { method: "POST" },
+  );
+
+export const getCloudflareOperatorAlerts = (limit = 25) =>
+  requestControlPlane<CloudflareOperatorAlertsResponse>(
+    `/admin/operator-alerts?limit=${encodeURIComponent(String(limit))}`,
+  );
+
+export const updateCloudflareOperatorAlert = (alertId: Id, status: "acknowledged" | "resolved") =>
+  requestControlPlane<CloudflareOperatorAlertsResponse>(
+    `/admin/operator-alerts/${encodeURIComponent(alertId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    },
+  );
+
+export const retryCloudflareOperatorAlertDelivery = (alertId: Id) =>
+  requestControlPlane<CloudflareOperatorAlertsResponse>(
+    `/admin/operator-alerts/${encodeURIComponent(alertId)}/retry-delivery`,
     { method: "POST" },
   );
 

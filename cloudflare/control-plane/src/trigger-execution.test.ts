@@ -61,6 +61,7 @@ const dispatch: ControlTriggerDispatchRow = {
 
 const makeEnv = (changes = 1) => {
   const calls: Array<{ query: string; values: unknown[] }> = [];
+  const batches: Array<Array<{ query: string; values: unknown[] }>> = [];
   const env = {
     DB: {
       prepare(query: string): D1PreparedStatement {
@@ -84,12 +85,14 @@ const makeEnv = (changes = 1) => {
           },
         };
       },
-      async batch() {
-        return [];
+      async batch(statements: D1PreparedStatement[]) {
+        const batchCalls = calls.slice(-statements.length);
+        batches.push(batchCalls);
+        return statements.map(() => ({ success: true, meta: { changes } }));
       },
     },
   } satisfies Pick<Env, "DB">;
-  return { env: env as Env, calls };
+  return { env: env as Env, calls, batches };
 };
 
 describe("trigger dispatch execution", () => {
@@ -114,16 +117,20 @@ describe("trigger dispatch execution", () => {
   });
 
   it("fails a leased dispatch when the callback boundary is not configured", async () => {
-    const { env, calls } = makeEnv();
+    const { env, batches } = makeEnv();
     const result = await executeLeasedTriggerDispatch(env, {
       trigger,
       dispatch,
     } satisfies LeasedTriggerDispatch);
 
     expect(result).toEqual({ ok: false, code: "trigger_callback_unavailable" });
-    expect(calls.at(-1)?.query).toContain("SET status = 'failed'");
-    expect(calls.at(-1)?.query).toContain("lease_owner = ? AND attempt_count = ?");
-    expect(calls.at(-1)?.values[0]).toContain("trigger_callback_unavailable");
-    expect(calls.at(-1)?.values.slice(-2)).toEqual(["scheduler-1", 1]);
+    expect(batches[0]?.map((call) => call.query)).toEqual([
+      expect.stringContaining("SET status = 'failed'"),
+      expect.stringContaining("INSERT INTO control_audit_events"),
+      expect.stringContaining("INSERT OR IGNORE INTO control_operator_alerts"),
+    ]);
+    expect(batches[0]?.[0]?.query).toContain("lease_owner = ? AND attempt_count = ?");
+    expect(batches[0]?.[0]?.values[0]).toContain("trigger_callback_unavailable");
+    expect(batches[0]?.[0]?.values.slice(-2)).toEqual(["scheduler-1", 1]);
   });
 });

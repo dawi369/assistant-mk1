@@ -132,6 +132,22 @@ export const babyPolymancerPack = defineAgentPack({
     requiresSecrets: false,
     productionGate: "none",
   },
+  connections: [
+    {
+      id: "polymarket.public-data",
+      provider: "polymarket",
+      principal: "none",
+      credentialClass: "none",
+      custody: "none",
+      required: true,
+      toolIds: [
+        "polymarket.market.search",
+        "polymarket.market.snapshot",
+        "polymarket.orderbook.snapshot",
+      ],
+      scopes: [],
+    },
+  ],
   context: [
     {
       id: "polymarket.public_market_data",

@@ -43,12 +43,16 @@ The checked-in Level 3 foundation currently provides:
 - Public webhook ids with a secret returned only at creation, only a hash stored
   in D1, constant-time verification, bounded normalized input, and idempotent
   dispatch creation.
+- Durable deduplicated operator alerts for immediate execution failures and
+  expired leases, with bounded signed HTTPS delivery and audited resolution.
+- Forward-only retained-data migrations, bounded artifact/event/trace retention,
+  deterministic D1 backup/restore evidence, and scoped preview export inventory.
 
 This is not yet a Level 3 release claim. Hosted schedule/webhook conformance,
-long-duration lease-renewal and soak evidence, alerting and exhausted-run
-operations, retained backup/restore, and an operator-ready unattended-production
-runbook remain gates. Trigger execution remains read-only and does not grant
-credentials or external mutation authority.
+long-duration lease-renewal and soak evidence, hosted alert receipt, R2 restore,
+streaming export, complete Durable Object deletion, and an operator-ready
+unattended-production runbook remain gates. Trigger execution remains read-only
+and does not grant credentials or external mutation authority.
 
 ## Agent Pack Composition
 

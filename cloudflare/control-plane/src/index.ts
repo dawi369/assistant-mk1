@@ -56,6 +56,15 @@ import {
   readVercelTimingHeaders,
 } from "./runtime-traces";
 import { handleWorkspaceContext } from "./workspace-context";
+import { handleExportWorkspaceData, handleWorkspaceDeletionPlan } from "./workspace-data-lifecycle";
+import {
+  handleCreateArtifactBlob,
+  handleGetArtifactBlob,
+  handleGetRetentionPolicy,
+  handleUpdateRetentionPolicy,
+  sweepExpiredArtifacts,
+  sweepExpiredOperationalData,
+} from "./artifact-lifecycle";
 import { handleCancelExecutionRun, handleRetryExecutionRun } from "./run-control";
 import {
   getExecutionHistoryRun,
@@ -75,6 +84,12 @@ import { WorkbenchThreadChatAgent } from "./thread-chat-agent";
 import { WorkbenchSessionAgent } from "./session-agent";
 import { handleGetManagedState, handleListManagedState } from "./managed-state";
 import { runTriggerSchedulerTick } from "./trigger-scheduler";
+import {
+  deliverPendingOperatorAlerts,
+  handleListOperatorAlerts,
+  handleRetryOperatorAlertDelivery,
+  handleUpdateOperatorAlert,
+} from "./operator-alerts";
 import { handleTriggerWebhookIngress } from "./trigger-webhook";
 import {
   handleCreateTrigger,
@@ -108,7 +123,12 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
   if (request.method === "GET" && url.pathname === "/health") {
     try {
       const database = await env.DB.prepare("SELECT 1 AS ok").first<{ ok: number }>();
-      if (database?.ok !== 1 || !env.WorkbenchThreadChatAgent || !env.WorkbenchSessionAgent) {
+      if (
+        database?.ok !== 1 ||
+        !env.ARTIFACTS ||
+        !env.WorkbenchThreadChatAgent ||
+        !env.WorkbenchSessionAgent
+      ) {
         return json({ ok: false, service: "assistant-mk1-control-plane" }, { status: 503 });
       }
       return json({ ok: true, service: "assistant-mk1-control-plane", storage: "d1" });
@@ -176,6 +196,39 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
 
   if (request.method === "GET" && url.pathname === "/admin/workspace-summary") {
     return handleAdminWorkspaceSummary(request, env, identity);
+  }
+
+  if (request.method === "GET" && url.pathname === "/admin/operator-alerts") {
+    return handleListOperatorAlerts(env, identity, url);
+  }
+
+  if (request.method === "GET" && url.pathname === "/workbench/data-export") {
+    return handleExportWorkspaceData(env, identity);
+  }
+
+  if (request.method === "GET" && url.pathname === "/workbench/data-deletion-plan") {
+    return handleWorkspaceDeletionPlan(env, identity);
+  }
+
+  const operatorAlertMatch = url.pathname.match(/^\/admin\/operator-alerts\/([^/]+)$/);
+  if (request.method === "PATCH" && operatorAlertMatch?.[1]) {
+    return handleUpdateOperatorAlert(
+      request,
+      env,
+      identity,
+      decodeURIComponent(operatorAlertMatch[1]),
+    );
+  }
+
+  const retryOperatorAlertMatch = url.pathname.match(
+    /^\/admin\/operator-alerts\/([^/]+)\/retry-delivery$/,
+  );
+  if (request.method === "POST" && retryOperatorAlertMatch?.[1]) {
+    return handleRetryOperatorAlertDelivery(
+      env,
+      identity,
+      decodeURIComponent(retryOperatorAlertMatch[1]),
+    );
   }
 
   if (request.method === "GET" && url.pathname === "/tools") {
@@ -328,6 +381,20 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
 
   if (request.method === "GET" && url.pathname === "/workbench/history/artifacts") {
     return listArtifactHistory(env, identity, url);
+  }
+
+  if (request.method === "POST" && url.pathname === "/workbench/artifacts") {
+    return handleCreateArtifactBlob(request, env, identity);
+  }
+
+  if (url.pathname === "/workbench/retention-policy") {
+    if (request.method === "GET") return handleGetRetentionPolicy(env, identity);
+    if (request.method === "PATCH") return handleUpdateRetentionPolicy(request, env, identity);
+  }
+
+  const artifactContentMatch = url.pathname.match(/^\/workbench\/artifacts\/([^/]+)\/content$/);
+  if (request.method === "GET" && artifactContentMatch?.[1]) {
+    return handleGetArtifactBlob(env, identity, decodeURIComponent(artifactContentMatch[1]));
   }
 
   if (request.method === "GET" && url.pathname === "/workbench/managed-state") {
@@ -530,10 +597,15 @@ export default Sentry.withSentry<Env>(
     },
     async scheduled(controller: WorkerScheduledController, env: Env, ctx: WorkerExecutionContext) {
       ctx.waitUntil(
-        runTriggerSchedulerTick(env, {
-          now: new Date(controller.scheduledTime),
-          leaseOwner: `cron:${controller.cron}:${controller.scheduledTime}`,
-        }),
+        Promise.all([
+          runTriggerSchedulerTick(env, {
+            now: new Date(controller.scheduledTime),
+            leaseOwner: `cron:${controller.cron}:${controller.scheduledTime}`,
+          }),
+          sweepExpiredArtifacts(env, { now: new Date(controller.scheduledTime) }),
+          sweepExpiredOperationalData(env, { now: new Date(controller.scheduledTime) }),
+          deliverPendingOperatorAlerts(env, { now: new Date(controller.scheduledTime) }),
+        ]),
       );
     },
   },

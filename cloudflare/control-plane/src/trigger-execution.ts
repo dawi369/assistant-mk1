@@ -4,9 +4,11 @@ import {
   type PackWorkflowType,
 } from "../../../agent-packs/workflow-catalog";
 import { parseDataJson } from "./http";
+import { prepareOperatorAlertStatement } from "./operator-alerts";
 import { TriggerDispatchLeaseLostError } from "./pack-workflow-lifecycle";
 import { packWorkflowHandlers } from "./pack-workflow-runtime";
 import {
+  createId,
   toJson,
   type AgentIdentity,
   type ControlTriggerDispatchRow,
@@ -109,14 +111,25 @@ const failUnfinishedDispatch = async (
   error: { code: string; message: string },
 ) => {
   const timestamp = new Date().toISOString();
-  await env.DB.prepare(
-    `UPDATE control_trigger_dispatches
-     SET status = 'failed', lease_owner = NULL, lease_expires_at = NULL,
-         error_json = ?, updated_at = ?
-     WHERE id = ? AND user_id = ? AND workspace_id = ?
-       AND status IN ('leased', 'running') AND lease_owner = ? AND attempt_count = ?`,
-  )
-    .bind(
+  const failureCondition = `EXISTS (
+    SELECT 1 FROM control_trigger_dispatches
+    WHERE id = ? AND user_id = ? AND workspace_id = ?
+      AND status = 'failed' AND updated_at = ?
+  )`;
+  const failureBindings = [
+    item.dispatch.id,
+    item.dispatch.user_id,
+    item.dispatch.workspace_id,
+    timestamp,
+  ];
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE control_trigger_dispatches
+       SET status = 'failed', lease_owner = NULL, lease_expires_at = NULL,
+           error_json = ?, updated_at = ?
+       WHERE id = ? AND user_id = ? AND workspace_id = ?
+         AND status IN ('leased', 'running') AND lease_owner = ? AND attempt_count = ?`,
+    ).bind(
       toJson(error),
       timestamp,
       item.dispatch.id,
@@ -124,8 +137,38 @@ const failUnfinishedDispatch = async (
       item.dispatch.workspace_id,
       item.dispatch.lease_owner,
       item.dispatch.attempt_count,
-    )
-    .run();
+    ),
+    env.DB.prepare(
+      `INSERT INTO control_audit_events (
+         id, user_id, workspace_id, action, summary, target_type, target_id, data_json, created_at
+       ) SELECT ?, ?, ?, 'trigger.dispatch.failed', ?, 'triggerDispatch', ?, ?, ?
+       WHERE ${failureCondition}`,
+    ).bind(
+      createId("cf-audit"),
+      item.dispatch.user_id,
+      item.dispatch.workspace_id,
+      error.message,
+      item.dispatch.id,
+      toJson({ triggerId: item.trigger.id, errorCode: error.code }),
+      timestamp,
+      ...failureBindings,
+    ),
+    prepareOperatorAlertStatement(env, {
+      userId: item.dispatch.user_id,
+      workspaceId: item.dispatch.workspace_id,
+      agentId: item.dispatch.agent_id,
+      severity: "critical",
+      code: error.code,
+      summary: error.message,
+      targetType: "triggerDispatch",
+      targetId: item.dispatch.id,
+      dedupKey: `trigger-dispatch:${item.dispatch.id}:${error.code}`,
+      data: { triggerId: item.trigger.id, attemptCount: item.dispatch.attempt_count },
+      timestamp,
+      conditionSql: failureCondition,
+      conditionBindings: failureBindings,
+    }),
+  ]);
 };
 
 export const executeLeasedTriggerDispatch = async (env: Env, item: LeasedTriggerDispatch) => {

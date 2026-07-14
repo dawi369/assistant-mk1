@@ -128,6 +128,18 @@ export const repoAnalystPack = defineAgentPack({
     requiresSecrets: false,
     productionGate: "none",
   },
+  connections: [
+    {
+      id: "repository.local",
+      provider: "workbench",
+      principal: "none",
+      credentialClass: "none",
+      custody: "none",
+      required: true,
+      toolIds: ["repo.snapshot"],
+      scopes: [],
+    },
+  ],
   context: [
     {
       id: "repository.snapshot",

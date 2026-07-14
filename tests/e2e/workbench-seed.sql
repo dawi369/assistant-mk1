@@ -79,3 +79,17 @@ VALUES (
   '2026-07-09T20:05:00.000Z',
   '2026-07-09T20:05:00.000Z'
 );
+
+INSERT INTO control_operator_alerts (
+  id, user_id, workspace_id, agent_id, severity, code, summary, target_type,
+  target_id, status, dedup_key, delivery_status, delivery_attempts,
+  last_delivery_at, data_json, created_at, updated_at
+)
+VALUES (
+  'e2e-operator-alert', 'e2e-owner', 'e2e-workspace', 'e2e-agent', 'critical',
+  'level3_soak_fixture', 'A deterministic unattended failure requires operator recovery.',
+  'triggerDispatch', 'e2e-trigger-dispatch', 'open',
+  'e2e:operator-alert:level3-soak-fixture', 'failed', 5,
+  '2026-07-09T20:07:00.000Z', '{"fixture":true}',
+  '2026-07-09T20:07:00.000Z', '2026-07-09T20:07:00.000Z'
+);

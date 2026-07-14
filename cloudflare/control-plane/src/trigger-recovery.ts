@@ -1,4 +1,5 @@
 import { createId, toJson, type ControlTriggerDispatchRow, type Env } from "./types";
+import { prepareOperatorAlertStatement } from "./operator-alerts";
 
 const maximumRecoveryBatch = 25;
 
@@ -146,10 +147,29 @@ export const recoverExpiredTriggerDispatches = async (
         dispatch.id,
         timestamp,
       ),
+      prepareOperatorAlertStatement(env, {
+        userId: dispatch.user_id,
+        workspaceId: dispatch.workspace_id,
+        agentId: dispatch.agent_id,
+        severity: "critical",
+        code: error.code,
+        summary: error.message,
+        targetType: "triggerDispatch",
+        targetId: dispatch.id,
+        dedupKey: `trigger-dispatch:${dispatch.id}:${error.code}`,
+        data: { triggerId: dispatch.trigger_id, runId: dispatch.run_id },
+        timestamp,
+        conditionSql: `EXISTS (
+          SELECT 1 FROM control_trigger_dispatches
+          WHERE user_id = ? AND workspace_id = ? AND id = ?
+            AND status = 'failed' AND updated_at = ?
+        )`,
+        conditionBindings: [dispatch.user_id, dispatch.workspace_id, dispatch.id, timestamp],
+      }),
     );
 
     const results = await env.DB.batch(statements);
-    const dispatchUpdateIndex = statements.length - 3;
+    const dispatchUpdateIndex = statements.length - 4;
     if (results[dispatchUpdateIndex]?.meta?.changes) recovered += 1;
   }
 
