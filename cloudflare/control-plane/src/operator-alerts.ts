@@ -129,10 +129,11 @@ export const deliverPendingOperatorAlerts = async (
     });
     const signature = await hmacSha256Base64Url(secret, body);
     let succeeded = false;
+    let deliveryFailure: Record<string, unknown> | null = null;
     try {
       const response = await fetch(endpoint, {
         method: "POST",
-        redirect: "error",
+        redirect: "manual",
         signal: AbortSignal.timeout(deliveryTimeoutMs),
         headers: {
           "content-type": "application/json",
@@ -142,8 +143,26 @@ export const deliverPendingOperatorAlerts = async (
         body,
       });
       succeeded = response.ok;
-    } catch {
+      if (!succeeded) {
+        deliveryFailure = { reason: "receiver_rejected", status: response.status };
+      }
+    } catch (error) {
       succeeded = false;
+      deliveryFailure = {
+        reason:
+          error instanceof DOMException && error.name === "TimeoutError"
+            ? "timeout"
+            : "fetch_failed",
+        errorName: error instanceof Error ? error.name : "UnknownError",
+      };
+    }
+    if (deliveryFailure) {
+      console.warn("Operator alert delivery failed", {
+        alertId: row.id,
+        endpointOrigin: endpoint.origin,
+        attempt: row.delivery_attempts + 1,
+        ...deliveryFailure,
+      });
     }
 
     const result = await env.DB.prepare(

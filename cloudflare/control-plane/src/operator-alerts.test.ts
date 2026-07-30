@@ -108,7 +108,7 @@ describe("operator alerts", () => {
       new URL("https://alerts.example.test/ingest"),
       expect.objectContaining({
         method: "POST",
-        redirect: "error",
+        redirect: "manual",
         headers: expect.objectContaining({
           "x-assistant-mk1-alert-id": "alert-1",
           "x-assistant-mk1-alert-signature": expect.any(String),
@@ -122,6 +122,44 @@ describe("operator alerts", () => {
       "alert-1",
       0,
     ]);
+  });
+
+  it("does not follow receiver redirects and records redacted delivery diagnostics", async () => {
+    const select = statement({ results: [alert] });
+    const update = statement({ changes: 1 });
+    const prepare = vi.fn().mockReturnValueOnce(select.result).mockReturnValueOnce(update.result);
+    const fetchMock = vi.fn(async () => new Response(null, { status: 307 }));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    vi.stubGlobal("fetch", fetchMock);
+    const env = {
+      WORKBENCH_OPERATOR_ALERT_WEBHOOK_URL: "https://alerts.example.test/ingest",
+      WORKBENCH_OPERATOR_ALERT_SIGNING_SECRET: "operator-alert-secret-0001",
+      DB: { prepare, batch: vi.fn() },
+    } as unknown as Env;
+
+    const result = await deliverPendingOperatorAlerts(env, {
+      now: new Date("2026-07-12T00:01:00.000Z"),
+    });
+
+    expect(result).toEqual({ configured: true, inspected: 1, delivered: 0, failed: 1 });
+    expect(fetchMock).toHaveBeenCalledWith(
+      new URL("https://alerts.example.test/ingest"),
+      expect.objectContaining({ redirect: "manual" }),
+    );
+    expect(update.values).toEqual([
+      "failed",
+      "2026-07-12T00:01:00.000Z",
+      "2026-07-12T00:01:00.000Z",
+      "alert-1",
+      0,
+    ]);
+    expect(warn).toHaveBeenCalledWith("Operator alert delivery failed", {
+      alertId: "alert-1",
+      endpointOrigin: "https://alerts.example.test",
+      attempt: 1,
+      reason: "receiver_rejected",
+      status: 307,
+    });
   });
 
   it("updates alerts only inside the active admin tenant and writes audit evidence", async () => {
