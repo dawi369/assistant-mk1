@@ -165,6 +165,8 @@ pnpm conformance:level2       # executable Level 0-2 evidence report
 pnpm conformance:level3       # executable local Level 3 evidence report
 pnpm verify:docker            # non-root image and excluded-context proof
 pnpm acceptance:hosted:public # hosted unauthenticated health parity
+pnpm acceptance:hosted:level3:preflight # read-only hosted prerequisites
+pnpm acceptance:hosted:level3 # guarded non-customer hosted failure drills
 pnpm release:check            # repository, Docker, and Level 2-3 local gates
 ```
 

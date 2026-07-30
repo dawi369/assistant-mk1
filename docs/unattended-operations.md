@@ -27,6 +27,29 @@ secret values or changing infrastructure. Its ignored report is written under
 `output/release/<commit>/level3-hosted-preflight.json`; a nonzero exit means the
 rollout must not start.
 
+After the preflight passes, the guarded operator drill command exercises the
+negative paths against a unique non-customer WorkOS-shaped tenant:
+
+```bash
+WORKBENCH_HOSTED_DRILL_MODE=true \
+GITHUB_SHA="$(git rev-parse HEAD)" \
+HOSTED_VERCEL_ORIGIN=https://<vercel-host> \
+HOSTED_FLY_APP=<fly-app> \
+CLOUDFLARE_CONTROL_PLANE_URL=https://<worker-host> \
+CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET=<current-facade-secret> \
+pnpm acceptance:hosted:level3
+```
+
+The command proves signed webhook deduplication, one-run concurrency saturation,
+cold-start cancellation with no late artifact promotion, cancelled-run replay
+lineage, expired-lease recovery, durable alert creation, and failed-lease
+replay. It writes mode-`0600` evidence to
+`output/release/<commit>/hosted-level3-drills.json`. It stops the current Fly
+machine to create a deterministic cancellation window; Fly autostart restores
+the machine on the signed runner request. Lease-expiry scaffolding is inserted
+directly into the command's isolated D1 tenant and is identified as synthetic
+in the report. Never point this command at a customer tenant.
+
 The initial recovery targets are an RPO of 24 hours and an RTO of 4 hours.
 These are release targets, not achieved SLOs, until a hosted restore drill
 records measured results below both limits.
@@ -95,7 +118,10 @@ and Worker restart. Acceptance requires:
 
 Hosted evidence remains manual because it requires real WorkOS, Cloudflare Cron,
 R2, alert-receiver, and operator sessions. A local conformance pass must not be
-substituted for this soak.
+substituted for this soak. The guarded drill command supplies repeatable
+negative-path evidence, but it does not replace the 24-hour elapsed-time
+schedule/webhook observation or the separate receiver-outage and restore
+records.
 
 ## Escalation And Kill Procedure
 

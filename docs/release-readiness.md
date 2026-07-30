@@ -25,22 +25,23 @@ encrypted credential brokerage, or hosted artifact recovery.
 
 ## Release Evidence
 
-| Gate                         | Evidence                                                                    |
-| ---------------------------- | --------------------------------------------------------------------------- |
-| Repository                   | `pnpm release:check`                                                        |
-| Static real-session contract | `pnpm eval:real-session-posture`                                            |
-| Deterministic services       | `pnpm test:service-boundaries`                                              |
-| Level 2 conformance          | `pnpm conformance:level2` and `docs/level-2-conformance.md`                 |
-| Level 3 local conformance    | `pnpm conformance:level3` and `docs/level-3-conformance.md`                 |
-| Docker boundary              | `pnpm verify:docker`                                                        |
-| Hosted public boundaries     | `pnpm acceptance:hosted:public`                                             |
-| Hosted Level 3 preflight     | `pnpm acceptance:hosted:level3:preflight`                                   |
-| Dependency security          | `pnpm verify:security`                                                      |
-| Cloudflare authorization     | `pnpm smoke:cloudflare-authz` and `pnpm smoke:cloudflare-membership-policy` |
-| Tenant isolation             | `pnpm smoke:tenant-isolation` and the boundary smokes                       |
-| Run recovery                 | run-control unit tests, history smoke, and hosted browser acceptance        |
-| Browser UX                   | `pnpm test:e2e` plus signed-in Dia acceptance                               |
-| Documentation                | `docs/README.md` current-state map and deploy runbooks                      |
+| Gate                          | Evidence                                                                    |
+| ----------------------------- | --------------------------------------------------------------------------- |
+| Repository                    | `pnpm release:check`                                                        |
+| Static real-session contract  | `pnpm eval:real-session-posture`                                            |
+| Deterministic services        | `pnpm test:service-boundaries`                                              |
+| Level 2 conformance           | `pnpm conformance:level2` and `docs/level-2-conformance.md`                 |
+| Level 3 local conformance     | `pnpm conformance:level3` and `docs/level-3-conformance.md`                 |
+| Docker boundary               | `pnpm verify:docker`                                                        |
+| Hosted public boundaries      | `pnpm acceptance:hosted:public`                                             |
+| Hosted Level 3 preflight      | `pnpm acceptance:hosted:level3:preflight`                                   |
+| Hosted Level 3 failure drills | `pnpm acceptance:hosted:level3`                                             |
+| Dependency security           | `pnpm verify:security`                                                      |
+| Cloudflare authorization      | `pnpm smoke:cloudflare-authz` and `pnpm smoke:cloudflare-membership-policy` |
+| Tenant isolation              | `pnpm smoke:tenant-isolation` and the boundary smokes                       |
+| Run recovery                  | run-control unit tests, history smoke, and hosted browser acceptance        |
+| Browser UX                    | `pnpm test:e2e` plus signed-in Dia acceptance                               |
+| Documentation                 | `docs/README.md` current-state map and deploy runbooks                      |
 
 ## Deferred Gates
 

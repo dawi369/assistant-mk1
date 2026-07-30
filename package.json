@@ -45,6 +45,7 @@
     "workbench:doctor": "tsx scripts/workbench-doctor.ts",
     "acceptance:hosted:public": "tsx scripts/accept-hosted-public.ts",
     "acceptance:hosted:level3:preflight": "tsx scripts/check-hosted-level3-preflight.ts",
+    "acceptance:hosted:level3": "tsx scripts/run-hosted-level3-drills.ts",
     "verify:security": "pnpm audit --audit-level high",
     "verify:docker": "tsx scripts/verify-docker-image.ts",
     "verify:fast": "pnpm docs:check && pnpm agent-packs:validate && pnpm db:cloudflare:migrations:verify && pnpm db:cloudflare:backup:verify && pnpm test:unit && pnpm typecheck && pnpm lint",
