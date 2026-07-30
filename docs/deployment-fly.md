@@ -130,10 +130,10 @@ that should prove the gateway can reach the LangGraph `/ok` endpoint. A healthy
 steady-state Fly log should show startup plus Fly health state changes, not
 recurring LangGraph `/ok` lines every 15 seconds from machine checks.
 
-The Fly runtime currently pins `@langchain/langgraph-cli@1.2.3` intentionally.
-Patch `1.2.5` pulls a LangGraph API build that imports an export missing from
-the current `@langchain/langgraph@1.3.2`, which prevents the Fly LangGraph side
-from booting.
+The Fly image installs the root production dependency set and boots the checked
+in LangGraph CLI/graph pair. Dependency updates must pass
+`pnpm verify:security`, the LangGraph runtime boot smoke, and
+`pnpm verify:docker`; do not update the CLI independently of that evidence.
 
 Hosted Vercel workbench routes require a signed-in WorkOS browser session.
 `pnpm smoke:workbench` remains a local same-origin smoke, not the hosted deploy

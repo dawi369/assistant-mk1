@@ -9,6 +9,14 @@ Local conformance does not by itself authorize a production-unattended release:
 the same commit still needs hosted schedule/webhook, recovery, alerting, and soak
 evidence.
 
+`pnpm acceptance:hosted:level3` is the guarded hosted negative-path gate. It
+uses a unique non-customer tenant and proves public webhook deduplication,
+concurrency saturation, cancellation fencing, cancelled-run replay,
+expired-lease recovery, durable alert creation, and failed-lease replay. Its
+mode-`0600` report remains ignored under `output/release/<commit>/`. It does not
+replace the same-commit 24-hour soak, receiver-outage/redelivery drill, or
+signed-in operator acceptance.
+
 | Guarantee                | Enforcement boundary                         | Implementation seam                           | Executable evidence                     | Hosted evidence                   | Preview limitation                 |
 | ------------------------ | -------------------------------------------- | --------------------------------------------- | --------------------------------------- | --------------------------------- | ---------------------------------- |
 | Forward upgrades         | D1 migration ledger                          | `cloudflare/control-plane/migrations/*`       | migration verifier                      | remote dry-run and applied ledger | rollback remains restore/redeploy  |
@@ -36,6 +44,8 @@ evidence.
 pnpm conformance:level2
 pnpm conformance:level3
 pnpm release:check
+pnpm acceptance:hosted:level3:preflight
+pnpm acceptance:hosted:level3
 ```
 
 Before enabling unattended hosted work, record the commit SHA, operator,

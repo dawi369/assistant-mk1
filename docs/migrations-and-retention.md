@@ -34,11 +34,14 @@ event, and runtime-trace sweeps. R2 deletion happens before the D1 artifact is
 tombstoned; a missing or failed R2 binding leaves metadata live for retry.
 
 The deterministic local backup/restore verifier and bounded scoped export are
-committed. There is still no hosted restore evidence or executable customer
-deletion flow. Wrangler declares and locally exercises `ARTIFACTS`, but the
-named R2 bucket still has to be provisioned per hosted environment. These gaps
-mean the foundation does not yet make hosted dev state acceptable as retained
-customer history.
+committed. Non-customer hosted drills have restored a D1 export into a fresh
+recovery database and copied/read/checksummed an exported R2 object within the
+candidate RPO/RTO targets. Those ignored operator records prove the recovery
+procedure, not retained-customer readiness. There is still no executable
+customer deletion flow, Durable Object export/delete seam, or complete
+retention policy for every durable class. Each hosted environment must also
+provision the R2 bucket named by its binding. These gaps mean hosted dev state
+is not acceptable as retained customer history.
 
 ## Adding A D1 Change
 
@@ -92,10 +95,11 @@ counts, smoke tenant-scoped reads, and only then make a separate cutover
 decision. Remote export, recovery-database creation, restore, and cutover are
 operator actions and are intentionally not performed by the local verifier.
 
-R2 disaster recovery is not satisfied by the D1 export. Before blob storage is
-enabled for retained customers, provision bucket versioning or replication and
-complete a separate object restore drill whose manifest is reconciled against
-`control_artifacts.storage_key` and `content_sha256`.
+R2 disaster recovery is not satisfied by the D1 export. The non-customer
+preview drill restores an exported object under a recovery key and verifies its
+checksum. Before blob storage is enabled for retained customers, add bucket
+versioning or replication and repeat a same-release restore whose manifest is
+reconciled against `control_artifacts.storage_key` and `content_sha256`.
 
 ## Customer Export And Deletion Inventory
 

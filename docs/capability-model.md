@@ -7,8 +7,9 @@ control-plane guarantees needed to operate it safely.
 Document status: north-star target contract. Levels 0 and 1 are implemented.
 Level 2 is preview-complete only when the repository release gates pass; it does
 not imply retained data or mutation authority. Level 3 now has a checked-in,
-read-only implementation foundation, but is not a release-conformant or
-production-unattended capability. Levels 4 and 5 remain target behavior.
+read-only implementation plus deterministic local conformance and guarded
+hosted negative-path drills, but is not yet a production-unattended release
+claim. Levels 4 and 5 remain target behavior.
 
 Executable evidence is mapped in `level-2-conformance.md` and
 `level-3-conformance.md`. A local Level 3 pass still requires separate hosted
@@ -48,11 +49,16 @@ The checked-in Level 3 foundation currently provides:
 - Forward-only retained-data migrations, bounded artifact/event/trace retention,
   deterministic D1 backup/restore evidence, and scoped preview export inventory.
 
-This is not yet a Level 3 release claim. Hosted schedule/webhook conformance,
-long-duration lease-renewal and soak evidence, hosted alert receipt, R2 restore,
-streaming export, complete Durable Object deletion, and an operator-ready
-unattended-production runbook remain gates. Trigger execution remains read-only
-and does not grant credentials or external mutation authority.
+The guarded hosted drill now proves public signed-webhook deduplication,
+concurrency saturation, cancellation publication fencing, replay lineage,
+expired-lease recovery, and durable alert creation against isolated
+non-customer state. Non-customer D1 and R2 restore drills have also met the
+candidate RPO/RTO targets. This is still not a Level 3 release claim: a
+same-commit 24-hour schedule/webhook soak, receiver-outage/redelivery evidence,
+and signed-in operator acceptance remain gates. Streaming export, complete
+Durable Object deletion, credential brokerage, and external mutation are
+separate north-star capabilities, not prerequisites for this read-only Level 3
+implementation.
 
 ## Agent Pack Composition
 

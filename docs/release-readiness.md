@@ -14,8 +14,10 @@ encrypted credential brokerage, or hosted artifact recovery.
 - Customer-facing workspace switching and owner/admin member administration.
 - Cloudflare Agents chat, local-new first paint, recent chats, and agent switching.
 - Typed read-only pack workflows and policy-gated read-only tools.
-- Checked-in read-only schedule/webhook trigger foundations; these do not yet
-  carry a production-unattended Level 3 release claim.
+- Checked-in read-only schedule/webhook execution, lease recovery, concurrency,
+  cancellation fencing, replay, and durable operator alerts. Guarded hosted
+  drills exercise the negative paths against isolated non-customer state; this
+  does not yet carry a production-unattended Level 3 release claim.
 - Searchable execution history, metadata artifacts, approvals, cancellation,
   retry for supported pack workflows, and reconnect recovery.
 - Unit, contract, service-boundary, and browser release checks.
@@ -47,19 +49,21 @@ encrypted credential brokerage, or hosted artifact recovery.
 
 The following are intentionally outside the 1.0 read-only baseline:
 
-- hosted D1 backup/restore evidence, R2 disaster recovery, and retained customer history
-- hosted Level 3 conformance and the broader unattended-production operations gate
+- retained customer history and complete workspace deletion, including Durable
+  Object state
+- the final Level 3 unattended-production gate: same-commit 24-hour soak,
+  receiver-outage/redelivery evidence, and signed-in operator acceptance
 - encrypted credential custody and refresh brokerage
 - mutation-capable tools and external side effects
 - streaming exports and executable deletion including Durable Objects
 - plugin marketplace and multi-region deployment
 
-Forward-only D1 migrations, a deterministic D1 backup/restore verifier, and
-bounded artifact/event/trace retention are implemented. Remote D1 remains
-development validation state until hosted restore evidence plus the remaining
-R2 recovery, export, and deletion gates in `docs/migrations-and-retention.md`
-are implemented. A release must not describe that state as retained customer
-history.
+Forward-only D1 migrations, a deterministic D1 backup/restore verifier, bounded
+artifact/event/trace retention, scoped D1/R2 export, and non-customer hosted D1
+and R2 restore drills are implemented. Remote state remains development
+validation state until the deletion and full data-class retention gates in
+`docs/migrations-and-retention.md` are implemented. A release must not describe
+that state as retained customer history.
 
 ## Preview Release Checklist
 
