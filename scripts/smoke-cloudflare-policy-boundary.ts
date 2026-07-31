@@ -35,10 +35,11 @@ const {
   startAcceptedStreamOnNewThread,
 } = createSmokeContext();
 
+const fixtureId = `${Date.now()}-${crypto.randomUUID().slice(0, 12)}`;
 const tenant: TenantIdentity = {
-  userId: "policy-tenant-user",
-  workspaceId: "policy-tenant-workspace",
-  agentId: "policy-tenant-agent",
+  userId: `policy-tenant-user-${fixtureId}`,
+  workspaceId: `policy-tenant-workspace-${fixtureId}`,
+  agentId: `policy-tenant-agent-${fixtureId}`,
 };
 
 const getBoundarySnapshot = (identity: TenantIdentity, threadId: string) =>
