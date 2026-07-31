@@ -51,9 +51,9 @@ export const connectionAuthForTool = (toolName: string): ConnectionAuthBrokerage
 
 export const connectionAuthForPackTool = (
   toolName: string,
-  connections: readonly AgentPackConnectionDescriptor[],
+  connections?: readonly AgentPackConnectionDescriptor[],
 ): ConnectionAuthBrokerage => {
-  const connection = connections.find((candidate) => candidate.toolIds.includes(toolName));
+  const connection = connections?.find((candidate) => candidate.toolIds.includes(toolName));
   if (!connection || connection.credentialClass === "none") {
     return noConnectionAuthRequired(toolName);
   }

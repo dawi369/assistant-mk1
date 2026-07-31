@@ -25,6 +25,10 @@ describe("connection auth brokerage", () => {
       principal: "none",
       tokenRefresh: "not_applicable",
     });
+    expect(connectionAuthForPackTool("repo.snapshot", undefined)).toMatchObject({
+      required: false,
+      status: "not_required",
+    });
   });
 
   it("projects credentialed Pack descriptors into a secret-free authorization requirement", () => {

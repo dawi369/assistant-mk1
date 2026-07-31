@@ -216,7 +216,7 @@ export const runtimeToolsForAgent = (agent: AgentRow): ResolvedRuntimeTool[] => 
       packId: pack.id,
       packVersion: pack.version,
       runtimeVersion: runtime.runtimeVersion,
-      connections: pack.connections,
+      connections: pack.connections ?? [],
       platformOwned: false,
     })),
     ...platform,

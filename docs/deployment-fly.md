@@ -94,9 +94,9 @@ pnpm smoke:cloudflare-session-boundary
 Public hosted boundary agreement:
 
 ```bash
-VERCEL_URL=<vercel-url> \
-CLOUDFLARE_URL=<worker-url> \
-FLY_URL=<fly-url> \
+HOSTED_VERCEL_ORIGIN=<vercel-url> \
+HOSTED_CLOUDFLARE_ORIGIN=<worker-url> \
+HOSTED_FLY_ORIGIN=<fly-url> \
 pnpm acceptance:hosted:public
 ```
 
