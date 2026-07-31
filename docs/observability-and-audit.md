@@ -164,8 +164,8 @@ Current traced operations:
 - `tool.url.inspect`, including redacted runner dispatch metadata for
   transport, adapter version, source, duration, status, response status, and
   failure code
-- `diagnostic.demo.inspect` when it can be attached without broad executor
-  refactors
+- runtime-module workflow and tool traces, keyed by compiled pack and binding
+  metadata rather than tool-specific gateway branches
 
 Admin uses these D1 traces as the primary in-app request explanation: service
 map, waterfall, total duration, and bottleneck span. Sentry remains the

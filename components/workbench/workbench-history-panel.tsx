@@ -48,7 +48,7 @@ import type {
   CloudflareArtifactHistoryResponse,
   CloudflareExecutionHistoryResponse,
   CloudflareExecutionHistoryRunResponse,
-  CloudflareOwnedDemoRunSnapshot,
+  ExecutionRunSnapshot,
   ExecutionHistoryRunSummary,
 } from "@/lib/workbench/workbench-types";
 
@@ -103,8 +103,7 @@ export function WorkbenchHistoryPanel({
   const [runs, setRuns] = useState<ExecutionHistoryRunSummary[]>([]);
   const [artifacts, setArtifacts] = useState<ArtifactSummary[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-  const [selectedRunSnapshot, setSelectedRunSnapshot] =
-    useState<CloudflareOwnedDemoRunSnapshot | null>(null);
+  const [selectedRunSnapshot, setSelectedRunSnapshot] = useState<ExecutionRunSnapshot | null>(null);
   const [activeFilter, setActiveFilter] = useState<HistoryFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [highlightedRunId, setHighlightedRunId] = useState<string | null>(null);
@@ -487,7 +486,7 @@ function HistorySection({
   );
 }
 
-type PreviewableArtifact = ArtifactSummary | CloudflareOwnedDemoRunSnapshot["artifacts"][number];
+type PreviewableArtifact = ArtifactSummary | ExecutionRunSnapshot["artifacts"][number];
 
 function SelectedRunSummary({
   snapshot,
@@ -498,7 +497,7 @@ function SelectedRunSummary({
   onRunAction,
   onApprovalAction,
 }: {
-  snapshot: CloudflareOwnedDemoRunSnapshot;
+  snapshot: ExecutionRunSnapshot;
   run: ExecutionHistoryRunSummary | null;
   artifacts: ArtifactSummary[];
   highlightedArtifactId?: string | null;

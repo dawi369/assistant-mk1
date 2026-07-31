@@ -1,5 +1,6 @@
-import { getControlRunSnapshot } from "./demo-run-store";
+import { getControlRunSnapshot } from "./control-run-store";
 import { json, parseDataJson } from "./http";
+import { packWorkflowBindings } from "../../../lib/agent-runtime/registry";
 import {
   type AgentIdentity,
   type ControlArtifactRow,
@@ -22,10 +23,7 @@ const scopeFromRow = (row: { user_id: string; workspace_id: string }): TenantSco
   workspaceId: row.workspace_id,
 });
 
-const retryableWorkflowTypes = new Set([
-  "polymancer.market_research",
-  "swordfish.runtime_research",
-]);
+const retryableWorkflowTypes = new Set(Object.keys(packWorkflowBindings));
 
 const toRunHistoryItem = (
   row: ControlRunRow & {
@@ -152,6 +150,7 @@ export const listArtifactHistory = async (env: Env, identity: AgentIdentity, url
             data_json, created_at
      FROM control_artifacts
      WHERE user_id = ? AND workspace_id = ? AND deleted_at IS NULL
+       AND COALESCE(json_extract(data_json, '$.publicationStatus'), 'published') <> 'staged'
      ORDER BY created_at DESC
      LIMIT ?`,
   )

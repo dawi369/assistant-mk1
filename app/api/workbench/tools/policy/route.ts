@@ -14,15 +14,14 @@ export async function POST(request: NextRequest) {
       killSwitchReason?: unknown;
       modelVisible?: unknown;
     };
-    if (body.toolName !== "url.inspect" && body.toolName !== "repo.snapshot") {
+    if (typeof body.toolName !== "string" || !/^[a-z0-9][a-z0-9._-]{1,127}$/i.test(body.toolName)) {
       return NextResponse.json(
         {
           ok: false,
           error: "Unsupported tool",
           details: {
             code: "unsupported_tool",
-            message:
-              "Only url.inspect and repo.snapshot policy can be updated through this v0 endpoint.",
+            message: "A registered tool name is required.",
             retryable: false,
             redacted: true,
           },
@@ -53,21 +52,6 @@ export async function POST(request: NextRequest) {
           details: {
             code: "unsupported_requires_approval",
             message: "requiresApproval must be a boolean when provided.",
-            retryable: false,
-            redacted: true,
-          },
-        },
-        { status: 400 },
-      );
-    }
-    if (body.toolName === "repo.snapshot" && body.requiresApproval === true) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "Unsupported approval flag",
-          details: {
-            code: "unsupported_requires_approval",
-            message: "repo.snapshot approvals are not supported in this slice.",
             retryable: false,
             redacted: true,
           },

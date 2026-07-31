@@ -7,7 +7,7 @@ import {
   selectWorkspaceMemberships,
 } from "./authz-store";
 import { appendControlPlaneEvent } from "./control-plane-events";
-import { appendControlAudit } from "./demo-run-store";
+import { appendControlAudit } from "./control-run-store";
 import { isRecord, json, parseJson } from "./http";
 import {
   evaluateMembershipUpdate,

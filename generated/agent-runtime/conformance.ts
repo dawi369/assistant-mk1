@@ -25,18 +25,6 @@ export const agentConformanceRegistry = [
     required: true,
   },
   {
-    id: "baby-swordfish.health.runtime.overview.binding",
-    packId: "baby-swordfish",
-    kind: "health",
-    required: true,
-  },
-  {
-    id: "baby-swordfish.health.runtime.research.binding",
-    packId: "baby-swordfish",
-    kind: "health",
-    required: true,
-  },
-  {
     id: "complex-operator.eval.operator.runtime",
     packId: "complex-operator",
     kind: "eval",

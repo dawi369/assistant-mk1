@@ -12,7 +12,7 @@ export const ComplexOperatorArtifact = ({ artifact }: ArtifactRendererProps) =>
 
 export const web = defineWebModule({
   packId: "complex-operator",
-  runtimeVersion: "1.0.0",
+  runtimeVersion: "1.1.0",
   compatiblePackVersions: "^1.0.0",
   artifactRenderers: { complex_operator_report: ComplexOperatorArtifact },
   managedStateRenderers: {

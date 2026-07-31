@@ -59,13 +59,11 @@ agent to update adjacent docs or code without needing the old graph generator.
 - `app/api/[..._path]/route.ts`: legacy/transition Next.js proxy to LangGraph
   API for workflow escalation paths
 - `app/api/external-signals/[publicId]/route.ts`: signed per-trigger webhook facade
-- `app/api/workbench/cloudflare-demo-runs/route.ts`: Vercel workbench facade to
-  the Cloudflare control-plane Worker
 - `app/api/workbench/*`: Vercel same-origin facades for workspace, agent, admin
-  summary, chat runtime summary, demo run, and control-plane event routes
+  summary, chat runtime summary, workflow, history, and control-plane event routes
 - `cloudflare/control-plane/src/index.ts`: Worker routing for WorkOS-shaped
-  identity, workspace/agent APIs, chat facade, control events, demo runs, and
-  run callbacks
+  identity, workspace/agent APIs, chat facade, control events, runtime workflows,
+  and signed run callbacks
 - `cloudflare/control-plane/src/authz.ts`: D1-backed user, workspace,
   membership, active workspace, and active agent resolution
 - `cloudflare/control-plane/src/chat-agent-connection-context.ts`: Worker
@@ -74,13 +72,12 @@ agent to update adjacent docs or code without needing the old graph generator.
   active thread selection, workspace history, and Agent token minting
 - `cloudflare/control-plane/src/thread-chat-agent.ts`: Cloudflare
   `AIChatAgent` Durable Object chat runtime
-- `cloudflare/control-plane/src/pack-workflow-lifecycle.ts`: shared lifecycle
-  helper for pack workflow intents, runs, tool calls, artifact metadata, audit,
-  and events
-- `cloudflare/control-plane/src/polymancer-workflows.ts`: Polymancer Research
-  read-only pack workflow route
-- `cloudflare/control-plane/src/swordfish-workflows.ts`: Swordfish Runtime
-  read-only pack workflow route
+- `cloudflare/control-plane/src/runtime-workflows.ts`: compiled Runtime Module
+  workflow resolution, policy preflight, context construction, and execution
+- `cloudflare/control-plane/src/runtime-run-lifecycle.ts`: atomic intent, run,
+  tool-call, staged artifact, audit, event, cancellation, and terminal writes
+- `cloudflare/control-plane/src/runtime-tool-execution.ts`: shared inline/Fly
+  dispatcher used by workflows, Admin, approvals, and model-visible tools
 - `cloudflare/control-plane/src/workbench-history.ts`: scoped execution and
   artifact history reads
 - `cloudflare/control-plane/src/tool-policy.ts`: registered tool policy,
@@ -89,7 +86,7 @@ agent to update adjacent docs or code without needing the old graph generator.
   `/langgraph` compatibility facade and Fly fallback/proxy path
 - `cloudflare/control-plane/schema.sql`: current D1 tables for users,
   workspaces, memberships, agents, active preferences, chat state, control
-  events, runtime traces, demo runs, artifacts, decisions, and audit records
+  events, runtime traces, runs, tools, artifacts, decisions, and audit records
 - `scripts/langgraph-runtime-gateway.ts`: Fly runtime gateway, LangGraph proxy,
   and signed runner/executor endpoints
 - `backend/agent.ts`: current LangGraph backend/provider seam
@@ -107,7 +104,7 @@ Use four visibly separated pillars plus one sidecar cluster:
   resolver, workspace and agent authorization, `WorkbenchSessionAgent`,
   `WorkbenchThreadChatAgent`, workspace/agent/admin APIs, pack workflow routes,
   tool registry/policy, history/artifact APIs, session event stream, callback
-  endpoint, and demo compatibility APIs.
+  endpoint, runtime workflow kernel, and approval recovery APIs.
 - `Fly.io / LangGraph Execution`: runtime gateway, LangGraph server,
   `backend/agent.ts`, and signed tool runner.
 - `Durable Data Plane`: current D1 user/workspace/agent records, D1 chat state,
@@ -170,7 +167,7 @@ Typed arrow categories:
 - Directional relationships are represented by typed Mermaid edges.
 - Every arrow maps to one typed arrow category listed in this brief.
 - Cloudflare remains the current canonical owner for workspace, agent, chat,
-  event, tool, workflow, history, and compatibility demo state.
+  event, tool, workflow, history, and artifact state.
 - Data writes route into the durable data pillar.
 - The Mermaid source can be pasted into Excalidraw for a manual editable
   rendering.

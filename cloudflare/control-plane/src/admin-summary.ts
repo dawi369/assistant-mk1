@@ -3,10 +3,10 @@ import {
   listLatestArtifacts,
   listLatestToolCalls,
   resolveToolSummaries,
-} from "./tool-execution-service";
+} from "./runtime-tool-catalog";
 import { getChatRuntimeSummary } from "./chat-runtime-summary";
 import { handleLatestControlPlaneEvents } from "./control-plane-events";
-import { getControlRunSnapshot, readLatestControlRun } from "./demo-run-store";
+import { getControlRunSnapshot, readLatestControlRun } from "./control-run-store";
 import { json, parseDataJson, parseJson } from "./http";
 import { getLatestRuntimeTraceSnapshot, listRuntimeTraceSummaries } from "./runtime-traces";
 import {
@@ -136,7 +136,7 @@ const latestErrorEvent = (env: Env, scope: TenantScope) =>
 
 const newestError = (
   candidates: Array<{
-    source: "chat" | "demo" | "event";
+    source: "chat" | "execution" | "event";
     message: string;
     status?: string;
     targetId?: string;
@@ -307,7 +307,7 @@ export const buildAdminWorkspaceSummary = async (
         ])
       : null;
 
-  const latestDemoRun = drawerReads?.[0] ?? null;
+  const latestExecutionRun = drawerReads?.[0] ?? null;
   const toolResolution = drawerReads?.[1] ?? {
     context: emptyCapabilityContext,
     decisions: [],
@@ -318,11 +318,11 @@ export const buildAdminWorkspaceSummary = async (
   const latestTraceSnapshot = drawerReads?.[4] ?? null;
   const recentTraces = drawerReads?.[5] ?? [];
 
-  const demoSnapshot = latestDemoRun
+  const executionSnapshot = latestExecutionRun
     ? await timed(
         diagnostics,
-        "demoSnapshot",
-        () => readers.getControlRunSnapshot(env, identity.scope, latestDemoRun.id),
+        "executionSnapshot",
+        () => readers.getControlRunSnapshot(env, identity.scope, latestExecutionRun.id),
         (value) => (value ? 1 : 0),
       )
     : null;
@@ -339,11 +339,11 @@ export const buildAdminWorkspaceSummary = async (
       : null,
     failedControlRun
       ? {
-          source: "demo",
+          source: "execution",
           message:
             typeof failedControlData.error === "string"
               ? failedControlData.error
-              : "Demo inspect run failed.",
+              : "Workbench execution failed.",
           status: failedControlRun.status,
           targetId: failedControlRun.id,
           createdAt: failedControlRun.updated_at,
@@ -422,8 +422,8 @@ export const buildAdminWorkspaceSummary = async (
         latestPolicyDecision: chatRuntime.latestPolicyDecision,
       },
       chatRuntime,
-      demo: {
-        latestRun: demoSnapshot,
+      execution: {
+        latestRun: executionSnapshot,
       },
       capabilityContext: toolResolution.context,
       capabilityDecisions: toolResolution.decisions,

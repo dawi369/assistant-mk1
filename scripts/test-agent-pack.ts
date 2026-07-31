@@ -46,10 +46,13 @@ const main = async () => {
       input: Record<string, unknown>,
     ): Promise<RuntimeResult> => {
       toolCalls += 1;
-      const tool = (loaded.controlPlane.tools.find((candidate) => candidate.id === toolId) ??
-        loaded.runner.tools.find((candidate) => candidate.id === toolId)) as
-        | RuntimeToolBinding
-        | undefined;
+      const controlPlaneTool = loaded.controlPlane.tools.find(
+        (candidate) => candidate.id === toolId,
+      );
+      const runnerTool = loaded.runner.tools.find((candidate) => candidate.id === toolId);
+      const tool = (
+        controlPlaneTool?.execute ? controlPlaneTool : (runnerTool ?? controlPlaneTool)
+      ) as RuntimeToolBinding | undefined;
       if (!tool?.execute) {
         return {
           ok: false,

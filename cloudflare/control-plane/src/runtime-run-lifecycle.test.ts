@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { finishPackWorkflowRun, startPackWorkflowRun } from "./pack-workflow-lifecycle";
+import { finishPackWorkflowRun, startPackWorkflowRun } from "./runtime-run-lifecycle";
 import type { AgentIdentity, D1PreparedStatement, D1Result, Env } from "./types";
 
 const identity = {
@@ -142,7 +142,7 @@ describe("pack workflow lifecycle", () => {
     expect(
       batches[0]
         .filter(({ query }) => query.includes("INSERT INTO control_"))
-        .every(({ query }) => query.includes("WHERE EXISTS")),
+        .every(({ query }) => query.includes("EXISTS")),
     ).toBe(true);
   });
 
@@ -169,12 +169,15 @@ describe("pack workflow lifecycle", () => {
 
     expect(result).toEqual({ applied: false });
     expect(batches).toHaveLength(1);
+    expect(batches[0].find(({ query }) => query.includes("UPDATE control_runs"))?.query).toContain(
+      "json_patch(data_json",
+    );
     expect(
       batches[0]
         .filter(
           ({ query }) => query.includes("control_artifacts") || query.includes("control_audit"),
         )
-        .every(({ query }) => query.includes("WHERE EXISTS")),
+        .every(({ query }) => query.includes("EXISTS")),
     ).toBe(true);
   });
 });

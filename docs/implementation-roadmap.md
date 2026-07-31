@@ -31,8 +31,6 @@ scoped.
 - Fly/LangGraph remain available for graph-shaped workflows, the runtime
   gateway, and signed heavy tool execution. They are not the default path for a
   plain chat message.
-- The diagnostic `demo.inspect` path remains compatibility coverage for the
-  original Cloudflare-owned run slice. It is not a product pattern.
 - Read-only tools now include `url.inspect` and `repo.snapshot`, with
   Cloudflare-owned tool policy, runner metadata, artifacts, audit events,
   runtime traces, and model exposure controls.
@@ -40,8 +38,8 @@ scoped.
   parity, welcome actions, risk, tools, workflows, extension descriptors, and
   smoke metadata before compiling packs into immutable workspace snapshots.
 - Repository Analyst and Polymancer Research ship live typed read-only workflows
-  and structured history artifacts. Swordfish Runtime preserves the same
-  packaged contract while its backend is intentionally parked. Runtime Module
+  and structured history artifacts. Swordfish remains an activatable chat-only
+  reference package while its backend is intentionally parked. Runtime Module
   v1 packages and generated registries drive forms, generic routes, retry,
   policy defaults, artifact rendering, health, evals, and smoke commands.
 - `/agents` remains the compact member-facing picker. Allowlisted Admin exposes
@@ -165,8 +163,8 @@ tool and workbench work:
   shared policy/run/artifact/audit/trace model.
 - Cloudflare-first external-signal intent mirroring before LangGraph
   delegation.
-- Generic signed workflow callback ingestion with demo compatibility migrated
-  onto the shared callback path.
+- Generic signed progress/artifact callback ingestion with conditional staging
+  and Cloudflare-owned terminal publication.
 - Admin execution history, artifact metadata history, and selected-run
   snapshots.
 - Runtime visibility trimming, Admin summary projection tiers, and a

@@ -6,10 +6,11 @@ import {
   resetModelToolCandidateCacheForTests,
   runtimeModelToolBindingsForPack,
 } from "./model-tools";
-import { swordfishRuntimeOverviewToolName, urlInspectToolName } from "./tool-policy";
 import { createAgentBehaviorSnapshot } from "./agent-behavior-templates";
 import type { AgentIdentity, Env } from "./types";
 import { manifest as complexOperator } from "../../../examples/complex-operator/manifest";
+
+const urlInspectToolName = "url.inspect";
 
 const identity = {
   agentId: "agent_1",
@@ -110,10 +111,7 @@ describe("model tool exposure fast path", () => {
       hasModelVisibleToolCandidate(babyPolymancer.env, identity, urlInspectToolName),
     ).resolves.toBe(false);
     await expect(
-      hasModelVisibleToolCandidate(babySwordfish.env, identity, swordfishRuntimeOverviewToolName),
-    ).resolves.toBe(true);
-    await expect(
-      hasModelVisibleToolCandidate(repoAnalyst.env, identity, swordfishRuntimeOverviewToolName),
+      hasModelVisibleToolCandidate(babySwordfish.env, identity, "swordfish.runtime.overview"),
     ).resolves.toBe(false);
   });
 

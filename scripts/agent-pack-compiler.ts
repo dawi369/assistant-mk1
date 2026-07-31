@@ -81,19 +81,15 @@ export const validateLoadedModules = (modules: readonly LoadedAgentModule[]) => 
         );
       }
     }
-    const runtimeTools = [...controlPlane.tools, ...runner.tools];
-    const localTools = new Map<string, (typeof runtimeTools)[number]>();
-    for (const tool of runtimeTools) {
-      const previous = localTools.get(tool.id);
-      if (
-        previous &&
-        (previous.transport !== "fly" ||
-          tool.transport !== "fly" ||
-          previous.adapterVersion !== tool.adapterVersion)
-      ) {
-        throw new Error(`${entry.package} registers conflicting providers for tool ${tool.id}.`);
-      }
-      localTools.set(tool.id, tool);
+    const controlPlaneTools = new Map(controlPlane.tools.map((tool) => [tool.id, tool]));
+    const runnerTools = new Map(runner.tools.map((tool) => [tool.id, tool]));
+    if (controlPlaneTools.size !== controlPlane.tools.length) {
+      throw new Error(`${entry.package} registers duplicate control-plane tool providers.`);
+    }
+    if (runnerTools.size !== runner.tools.length) {
+      throw new Error(`${entry.package} registers duplicate runner tool providers.`);
+    }
+    for (const tool of controlPlane.tools) {
       assertSchemaDefinition(tool.inputSchema, `${entry.package} tool ${tool.id} input`);
       assertSchemaDefinition(tool.outputSchema, `${entry.package} tool ${tool.id} output`);
       if (!tool.executionModes.length) {
@@ -102,12 +98,46 @@ export const validateLoadedModules = (modules: readonly LoadedAgentModule[]) => 
       if (tool.executionModes.some((mode) => !["ask", "dry_run", "execute"].includes(mode))) {
         throw new Error(`${entry.package} tool ${tool.id} declares an unsupported execution mode.`);
       }
+      const runnerTool = runnerTools.get(tool.id);
+      if (tool.transport === "fly") {
+        if (!runnerTool) {
+          throw new Error(`${entry.package} is missing runner binding for ${tool.id}.`);
+        }
+        const contract = (value: typeof tool) => ({
+          id: value.id,
+          description: value.description,
+          inputSchema: value.inputSchema,
+          outputSchema: value.outputSchema,
+          executionModes: value.executionModes,
+          transport: value.transport,
+          adapterVersion: value.adapterVersion,
+          timeoutMs: value.timeoutMs,
+          maxArtifactBytes: value.maxArtifactBytes,
+          sandbox: value.sandbox,
+          policy: value.policy,
+        });
+        if (JSON.stringify(contract(tool)) !== JSON.stringify(contract(runnerTool))) {
+          throw new Error(`${entry.package} runner contract does not match ${tool.id}.`);
+        }
+      } else if (runnerTool) {
+        throw new Error(`${entry.package} inline tool ${tool.id} cannot have a runner binding.`);
+      }
     }
-    for (const toolId of localTools.keys()) {
+    for (const runnerTool of runner.tools) {
+      if (!controlPlaneTools.has(runnerTool.id)) {
+        throw new Error(
+          `${entry.package} runner tool ${runnerTool.id} lacks a control-plane declaration.`,
+        );
+      }
+      if (!runnerTool.execute) {
+        throw new Error(`${entry.package} runner tool ${runnerTool.id} is not executable.`);
+      }
+    }
+    for (const toolId of controlPlaneTools.keys()) {
       requireUnique(toolIds, "Tool", toolId, manifest.id);
     }
     for (const declared of manifest.tools) {
-      if (!localTools.has(declared.id)) {
+      if (!controlPlaneTools.has(declared.id)) {
         throw new Error(`${entry.package} is missing runtime provider for tool ${declared.id}.`);
       }
     }
@@ -130,7 +160,7 @@ export const validateLoadedModules = (modules: readonly LoadedAgentModule[]) => 
       );
       requireUnique(workflowTypes, "Workflow", declared.type, manifest.id);
       for (const toolId of binding.toolIds) {
-        if (!localTools.has(toolId)) {
+        if (!controlPlaneTools.has(toolId)) {
           throw new Error(
             `${entry.package} workflow ${declared.type} uses missing tool ${toolId}.`,
           );

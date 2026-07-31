@@ -7,7 +7,6 @@ import { assertSchemaValue, isPackVersionCompatible } from "@assistant-mk1/agent
 
 import { agentControlPlaneRegistry } from "../../generated/agent-runtime/control-plane";
 import { agentManifestRegistry } from "../../generated/agent-runtime/manifests";
-import { agentRunnerRegistry } from "../../generated/agent-runtime/runner";
 
 export type PackWorkflowRequest = {
   executionMode: "dry_run";
@@ -108,8 +107,7 @@ export const packWorkflowFieldDefinitions = Object.fromEntries(
 
 export const resolvePackRuntime = (packId: string, packVersion: string) => {
   const controlPlane = agentControlPlaneRegistry[packId as keyof typeof agentControlPlaneRegistry];
-  const runner = agentRunnerRegistry[packId as keyof typeof agentRunnerRegistry];
-  if (!controlPlane || !runner) {
+  if (!controlPlane) {
     return { runnable: false as const, reason: "runtime_missing" as const };
   }
   if (!isPackVersionCompatible(packVersion, controlPlane.module.compatiblePackVersions)) {
@@ -123,17 +121,11 @@ export const resolvePackRuntime = (packId: string, packVersion: string) => {
     runnable: true as const,
     runtimeVersion: controlPlane.module.runtimeVersion,
     controlPlane: controlPlane.module,
-    runner: runner.module,
   };
 };
 
 export const resolveRuntimeTool = (toolId: string) => {
   for (const entry of Object.values(agentControlPlaneRegistry)) {
-    const tool = entry.module.tools.find((candidate) => candidate.id === toolId);
-    if (tool)
-      return { packId: entry.module.packId, runtimeVersion: entry.module.runtimeVersion, tool };
-  }
-  for (const entry of Object.values(agentRunnerRegistry)) {
     const tool = entry.module.tools.find((candidate) => candidate.id === toolId);
     if (tool)
       return { packId: entry.module.packId, runtimeVersion: entry.module.runtimeVersion, tool };

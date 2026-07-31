@@ -8,20 +8,6 @@ import {
 
 export const runtime = "nodejs";
 
-const runnableTools = new Set<RunnableAdminToolName>([
-  "url.inspect",
-  "repo.snapshot",
-  "diagnostic.ping",
-  "runner.echo",
-  "artifact.metadata.test",
-  "polymarket.market.search",
-  "polymarket.market.snapshot",
-  "polymarket.orderbook.snapshot",
-  "swordfish.runtime.overview",
-  "swordfish.symbol.snapshot",
-  "swordfish.bars.range",
-]);
-
 export async function POST(request: NextRequest) {
   try {
     const body = (await request.json().catch(() => ({}))) as {
@@ -30,10 +16,7 @@ export async function POST(request: NextRequest) {
       input?: Record<string, unknown>;
       parentRunId?: unknown;
     };
-    if (
-      typeof body.toolName !== "string" ||
-      !runnableTools.has(body.toolName as RunnableAdminToolName)
-    ) {
+    if (typeof body.toolName !== "string" || !/^[a-z0-9][a-z0-9._-]{1,127}$/i.test(body.toolName)) {
       return NextResponse.json(
         {
           ok: false,
@@ -49,63 +32,14 @@ export async function POST(request: NextRequest) {
       );
     }
     const toolName = body.toolName as RunnableAdminToolName;
-    if (body.toolName === "repo.snapshot") {
-      return NextResponse.json(
-        await runCloudflareTool({
-          toolName: "repo.snapshot",
-          executionMode: body.executionMode === "dry_run" ? "dry_run" : undefined,
-          input:
-            body.input && typeof body.input === "object" && !Array.isArray(body.input)
-              ? body.input
-              : {},
-        }),
-        { status: 201 },
-      );
-    }
-    if (
-      toolName === "diagnostic.ping" ||
-      toolName === "runner.echo" ||
-      toolName === "artifact.metadata.test"
-    ) {
-      return NextResponse.json(
-        await runCloudflareTool({
-          toolName,
-          executionMode: body.executionMode === "dry_run" ? "dry_run" : undefined,
-          input:
-            body.input && typeof body.input === "object" && !Array.isArray(body.input)
-              ? body.input
-              : {},
-        }),
-        { status: 201 },
-      );
-    }
-    if (
-      toolName === "polymarket.market.search" ||
-      toolName === "polymarket.market.snapshot" ||
-      toolName === "polymarket.orderbook.snapshot" ||
-      toolName === "swordfish.runtime.overview" ||
-      toolName === "swordfish.symbol.snapshot" ||
-      toolName === "swordfish.bars.range"
-    ) {
-      return NextResponse.json(
-        await runCloudflareTool({
-          toolName,
-          executionMode: body.executionMode === "dry_run" ? "dry_run" : undefined,
-          input:
-            body.input && typeof body.input === "object" && !Array.isArray(body.input)
-              ? body.input
-              : {},
-        }),
-        { status: 201 },
-      );
-    }
     return NextResponse.json(
       await runCloudflareTool({
-        toolName: "url.inspect",
+        toolName,
         executionMode: body.executionMode === "dry_run" ? "dry_run" : undefined,
-        input: {
-          url: body.input && typeof body.input.url === "string" ? body.input.url : "",
-        },
+        input:
+          body.input && typeof body.input === "object" && !Array.isArray(body.input)
+            ? body.input
+            : {},
         parentRunId: typeof body.parentRunId === "string" ? body.parentRunId : undefined,
       }),
       { status: 201 },

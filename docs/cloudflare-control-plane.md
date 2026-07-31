@@ -130,8 +130,8 @@ Current v0 callback ingestion uses `POST /workbench/run-callbacks`. Producers
 sign the request with `WORKBENCH_CALLBACK_SIGNING_SECRET`; Cloudflare resolves
 tenant scope from the stored run, accepts compact lifecycle/artifact metadata,
 and emits `workflow.run.updated` plus Admin invalidation hints. Callback-backed
-tool calls also emit `tool.run.updated`. The old
-`/internal/workbench/run-callbacks` route remains only as demo compatibility.
+tool calls also emit `tool.run.updated`. There is no unsigned or internal
+callback compatibility route.
 
 ## Runtime Traces
 
@@ -149,8 +149,6 @@ Current trace kinds include:
 - `tool.runner.echo`
 - `tool.diagnostic.ping`
 - `tool.artifact.metadata.test`
-- `diagnostic.demo.inspect` when it can be attached without broad executor
-  refactors
 
 Trace reads are scoped after the same identity resolution as every other
 workbench route:
@@ -269,10 +267,6 @@ tool policy.
 Admin summary `lastError` is recovery-aware. Historical failed runs and failed
 events remain in history, but they stop pinning the global Details state after
 a newer completed control run for the same workspace proves the path recovered.
-
-`demo.inspect` remains registered only as diagnostic compatibility for the
-original Cloudflare-owned run slice. It is not editable through Admin and
-should not be treated as the model for future production tools.
 
 Generic policy evaluates execution modes, approval state, model exposure, kill
 switches, allowlists, denylists, cooldowns, hourly limits, max runtime, and max

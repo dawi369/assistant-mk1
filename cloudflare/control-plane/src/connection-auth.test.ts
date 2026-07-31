@@ -18,7 +18,7 @@ describe("connection auth brokerage", () => {
       approvalOrder: "policy_before_connection",
       reason: "url.inspect does not require an external connection.",
     });
-    expect(noConnectionAuthRequired("demo.inspect").reason).toContain("demo.inspect");
+    expect(noConnectionAuthRequired("diagnostic.ping").reason).toContain("diagnostic.ping");
     expect(connectionAuthForTool("repo.snapshot")).toMatchObject({
       required: false,
       status: "not_required",

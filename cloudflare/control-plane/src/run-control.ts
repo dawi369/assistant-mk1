@@ -1,11 +1,11 @@
 import { selectMembership } from "./authz-store";
 import { appendControlPlaneEvent } from "./control-plane-events";
-import { appendControlAudit } from "./demo-run-store";
+import { appendControlAudit } from "./control-run-store";
 import { json, parseDataJson } from "./http";
 import { requireActiveMembership } from "./membership-policy";
 import {
-  packWorkflowHandlers,
-  type PackWorkflowHandler as RetryWorkflowHandler,
+  executeRuntimeWorkflow,
+  type RuntimeWorkflowExecutor as RetryWorkflowHandler,
 } from "./pack-workflow-runtime";
 import { dispatchWorkbenchSessionEvent } from "./session-coordinator";
 import { activeRunStatusSql, activeRunStatuses, isTerminalRunStatus } from "./run-transitions";
@@ -18,8 +18,6 @@ type ControllableRunRow = ControlRunRow & {
 };
 
 export type RunRetryHandlers = Partial<Record<PackWorkflowType, RetryWorkflowHandler>>;
-
-const defaultRetryHandlers: RunRetryHandlers = packWorkflowHandlers;
 
 const selectControllableRun = (env: Env, identity: AgentIdentity, runId: string) =>
   env.DB.prepare(
@@ -142,6 +140,22 @@ export const handleCancelExecutionRun = async (
       identity.scope.workspaceId,
       run.id,
     ),
+    env.DB.prepare(
+      `DELETE FROM control_artifacts
+       WHERE user_id = ? AND workspace_id = ? AND id LIKE ?
+         AND json_extract(data_json, '$.publicationStatus') = 'staged'
+         AND EXISTS (
+           SELECT 1 FROM control_runs
+           WHERE user_id = ? AND workspace_id = ? AND id = ? AND status = 'cancelled'
+         )`,
+    ).bind(
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      `${run.id}-%`,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      run.id,
+    ),
   ]);
   if (cancelResult.meta?.changes === 0) {
     return json(
@@ -187,7 +201,7 @@ export const handleRetryExecutionRun = async (
   env: Env,
   identity: AgentIdentity,
   runId: string,
-  handlers: RunRetryHandlers = defaultRetryHandlers,
+  handlers?: RunRetryHandlers,
 ) => {
   const membershipError = await requireRunMember(env, identity);
   if (membershipError) return membershipError;
@@ -211,9 +225,13 @@ export const handleRetryExecutionRun = async (
     }),
   });
   const retryIdentity = { ...identity, agentId: run.agent_id };
-  const retryHandler = handlers[run.workflow_type as PackWorkflowType];
-  const response = retryHandler
-    ? await retryHandler(retryRequest, env, retryIdentity, { source: "user" })
+  const retryHandler = handlers?.[run.workflow_type as PackWorkflowType];
+  const response = run.workflow_type
+    ? retryHandler
+      ? await retryHandler(retryRequest, env, retryIdentity, { source: "user" })
+      : await executeRuntimeWorkflow(run.workflow_type, retryRequest, env, retryIdentity, {
+          source: "user",
+        })
     : null;
   if (!response) {
     return json({ ok: false, error: "This run type does not support retry" }, { status: 409 });

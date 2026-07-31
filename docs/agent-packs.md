@@ -124,6 +124,11 @@ records its external run id. Runner transport (`cloudflare-inline` or `fly`) is
 separate tool-call metadata. Unknown workflow declarations remain inspectable
 but are not runnable.
 
+Runtime workflow `label` text names the launcher action. The optional
+`runDisplayName` supplies a stable History label when that surface needs
+different copy; both values remain compiled package metadata rather than core
+application conditionals.
+
 Each tool declares who invokes it:
 
 - `user`: a direct tool exposed to the operator surface.
@@ -178,19 +183,18 @@ earns a shared platform contract.
 
 ## Bundled Packs
 
-| Product name        | Stable pack id    | Workflow                     | Artifact kind             |
-| ------------------- | ----------------- | ---------------------------- | ------------------------- |
-| Repository Analyst  | `repo-analyst`    | `repo.readiness_report`      | `repo_readiness_report`   |
-| Polymancer Research | `baby-polymancer` | `polymancer.market_research` | `market_research_report`  |
-| Swordfish Runtime   | `baby-swordfish`  | `swordfish.runtime_research` | `runtime_research_report` |
+| Product name        | Stable pack id    | Workflow                     | Artifact kind            |
+| ------------------- | ----------------- | ---------------------------- | ------------------------ |
+| Repository Analyst  | `repo-analyst`    | `repo.readiness_report`      | `repo_readiness_report`  |
+| Polymancer Research | `baby-polymancer` | `polymancer.market_research` | `market_research_report` |
+| Swordfish Runtime   | `baby-swordfish`  | parked                       | none                     |
 
 Repository Analyst calls the signed Fly `repo.snapshot` adapter and produces a
 bounded repository-readiness report. It also declares disabled-by-default
 schedule and webhook bindings for that same read-only workflow. Polymancer
-Research uses public no-auth
-Polymarket discovery, snapshot, and CLOB reads. Swordfish Runtime preserves a
-bounded public-health/snapshot/bars reference contract, but its backend is
-intentionally parked and may return `404`; it is not a live release smoke.
+Research uses public no-auth Polymarket discovery, snapshot, and CLOB reads.
+Swordfish keeps activation, profile, prompt, welcome, and chat behavior but
+declares no executable runtime surface while its backend is parked.
 Runnable pack workflows persist workflow, tool-call, audit, event, and artifact
 metadata through the common Cloudflare lifecycle.
 

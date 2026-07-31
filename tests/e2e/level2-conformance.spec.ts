@@ -57,6 +57,46 @@ test.describe.serial("Level 2 executable conformance", () => {
       })
       .toBe("Repository Analyst");
 
+    const approvalPolicyResponse = await page.request.post("/api/workbench/tools/policy", {
+      data: { toolName: "repo.snapshot", requiresApproval: true },
+    });
+    expect(approvalPolicyResponse.ok()).toBe(true);
+
+    const interruptedToolResponse = await page.request.post("/api/workbench/tools/runs", {
+      data: { toolName: "repo.snapshot", executionMode: "dry_run", input: {} },
+    });
+    expect(interruptedToolResponse.status()).toBe(403);
+
+    const approvalsResponse = await page.request.get(
+      "/api/workbench/tools/approvals?status=requested",
+    );
+    expect(approvalsResponse.ok()).toBe(true);
+    const approvals = (await approvalsResponse.json()) as {
+      approvals?: Array<{ id?: string; toolId?: string; status?: string }>;
+    };
+    const repoApproval = approvals.approvals?.find(
+      (approval) => approval.toolId === "repo.snapshot" && approval.status === "requested",
+    );
+    expect(repoApproval?.id).toBeTruthy();
+
+    const approveResponse = await page.request.post(
+      `/api/workbench/tools/approvals/${encodeURIComponent(repoApproval!.id!)}/approve`,
+    );
+    expect(approveResponse.ok()).toBe(true);
+    const approved = (await approveResponse.json()) as {
+      run?: { status?: string };
+      approvalRequest?: { status?: string };
+      artifact?: { id?: string } | null;
+    };
+    expect(approved.run?.status).toBe("completed");
+    expect(approved.approvalRequest?.status).toBe("approved");
+    expect(approved.artifact?.id).toBeTruthy();
+
+    const resetApprovalPolicyResponse = await page.request.post("/api/workbench/tools/policy", {
+      data: { toolName: "repo.snapshot", requiresApproval: false },
+    });
+    expect(resetApprovalPolicyResponse.ok()).toBe(true);
+
     await page.evaluate(() => {
       (window as typeof window & { level2Run?: Promise<unknown> }).level2Run = fetch(
         "/api/workbench/workflows/repo.readiness_report",

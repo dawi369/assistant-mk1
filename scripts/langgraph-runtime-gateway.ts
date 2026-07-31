@@ -1,6 +1,4 @@
 import { timingSafeEqual } from "node:crypto";
-import { spawn } from "node:child_process";
-import { readFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { Readable } from "node:stream";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
@@ -15,28 +13,6 @@ import {
   signFacadeRequest,
   sha256Base64Url,
 } from "../lib/workbench/control-plane-signing";
-import { validateUrlInspectInput } from "../lib/workbench/url-inspect";
-import { inspectPublicUrl } from "./public-url-inspect";
-import {
-  adminTestToolError,
-  runnerEchoToolName,
-  validateRunnerEchoInput,
-  type RunnerEchoOutput,
-  type RunnerEchoResult,
-} from "../lib/workbench/admin-test-tools";
-import {
-  repoSnapshotError,
-  repoSnapshotToolName,
-  validateRepoSnapshotInput,
-  type RepoSnapshotCommandMetric,
-  type RepoSnapshotOutput,
-  type RepoSnapshotResult,
-} from "../lib/workbench/repo-snapshot";
-import {
-  executeDemoInspectExecutorRequest,
-  type DemoInspectExecutorRequest,
-  validateDemoInspectExecutorRequest,
-} from "../lib/workbench/demo-inspect-executor";
 import {
   assertSchemaValue,
   defaultActionPort,
@@ -47,7 +23,7 @@ import {
 } from "@assistant-mk1/agent-sdk/control-plane";
 import { agentManifestRegistry } from "../generated/agent-runtime/manifests";
 import { agentRunnerRegistry } from "../generated/agent-runtime/runner";
-import { isCoreRunnerTool } from "../lib/agent-runtime/core-runner-provider";
+import { resolvePlatformRunnerTool } from "../lib/agent-runtime/core-runner-provider";
 
 const port = Number(process.env.PORT ?? 3000);
 const langGraphUpstreamUrl = (
@@ -78,13 +54,6 @@ const readBody = async (request: IncomingMessage) => {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   }
   return Buffer.concat(chunks);
-};
-
-const readJsonBody = async <T>(request: IncomingMessage): Promise<T | null> => {
-  const body = await readBody(request);
-  if (body.length === 0) return null;
-
-  return parseJsonBuffer<T>(body);
 };
 
 const parseJsonBuffer = <T>(body: Buffer): T | null => {
@@ -139,22 +108,6 @@ const requireProxyAuth = (request: IncomingMessage, response: ServerResponse) =>
   }
 
   if (!isAuthorized(request, token)) {
-    json(response, 401, { ok: false, error: "unauthorized" });
-    return false;
-  }
-
-  return true;
-};
-
-const requireExecutorAuth = (request: IncomingMessage, response: ServerResponse) => {
-  const token = process.env.WORKBENCH_EXECUTOR_TOKEN;
-  if (!token) {
-    json(response, 500, { ok: false, error: "WORKBENCH_EXECUTOR_TOKEN is not configured" });
-    return false;
-  }
-
-  const authorization = request.headers.authorization;
-  if (!authorization || !constantTimeEqual(authorization, bearerToken(token))) {
     json(response, 401, { ok: false, error: "unauthorized" });
     return false;
   }
@@ -252,28 +205,6 @@ const isLangGraphReady = async () => {
   }
 };
 
-const handleDemoInspectExecutor = async (request: IncomingMessage, response: ServerResponse) => {
-  if (request.method !== "POST") {
-    json(response, 405, { ok: false, error: "method not allowed" });
-    return;
-  }
-  if (!requireExecutorAuth(request, response)) return;
-
-  const body = await readJsonBody<DemoInspectExecutorRequest>(request);
-  if (!body) {
-    json(response, 400, { ok: false, error: "request body must be JSON" });
-    return;
-  }
-
-  const parsed = validateDemoInspectExecutorRequest(body);
-  if (!parsed.ok) {
-    json(response, 400, { ok: false, error: parsed.error });
-    return;
-  }
-
-  json(response, 200, await executeDemoInspectExecutorRequest(parsed.request));
-};
-
 type ToolRunnerInvocation = {
   toolName?: string;
   input?: unknown;
@@ -284,6 +215,10 @@ type ToolRunnerInvocation = {
   agentId?: unknown;
   runId?: unknown;
   workflowIntentId?: unknown;
+  toolCallId?: unknown;
+  packVersion?: unknown;
+  runtimeVersion?: unknown;
+  bindingVersion?: unknown;
   policyDecisionId?: unknown;
   source?: unknown;
   traceId?: unknown;
@@ -309,7 +244,7 @@ type ToolRunnerInvocation = {
 };
 
 type WorkflowCallbackPayload = {
-  event: "run.started" | "artifact.created" | "run.completed" | "run.failed";
+  event: "run.started" | "run.progress" | "artifact.created" | "run.completed" | "run.failed";
   runId: string;
   workflowIntentId: string;
   summary?: string;
@@ -337,224 +272,7 @@ type WorkflowCallbackPayload = {
   output?: Record<string, unknown>;
 };
 
-type RunnerToolResult = RepoSnapshotResult | RunnerEchoResult | RuntimeResult;
-
-const repoSnapshotTimeoutMs = 10_000;
-const repoSnapshotMaxStdoutBytes = 64 * 1024;
-const repoSnapshotMaxStderrBytes = 8 * 1024;
-
-const redactOutput = (value: string) =>
-  value
-    .replace(/(api[_-]?key|token|secret|password)=?[^\s"']*/gi, "$1=[redacted]")
-    .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer [redacted]");
-
-const byteSlice = (value: string, maxBytes: number) => {
-  const buffer = Buffer.from(value, "utf8");
-  if (buffer.length <= maxBytes) return value;
-  return `${buffer.subarray(0, maxBytes).toString("utf8")}\n[truncated]`;
-};
-
-const runSnapshotCommand = async (
-  name: string,
-  command: string,
-  args: string[],
-): Promise<{ metric: RepoSnapshotCommandMetric; stdout: string; stderr: string }> => {
-  const startedAt = Date.now();
-  return new Promise((resolve) => {
-    const child = spawn(command, args, {
-      cwd: process.cwd(),
-      env: { ...process.env, PATH: process.env.PATH ?? "" },
-    });
-    let stdout = "";
-    let stderr = "";
-    let timedOut = false;
-    const timeout = setTimeout(() => {
-      timedOut = true;
-      child.kill("SIGKILL");
-    }, repoSnapshotTimeoutMs);
-
-    child.stdout.on("data", (chunk: Buffer) => {
-      stdout = byteSlice(stdout + chunk.toString("utf8"), repoSnapshotMaxStdoutBytes);
-    });
-    child.stderr.on("data", (chunk: Buffer) => {
-      stderr = byteSlice(stderr + chunk.toString("utf8"), repoSnapshotMaxStderrBytes);
-    });
-    child.on("error", (error: Error) => {
-      clearTimeout(timeout);
-      const durationMs = Date.now() - startedAt;
-      resolve({
-        stdout: "",
-        stderr: redactOutput(error.message),
-        metric: {
-          name,
-          command: [command, ...args].join(" "),
-          status: "unavailable",
-          durationMs,
-          stdoutBytes: 0,
-          stderrBytes: Buffer.byteLength(error.message),
-        },
-      });
-    });
-    child.on("close", (code: number | null) => {
-      clearTimeout(timeout);
-      const safeStdout = redactOutput(stdout);
-      const safeStderr = redactOutput(stderr);
-      resolve({
-        stdout: safeStdout,
-        stderr: safeStderr,
-        metric: {
-          name,
-          command: [command, ...args].join(" "),
-          status: timedOut ? "timeout" : code === 0 ? "completed" : "failed",
-          durationMs: Date.now() - startedAt,
-          exitCode: code ?? undefined,
-          stdoutBytes: Buffer.byteLength(safeStdout),
-          stderrBytes: Buffer.byteLength(safeStderr),
-        },
-      });
-    });
-  });
-};
-
-const readPackageJson = async () => {
-  try {
-    const parsed = JSON.parse(await readFile("package.json", "utf8")) as {
-      packageManager?: string;
-      scripts?: Record<string, unknown>;
-    };
-    return {
-      packageManager: parsed.packageManager,
-      scripts: parsed.scripts
-        ? Object.keys(parsed.scripts)
-            .filter((name) => /^[a-z0-9:_-]{1,64}$/i.test(name))
-            .sort()
-            .slice(0, 40)
-        : [],
-    };
-  } catch {
-    return { packageManager: undefined, scripts: [] };
-  }
-};
-
-const runRepoSnapshot = async (input: unknown): Promise<RepoSnapshotResult> => {
-  const parsed = validateRepoSnapshotInput(input);
-  if ("code" in parsed) return { ok: false, error: parsed };
-  const startedAt = Date.now();
-  const [files, docs, configs, packageInfo] = await Promise.all([
-    runSnapshotCommand("repo-files", "rg", [
-      "--files",
-      "-g",
-      "!node_modules",
-      "-g",
-      "!.next",
-      "-g",
-      "!.git",
-      "-g",
-      "!.env*",
-      "-g",
-      "!*.tsbuildinfo",
-    ]),
-    parsed.includeDocs === false
-      ? Promise.resolve<Awaited<ReturnType<typeof runSnapshotCommand>>>({
-          stdout: "",
-          stderr: "",
-          metric: {
-            name: "docs",
-            command: "skipped",
-            status: "completed",
-            durationMs: 0,
-            stdoutBytes: 0,
-            stderrBytes: 0,
-          },
-        })
-      : runSnapshotCommand("docs", "rg", ["--files", "docs"]),
-    parsed.includeConfig === false
-      ? Promise.resolve<Awaited<ReturnType<typeof runSnapshotCommand>>>({
-          stdout: "",
-          stderr: "",
-          metric: {
-            name: "config",
-            command: "skipped",
-            status: "completed",
-            durationMs: 0,
-            stdoutBytes: 0,
-            stderrBytes: 0,
-          },
-        })
-      : runSnapshotCommand("config", "rg", [
-          "--files",
-          "-g",
-          "package.json",
-          "-g",
-          "pnpm-lock.yaml",
-          "-g",
-          "*.config.*",
-          "-g",
-          "*.toml",
-          "-g",
-          "*.jsonc",
-          "-g",
-          "Dockerfile*",
-          "-g",
-          ".dockerignore",
-        ]),
-    readPackageJson(),
-  ]);
-
-  const commandMetrics = [files.metric, docs.metric, configs.metric];
-  if (files.metric.status === "unavailable") {
-    return {
-      ok: false,
-      error: repoSnapshotError("repo_snapshot_unavailable", "ripgrep is not available.", false),
-    };
-  }
-
-  const listFromStdout = (stdout: string, limit: number) =>
-    stdout
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .filter((line) => !line.startsWith(".env"))
-      .slice(0, limit);
-  const repoFiles = listFromStdout(files.stdout, 80);
-  const docFiles = listFromStdout(docs.stdout, 40);
-  const configFiles = listFromStdout(configs.stdout, 40);
-  const output: RepoSnapshotOutput = {
-    status: "ok",
-    summary: `Repository snapshot captured ${repoFiles.length} files, ${docFiles.length} docs, and ${configFiles.length} config files.`,
-    packageManager: packageInfo.packageManager,
-    scripts: parsed.includeScripts === false ? [] : packageInfo.scripts,
-    repoFiles,
-    docs: docFiles,
-    configFiles,
-    signals: [
-      ...(packageInfo.packageManager
-        ? [
-            {
-              kind: "package" as const,
-              title: "Package manager",
-              value: packageInfo.packageManager,
-            },
-          ]
-        : []),
-      { kind: "runtime" as const, title: "Runner", value: "fly-langgraph-runtime" },
-      ...configFiles.slice(0, 8).map((file) => ({
-        kind: "config" as const,
-        title: "Config file",
-        value: file,
-      })),
-      ...docFiles
-        .slice(0, 8)
-        .map((file) => ({ kind: "docs" as const, title: "Doc file", value: file })),
-    ],
-    commandMetrics,
-    timingMs: Date.now() - startedAt,
-  };
-  return { ok: true, output };
-};
-
-const repoSnapshotToolCallId = (runId: string) => `${runId}-tool-repo-snapshot`;
-const repoSnapshotArtifactId = (runId: string) => `${runId}-artifact-repo-snapshot`;
+type RunnerToolResult = RuntimeResult;
 
 const callbackTraceId = (invocation: ToolRunnerInvocation) => {
   if (typeof invocation.callback?.traceId === "string" && invocation.callback.traceId.trim()) {
@@ -566,25 +284,6 @@ const callbackTraceId = (invocation: ToolRunnerInvocation) => {
   return undefined;
 };
 
-const repoSnapshotCallbackData = (
-  invocation: ToolRunnerInvocation,
-  output?: RepoSnapshotOutput,
-): Record<string, unknown> => ({
-  runner: invocation.runner,
-  policyDecisionId:
-    typeof invocation.policyDecisionId === "string" ? invocation.policyDecisionId : undefined,
-  source: typeof invocation.source === "string" ? invocation.source : undefined,
-  timingMs: output?.timingMs,
-  commandMetrics: output?.commandMetrics,
-  fileCounts: output
-    ? {
-        repoFiles: output.repoFiles.length,
-        docs: output.docs.length,
-        configFiles: output.configFiles.length,
-      }
-    : undefined,
-});
-
 const callbackFailure = (
   toolName: string,
   message: string,
@@ -592,26 +291,16 @@ const callbackFailure = (
     code?: "test_tool_failed" | "runner_callback_signing_not_configured";
     retryable?: boolean;
   },
-): RunnerToolResult =>
-  toolName === runnerEchoToolName
-    ? {
-        ok: false,
-        error: adminTestToolError(
-          input?.code ?? "test_tool_failed",
-          message,
-          input?.retryable ?? true,
-        ),
-      }
-    : {
-        ok: false,
-        error: repoSnapshotError(
-          input?.code === "runner_callback_signing_not_configured"
-            ? "runner_callback_signing_not_configured"
-            : "repo_snapshot_failed",
-          message,
-          input?.retryable ?? true,
-        ),
-      };
+): RunnerToolResult => ({
+  ok: false,
+  error: {
+    code: input?.code ?? "runner_callback_failed",
+    message,
+    retryable: input?.retryable ?? true,
+    redacted: true,
+  },
+  summary: message,
+});
 
 const logCallbackFailure = (
   invocation: ToolRunnerInvocation,
@@ -735,39 +424,7 @@ const postWorkflowCallback = async (
   return { ok: true };
 };
 
-const runnerEchoToolCallId = (runId: string) => `${runId}-tool-runner-echo`;
-
-const runRunnerEcho = (input: unknown): RunnerEchoResult => {
-  const parsed = validateRunnerEchoInput(input);
-  if ("code" in parsed) return { ok: false, error: parsed };
-  const startedAt = Date.now();
-  const message = parsed.message ?? "runner echo ok";
-  const echoed = parsed.uppercase ? message.toUpperCase() : message;
-  const output: RunnerEchoOutput = {
-    status: "ok",
-    summary: `Runner echo completed: ${echoed}.`,
-    message,
-    echoed,
-    uppercase: parsed.uppercase === true,
-    length: echoed.length,
-    timingMs: Date.now() - startedAt,
-  };
-  return { ok: true, output };
-};
-
-const runnerEchoCallbackData = (
-  invocation: ToolRunnerInvocation,
-  output?: RunnerEchoOutput,
-): Record<string, unknown> => ({
-  runner: invocation.runner,
-  policyDecisionId:
-    typeof invocation.policyDecisionId === "string" ? invocation.policyDecisionId : undefined,
-  source: typeof invocation.source === "string" ? invocation.source : undefined,
-  timingMs: output?.timingMs,
-  length: output?.length,
-});
-
-const emitRepoSnapshotCallback = async (
+const emitRunnerCallback = async (
   invocation: ToolRunnerInvocation,
   payload: Omit<WorkflowCallbackPayload, "runId" | "workflowIntentId" | "traceId">,
 ) => {
@@ -784,70 +441,6 @@ const emitRepoSnapshotCallback = async (
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
-
-const stringList = (value: unknown) =>
-  Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-    : [];
-
-const matchesSandboxPattern = (value: string, pattern: string) => {
-  const normalizedValue = value.toLowerCase();
-  const normalizedPattern = pattern.trim().toLowerCase();
-  if (!normalizedPattern) return false;
-  if (normalizedValue === normalizedPattern) return true;
-  if (normalizedPattern.startsWith("*."))
-    return normalizedValue.endsWith(normalizedPattern.slice(1));
-  if (normalizedPattern.startsWith(".")) return normalizedValue.endsWith(normalizedPattern);
-  return false;
-};
-
-const sandboxEgressError = (runner: ToolRunnerInvocation["runner"], url: URL) => {
-  const sandbox = isRecord(runner?.sandbox) ? runner.sandbox : null;
-  const network = isRecord(sandbox?.network) ? sandbox.network : null;
-  if (!network) {
-    return {
-      code: "sandbox_required",
-      message: "Runner invocation must include a sandbox network policy.",
-    };
-  }
-
-  const allowedSchemes = stringList(network.allowedSchemes);
-  const scheme = url.protocol.replace(":", "").toLowerCase();
-  if (allowedSchemes.length > 0 && !allowedSchemes.includes(scheme)) {
-    return {
-      code: "sandbox_scheme_blocked",
-      message: `${scheme} egress is not allowed by the sandbox policy.`,
-    };
-  }
-  if (network.privateNetwork !== "deny") {
-    return {
-      code: "sandbox_private_network_policy_required",
-      message: "Runner sandbox must deny private network egress.",
-    };
-  }
-
-  const host = url.hostname.toLowerCase();
-  const deniedHosts = stringList(network.deniedHosts);
-  if (deniedHosts.some((pattern) => matchesSandboxPattern(host, pattern))) {
-    return {
-      code: "sandbox_egress_denied",
-      message: `${host} is denied by the sandbox egress policy.`,
-    };
-  }
-
-  const allowedHosts = stringList(network.allowedHosts);
-  if (
-    allowedHosts.length > 0 &&
-    !allowedHosts.some((pattern) => matchesSandboxPattern(host, pattern))
-  ) {
-    return {
-      code: "sandbox_egress_not_allowed",
-      message: `${host} is not allowed by the sandbox egress policy.`,
-    };
-  }
-
-  return null;
-};
 
 const handleToolRunnerInvocation = async (
   request: IncomingMessage,
@@ -873,7 +466,11 @@ const handleToolRunnerInvocation = async (
   const genericRunnerTool = genericRunnerEntry?.module.tools.find(
     (tool) => tool.id === parsed.toolName,
   ) as RuntimeToolBinding | undefined;
-  if (!isCoreRunnerTool(parsed.toolName ?? "") && !genericRunnerTool) {
+  const platformRunnerTool = resolvePlatformRunnerTool(parsed.toolName ?? "") as
+    | RuntimeToolBinding
+    | undefined;
+  const runnerTool = genericRunnerTool ?? platformRunnerTool;
+  if (!runnerTool) {
     json(response, 400, {
       ok: false,
       error: "unsupported tool",
@@ -887,10 +484,21 @@ const handleToolRunnerInvocation = async (
     return;
   }
 
-  if (genericRunnerEntry && genericRunnerTool && !isCoreRunnerTool(parsed.toolName ?? "")) {
+  {
     const network = isRecord(parsed.runner?.sandbox) ? parsed.runner.sandbox.network : null;
+    const manifestEntry = genericRunnerEntry
+      ? agentManifestRegistry[
+          genericRunnerEntry.module.packId as keyof typeof agentManifestRegistry
+        ]
+      : null;
+    const packId = genericRunnerEntry?.module.packId ?? "platform";
+    const packVersion = manifestEntry?.module.version ?? "1.0.0";
+    const runtimeVersion = genericRunnerEntry?.module.runtimeVersion ?? "1.0.0";
     if (
-      parsed.runner?.adapterVersion !== genericRunnerTool.adapterVersion ||
+      parsed.runner?.adapterVersion !== runnerTool.adapterVersion ||
+      parsed.packVersion !== packVersion ||
+      parsed.runtimeVersion !== runtimeVersion ||
+      parsed.bindingVersion !== 1 ||
       !isRecord(network) ||
       network.privateNetwork !== "deny"
     ) {
@@ -905,7 +513,7 @@ const handleToolRunnerInvocation = async (
       });
       return;
     }
-    if (!genericRunnerTool.execute || !isRecord(parsed.input)) {
+    if (!runnerTool.execute || !isRecord(parsed.input)) {
       json(response, 409, {
         ok: false,
         error: {
@@ -917,13 +525,15 @@ const handleToolRunnerInvocation = async (
       });
       return;
     }
-    const manifestEntry =
-      agentManifestRegistry[genericRunnerEntry.module.packId as keyof typeof agentManifestRegistry];
     const runId = typeof parsed.runId === "string" ? parsed.runId : "unknown-run";
     const workflowIntentId =
       typeof parsed.workflowIntentId === "string"
         ? parsed.workflowIntentId
         : "unknown-workflow-intent";
+    const toolCallId =
+      typeof parsed.toolCallId === "string" && parsed.toolCallId
+        ? parsed.toolCallId
+        : `${runId}-tool-${String(parsed.toolName).replace(/[^a-z0-9_-]/gi, "-")}`;
     const context: AgentExecutionContext = {
       scope: {
         userId: typeof parsed.scope?.userId === "string" ? parsed.scope.userId : "unknown-user",
@@ -934,9 +544,9 @@ const handleToolRunnerInvocation = async (
         agentId: typeof parsed.agentId === "string" ? parsed.agentId : "unknown-agent",
       },
       pack: {
-        id: genericRunnerEntry.module.packId,
-        version: manifestEntry.module.version,
-        runtimeVersion: genericRunnerEntry.module.runtimeVersion,
+        id: packId,
+        version: packVersion,
+        runtimeVersion,
       },
       run: {
         id: runId,
@@ -945,7 +555,7 @@ const handleToolRunnerInvocation = async (
         source: "user",
       },
       signal: new AbortController().signal,
-      connections: defaultConnectionPort(manifestEntry.module.connections),
+      connections: defaultConnectionPort(manifestEntry?.module.connections ?? []),
       actions: defaultActionPort,
       tools: {
         async invoke() {
@@ -965,15 +575,85 @@ const handleToolRunnerInvocation = async (
     };
     const startedAt = Date.now();
     try {
-      assertSchemaValue(genericRunnerTool.inputSchema, parsed.input, `${parsed.toolName} input`);
+      const progressCallback = await emitRunnerCallback(parsed, {
+        event: "run.progress",
+        sequence: 1,
+        summary: `${parsed.toolName} runner started.`,
+        toolCall: {
+          id: toolCallId,
+          toolId: String(parsed.toolName),
+          status: "running",
+          data: {
+            packVersion: typeof parsed.packVersion === "string" ? parsed.packVersion : undefined,
+            runtimeVersion:
+              typeof parsed.runtimeVersion === "string" ? parsed.runtimeVersion : undefined,
+            bindingVersion:
+              typeof parsed.bindingVersion === "number" ? parsed.bindingVersion : undefined,
+            adapterVersion: runnerTool.adapterVersion,
+            transport: "fly",
+          },
+        },
+      });
+      if (!progressCallback.ok) {
+        json(response, progressCallback.status === 500 ? 409 : progressCallback.status, {
+          ok: false,
+          error: {
+            code: "publication_revoked",
+            message: "Runner publication authority was revoked.",
+            retryable: false,
+            redacted: true,
+          },
+          runner: parsed.runner,
+        });
+        return;
+      }
+      assertSchemaValue(runnerTool.inputSchema, parsed.input, `${parsed.toolName} input`);
       if (e2eRunnerDelayMs > 0) await delay(e2eRunnerDelayMs);
-      const result = await genericRunnerTool.execute(parsed.input, context);
+      const result = await runnerTool.execute(parsed.input, context);
       if (result.ok) {
-        assertSchemaValue(
-          genericRunnerTool.outputSchema,
-          result.output,
-          `${parsed.toolName} output`,
-        );
+        assertSchemaValue(runnerTool.outputSchema, result.output, `${parsed.toolName} output`);
+      }
+      if (result.ok) {
+        for (const [index, artifact] of (result.artifacts ?? []).entries()) {
+          const artifactId = `${toolCallId}-artifact-${artifact.kind.replace(/[^a-z0-9_-]/gi, "-")}${index ? `-${index + 1}` : ""}`;
+          const artifactCallback = await emitRunnerCallback(parsed, {
+            event: "artifact.created",
+            sequence: index + 2,
+            summary: `Created ${artifact.title}.`,
+            artifact: {
+              id: artifactId,
+              kind: artifact.kind,
+              uri: `d1://control-plane/${runId}/${artifact.kind}.json`,
+              title: artifact.title,
+              mimeType: artifact.mimeType,
+              sizeBytes: JSON.stringify(artifact.data).length,
+              data:
+                JSON.stringify(artifact.data).length <= 8 * 1024
+                  ? artifact.data
+                  : { summary: result.summary, truncated: true },
+            },
+            toolCall: {
+              id: toolCallId,
+              toolId: String(parsed.toolName),
+              status: "running",
+              artifactRefs: [{ id: artifactId, kind: artifact.kind }],
+              data: { adapterVersion: runnerTool.adapterVersion, transport: "fly" },
+            },
+          });
+          if (!artifactCallback.ok) {
+            json(response, 409, {
+              ok: false,
+              error: {
+                code: "publication_revoked",
+                message: "Runner publication authority was revoked.",
+                retryable: false,
+                redacted: true,
+              },
+              runner: parsed.runner,
+            });
+            return;
+          }
+        }
       }
       json(response, result.ok ? 200 : 502, {
         ...result,
@@ -981,7 +661,7 @@ const handleToolRunnerInvocation = async (
         metrics: {
           transport: "fly",
           durationMs: Date.now() - startedAt,
-          callback: { status: "skipped" },
+          callback: parsed.callback ? { status: "progress_published" } : { status: "skipped" },
         },
       });
     } catch (error) {
@@ -1002,334 +682,6 @@ const handleToolRunnerInvocation = async (
     }
     return;
   }
-
-  if (parsed.toolName === runnerEchoToolName) {
-    const network = isRecord(parsed.runner?.sandbox) ? parsed.runner.sandbox.network : null;
-    if (!isRecord(network) || network.egress !== "none" || network.privateNetwork !== "deny") {
-      json(response, 403, {
-        ok: false,
-        error: {
-          code: "sandbox_required",
-          message: "runner.echo requires a no-egress sandbox policy.",
-          retryable: false,
-          redacted: true,
-        },
-        runner: parsed.runner,
-      });
-      return;
-    }
-    const startedAt = Date.now();
-    const runId = typeof parsed.runId === "string" ? parsed.runId : "unknown-run";
-    const startedCallback = await emitRepoSnapshotCallback(parsed, {
-      event: "run.started",
-      sequence: 1,
-      summary: "runner.echo runner started.",
-      toolCall: {
-        id: runnerEchoToolCallId(runId),
-        toolId: runnerEchoToolName,
-        status: "running",
-        data: runnerEchoCallbackData(parsed),
-      },
-    });
-    if (!startedCallback.ok) {
-      json(response, startedCallback.status, {
-        ...startedCallback.result,
-        runner: parsed.runner,
-        metrics: {
-          transport: "fly",
-          durationMs: Date.now() - startedAt,
-          callback: { status: "failed", event: "run.started" },
-        },
-      });
-      return;
-    }
-
-    const result = runRunnerEcho(parsed.input);
-    const terminalCallback = await emitRepoSnapshotCallback(
-      parsed,
-      result.ok
-        ? {
-            event: "run.completed",
-            sequence: 2,
-            summary: result.output.summary,
-            outputSummary: result.output.summary,
-            output: {
-              status: result.output.status,
-              summary: result.output.summary,
-              length: result.output.length,
-              timingMs: result.output.timingMs,
-            },
-            toolCall: {
-              id: runnerEchoToolCallId(runId),
-              toolId: runnerEchoToolName,
-              status: "completed",
-              outputSummary: result.output.summary,
-              data: runnerEchoCallbackData(parsed, result.output),
-            },
-          }
-        : {
-            event: "run.failed",
-            sequence: 2,
-            summary: result.error.message,
-            error: result.error.message,
-            toolCall: {
-              id: runnerEchoToolCallId(runId),
-              toolId: runnerEchoToolName,
-              status: "failed",
-              outputSummary: result.error.message,
-              data: {
-                ...runnerEchoCallbackData(parsed),
-                errorCode: result.error.code,
-              },
-            },
-          },
-    );
-    if (!terminalCallback.ok) {
-      json(response, terminalCallback.status, {
-        ...terminalCallback.result,
-        runner: parsed.runner,
-        metrics: {
-          transport: "fly",
-          durationMs: Date.now() - startedAt,
-          callback: {
-            status: "failed",
-            event: result.ok ? "run.completed" : "run.failed",
-          },
-        },
-      });
-      return;
-    }
-
-    json(response, result.ok ? 200 : 502, {
-      ...result,
-      runner: parsed.runner,
-      metrics: {
-        transport: "fly",
-        durationMs: Date.now() - startedAt,
-        callback: parsed.callback ? { status: "completed" } : { status: "skipped" },
-      },
-    });
-    return;
-  }
-
-  if (parsed.toolName === repoSnapshotToolName) {
-    const network = isRecord(parsed.runner?.sandbox) ? parsed.runner.sandbox.network : null;
-    if (!isRecord(network) || network.egress !== "none" || network.privateNetwork !== "deny") {
-      json(response, 403, {
-        ok: false,
-        error: {
-          code: "sandbox_required",
-          message: "repo.snapshot requires a no-egress sandbox policy.",
-          retryable: false,
-          redacted: true,
-        },
-        runner: parsed.runner,
-      });
-      return;
-    }
-    const startedAt = Date.now();
-    const startedCallback = await emitRepoSnapshotCallback(parsed, {
-      event: "run.started",
-      sequence: 1,
-      summary: "repo.snapshot runner started.",
-      toolCall: {
-        id: repoSnapshotToolCallId(typeof parsed.runId === "string" ? parsed.runId : "unknown-run"),
-        toolId: repoSnapshotToolName,
-        status: "running",
-        data: repoSnapshotCallbackData(parsed),
-      },
-    });
-    if (!startedCallback.ok) {
-      json(response, startedCallback.status, {
-        ...startedCallback.result,
-        runner: parsed.runner,
-        metrics: {
-          transport: "fly",
-          durationMs: Date.now() - startedAt,
-          callback: { status: "failed", event: "run.started" },
-        },
-      });
-      return;
-    }
-
-    if (e2eRunnerDelayMs > 0) await delay(e2eRunnerDelayMs);
-
-    const result = await runRepoSnapshot(parsed.input);
-    const runId = typeof parsed.runId === "string" ? parsed.runId : "unknown-run";
-    const artifactRef = result.ok
-      ? {
-          id: repoSnapshotArtifactId(runId),
-          kind: "report",
-          uri: `d1://control-plane/${runId}/repo-snapshot-report.json`,
-          title: "Repository snapshot report",
-          mimeType: "application/json",
-          sizeBytes: JSON.stringify(result.output).length,
-          data: {
-            ...repoSnapshotCallbackData(parsed, result.output),
-            outputSummary: result.output.summary,
-          },
-        }
-      : null;
-
-    if (result.ok && artifactRef) {
-      const artifactCallback = await emitRepoSnapshotCallback(parsed, {
-        event: "artifact.created",
-        sequence: 2,
-        summary: "Created repository snapshot artifact metadata.",
-        artifact: artifactRef,
-        toolCall: {
-          id: repoSnapshotToolCallId(runId),
-          toolId: repoSnapshotToolName,
-          status: "running",
-          artifactRefs: [
-            {
-              id: artifactRef.id,
-              kind: artifactRef.kind,
-              uri: artifactRef.uri,
-              title: artifactRef.title,
-              mimeType: artifactRef.mimeType,
-            },
-          ],
-          data: repoSnapshotCallbackData(parsed, result.output),
-        },
-      });
-      if (!artifactCallback.ok) {
-        json(response, artifactCallback.status, {
-          ...artifactCallback.result,
-          runner: parsed.runner,
-          metrics: {
-            transport: "fly",
-            durationMs: Date.now() - startedAt,
-            callback: { status: "failed", event: "artifact.created" },
-          },
-        });
-        return;
-      }
-    }
-
-    const terminalCallback = await emitRepoSnapshotCallback(
-      parsed,
-      result.ok
-        ? {
-            event: "run.completed",
-            sequence: 3,
-            summary: result.output.summary,
-            outputSummary: result.output.summary,
-            output: {
-              status: result.output.status,
-              summary: result.output.summary,
-              packageManager: result.output.packageManager,
-              timingMs: result.output.timingMs,
-              commandMetrics: result.output.commandMetrics,
-              fileCounts: {
-                repoFiles: result.output.repoFiles.length,
-                docs: result.output.docs.length,
-                configFiles: result.output.configFiles.length,
-              },
-            },
-            toolCall: {
-              id: repoSnapshotToolCallId(runId),
-              toolId: repoSnapshotToolName,
-              status: "completed",
-              outputSummary: result.output.summary,
-              artifactRefs: artifactRef
-                ? [
-                    {
-                      id: artifactRef.id,
-                      kind: artifactRef.kind,
-                      uri: artifactRef.uri,
-                      title: artifactRef.title,
-                      mimeType: artifactRef.mimeType,
-                    },
-                  ]
-                : [],
-              data: repoSnapshotCallbackData(parsed, result.output),
-            },
-          }
-        : {
-            event: "run.failed",
-            sequence: 3,
-            summary: result.error.message,
-            error: result.error.message,
-            toolCall: {
-              id: repoSnapshotToolCallId(runId),
-              toolId: repoSnapshotToolName,
-              status: "failed",
-              outputSummary: result.error.message,
-              data: {
-                ...repoSnapshotCallbackData(parsed),
-                errorCode: result.error.code,
-              },
-            },
-          },
-    );
-    if (!terminalCallback.ok) {
-      json(response, terminalCallback.status, {
-        ...terminalCallback.result,
-        runner: parsed.runner,
-        metrics: {
-          transport: "fly",
-          durationMs: Date.now() - startedAt,
-          callback: {
-            status: "failed",
-            event: result.ok ? "run.completed" : "run.failed",
-          },
-        },
-      });
-      return;
-    }
-
-    json(response, result.ok ? 200 : 502, {
-      ...result,
-      runner: parsed.runner,
-      metrics: {
-        transport: "fly",
-        durationMs: Date.now() - startedAt,
-        callback: parsed.callback ? { status: "completed" } : { status: "skipped" },
-      },
-    });
-    return;
-  }
-
-  const validated = validateUrlInspectInput(parsed.input);
-  if (!validated.ok) {
-    json(response, validated.status, {
-      ok: false,
-      error: validated.error,
-      runner: parsed.runner,
-    });
-    return;
-  }
-
-  const sandboxError = sandboxEgressError(parsed.runner, validated.url);
-  if (sandboxError) {
-    json(response, 403, {
-      ok: false,
-      error: {
-        ...sandboxError,
-        retryable: false,
-        redacted: true,
-      },
-      runner: parsed.runner,
-    });
-    return;
-  }
-
-  const startedAt = Date.now();
-  const sandbox = isRecord(parsed.runner?.sandbox) ? parsed.runner.sandbox : null;
-  const network = isRecord(sandbox?.network) ? sandbox.network : null;
-  const result = await inspectPublicUrl(validated.url, {
-    allowedHosts: stringList(network?.allowedHosts),
-    deniedHosts: stringList(network?.deniedHosts),
-  });
-  json(response, result.ok ? 200 : 502, {
-    ...result,
-    runner: parsed.runner,
-    metrics: {
-      transport: "fly",
-      durationMs: Date.now() - startedAt,
-    },
-  });
 };
 
 const headersToForward = (request: IncomingMessage) => {
@@ -1391,11 +743,6 @@ const server = createServer((request, response) => {
         service: "assistant-mk1-langgraph-runtime",
         langGraphReady,
       });
-      return;
-    }
-
-    if (url.pathname === "/workbench/executors/demo-inspect") {
-      await handleDemoInspectExecutor(request, response);
       return;
     }
 

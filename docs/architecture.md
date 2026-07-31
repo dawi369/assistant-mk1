@@ -99,9 +99,13 @@ observe -> analyze -> propose -> execute -> review
 - `packages/agent-sdk/*`: Pack API v2 and Runtime Module v1 public contracts.
 - `generated/agent-runtime/*`: deterministic manifest, Cloudflare, runner, web,
   and conformance registries.
-- `cloudflare/control-plane/src/generic-workflow-kernel.ts`: scoped execution
-  context, schema/resource checks, lifecycle, CAS state, and publication
-  boundary for package workflows.
+- `cloudflare/control-plane/src/runtime-workflows.ts`: the sole package workflow
+  kernel for schema/resource checks, scoped execution, CAS state, and response
+  formatting.
+- `cloudflare/control-plane/src/runtime-tool-execution.ts`: the shared inline/Fly
+  dispatcher used by workflows, model tools, and pack-backed Admin tools.
+- `cloudflare/control-plane/src/runtime-run-lifecycle.ts`: atomic D1 start,
+  promotion, terminal publication, trigger completion, and cancellation boundary.
 - `examples/complex-operator/*`: provider-free external-style extension proof.
 
 ## Deployment Boundary

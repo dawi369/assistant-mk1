@@ -83,8 +83,6 @@ export type Env = {
   SENTRY_ENVIRONMENT?: string;
   SENTRY_RELEASE?: string;
   SENTRY_TRACES_SAMPLE_RATE?: string;
-  WORKBENCH_EXECUTOR_URL?: string;
-  WORKBENCH_EXECUTOR_TOKEN?: string;
   WORKBENCH_CALLBACK_SIGNING_SECRET?: string;
   WORKBENCH_CALLBACK_URL?: string;
   WORKBENCH_RUNNER_TRANSPORT?: "inline" | "fly";
@@ -551,9 +549,6 @@ export type ChatRunRow = {
   failed_at: string | null;
   updated_at: string;
 };
-
-export const demoExecution = { mode: "dry_run", policy: "dev-demo" };
-export const demoWorkflowType = "demo.inspect";
 
 export const allowedStatuses = new Set<RunStatus>([
   "queued",

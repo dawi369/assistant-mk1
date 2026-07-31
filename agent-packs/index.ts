@@ -135,9 +135,6 @@ export const validateLocalAgentPack = (pack: LocalAgentPackManifest) => {
   if (pack.risk.requiresSecrets) {
     throw new Error(`Agent pack ${pack.id} cannot require secrets in checked-in pack contract v2.`);
   }
-  if (!pack.tools.length) {
-    throw new Error(`Agent pack ${pack.id} must declare at least one tool.`);
-  }
   const toolIds = new Set<string>();
   for (const tool of pack.tools) {
     if (!tool.id.trim()) throw new Error(`Agent pack ${pack.id} tool id is required.`);

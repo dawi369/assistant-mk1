@@ -33,7 +33,6 @@ flowchart LR
     historyApi["history/artifact APIs"]
     sessionEvents["session event stream"]
     callback["run callback endpoint"]
-    demoRuns["demo compatibility APIs"]
   end
 
   subgraph sg_fly["Fly.io / LangGraph Execution"]
@@ -96,8 +95,6 @@ flowchart LR
   runner -- "progress callback" --> callback
   callback -- "canonical write" --> d1Control
   callback -- "session hint" --> sessionEvents
-  workbenchControl -- "diagnostic read" --> demoRuns
-  demoRuns -- "canonical write" --> d1Control
 
   externalTriggers -- "trusted ingress" --> signalApi
   signalApi -- "control-plane start" --> worker
@@ -112,7 +109,7 @@ flowchart LR
   langgraph -. "planned checkpoints" .-> workflowState
 
   class nextApp,authKit,assistantUi,slashSurfaces,agentConnection,signalApi,workbenchApi vercel
-  class worker,scopeResolver,authz,sessionAgent,threadAgent,workbenchControl,packWorkflows,toolPolicy,historyApi,sessionEvents,callback,demoRuns cloudflare
+  class worker,scopeResolver,authz,sessionAgent,threadAgent,workbenchControl,packWorkflows,toolPolicy,historyApi,sessionEvents,callback cloudflare
   class gateway,langgraph,agentGraph,runner fly
   class d1Identity,d1Chat,d1Control,durableObject,migrations data
   class r2,workflowState planned

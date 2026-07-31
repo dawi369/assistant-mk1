@@ -5,7 +5,7 @@ import { createId, toJson, type AgentIdentity, type Env, type ExecutionMode } fr
 import { packWorkflowBindings, resolveRuntimeTool } from "../../../lib/agent-runtime/registry";
 import { agentManifestRegistry } from "../../../generated/agent-runtime/manifests";
 
-export type PackWorkflowRun = {
+export type RuntimeRunIdentity = {
   runId: string;
   workflowIntentId: string;
   relation: ControlRunRelation;
@@ -28,6 +28,7 @@ type PackWorkflowArtifact = {
   mimeType: string;
   sizeBytes: number;
   data: Record<string, unknown>;
+  staged?: boolean;
 };
 
 type StartPackWorkflowInput = {
@@ -45,7 +46,8 @@ type StartPackWorkflowInput = {
   runtimeMetadata?: Record<string, unknown>;
 };
 
-type RecordToolCallInput = PackWorkflowRun & {
+type RecordToolCallInput = RuntimeRunIdentity & {
+  toolCallId?: string;
   toolName: string;
   status: "completed" | "failed";
   inputSummary: string;
@@ -53,11 +55,12 @@ type RecordToolCallInput = PackWorkflowRun & {
   data: Record<string, unknown>;
 };
 
-type FinishPackWorkflowInput = PackWorkflowRun & {
+type FinishPackWorkflowInput = RuntimeRunIdentity & {
   workflowType: string;
   ok: boolean;
   summary: string;
   artifact?: PackWorkflowArtifact;
+  artifacts?: PackWorkflowArtifact[];
   artifactCreatedSummary?: string;
   data: Record<string, unknown>;
 };
@@ -69,7 +72,7 @@ export const startPackWorkflowRun = async (
   env: Env,
   identity: AgentIdentity,
   input: StartPackWorkflowInput,
-): Promise<PackWorkflowRun> => {
+): Promise<RuntimeRunIdentity> => {
   const timestamp = new Date().toISOString();
   const workflowIntentId = createId("cf-intent");
   const runId = createId("cf-run");
@@ -346,7 +349,7 @@ export const recordPackWorkflowToolCall = async (
   input: RecordToolCallInput,
 ) => {
   const timestamp = new Date().toISOString();
-  const id = packWorkflowToolCallId(input.runId, input.toolName);
+  const id = input.toolCallId ?? packWorkflowToolCallId(input.runId, input.toolName);
   await env.DB.prepare(
     `INSERT INTO control_tool_calls (
        id, user_id, workspace_id, agent_id, workflow_intent_id, run_id, tool_id, status,
@@ -358,7 +361,12 @@ export const recordPackWorkflowToolCall = async (
        SELECT 1 FROM control_runs
        WHERE user_id = ? AND workspace_id = ? AND id = ?
          AND status IN ('queued', 'running', 'waiting', 'interrupted')
-     )`,
+     )
+     ON CONFLICT(id) DO UPDATE SET
+       status = excluded.status,
+       output_summary = excluded.output_summary,
+       data_json = json_patch(control_tool_calls.data_json, excluded.data_json),
+       finished_at = excluded.finished_at`,
   )
     .bind(
       id,
@@ -390,18 +398,18 @@ export const finishPackWorkflowRun = async (
   input: FinishPackWorkflowInput,
 ): Promise<{ applied: boolean }> => {
   const timestamp = new Date().toISOString();
-  const artifactRef = input.artifact
-    ? {
-        id: input.artifact.id,
-        kind: input.artifact.kind,
-        uri: input.artifact.uri,
-        title: input.artifact.title,
-        mimeType: input.artifact.mimeType,
-      }
-    : null;
+  const artifacts = input.artifacts ?? (input.artifact ? [input.artifact] : []);
+  const artifactRefs = artifacts.map((artifact) => ({
+    id: artifact.id,
+    kind: artifact.kind,
+    uri: artifact.uri,
+    title: artifact.title,
+    mimeType: artifact.mimeType,
+  }));
 
   const statements = [];
-  if (input.artifact) {
+  for (const artifact of artifacts) {
+    if (artifact.staged) continue;
     statements.push(
       env.DB.prepare(
         `INSERT INTO control_artifacts (
@@ -414,31 +422,35 @@ export const finishPackWorkflowRun = async (
            AND status IN ('queued', 'running', 'waiting', 'interrupted')
        )`,
       ).bind(
-        input.artifact.id,
+        artifact.id,
         identity.scope.userId,
         identity.scope.workspaceId,
-        input.artifact.kind,
-        input.artifact.uri,
-        input.artifact.title,
-        input.artifact.mimeType,
-        input.artifact.sizeBytes,
-        toJson(input.artifact.data),
+        artifact.kind,
+        artifact.uri,
+        artifact.title,
+        artifact.mimeType,
+        artifact.sizeBytes,
+        toJson(artifact.data),
         timestamp,
         identity.scope.userId,
         identity.scope.workspaceId,
         input.runId,
       ),
+    );
+  }
+  if (artifactRefs.length) {
+    statements.push(
       env.DB.prepare(
         `UPDATE control_tool_calls
-       SET artifact_refs_json = ?
-       WHERE user_id = ? AND workspace_id = ? AND run_id = ?
-         AND EXISTS (
-           SELECT 1 FROM control_runs
-           WHERE user_id = ? AND workspace_id = ? AND id = ?
-             AND status IN ('queued', 'running', 'waiting', 'interrupted')
-         )`,
+         SET artifact_refs_json = ?
+         WHERE user_id = ? AND workspace_id = ? AND run_id = ?
+           AND EXISTS (
+             SELECT 1 FROM control_runs
+             WHERE user_id = ? AND workspace_id = ? AND id = ?
+               AND status IN ('queued', 'running', 'waiting', 'interrupted')
+           )`,
       ).bind(
-        toJson([artifactRef]),
+        toJson(artifactRefs),
         identity.scope.userId,
         identity.scope.workspaceId,
         input.runId,
@@ -448,6 +460,27 @@ export const finishPackWorkflowRun = async (
       ),
     );
   }
+
+  statements.push(
+    env.DB.prepare(
+      `UPDATE control_artifacts
+       SET data_json = json_set(data_json, '$.publicationStatus', 'published')
+       WHERE user_id = ? AND workspace_id = ? AND id LIKE ?
+         AND json_extract(data_json, '$.publicationStatus') = 'staged'
+         AND EXISTS (
+           SELECT 1 FROM control_runs
+           WHERE user_id = ? AND workspace_id = ? AND id = ?
+             AND status IN ('queued', 'running', 'waiting', 'interrupted')
+         )`,
+    ).bind(
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      `${input.runId}-%`,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      input.runId,
+    ),
+  );
 
   statements.push(
     env.DB.prepare(
@@ -471,7 +504,8 @@ export const finishPackWorkflowRun = async (
     ),
     env.DB.prepare(
       `UPDATE control_runs
-       SET status = ?, last_event_at = ?, completed_at = ?, failed_at = ?, data_json = ?,
+       SET status = ?, last_event_at = ?, completed_at = ?, failed_at = ?,
+           data_json = json_patch(data_json, ?),
            updated_at = ?
        WHERE user_id = ? AND workspace_id = ? AND id = ?
          AND status IN ('queued', 'running', 'waiting', 'interrupted')`,
@@ -483,7 +517,7 @@ export const finishPackWorkflowRun = async (
       toJson({
         summary: input.summary,
         ...input.data,
-        artifactIds: artifactRef ? [artifactRef.id] : [],
+        artifactIds: artifactRefs.map((artifact) => artifact.id),
       }),
       timestamp,
       identity.scope.userId,
@@ -570,7 +604,7 @@ export const finishPackWorkflowRun = async (
         runId: input.runId,
         workflowIntentId: input.workflowIntentId,
         workflowType: input.workflowType,
-        artifactId: artifactRef?.id,
+        artifactId: artifactRefs[0]?.id,
       }),
       timestamp,
       identity.scope.userId,
@@ -580,7 +614,7 @@ export const finishPackWorkflowRun = async (
       timestamp,
     ),
   );
-  if (artifactRef) {
+  for (const artifactRef of artifactRefs) {
     statements.push(
       env.DB.prepare(
         `INSERT INTO control_audit_events (

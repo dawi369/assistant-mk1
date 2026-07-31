@@ -37,7 +37,7 @@ export const level2ConformanceSuites: Level2ConformanceSuite[] = [
   {
     id: "level2-unit-contracts",
     command:
-      "pnpm exec vitest run cloudflare/control-plane/src/workflow-callbacks.test.ts cloudflare/control-plane/src/run-control.test.ts cloudflare/control-plane/src/pack-workflow-lifecycle.test.ts cloudflare/control-plane/src/approval-transitions.test.ts cloudflare/control-plane/src/agent-connection-token.test.ts cloudflare/control-plane/src/membership-policy.test.ts",
+      "pnpm exec vitest run cloudflare/control-plane/src/workflow-callbacks.test.ts cloudflare/control-plane/src/run-control.test.ts cloudflare/control-plane/src/runtime-run-lifecycle.test.ts cloudflare/control-plane/src/approval-transitions.test.ts cloudflare/control-plane/src/agent-connection-token.test.ts cloudflare/control-plane/src/membership-policy.test.ts",
     guarantees: [
       "scoped_identity",
       "typed_tool_policy",

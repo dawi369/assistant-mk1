@@ -7,7 +7,7 @@ describe("compiled web runtime registry", () => {
     const resolved = resolveArtifactRenderer("complex_operator_report");
     expect(resolved).toMatchObject({
       packId: "complex-operator",
-      runtimeVersion: "1.0.0",
+      runtimeVersion: "1.1.0",
       descriptor: { renderer: "table" },
     });
     expect(typeof resolved?.renderer).toBe("function");

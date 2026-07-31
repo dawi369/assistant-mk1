@@ -68,8 +68,8 @@ stronger runtime requirements rather than progressively broader prompt access.
 - `/agents` opens a compact agent picker. Active-agent pack workflows populate
   the `/` composer menu when they have a safe dry-run binding.
 - Repository Analyst and Polymancer Research have current live pack workflow
-  bindings. Swordfish Runtime retains the same packaged workflow contract while
-  its reference backend is intentionally parked and may return `404`.
+  bindings. Swordfish remains activatable for prompt/profile/chat behavior but
+  declares no executable runtime surface while its reference backend is parked.
 - The runnable bindings create Cloudflare-owned workflow intents, runs,
   tool calls, artifacts, audit events, and history entries through a shared
   lifecycle helper.
@@ -92,8 +92,6 @@ stronger runtime requirements rather than progressively broader prompt access.
   mediated D1/R2 API now stores, reads, exports, and expires bounded blobs, but
   History does not yet render those object bodies and hosted recovery remains
   a release gate.
-- The diagnostic `demo.inspect` path exists only as compatibility coverage for
-  the original Cloudflare-owned run slice. It should not shape the product.
 
 ## Near-Term Milestones
 

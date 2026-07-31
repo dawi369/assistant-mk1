@@ -150,6 +150,7 @@ export type RuntimeWorkflowBinding = {
   type: string;
   engine: "cloudflare" | "langgraph";
   label: string;
+  runDisplayName?: string;
   description: string;
   inputSchema: JsonSchema;
   outputSchema: JsonSchema;

@@ -1,6 +1,5 @@
 import { jsonSchema, tool, type ToolSet } from "ai";
 import {
-  assertSchemaValue,
   defaultActionPort,
   defaultConnectionPort,
   type AgentExecutionContext,
@@ -10,26 +9,23 @@ import {
 
 import { selectAgent, selectMembership } from "./authz-store";
 import { resolveAgentBehaviorConfig } from "./agent-records";
-import { upsertManagedState } from "./managed-state";
+import { readManagedStateVersion, upsertManagedState } from "./managed-state";
 import { dispatchWorkbenchSessionEvent } from "./session-coordinator";
-import {
-  executeUrlInspectRunner,
-  insertToolRunRecords,
-  listLatestArtifacts,
-  listLatestToolCalls,
-} from "./tool-execution-service";
-import { validateUrlInspectInput } from "../../../lib/workbench/url-inspect";
 import {
   evaluateToolPolicy,
   recordToolPolicyDecision,
   toolPolicyError,
   toolPolicyCatalog,
-  urlInspectPolicy,
-  urlInspectToolName,
 } from "./tool-policy";
 import { parseDataJson } from "./http";
 import type { AgentIdentity, Env } from "./types";
 import { resolvePackRuntime } from "../../../lib/agent-runtime/registry";
+import {
+  finishPackWorkflowRun,
+  recordPackWorkflowToolCall,
+  startPackWorkflowRun,
+} from "./runtime-run-lifecycle";
+import { executeRuntimeToolBinding, runtimeToolFailure } from "./runtime-tool-execution";
 
 type ResolveModelToolsInput = {
   chatRunId: string | null;
@@ -103,27 +99,9 @@ export const runtimeModelToolBindingsForPack = (pack: {
   if (!runtime.runnable) return [];
   return (runtime.controlPlane.tools as readonly RuntimeToolBinding[]).filter(
     (binding) =>
-      binding.id !== urlInspectToolName &&
-      binding.transport === "cloudflare_inline" &&
-      binding.policy.modelVisible &&
-      Boolean(binding.execute) &&
-      pack.tools.some((declared) => declared.id === binding.id),
+      binding.policy.modelVisible && pack.tools.some((declared) => declared.id === binding.id),
   );
 };
-
-const runtimeFailure = (error: unknown) => ({
-  ok: false as const,
-  error: {
-    code:
-      error && typeof error === "object" && "code" in error && typeof error.code === "string"
-        ? error.code
-        : "runtime_tool_failed",
-    message: error instanceof Error ? error.message : "Runtime tool failed.",
-    retryable: false,
-    redacted: true,
-  },
-  summary: error instanceof Error ? error.message : "Runtime tool failed.",
-});
 
 const buildRuntimeModelTool = (input: {
   binding: RuntimeToolBinding;
@@ -168,6 +146,26 @@ const buildRuntimeModelTool = (input: {
         };
       }
 
+      const started = await startPackWorkflowRun(input.env, input.identity, {
+        workflowType: `tool.${input.binding.id}`,
+        policyReference: input.binding.policy.reference,
+        displayName: input.binding.description,
+        packId: input.pack.id,
+        toolInput,
+        executionMode: "dry_run",
+        engine: "cloudflare",
+        source: "model",
+        runtimeMetadata: {
+          packVersion: input.pack.version,
+          runtimeVersion: input.runtimeVersion,
+          bindingVersion: 1,
+          transports: [input.binding.transport],
+          parentRunId: input.request.chatRunId,
+          traceId: input.request.traceId,
+        },
+      });
+      const toolCallId = `${started.runId}-tool-${input.binding.id.replaceAll(".", "-")}`;
+
       const controller = new AbortController();
       const timeout = setTimeout(
         () =>
@@ -186,8 +184,8 @@ const buildRuntimeModelTool = (input: {
           runtimeVersion: input.runtimeVersion,
         },
         run: {
-          id: input.request.chatRunId ?? `chat-${input.request.traceId}`,
-          workflowIntentId: `chat-${input.request.threadId}`,
+          id: started.runId,
+          workflowIntentId: started.workflowIntentId,
           executionMode: "dry_run",
           source: "user",
         },
@@ -203,9 +201,17 @@ const buildRuntimeModelTool = (input: {
         },
         managedState: {
           async upsert(state) {
+            const expectedVersion =
+              state.expectedVersion ??
+              (await readManagedStateVersion(input.env, input.identity, {
+                namespace: state.namespace,
+                stateType: state.stateType,
+                stateKey: state.stateKey,
+              }));
             const result = await upsertManagedState(input.env, input.identity, {
               id: `${input.identity.agentId}-${state.namespace}-${state.stateType}-${state.stateKey}`,
               ...state,
+              expectedVersion,
             });
             if (!result.ok) {
               throw Object.assign(new Error("Managed-state compare-and-set conflict."), {
@@ -233,30 +239,106 @@ const buildRuntimeModelTool = (input: {
       };
 
       try {
-        assertSchemaValue(input.binding.inputSchema, toolInput, `${input.binding.id} input`);
-        if (!input.binding.execute) {
-          throw Object.assign(new Error("Runtime tool binding is not executable."), {
-            code: "tool_binding_unavailable",
-          });
-        }
-        const result = await input.binding.execute(toolInput, context);
-        if (result.ok) {
-          assertSchemaValue(
-            input.binding.outputSchema,
-            result.output,
-            `${input.binding.id} output`,
-          );
+        const result = await executeRuntimeToolBinding({
+          env: input.env,
+          identity: input.identity,
+          binding: input.binding,
+          toolInput,
+          context,
+          execution: {
+            runId: started.runId,
+            workflowIntentId: started.workflowIntentId,
+            toolCallId,
+            packVersion: input.pack.version,
+            runtimeVersion: input.runtimeVersion,
+            bindingVersion: 1,
+            policyDecisionId,
+            traceId: input.request.traceId,
+            callbackUrl: input.env.WORKBENCH_CALLBACK_URL,
+            source: "model",
+          },
+        });
+        const artifactBytes = (result.artifacts ?? []).reduce(
+          (total, artifact) => total + JSON.stringify(artifact.data).length,
+          0,
+        );
+        const boundedResult =
+          artifactBytes <= input.binding.maxArtifactBytes
+            ? result
+            : runtimeToolFailure(
+                Object.assign(new Error("Runtime artifact limit exceeded."), {
+                  code: "artifact_limit_exceeded",
+                }),
+              );
+        await recordPackWorkflowToolCall(input.env, input.identity, {
+          ...started,
+          toolCallId,
+          toolName: input.binding.id,
+          status: boundedResult.ok ? "completed" : "failed",
+          inputSummary: `Invoke ${input.binding.id}`,
+          outputSummary: boundedResult.summary,
+          data: {
+            packId: input.pack.id,
+            packVersion: input.pack.version,
+            runtimeVersion: input.runtimeVersion,
+            bindingVersion: 1,
+            adapterVersion: input.binding.adapterVersion,
+            transport: input.binding.transport,
+            policyDecisionId,
+            ...(boundedResult.ok
+              ? { output: boundedResult.output }
+              : { error: boundedResult.error }),
+          },
+        });
+        const artifacts = (boundedResult.artifacts ?? []).map((artifact, index) => ({
+          id: `${started.runId}-artifact-${index + 1}`,
+          kind: artifact.kind,
+          uri: `d1://control-plane/${started.runId}/${artifact.kind}-${index + 1}.json`,
+          title: artifact.title,
+          mimeType: artifact.mimeType,
+          sizeBytes: JSON.stringify(artifact.data).length,
+          data: artifact.data,
+        }));
+        const finished = await finishPackWorkflowRun(input.env, input.identity, {
+          ...started,
+          workflowType: `tool.${input.binding.id}`,
+          ok: boundedResult.ok,
+          summary: boundedResult.summary,
+          artifacts,
+          data: {
+            packId: input.pack.id,
+            packVersion: input.pack.version,
+            runtimeVersion: input.runtimeVersion,
+            bindingVersion: 1,
+            adapterVersion: input.binding.adapterVersion,
+            transport: input.binding.transport,
+            policyDecisionId,
+            parentRunId: input.request.chatRunId,
+          },
+        });
+        if (!finished.applied) {
+          return {
+            ...runtimeToolFailure(
+              Object.assign(new Error("Run publication authority was revoked."), {
+                code: "run_terminal",
+              }),
+            ),
+            toolName: input.binding.id,
+            policyDecisionId,
+            run: { ...started, status: "cancelled" },
+          };
         }
         return {
-          ...result,
+          ...boundedResult,
           toolName: input.binding.id,
           policyDecisionId,
           runtimeVersion: input.runtimeVersion,
           adapterVersion: input.binding.adapterVersion,
+          run: { ...started, status: boundedResult.ok ? "completed" : "failed" },
         };
       } catch (error) {
         return {
-          ...runtimeFailure(error),
+          ...runtimeToolFailure(error),
           toolName: input.binding.id,
           policyDecisionId,
           runtimeVersion: input.runtimeVersion,
@@ -271,7 +353,7 @@ const buildRuntimeModelTool = (input: {
 export const hasModelVisibleToolCandidate = async (
   env: Env,
   identity: AgentIdentity,
-  toolName = urlInspectToolName,
+  toolName: string,
 ) => {
   const defaults = toolPolicyCatalog[toolName];
   if (!defaults) return false;
@@ -314,13 +396,10 @@ export const resolveModelVisibleTools = async (
   const pack = resolveAgentBehaviorConfig(agent).pack;
   const runtime = pack ? resolvePackRuntime(pack.id, pack.version) : null;
   const genericBindings = pack ? runtimeModelToolBindingsForPack(pack) : [];
-  const [hasUrlCandidate, genericCandidateFlags] = await Promise.all([
-    hasModelVisibleToolCandidate(env, identity, urlInspectToolName),
-    Promise.all(
-      genericBindings.map((binding) => hasModelVisibleToolCandidate(env, identity, binding.id)),
-    ),
-  ]);
-  if (!hasUrlCandidate && !genericCandidateFlags.some(Boolean)) {
+  const candidateFlags = await Promise.all(
+    genericBindings.map((binding) => hasModelVisibleToolCandidate(env, identity, binding.id)),
+  );
+  if (!candidateFlags.some(Boolean)) {
     return {
       tools: {},
       exposure: {
@@ -333,29 +412,20 @@ export const resolveModelVisibleTools = async (
   }
 
   const membership = await selectMembership(env, identity.scope.userId, identity.scope.workspaceId);
-  const urlExposurePolicy = hasUrlCandidate
-    ? await evaluateToolPolicy(env, identity, {
-        membership,
-        toolName: urlInspectToolName,
-        executionMode: "dry_run",
-        surface: "model_exposure",
-      })
-    : null;
-  const allowedGeneric: RuntimeToolBinding[] = [];
-  let firstBlockedPolicy = urlExposurePolicy?.decision === "block" ? urlExposurePolicy : null;
+  const allowedBindings: RuntimeToolBinding[] = [];
+  let firstBlockedPolicy: Awaited<ReturnType<typeof evaluateToolPolicy>> | null = null;
   for (const [index, binding] of genericBindings.entries()) {
-    if (!genericCandidateFlags[index]) continue;
+    if (!candidateFlags[index]) continue;
     const policy = await evaluateToolPolicy(env, identity, {
       membership,
       toolName: binding.id,
       executionMode: "dry_run",
       surface: "model_exposure",
     });
-    if (policy.decision === "allow") allowedGeneric.push(binding);
+    if (policy.decision === "allow") allowedBindings.push(binding);
     else firstBlockedPolicy ??= policy;
   }
-  const allowUrl = urlExposurePolicy?.decision === "allow";
-  if (!allowUrl && allowedGeneric.length === 0) {
+  if (allowedBindings.length === 0) {
     return {
       tools: {},
       exposure: {
@@ -369,7 +439,7 @@ export const resolveModelVisibleTools = async (
   const runtimeTools =
     pack && runtime?.runnable
       ? Object.fromEntries(
-          allowedGeneric.map((binding) => [
+          allowedBindings.map((binding) => [
             modelToolKey(binding.id),
             buildRuntimeModelTool({
               binding,
@@ -388,166 +458,8 @@ export const resolveModelVisibleTools = async (
     exposure: {
       decision: "allow",
       code: "allowed",
-      reason:
-        allowedGeneric.length > 0
-          ? `${allowedGeneric.length + (allowUrl ? 1 : 0)} model-visible runtime tool(s) are enabled.`
-          : (urlExposurePolicy?.reason ?? "Model-visible tools are enabled."),
+      reason: `${allowedBindings.length} model-visible runtime tool(s) are enabled.`,
     },
-    tools: {
-      ...runtimeTools,
-      ...(allowUrl
-        ? {
-            urlInspect: tool({
-              description:
-                "Inspect a public http or https URL with a bounded read-only request. Local, private, metadata, and credentialed URLs are rejected.",
-              inputSchema: jsonSchema<{ url: string }>({
-                type: "object",
-                properties: {
-                  url: {
-                    type: "string",
-                    description: "Absolute public http or https URL to inspect.",
-                  },
-                },
-                required: ["url"],
-                additionalProperties: false,
-              }),
-              execute: async ({ url }) => {
-                const callPolicy = await evaluateToolPolicy(env, identity, {
-                  membership,
-                  toolName: urlInspectToolName,
-                  executionMode: "dry_run",
-                  surface: "model_tool_call",
-                });
-                const policyDecisionId = await recordToolPolicyDecision(env, identity, {
-                  toolName: urlInspectToolName,
-                  surface: "model_tool_call",
-                  result: callPolicy,
-                  data: {
-                    action: "model.tool.call",
-                    chatRunId: input.chatRunId,
-                    threadId: input.threadId,
-                    traceId: input.traceId,
-                  },
-                });
-                if (callPolicy.decision === "block") {
-                  return {
-                    ok: false,
-                    error: toolPolicyError(callPolicy),
-                    policyDecisionId,
-                  };
-                }
-
-                const validated = validateUrlInspectInput({ url });
-                if (!validated.ok) {
-                  return {
-                    ok: false,
-                    error: validated.error,
-                    policyDecisionId,
-                  };
-                }
-
-                const resourcePolicy = await evaluateToolPolicy(env, identity, {
-                  membership,
-                  toolName: urlInspectToolName,
-                  executionMode: "dry_run",
-                  surface: "model_tool_call",
-                  resource: {
-                    kind: "url",
-                    value: validated.url.toString(),
-                    host: validated.url.hostname.toLowerCase(),
-                  },
-                });
-                if (resourcePolicy.decision === "block") {
-                  const resourcePolicyDecisionId = await recordToolPolicyDecision(env, identity, {
-                    toolName: urlInspectToolName,
-                    surface: "model_tool_call",
-                    result: resourcePolicy,
-                    data: {
-                      action: "model.tool.call.resource",
-                      chatRunId: input.chatRunId,
-                      threadId: input.threadId,
-                      traceId: input.traceId,
-                    },
-                  });
-                  return {
-                    ok: false,
-                    error: toolPolicyError(resourcePolicy),
-                    policyDecisionId: resourcePolicyDecisionId,
-                  };
-                }
-
-                const runIdentity = await insertToolRunRecords(env, identity, {
-                  url: validated.url,
-                  executionMode: callPolicy.executionMode,
-                  policyDecisionId,
-                  source: "model",
-                  parentRunId: input.chatRunId,
-                  traceId: input.traceId,
-                });
-                const { result, finished } = await executeUrlInspectRunner(
-                  env,
-                  runIdentity,
-                  validated.url,
-                  {
-                    executionMode: callPolicy.executionMode,
-                    policyDecisionId,
-                    traceId: input.traceId,
-                  },
-                );
-                await dispatchWorkbenchSessionEvent(env, identity, {
-                  type: "tool.run.updated",
-                  data: {
-                    toolName: urlInspectToolName,
-                    runId: runIdentity.runId,
-                    workflowIntentId: runIdentity.workflowIntentId,
-                    toolCallId: finished.toolCallId,
-                    artifactId: finished.artifact?.id ?? null,
-                    status: result.ok ? "completed" : "failed",
-                    traceId: input.traceId,
-                    source: "model",
-                    errorCode: result.ok ? undefined : result.error.code,
-                  },
-                });
-                await dispatchWorkbenchSessionEvent(env, identity, {
-                  type: "admin.summary.invalidated",
-                  data: {
-                    reason: "model-tool-run-updated",
-                    toolName: urlInspectToolName,
-                    runId: runIdentity.runId,
-                    traceId: input.traceId,
-                  },
-                });
-
-                const [latestToolCalls, latestArtifacts] = await Promise.all([
-                  listLatestToolCalls(env, identity.scope),
-                  listLatestArtifacts(env, identity.scope),
-                ]);
-                const toolCall =
-                  latestToolCalls.find((call) => call.id === finished.toolCallId) ?? null;
-                const artifact = finished.artifact
-                  ? (latestArtifacts.find((item) => item.id === finished.artifact?.id) ??
-                    finished.artifact)
-                  : null;
-
-                return {
-                  ok: result.ok,
-                  toolName: urlInspectToolName,
-                  execution: { mode: callPolicy.executionMode, policy: urlInspectPolicy },
-                  run: {
-                    id: runIdentity.runId,
-                    workflowIntentId: runIdentity.workflowIntentId,
-                    status: result.ok ? "completed" : "failed",
-                  },
-                  toolCall,
-                  artifact,
-                  output: result.ok ? result.output : undefined,
-                  error: result.ok ? undefined : result.error,
-                  policyDecisionId,
-                };
-              },
-            }),
-          }
-        : {}),
-    },
+    tools: runtimeTools,
   };
 };

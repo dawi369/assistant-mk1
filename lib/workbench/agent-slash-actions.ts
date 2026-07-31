@@ -17,7 +17,6 @@ export type AgentSlashWorkflowAction = {
 
 const slashCommandIds: Record<string, string> = {
   "polymancer.market_research": "market-research",
-  "swordfish.runtime_research": "runtime-research",
 };
 
 export const resolveAgentSlashWorkflowActions = (

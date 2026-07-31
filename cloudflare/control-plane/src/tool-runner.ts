@@ -5,6 +5,7 @@ import {
 import type { UrlInspectResult } from "../../../lib/workbench/url-inspect";
 import type { RepoSnapshotResult } from "../../../lib/workbench/repo-snapshot";
 import type { RunnerEchoResult } from "../../../lib/workbench/admin-test-tools";
+import type { RuntimeResult } from "@assistant-mk1/agent-sdk/control-plane";
 import type { AgentIdentity, Env, ExecutionMode, TenantScope } from "./types";
 
 export const cloudflareInlineRunnerTransport = "cloudflare_inline";
@@ -171,6 +172,10 @@ export type ToolRunnerInvocation = {
   agentId: string;
   runId: string;
   workflowIntentId: string;
+  toolCallId?: string;
+  packVersion?: string;
+  runtimeVersion?: string;
+  bindingVersion?: number;
   toolName: string;
   execution: ToolRunnerExecution;
   input: Record<string, unknown>;
@@ -185,6 +190,7 @@ export type ToolRunnerInvocationResponse = (
   | UrlInspectResult
   | RepoSnapshotResult
   | RunnerEchoResult
+  | RuntimeResult
 ) & {
   runner?: ToolRunnerMetadata;
   metrics?: Record<string, unknown>;

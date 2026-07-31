@@ -12,14 +12,14 @@ describe("pack workflow bindings", () => {
   it("keeps incompatible historical snapshots chat-only", () => {
     expect(resolvePackRuntime("repo-analyst", "1.2.0")).toMatchObject({
       runnable: true,
-      runtimeVersion: "1.0.0",
+      runtimeVersion: "1.1.0",
     });
     expect(resolvePackRuntime("repo-analyst", "2.0.0")).toMatchObject({
       runnable: false,
       reason: "runtime_incompatible",
     });
   });
-  it("returns runnable bindings for Polymancer and Swordfish", () => {
+  it("returns a runnable binding for Polymancer and keeps Swordfish parked", () => {
     expect(
       resolvePackWorkflowBinding({
         type: "polymancer.market_research",
@@ -42,12 +42,10 @@ describe("pack workflow bindings", () => {
         status: "declared",
         description: "Runtime research",
       }),
-    ).toMatchObject({
-      runnable: true,
-      binding: {
-        route: "/api/workbench/workflows/swordfish.runtime_research",
-        requiredPackId: "baby-swordfish",
-      },
+    ).toMatchObject({ runnable: false, reason: "declared_only" });
+    expect(resolvePackRuntime("baby-swordfish", "1.1.0")).toMatchObject({
+      runnable: false,
+      reason: "runtime_incompatible",
     });
   });
 
@@ -89,45 +87,9 @@ describe("pack workflow bindings", () => {
     });
   });
 
-  it("builds bounded dry-run Swordfish requests", () => {
-    expect(
-      buildPackWorkflowRequest("swordfish.runtime_research", {
-        symbol: " esh6 ",
-        tf: "5m",
-        lookbackMinutes: "120",
-        maxBars: 500,
-        includeBars: false,
-        url: "https://example.com",
-        token: "secret",
-      }),
-    ).toEqual({
-      executionMode: "dry_run",
-      input: {
-        symbol: "ESH6",
-        tf: "5m",
-        lookbackMinutes: 120,
-        maxBars: 200,
-        includeBars: false,
-      },
-    });
-
-    expect(buildPackWorkflowRequest("swordfish.runtime_research", { tf: "2m" })).toEqual({
-      executionMode: "dry_run",
-      input: {
-        tf: "1m",
-        lookbackMinutes: 60,
-        maxBars: 25,
-        includeBars: true,
-      },
-    });
-  });
-
   it("keeps required pack ids explicit", () => {
     expect(packWorkflowBindings["polymancer.market_research"].requiredPackId).toBe(
       "baby-polymancer",
-    );
-    expect(packWorkflowBindings["swordfish.runtime_research"].requiredPackId).toBe(
-      "baby-swordfish",
     );
   });
 
@@ -140,15 +102,6 @@ describe("pack workflow bindings", () => {
         kind: "text",
         label: "Market query",
       }),
-    ]);
-    expect(
-      fieldDefinitionsForPackWorkflow(packWorkflowBindings["swordfish.runtime_research"]),
-    ).toEqual([
-      expect.objectContaining({ name: "symbol", kind: "text" }),
-      expect.objectContaining({ name: "tf", kind: "select" }),
-      expect.objectContaining({ name: "lookbackMinutes", kind: "number", max: 1440 }),
-      expect.objectContaining({ name: "maxBars", kind: "number", max: 200 }),
-      expect.objectContaining({ name: "includeBars", kind: "checkbox" }),
     ]);
   });
 });

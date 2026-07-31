@@ -32,7 +32,7 @@ describe("agent pack compiler", () => {
       ...source,
       runner: { ...source.runner, tools: [] },
     };
-    expect(() => validateLoadedModules([missing])).toThrow("missing runtime provider");
+    expect(() => validateLoadedModules([missing])).toThrow("missing runner binding");
     const incompatible = {
       ...source,
       controlPlane: { ...source.controlPlane, compatiblePackVersions: "^9.0.0" },
@@ -40,6 +40,24 @@ describe("agent pack compiler", () => {
       web: { ...source.web, compatiblePackVersions: "^9.0.0" },
     };
     expect(() => validateLoadedModules([incompatible])).toThrow("incompatible");
+  });
+
+  it("requires Fly control-plane and runner contracts to match exactly", async () => {
+    const modules = await loadAgentModules(process.cwd());
+    const source = modules[0]!;
+    const [firstRunnerTool, ...rest] = source.runner.tools;
+    if (!firstRunnerTool) throw new Error("Repository Analyst must declare a runner tool.");
+    const mismatch = {
+      ...source,
+      runner: {
+        ...source.runner,
+        tools: [
+          { ...firstRunnerTool, maxArtifactBytes: firstRunnerTool.maxArtifactBytes + 1 },
+          ...rest,
+        ],
+      },
+    };
+    expect(() => validateLoadedModules([mismatch])).toThrow("runner contract does not match");
   });
 
   it("rejects invalid schemas and unsupported execution modes", async () => {

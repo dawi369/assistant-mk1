@@ -177,20 +177,9 @@ describe("agent behavior authoring metadata", () => {
         },
       },
     });
-    expect(template?.pack?.tools.map((tool) => tool.id)).toEqual([
-      "swordfish.runtime.overview",
-      "swordfish.symbol.snapshot",
-      "swordfish.bars.range",
-    ]);
-    expect(template?.pack?.workflows).toEqual([
-      expect.objectContaining({
-        type: "swordfish.runtime_research",
-        engine: "cloudflare",
-        status: "declared",
-      }),
-    ]);
-    expect(template?.prompt).toContain("Read-only Swordfish runtime");
-    expect(template?.prompt).toContain("Never construct or call Swordfish /admin routes");
+    expect(template?.pack?.tools).toEqual([]);
+    expect(template?.pack?.workflows).toEqual([]);
+    expect(template?.prompt).toContain("parked reference agent");
   });
 
   it("copies authoring metadata into behavior snapshots", () => {

@@ -120,14 +120,12 @@ pnpm smoke:cloudflare-workspace-context
 CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
 CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
 CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET=<same-secret-as-worker> \
-pnpm smoke:cloudflare-workbench-run
+pnpm smoke:cloudflare-deploy-readiness
 ```
 
 The unauthenticated workbench context check should return `401`. Hosted Vercel
-workbench routes require a signed-in WorkOS browser session, so deploy-time
-runtime smokes call the Worker directly with trusted WorkOS-shaped headers. The
-workbench run smoke may need `SMOKE_TIMEOUT_MS=30000` when Fly is cold-starting.
-Run `pnpm smoke:cloudflare-deploy-readiness` against the Worker after
+workbench routes require a signed-in WorkOS browser session. Run
+`pnpm smoke:cloudflare-deploy-readiness` against the Worker after
 rebuilding the current D1 schema. It composes the minimum remote deploy suite:
 workspace context, Admin tool policy/approvals, policy boundary, session
 boundary, and live event stream coverage. Run broader chat or workbench smokes

@@ -70,7 +70,6 @@ Current implemented layout:
 - Admin tool actions for read-only adapters and conformance tools, currently
   `url.inspect`, `repo.snapshot`, `diagnostic.ping`, `runner.echo`, and
   `artifact.metadata.test`.
-- Admin diagnostic compatibility action for `demo.inspect`.
 - Cache-backed recent-chat sidebar for display-only workspace history. Cached
   rows can paint immediately, then reconcile with Cloudflare.
 - Signed-out recovery state hides cached workspace chrome and provider
@@ -359,7 +358,6 @@ Implemented:
 - Admin summary treats historical tool failures as history once a newer
   completed control run proves the path recovered; stale errors remain
   inspectable through history instead of pinning the global Details state.
-- `demo.inspect` remains a dev diagnostic action, not a product-level workflow.
 - The empty chat state renders the active pack's cached title, description, and
   a balanced two- or four-card starter grid immediately. Non-pack agents keep
   four practical generic starter prompts.

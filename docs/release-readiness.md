@@ -30,11 +30,12 @@ encrypted credential brokerage, or hosted artifact recovery.
 | Gate                          | Evidence                                                                    |
 | ----------------------------- | --------------------------------------------------------------------------- |
 | Repository                    | `pnpm release:check`                                                        |
-| Static real-session contract  | `pnpm eval:real-session-posture`                                            |
+| Runtime extension contract    | `pnpm conformance:agent-system`                                             |
 | Deterministic services        | `pnpm test:service-boundaries`                                              |
 | Level 2 conformance           | `pnpm conformance:level2` and `docs/level-2-conformance.md`                 |
 | Level 3 local conformance     | `pnpm conformance:level3` and `docs/level-3-conformance.md`                 |
 | Agent extension system        | `pnpm conformance:agent-system` and `docs/agent-runtime-kit.md`             |
+| Runtime architecture          | runtime architecture unit assertions and compiled-registry checks           |
 | Docker boundary               | `pnpm verify:docker`                                                        |
 | Hosted public boundaries      | `pnpm acceptance:hosted:public`                                             |
 | Hosted Level 3 preflight      | `pnpm acceptance:hosted:level3:preflight`                                   |

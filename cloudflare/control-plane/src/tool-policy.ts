@@ -11,7 +11,11 @@ import {
   type ToolPermissionRow,
   type ToolPermissionStatus,
 } from "./types";
-import {
+import { agentControlPlaneRegistry } from "../../../generated/agent-runtime/control-plane";
+import type { RuntimeToolBinding } from "@assistant-mk1/agent-sdk/control-plane";
+import { platformDiagnosticPolicyDefaults } from "../../../lib/workbench/admin-test-tools";
+
+export {
   artifactMetadataTestPolicy,
   artifactMetadataTestToolName,
   diagnosticPingPolicy,
@@ -19,48 +23,6 @@ import {
   runnerEchoPolicy,
   runnerEchoToolName,
 } from "../../../lib/workbench/admin-test-tools";
-import { repoSnapshotPolicy, repoSnapshotToolName } from "../../../lib/workbench/repo-snapshot";
-import {
-  polymarketMarketSearchToolName,
-  polymarketMarketSnapshotToolName,
-  polymarketOrderbookSnapshotToolName,
-  polymarketReadonlyPolicy,
-} from "../../../lib/workbench/polymarket-readonly";
-import {
-  swordfishBarsRangeToolName,
-  swordfishReadonlyPolicy,
-  swordfishRuntimeOverviewToolName,
-  swordfishSymbolSnapshotToolName,
-} from "../../../lib/workbench/swordfish-readonly";
-import { agentControlPlaneRegistry } from "../../../generated/agent-runtime/control-plane";
-import { agentRunnerRegistry } from "../../../generated/agent-runtime/runner";
-import type { RuntimeToolBinding } from "@assistant-mk1/agent-sdk/control-plane";
-
-export const urlInspectToolName = "url.inspect";
-export const urlInspectPolicy = "tool-admin-readonly-v0";
-export const demoInspectToolName = "demo.inspect";
-export const demoInspectPolicy = "dev-demo";
-export {
-  artifactMetadataTestPolicy,
-  artifactMetadataTestToolName,
-  diagnosticPingPolicy,
-  diagnosticPingToolName,
-  runnerEchoPolicy,
-  runnerEchoToolName,
-};
-export { repoSnapshotPolicy, repoSnapshotToolName };
-export {
-  polymarketMarketSearchToolName,
-  polymarketMarketSnapshotToolName,
-  polymarketOrderbookSnapshotToolName,
-  polymarketReadonlyPolicy,
-};
-export {
-  swordfishBarsRangeToolName,
-  swordfishReadonlyPolicy,
-  swordfishRuntimeOverviewToolName,
-  swordfishSymbolSnapshotToolName,
-};
 
 export type ToolPolicySurface =
   | "admin_list"
@@ -148,9 +110,6 @@ const compiledToolPolicyCatalog = () => {
   for (const entry of Object.values(agentControlPlaneRegistry)) {
     tools.push(...entry.module.tools);
   }
-  for (const entry of Object.values(agentRunnerRegistry)) {
-    tools.push(...entry.module.tools);
-  }
   for (const tool of tools) {
     result[tool.id] ??= {
       policyReference: tool.policy.reference,
@@ -168,6 +127,23 @@ const compiledToolPolicyCatalog = () => {
       },
     };
   }
+  for (const tool of platformDiagnosticPolicyDefaults) {
+    result[tool.id] = {
+      policyReference: tool.policyReference,
+      allowedExecutionModes: ["dry_run"],
+      adminVisible: true,
+      modelVisible: false,
+      requiresApproval: false,
+      status: "enabled",
+      policyEditable: false,
+      mutationRisk: "read_only",
+      constraints: {
+        ...emptyConstraints(),
+        maxRuntimeMs: tool.timeoutMs,
+        maxArtifactBytes: tool.maxArtifactBytes,
+      },
+    };
+  }
   return result;
 };
 
@@ -176,57 +152,6 @@ export const compiledAgentToolNames = new Set(Object.keys(compiledAgentToolPolic
 
 export const toolPolicyCatalog: Record<string, ToolPolicyCatalogEntry> = {
   ...compiledAgentToolPolicyCatalog,
-  [demoInspectToolName]: {
-    policyReference: demoInspectPolicy,
-    allowedExecutionModes: ["dry_run"],
-    adminVisible: false,
-    modelVisible: false,
-    requiresApproval: false,
-    status: "enabled",
-    policyEditable: false,
-    mutationRisk: "read_only",
-    constraints: emptyConstraints(),
-  },
-  [diagnosticPingToolName]: {
-    policyReference: diagnosticPingPolicy,
-    allowedExecutionModes: ["dry_run"],
-    adminVisible: true,
-    modelVisible: false,
-    requiresApproval: false,
-    status: "enabled",
-    policyEditable: false,
-    mutationRisk: "read_only",
-    constraints: emptyConstraints(),
-  },
-  [runnerEchoToolName]: {
-    policyReference: runnerEchoPolicy,
-    allowedExecutionModes: ["dry_run"],
-    adminVisible: true,
-    modelVisible: false,
-    requiresApproval: false,
-    status: "enabled",
-    policyEditable: false,
-    mutationRisk: "read_only",
-    constraints: {
-      ...emptyConstraints(),
-      maxRuntimeMs: 5_000,
-      maxArtifactBytes: 0,
-    },
-  },
-  [artifactMetadataTestToolName]: {
-    policyReference: artifactMetadataTestPolicy,
-    allowedExecutionModes: ["dry_run"],
-    adminVisible: true,
-    modelVisible: false,
-    requiresApproval: false,
-    status: "enabled",
-    policyEditable: false,
-    mutationRisk: "read_only",
-    constraints: {
-      ...emptyConstraints(),
-      maxArtifactBytes: 16 * 1024,
-    },
-  },
 };
 
 const readDataFlag = (data: Record<string, unknown>, name: string, fallback: boolean) =>
@@ -480,7 +405,8 @@ export const ensureToolPermission = async (env: Env, identity: AgentIdentity, to
        id, user_id, workspace_id, agent_id, tool_id, status, execution_json, data_json,
        created_at, updated_at
      )
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(user_id, workspace_id, agent_id, tool_id) DO NOTHING`,
   )
     .bind(
       permission.id,

@@ -1,6 +1,7 @@
 import { resolveAgentBehaviorConfig } from "./agent-records";
 import { selectAgent, selectMembership } from "./authz-store";
-import { connectionAuthForTool, type ConnectionAuthBrokerage } from "./connection-auth";
+import { connectionAuthForPackTool, type ConnectionAuthBrokerage } from "./connection-auth";
+import type { AgentPackConnectionDescriptor } from "../../../agent-packs";
 import {
   compiledAgentToolNames,
   evaluateToolPolicy,
@@ -81,6 +82,7 @@ export const readDynamicCapabilityContext = (url?: URL): DynamicCapabilityContex
 export const toDynamicCapabilityDecision = (
   toolName: string,
   policy: ToolPolicyResult,
+  connections: readonly AgentPackConnectionDescriptor[] = [],
 ): DynamicCapabilityDecision => ({
   capabilityId: toolName,
   kind: "tool",
@@ -96,7 +98,7 @@ export const toDynamicCapabilityDecision = (
   modelVisible: policy.modelVisible,
   policyEditable: policy.policyEditable,
   constraints: policy.constraints,
-  connectionAuth: connectionAuthForTool(toolName),
+  connectionAuth: connectionAuthForPackTool(toolName, connections),
 });
 
 export const resolveDynamicToolCapabilities = async (
@@ -108,9 +110,8 @@ export const resolveDynamicToolCapabilities = async (
     selectMembership(env, identity.scope.userId, identity.scope.workspaceId),
     selectAgent(env, identity.agentId, identity.scope.workspaceId),
   ]);
-  const declaredTools = new Set(
-    resolveAgentBehaviorConfig(agent).pack?.tools.map((tool) => tool.id) ?? [],
-  );
+  const pack = resolveAgentBehaviorConfig(agent).pack;
+  const declaredTools = new Set(pack?.tools.map((tool) => tool.id) ?? []);
   return Promise.all(
     Object.keys(toolPolicyCatalog)
       .filter((toolName) => !compiledAgentToolNames.has(toolName) || declaredTools.has(toolName))
@@ -121,7 +122,7 @@ export const resolveDynamicToolCapabilities = async (
           executionMode: context.executionMode,
           surface: context.surface,
         });
-        return toDynamicCapabilityDecision(toolName, policy);
+        return toDynamicCapabilityDecision(toolName, policy, pack?.connections ?? []);
       }),
   );
 };

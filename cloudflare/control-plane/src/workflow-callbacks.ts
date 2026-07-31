@@ -1,9 +1,7 @@
 import { appendControlPlaneEvent } from "./control-plane-events";
-import { appendControlAudit, recordDemoRunCompleted, recordDemoRunStarted } from "./demo-run-store";
 import { dispatchWorkbenchSessionEvent } from "./session-coordinator";
 import { activeRunStatusSql, isTerminalRunStatus } from "./run-transitions";
 import { isRecord, json, parseDataJson, parseJson, type ControlPlaneAuthContext } from "./http";
-import { demoWorkflowType } from "./types";
 import { getRuntimeTraceSnapshot, recordSpan, type RuntimeSpanStatus } from "./runtime-traces";
 import {
   canonicalFacadeRequest,
@@ -425,66 +423,6 @@ const mergeUnique = (current: unknown, next: string) => {
   return Array.from(new Set([...values, next])).slice(0, 50);
 };
 
-const updateRunState = async (
-  env: Env,
-  identity: StoredCallbackRun,
-  input: {
-    status?: RunStatus;
-    intentStatus?: string;
-    summary?: string;
-    data?: Record<string, unknown>;
-    terminal?: "completed" | "failed";
-  },
-) => {
-  const timestamp = new Date().toISOString();
-  const status = input.status ?? identity.status;
-  const nextData = {
-    ...identity.data,
-    summary: input.summary ?? identity.data.summary,
-    lastCallbackAt: timestamp,
-    ...input.data,
-  };
-  const results = await env.DB.batch([
-    env.DB.prepare(
-      `UPDATE control_runs
-       SET status = ?, heartbeat_at = ?, last_event_at = ?, completed_at = ?,
-           failed_at = ?, data_json = ?, updated_at = ?
-       WHERE user_id = ? AND workspace_id = ? AND id = ? AND status IN ${activeRunStatusSql}`,
-    ).bind(
-      status,
-      timestamp,
-      timestamp,
-      input.terminal === "completed" ? timestamp : null,
-      input.terminal === "failed" ? timestamp : null,
-      toJson(nextData),
-      timestamp,
-      identity.scope.userId,
-      identity.scope.workspaceId,
-      identity.runId,
-    ),
-    env.DB.prepare(
-      `UPDATE control_workflow_intents
-       SET status = ?, updated_at = ?
-       WHERE user_id = ? AND workspace_id = ? AND id = ?
-         AND EXISTS (
-           SELECT 1 FROM control_runs
-           WHERE user_id = ? AND workspace_id = ? AND id = ? AND updated_at = ?
-         )`,
-    ).bind(
-      input.intentStatus ?? status,
-      timestamp,
-      identity.scope.userId,
-      identity.scope.workspaceId,
-      identity.workflowIntentId,
-      identity.scope.userId,
-      identity.scope.workspaceId,
-      identity.runId,
-      timestamp,
-    ),
-  ]);
-  return results[0]?.meta?.changes !== 0;
-};
-
 const recordCallbackTraceSpan = async (
   env: Env,
   identity: StoredCallbackRun,
@@ -606,7 +544,7 @@ const applyGenericCallback = async (
       ? "completed"
       : payload.event === "run.failed"
         ? "failed"
-        : payload.event === "run.started"
+        : payload.event === "run.started" || payload.event === "run.progress"
           ? "running"
           : identity.status;
   const auditAction = payload.event;
@@ -638,6 +576,7 @@ const applyGenericCallback = async (
         payload.artifact.sizeBytes ?? null,
         toJson({
           source: "workflow_callback",
+          publicationStatus: "staged",
           callbackEvent: payload.event,
           ...payload.artifact.data,
         }),
@@ -847,45 +786,6 @@ const applyGenericCallback = async (
   };
 };
 
-const applyDemoCallback = async (
-  env: Env,
-  identity: StoredCallbackRun,
-  payload: WorkflowCallbackPayload,
-) => {
-  if (payload.event === "run.started") {
-    await recordDemoRunStarted(env, identity);
-    return { summary: payload.summary ?? "Started Cloudflare-owned demo run." };
-  }
-  if (payload.event === "run.completed") {
-    await recordDemoRunCompleted(env, {
-      ...identity,
-      output: payload.output ?? {},
-      outputSummary: payload.outputSummary,
-    });
-    return { summary: payload.summary ?? "Completed Cloudflare-owned demo run." };
-  }
-  if (payload.event === "run.failed") {
-    await updateRunState(env, identity, {
-      status: "failed",
-      intentStatus: "failed",
-      terminal: "failed",
-      summary: payload.summary ?? "Executor reported failure.",
-      data: { error: payload.error },
-    });
-    await appendControlAudit(env, {
-      ...identity,
-      action: "run.failed",
-      summary: payload.summary ?? "Executor reported failure.",
-      targetType: "run",
-      targetId: identity.runId,
-      data: { error: payload.error },
-    });
-    return { summary: payload.summary ?? "Executor reported failure." };
-  }
-
-  return applyGenericCallback(env, identity, payload);
-};
-
 export const applyWorkflowCallbackPayload = async (env: Env, payload: WorkflowCallbackPayload) => {
   const identity = await readStoredCallbackRun(env, payload);
   if (!identity) {
@@ -905,10 +805,7 @@ export const applyWorkflowCallbackPayload = async (env: Env, payload: WorkflowCa
     };
   }
 
-  const applied =
-    identity.workflowType === demoWorkflowType
-      ? await applyDemoCallback(env, identity, payload)
-      : await applyGenericCallback(env, identity, payload);
+  const applied = await applyGenericCallback(env, identity, payload);
   if ("applied" in applied && !applied.applied) {
     return {
       ok: false as const,
@@ -956,14 +853,6 @@ export const handleWorkflowCallback = async (request: Request, env: Env) => {
   const parsed = validateWorkflowCallbackPayload(parsedJson);
   if (!parsed.ok) return errorResponse(parsed.error, 400);
 
-  const applied = await applyWorkflowCallbackPayload(env, parsed.payload);
-  return applied.response;
-};
-
-export const handleLegacyWorkflowCallback = async (request: Request, env: Env) => {
-  const parsedJson = parseJson(await request.text());
-  const parsed = validateWorkflowCallbackPayload(parsedJson);
-  if (!parsed.ok) return errorResponse(parsed.error, 400);
   const applied = await applyWorkflowCallbackPayload(env, parsed.payload);
   return applied.response;
 };

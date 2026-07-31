@@ -19,7 +19,6 @@ import type {
   CloudflareToolApprovalsResponse,
   CloudflareToolRunResponse,
   CloudflareToolsResponse,
-  CloudflareOwnedDemoRunResponse,
   CloudflareWorkspaceMutationResponse,
   CloudflareWorkspaceMemberMutationResponse,
   CloudflareWorkspaceMembersResponse,
@@ -58,8 +57,8 @@ export type {
   CloudflareToolApprovalsResponse,
   CloudflareToolRunResponse,
   CloudflareToolsResponse,
-  CloudflareOwnedDemoRunResponse,
-  CloudflareOwnedDemoRunSnapshot,
+  ExecutionRunResponse,
+  ExecutionRunSnapshot,
   CloudflareWorkspaceMutationResponse,
   CloudflareWorkspaceMemberMutationResponse,
   CloudflareWorkspaceMembersResponse,
@@ -200,19 +199,6 @@ const requestControlPlaneResponse = async (path: string, init?: RequestInit) => 
   }
   return response;
 };
-
-export const startCloudflareOwnedDemoRun = () =>
-  requestControlPlane<CloudflareOwnedDemoRunResponse>("/workbench/demo-runs", {
-    method: "POST",
-  });
-
-export const getLatestCloudflareOwnedDemoRunSnapshot = () =>
-  requestControlPlane<CloudflareOwnedDemoRunResponse>("/workbench/demo-runs/latest");
-
-export const getCloudflareOwnedDemoRunSnapshot = (runId: Id) =>
-  requestControlPlane<CloudflareOwnedDemoRunResponse>(
-    `/workbench/demo-runs/${encodeURIComponent(runId)}`,
-  );
 
 export const getWorkspaceContext = () =>
   requestControlPlane<WorkspaceContextResponse>("/workspace-context");
@@ -399,23 +385,12 @@ export const getCloudflareManagedStateRecord = (stateId: Id) =>
     `/workbench/managed-state/${encodeURIComponent(stateId)}`,
   );
 
-export type RunnableAdminToolName =
-  | "url.inspect"
-  | "repo.snapshot"
-  | "diagnostic.ping"
-  | "runner.echo"
-  | "artifact.metadata.test"
-  | "polymarket.market.search"
-  | "polymarket.market.snapshot"
-  | "polymarket.orderbook.snapshot"
-  | "swordfish.runtime.overview"
-  | "swordfish.symbol.snapshot"
-  | "swordfish.bars.range";
+export type RunnableAdminToolName = string;
 
 export const runCloudflareTool = (input: {
   toolName: RunnableAdminToolName;
   executionMode?: "dry_run";
-  input: { url: string } | Record<string, unknown>;
+  input: Record<string, unknown>;
   parentRunId?: Id;
 }) =>
   requestControlPlane<CloudflareToolRunResponse>("/tools/runs", {
@@ -438,23 +413,8 @@ export const runPackWorkflow = (
     },
   );
 
-export const runPolymancerMarketResearch = (input: {
-  executionMode?: "dry_run";
-  input: Record<string, unknown>;
-}) => runPackWorkflow("polymancer.market_research", input);
-
-export const runRepoReadinessReport = (input: {
-  executionMode?: "dry_run";
-  input: Record<string, unknown>;
-}) => runPackWorkflow("repo.readiness_report", input);
-
-export const runSwordfishRuntimeResearch = (input: {
-  executionMode?: "dry_run";
-  input: Record<string, unknown>;
-}) => runPackWorkflow("swordfish.runtime_research", input);
-
 export const updateCloudflareToolPolicy = (input: {
-  toolName: "url.inspect" | "repo.snapshot";
+  toolName: string;
   status?: "enabled" | "disabled";
   requiresApproval?: boolean;
   killSwitchReason?: string;

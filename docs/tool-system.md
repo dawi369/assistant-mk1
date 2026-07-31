@@ -177,18 +177,12 @@ Never expose secrets in:
 Adapters should redact before writing artifacts and again before returning data
 to the model or UI.
 
-## Diagnostic Compatibility Tool
+## Operator Diagnostics
 
-`demo.inspect` remains as harmless compatibility coverage for the original
-Cloudflare-owned run slice. It should stay deterministic and non-productized:
-
-- Native TypeScript inspection tool.
-- Supports `ask` and `dry_run`.
-- Produces a structured output summary.
-- Produces one small artifact metadata record.
-- Emits lifecycle and audit events.
-
-Do not start with a mutation-capable external integration.
+`diagnostic.ping`, `runner.echo`, and `artifact.metadata.test` are platform-owned
+operator diagnostics. Pack tools—including model-visible Fly tools—resolve from
+the compiled runtime registry and use the same policy, dispatch, lifecycle,
+artifact, and audit boundaries as workflows.
 
 ## Current Read-Only URL Tool
 
@@ -208,9 +202,8 @@ Behavior:
   retryability.
 - Records workflow intent, run, tool call, artifact, audit events, and
   control-plane events in Cloudflare-owned state.
-- Executes through the runner boundary, which can use Cloudflare-inline or the
-  signed Fly transport and stamps durable runner metadata on run, tool-call,
-  artifact, and event data.
+- Executes only through its compiled signed Fly binding and stamps durable
+  runtime/binding/runner metadata on run, tool-call, artifact, and event data.
 - Carries `runner.sandbox` lifecycle/network metadata. The current contract is
   per-invocation, ephemeral filesystem, no workspace-persistent state, metadata
   artifact promotion only, public web egress, and private network denied.
@@ -237,10 +230,10 @@ Behavior:
   `d1://control-plane/{runId}/repo-snapshot-report.json`.
 - Is Admin-visible by default and model-hidden unless explicit policy enables
   model exposure for the current user/workspace/agent scope.
-- Uses the generic signed workflow callback lifecycle for canonical run,
-  tool-call, artifact, audit, event, and session-update writes. The Admin
-  `/tools/runs` facade still returns a synchronous-compatible completed/failed
-  response after callback-written state is read back.
+- Uses signed progress and staged-artifact callbacks. Cloudflare remains the
+  terminal authority and atomically promotes evidence with the run/intent/audit
+  terminal transition. The Admin `/tools/runs` facade returns the supported
+  synchronous-compatible completed/failed response.
 
 This adapter is the template for future read-only CLI/OSS tools: fixed inputs,
 fixed execution contract, structured output, policy before exposure, and

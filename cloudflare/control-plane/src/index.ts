@@ -1,11 +1,6 @@
 import * as Sentry from "@sentry/cloudflare";
 import { routeAgentRequest } from "agents";
-import {
-  handleGetCloudflareDemoRun,
-  handleLatestCloudflareDemoRun,
-  handleStartCloudflareDemoRun,
-} from "./demo-runs";
-import { handleLegacyWorkflowCallback, handleWorkflowCallback } from "./workflow-callbacks";
+import { handleWorkflowCallback } from "./workflow-callbacks";
 import { handleAdminWorkspaceSummary } from "./admin-summary";
 import {
   handleApproveToolApproval,
@@ -48,7 +43,7 @@ import {
   handleLangGraphFacade,
   handleLatestChatSession,
 } from "./langgraph-facade";
-import { packWorkflowHandlerForPath } from "./pack-workflow-runtime";
+import { executeRuntimeWorkflow, runtimeWorkflowTypeForPath } from "./pack-workflow-runtime";
 import {
   getTraceId,
   handleGetRuntimeTrace,
@@ -78,7 +73,7 @@ import {
   handleUpdateWorkspaceMember,
 } from "./workspace-members";
 import { resolveAgentIdentity } from "./authz";
-import { internalErrorResponse, json, requireControlPlaneAuth, requireDevToken } from "./http";
+import { internalErrorResponse, json, requireControlPlaneAuth } from "./http";
 import type { Env, WorkerExecutionContext, WorkerScheduledController } from "./types";
 import { WorkbenchThreadChatAgent } from "./thread-chat-agent";
 import { WorkbenchSessionAgent } from "./session-agent";
@@ -167,12 +162,6 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
       request,
       env,
     );
-  }
-
-  if (request.method === "POST" && url.pathname === "/internal/workbench/run-callbacks") {
-    const authResponse = await requireDevToken(request, env);
-    if (authResponse) return authResponse;
-    return handleLegacyWorkflowCallback(request, env);
   }
 
   if (request.method === "POST" && url.pathname === "/workbench/run-callbacks") {
@@ -269,10 +258,10 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
     );
   }
 
-  const packWorkflowHandler =
-    request.method === "POST" ? packWorkflowHandlerForPath(url.pathname) : null;
-  if (packWorkflowHandler) {
-    return packWorkflowHandler(request, env, identity, { source: "user" });
+  const runtimeWorkflowType =
+    request.method === "POST" ? runtimeWorkflowTypeForPath(url.pathname) : null;
+  if (runtimeWorkflowType) {
+    return executeRuntimeWorkflow(runtimeWorkflowType, request, env, identity, { source: "user" });
   }
 
   if (request.method === "POST" && url.pathname === "/tools/policy") {
@@ -286,6 +275,7 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
   const approveToolApprovalMatch = url.pathname.match(/^\/tools\/approvals\/([^/]+)\/approve$/);
   if (request.method === "POST" && approveToolApprovalMatch?.[1]) {
     return handleApproveToolApproval(
+      request,
       env,
       identity,
       decodeURIComponent(approveToolApprovalMatch[1]),
@@ -562,19 +552,6 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
 
   if (url.pathname === "/langgraph" || url.pathname.startsWith("/langgraph/")) {
     return handleLangGraphFacade(request, env, ctx, identity, url, incomingTrace);
-  }
-
-  if (request.method === "POST" && url.pathname === "/workbench/demo-runs") {
-    return handleStartCloudflareDemoRun(request, env, ctx, identity);
-  }
-
-  if (request.method === "GET" && url.pathname === "/workbench/demo-runs/latest") {
-    return handleLatestCloudflareDemoRun(env, identity.scope);
-  }
-
-  const demoRunMatch = url.pathname.match(/^\/workbench\/demo-runs\/([^/]+)$/);
-  if (request.method === "GET" && demoRunMatch?.[1]) {
-    return handleGetCloudflareDemoRun(env, identity.scope, demoRunMatch[1]);
   }
 
   return json({ ok: false, error: "not found" }, { status: 404 });

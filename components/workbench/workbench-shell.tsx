@@ -54,7 +54,6 @@ import {
   fieldDefinitionsForPackWorkflow,
   type PackWorkflowFieldDefinition,
 } from "@/lib/workbench/pack-workflow-bindings";
-import type { RunnableAdminToolName } from "@/lib/workbench/cloudflare-control-plane-client";
 import type { AgentSlashWorkflowAction } from "@/lib/workbench/agent-slash-actions";
 import type { CloudflareToolRunResponse } from "@/lib/workbench/workbench-types";
 import { hasWorkbenchSessionAccess } from "@/lib/workbench/session-access";
@@ -63,7 +62,7 @@ const adminAccessPath = "/api/workbench/admin-access";
 const toolRunsPath = "/api/workbench/tools/runs";
 
 const adminTestToolInputs: Record<
-  Extract<RunnableAdminToolName, "diagnostic.ping" | "runner.echo" | "artifact.metadata.test">,
+  "diagnostic.ping" | "runner.echo" | "artifact.metadata.test",
   Record<string, unknown>
 > = {
   "diagnostic.ping": {},

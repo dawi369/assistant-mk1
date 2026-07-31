@@ -15,7 +15,7 @@ export type RunRelationSummary = {
   durableChild?: boolean;
 };
 
-export type CloudflareOwnedDemoRunSnapshot = {
+export type ExecutionRunSnapshot = {
   scope: TenantScope;
   intent: {
     id?: Id;
@@ -89,9 +89,9 @@ export type CloudflareOwnedDemoRunSnapshot = {
   }>;
 };
 
-export type CloudflareOwnedDemoRunResponse = {
+export type ExecutionRunResponse = {
   ok?: boolean;
-  snapshot?: CloudflareOwnedDemoRunSnapshot | null;
+  snapshot?: ExecutionRunSnapshot | null;
   error?: string;
 };
 
@@ -307,7 +307,7 @@ export type CloudflareExecutionHistoryResponse = {
 
 export type CloudflareExecutionHistoryRunResponse = {
   ok?: boolean;
-  snapshot?: CloudflareOwnedDemoRunSnapshot | null;
+  snapshot?: ExecutionRunSnapshot | null;
   error?: string;
 };
 
@@ -475,7 +475,7 @@ export type RuntimeTrace = {
     | "tool.diagnostic.ping"
     | "tool.runner.echo"
     | "tool.artifact.metadata.test"
-    | "diagnostic.demo.inspect";
+    | "diagnostic.execution";
   status: RuntimeTraceStatus;
   rootName: string;
   summary?: string;
@@ -1006,8 +1006,8 @@ export type CloudflareAdminSummaryResponse = {
     }>;
     chat: Omit<ChatRuntimeSummary, "state" | "events" | "failure">;
     chatRuntime: ChatRuntimeSummary;
-    demo: {
-      latestRun: CloudflareOwnedDemoRunSnapshot | null;
+    execution: {
+      latestRun: ExecutionRunSnapshot | null;
     };
     capabilityContext: DynamicCapabilityContext;
     capabilityDecisions: DynamicCapabilityDecision[];
@@ -1019,7 +1019,7 @@ export type CloudflareAdminSummaryResponse = {
     traceWaterfall: RuntimeSpan[];
     events: ControlPlaneEvent[];
     lastError: {
-      source: "chat" | "demo" | "event";
+      source: "chat" | "execution" | "event";
       message: string;
       status?: string;
       targetId?: Id;

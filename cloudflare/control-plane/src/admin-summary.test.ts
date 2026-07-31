@@ -182,7 +182,7 @@ describe("admin workspace summary projections", () => {
     expect(body.summary.latestArtifacts).toEqual([]);
     expect(body.summary.latestTrace).toBeNull();
     expect(body.summary.traceWaterfall).toEqual([]);
-    expect(body.summary.demo.latestRun).toBeNull();
+    expect(body.summary.execution.latestRun).toBeNull();
     expect(heavyReader).not.toHaveBeenCalled();
   });
 
@@ -202,7 +202,7 @@ describe("admin workspace summary projections", () => {
     expect(body.summary.latestArtifacts).toHaveLength(1);
     expect(body.summary.latestTrace?.traceId).toBe("trace_1");
     expect(body.summary.traceWaterfall).toHaveLength(1);
-    expect(body.summary.demo.latestRun?.run?.id).toBe(demoRun.id);
+    expect(body.summary.execution.latestRun?.run?.id).toBe(demoRun.id);
     expect(readers.resolveToolSummaries).toHaveBeenCalled();
     expect(readers.getLatestRuntimeTraceSnapshot).toHaveBeenCalled();
   });

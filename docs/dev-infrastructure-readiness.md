@@ -17,17 +17,18 @@ database, the Vercel frontend, and the dedicated Fly LangGraph runtime gateway.
   `workos-personal:<user-id>`. Cloudflare creates the account's default
   workspace, stores the user's active workspace preference, and resolves the
   active workspace from D1.
-- Required smoke: `CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> pnpm smoke:cloudflare-workbench-run`
+- Required public evidence: `pnpm acceptance:hosted:public` with the Vercel,
+  Cloudflare, and Fly URLs for the same commit.
 - Cloudflare Worker: `assistant-mk1-dev-control-plane`
 - Cloudflare D1 database: `assistant_mk1_dev`
 - D1 binding: `DB`
 - Sentry: org `t23`, project `assistant-mk1`. Vercel and Cloudflare share the
   project and are separated by `runtime.surface` tags.
-- Workbench smoke aliases:
-  - `pnpm smoke:workbench` uses the Vercel/Next same-origin workbench route and
-    is for local dev fallback or a future authenticated browser/session harness.
-  - `pnpm smoke:cloudflare-workbench-run` calls the Worker directly with
-    trusted WorkOS-shaped headers and is the hosted deploy runtime smoke.
+- Runtime evidence aliases:
+  - `pnpm conformance:agent-system` exercises package execution through the
+    local Next, Worker, signed runner, callback, and D1 boundaries.
+  - `pnpm smoke:cloudflare-deploy-readiness` checks the minimum remote Worker
+    identity, policy, session, and event boundaries without creating a pack run.
 
 The Vercel frontend uses the same Cloudflare-owned workbench routes. Its
 LangGraph proxy points at the Cloudflare `/langgraph` facade, which
@@ -75,7 +76,6 @@ Required secrets:
 
 - `OPENROUTER_API_KEY`
 - `OPENROUTER_MODEL`
-- `WORKBENCH_EXECUTOR_TOKEN`
 - `WORKBENCH_RUNNER_SIGNING_SECRET`
 - `WORKBENCH_CALLBACK_SIGNING_SECRET`
 - `LANGGRAPH_PROXY_TOKEN`
@@ -112,9 +112,10 @@ LANGGRAPH_UPSTREAM_TOKEN=local-langgraph-proxy-token
 SENTRY_DSN=
 SENTRY_ENVIRONMENT=development
 SENTRY_TRACES_SAMPLE_RATE=1.0
-WORKBENCH_EXECUTOR_URL=http://localhost:3000/api/workbench/executors/demo-inspect
-WORKBENCH_EXECUTOR_TOKEN=local-executor-token
 WORKBENCH_CALLBACK_SIGNING_SECRET=local-callback-signing-secret
+WORKBENCH_RUNNER_TRANSPORT=fly
+WORKBENCH_RUNNER_URL=http://127.0.0.1:3101/workbench/tool-runners/invocations
+WORKBENCH_RUNNER_SIGNING_SECRET=local-runner-signing-secret
 EOF
 pnpm db:cloudflare:migrate:local
 pnpm dev:cloudflare
@@ -130,7 +131,6 @@ In another terminal, run the Next app and local LangGraph dev server with:
 CLOUDFLARE_CONTROL_PLANE_URL=http://localhost:8787 \
 CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=local-dev-token \
 LANGGRAPH_UPSTREAM_TOKEN=local-langgraph-proxy-token \
-WORKBENCH_EXECUTOR_TOKEN=local-executor-token \
 WORKBENCH_DEV_USER_ID=dev-user \
 WORKBENCH_DEV_WORKSPACE_ID=dev-workspace \
 WORKBENCH_DEV_AGENT_ID=dev-agent \
@@ -140,12 +140,12 @@ pnpm dev
 Then smoke the same Cloudflare-owned path locally:
 
 ```bash
-SMOKE_BASE_URL=http://localhost:3000 pnpm smoke:workbench
+pnpm conformance:agent-system
 ```
 
-That smoke starts at the Next proxy, creates the run in the local Cloudflare
-Worker, delegates execution to the signed Next executor, receives callbacks,
-and reads the completed run snapshot from D1-owned Cloudflare state.
+That conformance gate starts at the Next facade, creates the run in the local
+Cloudflare Worker, delegates Fly-bound tools to the signed local runner
+gateway, receives callbacks, and reads the completed run snapshot from D1.
 
 To prove D1 tenant isolation at the Worker boundary, run:
 
@@ -156,7 +156,6 @@ pnpm smoke:cloudflare-workspace-context
 pnpm smoke:cloudflare-workspaces
 pnpm smoke:cloudflare-membership-policy
 pnpm smoke:cloudflare-agent-selection
-pnpm smoke:cloudflare-admin-summary
 pnpm smoke:cloudflare-session-boundary
 pnpm smoke:cloudflare-chat-boundary
 pnpm smoke:cloudflare-policy-boundary
@@ -173,7 +172,7 @@ workspace, membership-policy, agent-selection, and admin-summary smokes verify
 Cloudflare-owned workspace activation, D1-owned membership authorization,
 active-agent preferences, and the Admin summary path. The
 workspace-context smoke verifies the same resolved identity is exposed safely
-for Admin before any demo run exists. The policy smoke also verifies
+for Admin before any control run exists. The policy smoke also verifies
 that normal `ask` chat passes, `execute` chat is
 blocked, and duplicate same-thread execution is rejected while a run is already
 `running`. The event-feed smoke verifies tenant-scoped progress events and the
@@ -181,7 +180,8 @@ blocked, and duplicate same-thread execution is rejected while a run is already
 observed over the Worker SSE stream.
 
 The local Worker code is split by responsibility: route dispatch, HTTP/auth
-helpers, Cloudflare-owned demo-run handlers, and D1-backed demo run storage.
+helpers, the compiled runtime workflow/tool kernel, atomic D1 lifecycle, and
+approval recovery.
 
 ## Remote Cloudflare Control Plane
 
@@ -217,8 +217,6 @@ Remote Worker secrets and vars:
 pnpm wrangler secret put CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN --config cloudflare/control-plane/wrangler.jsonc
 pnpm wrangler secret put CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET --config cloudflare/control-plane/wrangler.jsonc
 pnpm wrangler secret put LANGGRAPH_UPSTREAM_TOKEN --config cloudflare/control-plane/wrangler.jsonc
-pnpm wrangler secret put WORKBENCH_EXECUTOR_TOKEN --config cloudflare/control-plane/wrangler.jsonc
-pnpm wrangler secret put WORKBENCH_EXECUTOR_URL --config cloudflare/control-plane/wrangler.jsonc
 pnpm wrangler secret put WORKBENCH_CALLBACK_SIGNING_SECRET --config cloudflare/control-plane/wrangler.jsonc
 pnpm wrangler secret put WORKBENCH_RUNNER_TRANSPORT --config cloudflare/control-plane/wrangler.jsonc
 pnpm wrangler secret put WORKBENCH_RUNNER_URL --config cloudflare/control-plane/wrangler.jsonc
@@ -227,15 +225,11 @@ pnpm wrangler secret put SENTRY_DSN --config cloudflare/control-plane/wrangler.j
 ```
 
 Use
-`https://assistant-mk1-langgraph-dev.fly.dev/workbench/executors/demo-inspect`
-as the remote executor URL. Do not commit token values.
-
-Use
 `https://assistant-mk1-langgraph-dev.fly.dev/workbench/tool-runners/invocations`
 as the remote runner URL when enabling `WORKBENCH_RUNNER_TRANSPORT=fly`.
 `WORKBENCH_RUNNER_SIGNING_SECRET` must match the Fly secret with the same name.
-When the transport, URL, or secret is absent, the Worker keeps `url.inspect` on
-the Cloudflare-inline runner.
+When the transport, URL, or secret is absent, Fly-bound tools are unavailable;
+the Worker never falls back to inline execution for a Fly declaration.
 
 Verify runner transport without printing secrets by setting the secret only in
 the command environment:
@@ -339,18 +333,16 @@ Remote Worker smoke:
 ```bash
 CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
 CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
-pnpm smoke:cloudflare-workbench-run
+CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET=<same-secret-as-worker> \
+pnpm smoke:cloudflare-deploy-readiness
 ```
 
-`pnpm smoke:cloudflare-workbench-run` is the hosted deploy runtime smoke. It
-calls the Worker directly because hosted Vercel workbench routes require a
-signed-in WorkOS browser session. `pnpm smoke:workbench` remains useful for
-local same-origin testing when the Next app is using local dev identity
-fallbacks.
-
-The browser-visible `Run demo inspect` button uses the Cloudflare-owned route by
-default. Missing Cloudflare configuration should fail visibly; there is no
-secondary local demo route.
+The deploy-readiness smoke calls the Worker directly because hosted Vercel
+workbench routes require a signed-in WorkOS browser session. The signed-in
+acceptance journey must separately activate Repository Analyst, complete its
+readiness workflow through Fly, and inspect the resulting History artifact.
+Missing Cloudflare or runner configuration fails visibly; there is no local
+compatibility execution route.
 
 Tenant scope for the hosted Vercel baseline is server-derived from WorkOS
 AuthKit. Vercel/Next maps WorkOS `user.id` to internal `userId` and WorkOS
@@ -372,12 +364,12 @@ Local development can still fall back to `WORKBENCH_DEV_USER_ID` and
 for local smoke convenience only; hosted Vercel should use WorkOS session
 identity.
 
-## Local Tool Adapter Foundation
+## Runtime Tool Foundation
 
-The first tool adapter slice uses an in-process runtime registry and exposure
-resolver. `demo.inspect` is exposed only for dry-run observe workflows. This is
-the server-side seam that future Cloudflare/Fly tool execution should preserve;
-it is not a durable tool registry or permission store yet.
+Compiled Runtime Module v1 declarations are the only pack tool catalog. The
+Cloudflare kernel enforces scope, policy, approvals, schemas, lifecycle, and
+publication; Fly imports the separate executable runner registry and returns
+signed progress/artifact evidence.
 
 ## Artifact R2 Resource
 

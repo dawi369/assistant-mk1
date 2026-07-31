@@ -5,8 +5,8 @@ import {
 } from "../../../lib/agent-runtime/registry";
 import { parseDataJson } from "./http";
 import { prepareOperatorAlertStatement } from "./operator-alerts";
-import { TriggerDispatchLeaseLostError } from "./pack-workflow-lifecycle";
-import { packWorkflowHandlers } from "./pack-workflow-runtime";
+import { TriggerDispatchLeaseLostError } from "./runtime-run-lifecycle";
+import { executeRuntimeWorkflow } from "./pack-workflow-runtime";
 import {
   createId,
   toJson,
@@ -173,8 +173,7 @@ const failUnfinishedDispatch = async (
 
 export const executeLeasedTriggerDispatch = async (env: Env, item: LeasedTriggerDispatch) => {
   const binding = packWorkflowBindings[item.trigger.workflow_type as PackWorkflowType];
-  const handler = packWorkflowHandlers[item.trigger.workflow_type as PackWorkflowType];
-  if (!binding || !handler || binding.requiredPackId !== item.trigger.pack_id) {
+  if (!binding || binding.requiredPackId !== item.trigger.pack_id) {
     await failUnfinishedDispatch(env, item, {
       code: "trigger_binding_unavailable",
       message: "The registered trigger workflow is unavailable.",
@@ -207,7 +206,8 @@ export const executeLeasedTriggerDispatch = async (env: Env, item: LeasedTrigger
     agentId: item.trigger.agent_id,
   };
   try {
-    const response = await handler(
+    const response = await executeRuntimeWorkflow(
+      item.trigger.workflow_type,
       new Request(new URL(binding.workerRoute, callbackUrl), {
         method: "POST",
         headers: { "content-type": "application/json" },

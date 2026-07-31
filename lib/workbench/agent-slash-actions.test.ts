@@ -22,19 +22,9 @@ describe("agent slash actions", () => {
     expect(actions[0]?.description).toContain("polymarket.orderbook.snapshot");
   });
 
-  it("exposes Baby Swordfish runtime research as a runnable slash action", () => {
+  it("keeps parked Baby Swordfish free of runnable slash actions", () => {
     const actions = resolveAgentSlashWorkflowActions(babySwordfishPack);
-
-    expect(actions).toHaveLength(1);
-    expect(actions[0]).toMatchObject({
-      id: "runtime-research",
-      label: "Runtime research",
-      binding: {
-        workflowType: "swordfish.runtime_research",
-        requiredPackId: "baby-swordfish",
-        route: "/api/workbench/workflows/swordfish.runtime_research",
-      },
-    });
+    expect(actions).toEqual([]);
   });
 
   it("ignores packs without a bound runnable workflow", () => {

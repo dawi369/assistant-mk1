@@ -7,6 +7,27 @@ export const runnerEchoPolicy = "admin-conformance-runner-echo-v0";
 export const artifactMetadataTestPolicy = "admin-conformance-artifact-metadata-v0";
 export const runnerEchoAdapterVersion = "runner-echo-v1";
 
+export const platformDiagnosticPolicyDefaults = [
+  {
+    id: diagnosticPingToolName,
+    policyReference: diagnosticPingPolicy,
+    timeoutMs: 1_000,
+    maxArtifactBytes: 0,
+  },
+  {
+    id: runnerEchoToolName,
+    policyReference: runnerEchoPolicy,
+    timeoutMs: 5_000,
+    maxArtifactBytes: 0,
+  },
+  {
+    id: artifactMetadataTestToolName,
+    policyReference: artifactMetadataTestPolicy,
+    timeoutMs: 1_000,
+    maxArtifactBytes: 16 * 1024,
+  },
+] as const;
+
 export type AdminTestToolName =
   | typeof diagnosticPingToolName
   | typeof runnerEchoToolName
@@ -176,4 +197,60 @@ export const validateArtifactMetadataTestInput = (
   const label = boundedString(source.label, "label", 80);
   if (isAdminTestToolError(label)) return label;
   return label ? { label } : {};
+};
+
+export const runDiagnosticPing = (input: unknown): DiagnosticPingResult => {
+  const parsed = validateDiagnosticPingInput(input);
+  if ("code" in parsed) return { ok: false, error: parsed };
+  return {
+    ok: true,
+    output: {
+      status: "ok",
+      summary: parsed.label
+        ? `Diagnostic ping completed: ${parsed.label}.`
+        : "Diagnostic ping completed.",
+      ...(parsed.label ? { label: parsed.label } : {}),
+      checkedAt: new Date().toISOString(),
+    },
+  };
+};
+
+export const runRunnerEcho = (input: unknown): RunnerEchoResult => {
+  const parsed = validateRunnerEchoInput(input);
+  if ("code" in parsed) return { ok: false, error: parsed };
+  const startedAt = Date.now();
+  const message = parsed.message ?? "runner echo ok";
+  const echoed = parsed.uppercase ? message.toUpperCase() : message;
+  return {
+    ok: true,
+    output: {
+      status: "ok",
+      summary: `Runner echo completed: ${echoed}.`,
+      message,
+      echoed,
+      uppercase: parsed.uppercase === true,
+      length: echoed.length,
+      timingMs: Date.now() - startedAt,
+    },
+  };
+};
+
+export const runArtifactMetadataTest = (input: unknown): ArtifactMetadataTestResult => {
+  const parsed = validateArtifactMetadataTestInput(input);
+  if ("code" in parsed) return { ok: false, error: parsed };
+  return {
+    ok: true,
+    output: {
+      status: "ok",
+      summary: parsed.label
+        ? `Artifact metadata test completed: ${parsed.label}.`
+        : "Artifact metadata test completed.",
+      ...(parsed.label ? { label: parsed.label } : {}),
+      artifact: {
+        kind: "report",
+        title: "Artifact metadata test report",
+        mimeType: "application/json",
+      },
+    },
+  };
 };

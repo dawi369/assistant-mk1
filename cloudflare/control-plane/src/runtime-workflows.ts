@@ -13,14 +13,14 @@ import { resolveAgentBehaviorConfig } from "./agent-records";
 import { selectAgent } from "./authz-store";
 import { appendControlPlaneEvent } from "./control-plane-events";
 import { isRecord, json, parseJson } from "./http";
-import { upsertManagedState } from "./managed-state";
+import { readManagedStateVersion, upsertManagedState } from "./managed-state";
 import {
   finishPackWorkflowRun,
   recordPackWorkflowToolCall,
   startPackWorkflowRun,
-} from "./pack-workflow-lifecycle";
+} from "./runtime-run-lifecycle";
 import type { WorkflowInvocationContext } from "./pack-workflow-runtime";
-import { invokeFlyToolRunner, noEgressSandboxContract, runnerMetadataFor } from "./tool-runner";
+import { executeRuntimeToolBinding } from "./runtime-tool-execution";
 import type { AgentIdentity, Env } from "./types";
 import { authorizeWorkflowTools } from "./workflow-tool-policy";
 
@@ -59,7 +59,7 @@ const toolResult = (value: unknown): RuntimeResult => {
   );
 };
 
-export const handleGenericRuntimeWorkflow = async (
+export const executeRuntimeWorkflowRequest = async (
   workflowType: string,
   request: Request,
   env: Env,
@@ -111,9 +111,7 @@ export const handleGenericRuntimeWorkflow = async (
     );
   }
   for (const toolId of workflow.toolIds) {
-    const tool =
-      runtime.controlPlane.tools.find((candidate) => candidate.id === toolId) ??
-      runtime.runner.tools.find((candidate) => candidate.id === toolId);
+    const tool = runtime.controlPlane.tools.find((candidate) => candidate.id === toolId);
     if (!tool) {
       return runtimeError(
         "tool_binding_unavailable",
@@ -146,7 +144,7 @@ export const handleGenericRuntimeWorkflow = async (
   const started = await startPackWorkflowRun(env, identity, {
     workflowType,
     policyReference: `runtime:${pack.id}:${runtime.runtimeVersion}`,
-    displayName: workflow.label,
+    displayName: workflow.runDisplayName ?? workflow.label,
     packId: pack.id,
     toolInput: input,
     executionMode: "dry_run",
@@ -159,9 +157,8 @@ export const handleGenericRuntimeWorkflow = async (
       transports: Array.from(
         new Set(
           workflow.toolIds.map((toolId) => {
-            const inline = runtime.controlPlane.tools.find((tool) => tool.id === toolId);
-            const runner = runtime.runner.tools.find((tool) => tool.id === toolId);
-            return (inline ?? runner)?.transport ?? "unknown";
+            const tool = runtime.controlPlane.tools.find((candidate) => candidate.id === toolId);
+            return tool?.transport ?? "unknown";
           }),
         ),
       ),
@@ -176,6 +173,7 @@ export const handleGenericRuntimeWorkflow = async (
 
   const invokeTool = async (toolId: string, toolInput: Record<string, unknown>) => {
     calls += 1;
+    const toolCallId = `${started.runId}-tool-${toolId.replaceAll(".", "-")}-${calls}`;
     if (calls > pack.resourceLimits.maxToolCallsPerRun) {
       return failure(
         Object.assign(new Error("Tool-call limit exceeded."), {
@@ -184,8 +182,7 @@ export const handleGenericRuntimeWorkflow = async (
       );
     }
     const inline = runtime.controlPlane.tools.find((tool) => tool.id === toolId);
-    const runnerTool = runtime.runner.tools.find((tool) => tool.id === toolId);
-    const tool: RuntimeToolBinding | undefined = inline ?? runnerTool;
+    const tool: RuntimeToolBinding | undefined = inline;
     if (!tool) {
       return failure(
         Object.assign(new Error(`Tool ${toolId} is not registered.`), {
@@ -193,53 +190,26 @@ export const handleGenericRuntimeWorkflow = async (
         }),
       );
     }
-    let result: RuntimeResult;
-    try {
-      assertSchemaValue(tool.inputSchema, toolInput, `${toolId} input`);
-      if (tool.transport === "cloudflare_inline" && tool.execute) {
-        result = toolResult(await tool.execute(toolInput, context));
-      } else if (tool.transport === "fly" && runnerTool) {
-        const runner = runnerMetadataFor(
-          {
-            toolName: tool.id,
-            adapterVersion: tool.adapterVersion,
-            supportedExecutionModes: [...tool.executionModes],
-            transport: "fly",
-          },
-          "agent-pack",
-          "fly",
-          noEgressSandboxContract({
-            template: tool.adapterVersion,
-            maxRuntimeMs: tool.timeoutMs,
-            maxArtifactBytes: tool.maxArtifactBytes,
-          }),
-        );
-        result = toolResult(
-          await invokeFlyToolRunner(env, identity, {
-            scope: identity.scope,
-            agentId: identity.agentId,
-            runId: started.runId,
-            workflowIntentId: started.workflowIntentId,
-            toolName: tool.id,
-            execution: { mode: "dry_run", policy: tool.policy.reference },
-            input: toolInput,
-            runner,
-            source: "agent-pack",
-          }),
-        );
-      } else {
-        result = failure(
-          Object.assign(new Error(`Tool ${toolId} has no executable binding.`), {
-            code: "tool_binding_unavailable",
-          }),
-        );
-      }
-      if (result.ok) assertSchemaValue(tool.outputSchema, result.output, `${toolId} output`);
-    } catch (error) {
-      result = failure(error);
-    }
+    const result = await executeRuntimeToolBinding({
+      env,
+      identity,
+      binding: tool,
+      toolInput,
+      context,
+      execution: {
+        runId: started.runId,
+        workflowIntentId: started.workflowIntentId,
+        toolCallId,
+        packVersion: pack.version,
+        runtimeVersion: runtime.runtimeVersion,
+        bindingVersion: 1,
+        callbackUrl: `${new URL(request.url).origin}/workbench/run-callbacks`,
+        source: "agent-pack",
+      },
+    });
     await recordPackWorkflowToolCall(env, identity, {
       ...started,
+      toolCallId,
       toolName: toolId,
       status: result.ok ? "completed" : "failed",
       inputSummary: `Invoke ${toolId}`,
@@ -271,9 +241,17 @@ export const handleGenericRuntimeWorkflow = async (
     tools: { invoke: invokeTool },
     managedState: {
       async upsert(state) {
+        const expectedVersion =
+          state.expectedVersion ??
+          (await readManagedStateVersion(env, identity, {
+            namespace: state.namespace,
+            stateType: state.stateType,
+            stateKey: state.stateKey,
+          }));
         const result = await upsertManagedState(env, identity, {
           id: `${identity.agentId}-${state.namespace}-${state.stateType}-${state.stateKey}`,
           ...state,
+          expectedVersion,
         });
         if (!result.ok) {
           throw Object.assign(new Error("Managed-state compare-and-set conflict."), {
@@ -306,8 +284,11 @@ export const handleGenericRuntimeWorkflow = async (
   } finally {
     clearTimeout(timeout);
   }
-  const artifact = result.artifacts?.[0];
-  const artifactBytes = artifact ? JSON.stringify(artifact.data).length : 0;
+  const runtimeArtifacts = result.artifacts ?? [];
+  const artifactBytes = runtimeArtifacts.reduce(
+    (total, artifact) => total + JSON.stringify(artifact.data).length,
+    0,
+  );
   if (artifactBytes > pack.resourceLimits.maxArtifactBytes) {
     result = failure(
       Object.assign(new Error("Artifact limit exceeded."), {
@@ -315,24 +296,21 @@ export const handleGenericRuntimeWorkflow = async (
       }),
     );
   }
-  const artifactId = artifact ? `${started.runId}-${artifact.kind}` : null;
+  const artifacts = runtimeArtifacts.map((artifact, index) => ({
+    id: `${started.runId}-${artifact.kind}${index ? `-${index + 1}` : ""}`,
+    kind: artifact.kind,
+    uri: `d1://control-plane/${started.runId}/${artifact.kind}${index ? `-${index + 1}` : ""}.json`,
+    title: artifact.title,
+    mimeType: artifact.mimeType,
+    sizeBytes: JSON.stringify(artifact.data).length,
+    data: artifact.data,
+  }));
   const finished = await finishPackWorkflowRun(env, identity, {
     ...started,
     workflowType,
     ok: result.ok,
     summary: result.summary,
-    artifact:
-      result.ok && artifact && artifactId
-        ? {
-            id: artifactId,
-            kind: artifact.kind,
-            uri: `d1://control-plane/${started.runId}/${artifact.kind}.json`,
-            title: artifact.title,
-            mimeType: artifact.mimeType,
-            sizeBytes: artifactBytes,
-            data: artifact.data,
-          }
-        : undefined,
+    artifacts: result.ok ? artifacts : undefined,
     data: {
       packId: pack.id,
       packVersion: pack.version,
@@ -360,7 +338,17 @@ export const handleGenericRuntimeWorkflow = async (
         workflowType,
         runtimeVersion: runtime.runtimeVersion,
       },
-      ...(artifactId ? { artifact: { id: artifactId, kind: artifact?.kind } } : {}),
+      ...(artifacts[0]
+        ? {
+            artifact: {
+              id: artifacts[0].id,
+              kind: artifacts[0].kind,
+              uri: artifacts[0].uri,
+              title: artifacts[0].title,
+              mimeType: artifacts[0].mimeType,
+            },
+          }
+        : {}),
       ...(result.ok ? { report: result.output } : { error: result.error.message }),
     },
     { status: result.ok ? 201 : 502 },

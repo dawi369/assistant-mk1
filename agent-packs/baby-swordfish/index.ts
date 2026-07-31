@@ -1,7 +1,7 @@
 import { defineAgentPack } from "@assistant-mk1/agent-sdk/manifest";
 
 export const babySwordfishPrompt = `<identity>
-You are Swordfish Runtime, a read-only market-data operations specialist. You turn public service health, symbol snapshots, and bounded bars into a concise operational assessment with explicit freshness and integrity limits.
+You are Swordfish Runtime, a parked reference agent for discussing market-data operations architecture. The workbench intentionally exposes no Swordfish backend or executable tools.
 </identity>
 
 <hard_boundaries>
@@ -13,16 +13,13 @@ You are Swordfish Runtime, a read-only market-data operations specialist. You tu
 </hard_boundaries>
 
 <runtime_research_behavior>
-- Start by identifying whether the user wants overall runtime health, a specific symbol snapshot, or recent bounded bars.
-- Use only public Swordfish backend endpoints when the runtime exposes them.
-- Summarize provider, Redis, durable-store, open ticker, symbol count, snapshot availability, and recent bar shape when available.
-- Call out degraded service state, missing snapshots, empty bars, stale-looking data, unsupported symbols, and partial public evidence.
-- Treat public market data as operational evidence, not a trading signal or recommendation.
+- Explain architecture, expected runtime boundaries, and safe implementation steps from supplied context only.
+- State clearly that live Swordfish health, snapshots, bars, and provider state are unavailable in this preview.
+- Treat any user-supplied market data as untrusted context, not a trading signal or recommendation.
 </runtime_research_behavior>
 
 <tool_policy>
-- Expected tools are swordfish.runtime.overview, swordfish.symbol.snapshot, and swordfish.bars.range.
-- These tools are dry-run/read-only workflow internals and are not directly user-invoked.
+- No Swordfish tools or workflows are registered while the backend is parked.
 - Never construct or call Swordfish /admin routes, Railway APIs, Massive provider APIs, mutation endpoints, secrets, raw Redis, or raw SQL.
 - Never include raw provider payloads, secrets, request headers, private ids, or unbounded JSON in user-facing output.
 </tool_policy>
@@ -38,48 +35,14 @@ export const babySwordfishPack = defineAgentPack({
   name: "Swordfish Runtime",
   description: "Read-only runtime health, futures snapshots, freshness, and bar integrity.",
   profile: "analyst",
-  version: "1.1.0",
+  version: "1.2.0",
   capabilityLevel: "single_agent_app",
   format: "xml",
   folderPath: "agent-packs/baby-swordfish",
   codePath: "agent-packs/baby-swordfish/index.ts",
   promptPath: "agent-packs/baby-swordfish/prompt.xml",
-  tools: [
-    {
-      id: "swordfish.runtime.overview",
-      invocation: "workflow",
-      required: true,
-      executionModes: ["dry_run"],
-      modelVisibleDefault: false,
-      purpose: "Read public Swordfish runtime health, open ticker, symbols, and snapshot count.",
-    },
-    {
-      id: "swordfish.symbol.snapshot",
-      invocation: "workflow",
-      required: true,
-      executionModes: ["dry_run"],
-      modelVisibleDefault: false,
-      purpose: "Read one public Swordfish symbol snapshot from the product backend.",
-    },
-    {
-      id: "swordfish.bars.range",
-      invocation: "workflow",
-      required: true,
-      executionModes: ["dry_run"],
-      modelVisibleDefault: false,
-      purpose: "Read a bounded public Swordfish bar range for a symbol and timeframe.",
-    },
-  ],
-  workflows: [
-    {
-      type: "swordfish.runtime_research",
-      engine: "cloudflare",
-      status: "declared",
-      userInvocable: true,
-      description:
-        "Cloudflare workflow for multi-step read-only Swordfish runtime and market-data reporting.",
-    },
-  ],
+  tools: [],
+  workflows: [],
   ui: {
     primarySurface: "workbench",
     inspectorSections: ["runtime", "symbols", "bars", "tools", "risk", "history"],
@@ -92,7 +55,11 @@ export const babySwordfishPack = defineAgentPack({
           id: "runtime-research",
           title: "Check runtime health",
           description: "Inspect services, a symbol snapshot, and recent bars.",
-          action: { kind: "workflow", workflowType: "swordfish.runtime_research" },
+          action: {
+            kind: "message",
+            prompt:
+              "Explain the intended Swordfish runtime health architecture and what remains parked.",
+          },
         },
         {
           id: "snapshot-freshness",
@@ -131,58 +98,20 @@ export const babySwordfishPack = defineAgentPack({
     requiresSecrets: false,
     productionGate: "none",
   },
-  connections: [
-    {
-      id: "swordfish.public-runtime",
-      provider: "swordfish",
-      principal: "none",
-      credentialClass: "none",
-      custody: "none",
-      required: false,
-      toolIds: ["swordfish.runtime.overview", "swordfish.symbol.snapshot", "swordfish.bars.range"],
-      scopes: [],
-    },
-  ],
+  connections: [],
   context: [
-    {
-      id: "swordfish.public_runtime",
-      trust: "untrusted",
-      description: "Public runtime health and market-data evidence from the parked adapter.",
-      required: true,
-      runtimeBinding: "swordfish.public",
-    },
     {
       id: "runtime.history",
       trust: "trusted",
-      description: "Tenant-scoped prior run evidence supplied by the workbench.",
+      description: "Tenant-scoped prior workbench history supplied without a Swordfish backend.",
       required: false,
       runtimeBinding: "workbench.history",
     },
   ],
   managedState: [],
   triggers: [],
-  artifactRenderers: [
-    {
-      artifactKind: "runtime_research_report",
-      renderer: "json",
-      title: "Runtime research report",
-      version: 1,
-    },
-  ],
-  healthChecks: [
-    {
-      id: "runtime.overview.binding",
-      target: { kind: "tool", id: "swordfish.runtime.overview" },
-      description: "Verify that the public runtime overview adapter is registered.",
-      required: true,
-    },
-    {
-      id: "runtime.research.binding",
-      target: { kind: "workflow", type: "swordfish.runtime_research" },
-      description: "Verify that the bounded research workflow is registered.",
-      required: true,
-    },
-  ],
+  artifactRenderers: [],
+  healthChecks: [],
   evals: [
     {
       id: "runtime.overview.static",

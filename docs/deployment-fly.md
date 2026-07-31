@@ -28,7 +28,6 @@ For the dedicated LangGraph runtime, set:
 
 ```bash
 fly secrets set OPENROUTER_API_KEY=...
-fly secrets set WORKBENCH_EXECUTOR_TOKEN=...
 fly secrets set WORKBENCH_RUNNER_SIGNING_SECRET=...
 fly secrets set WORKBENCH_CALLBACK_SIGNING_SECRET=...
 fly secrets set LANGGRAPH_PROXY_TOKEN=...
@@ -92,15 +91,17 @@ CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
 pnpm smoke:cloudflare-session-boundary
 ```
 
-Workbench vertical slice through the remote Worker:
+Public hosted boundary agreement:
 
 ```bash
-CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
-CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
-pnpm smoke:cloudflare-workbench-run
+VERCEL_URL=<vercel-url> \
+CLOUDFLARE_URL=<worker-url> \
+FLY_URL=<fly-url> \
+pnpm acceptance:hosted:public
 ```
 
-This verifies the production-shaped dev path:
+The signed-in acceptance journey must then activate Repository Analyst and
+complete a readiness workflow through this production-shaped path:
 
 ```text
 remote Cloudflare Worker -> remote D1
@@ -136,8 +137,8 @@ in LangGraph CLI/graph pair. Dependency updates must pass
 `pnpm verify:docker`; do not update the CLI independently of that evidence.
 
 Hosted Vercel workbench routes require a signed-in WorkOS browser session.
-`pnpm smoke:workbench` remains a local same-origin smoke, not the hosted deploy
-runtime smoke.
+`pnpm conformance:level2` remains the deterministic local same-origin proof;
+the hosted workflow journey is recorded manually against a signed-in session.
 
 To prove scoped remote D1 reads and writes, run:
 
@@ -165,7 +166,8 @@ CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
 pnpm smoke:cloudflare-chat-boundary
 CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
 CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
-pnpm smoke:cloudflare-workbench-run
+CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET=<same-secret-as-worker> \
+pnpm smoke:cloudflare-deploy-readiness
 ```
 
 Only run `d1 create` if the database is missing, and copy its returned
@@ -175,8 +177,9 @@ the current schema. The rebuild command drops remote dev D1 tables by design.
 Frontend:
 
 - Open the Vercel URL.
-- Open Admin with `/admin`, run "Run demo inspect", and confirm it shows completed run,
-  tool call, artifact, decision, and audit timeline.
+- Activate Repository Analyst, run **Readiness report**, and confirm History
+  shows the completed run, runner tool call, readiness artifact, policy
+  decision, and audit timeline.
 - Send a message.
 - Confirm a thread is created and streaming works.
 - Confirm server logs do not expose provider secrets.

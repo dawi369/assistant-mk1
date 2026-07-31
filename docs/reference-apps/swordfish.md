@@ -33,42 +33,17 @@ Swordfish stresses a different product shape from Polymancer:
 - Auditability: workflow runs, tool calls, and generated reports land in the
   same history/artifact path as other workbench actions.
 
-## Framework Mapping
+## Current Packaged Boundary
 
-Swordfish-specific behavior maps to generic Assistant-mk1 primitives:
-
-- Runtime health -> read-only tool call and audit summary.
-- Open ticker and symbol catalog -> compact tool output metadata.
-- Symbol snapshot -> typed market-data adapter output.
-- Recent bars -> bounded time-series read with max returned bars.
-- Runtime research report -> artifact metadata attached to a workflow run.
-- Demo selection -> pack-backed agent activation in the workbench shell.
-
-## Packaged Tools
-
-- `swordfish.runtime.overview`: reads public health, open ticker, symbols, and
-  compact snapshot counts.
-- `swordfish.symbol.snapshot`: reads a bounded uppercase futures symbol snapshot.
-- `swordfish.bars.range`: reads recent bars for a bounded symbol/timeframe/range.
-
-All Swordfish tools are registered as read-only, workflow-internal, and dry-run
-only. The user starts the bounded runtime workflow; its adapters are visible in
-the normal Tools panel but are not directly invokable.
-
-## Packaged Workflow
-
-`swordfish.runtime_research` is declared in the pack contract and implemented
-through the Cloudflare-owned workflow/history path.
-
-- Vercel facade: `POST /api/workbench/workflows/swordfish.runtime_research`
-- Worker route: `POST /workbench/workflows/swordfish.runtime_research`
-- Required active pack: `baby-swordfish`
-
-The workflow runs runtime overview, optional symbol snapshot, optional recent
-bars, and writes one compact runtime research report artifact.
+Swordfish is deliberately chat-only. Pack `baby-swordfish` version `1.2.0`
+retains activation, profile, prompt, welcome, and conversation behavior while
+registering no tools, workflows, triggers, connections, managed state, or
+renderers. Historical `1.1.x` snapshots can still chat but are runtime
+incompatible. Static health/eval evidence verifies that the parked package
+continues to compile without contacting or restoring the Swordfish backend.
 
 ## Boundary
 
-The Swordfish v0 contract is public read-only when its backend is available.
-Trading, order routing, admin actions, provider secrets, infrastructure tokens,
-mutation tools, and private data remain out of scope.
+Trading, market-data adapters, order routing, admin actions, provider secrets,
+infrastructure tokens, mutation tools, and private data are out of scope while
+Swordfish remains parked.

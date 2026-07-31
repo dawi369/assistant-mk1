@@ -1,6 +1,6 @@
 import type {
   ArtifactSummary,
-  CloudflareOwnedDemoRunSnapshot,
+  ExecutionRunSnapshot,
   ExecutionHistoryRunSummary,
 } from "./workbench-types";
 
@@ -178,7 +178,7 @@ export const isOpenableArtifactUri = (uri?: string | null) => {
 };
 
 export const buildArtifactPreview = (
-  artifact: ArtifactSummary | CloudflareOwnedDemoRunSnapshot["artifacts"][number],
+  artifact: ArtifactSummary | ExecutionRunSnapshot["artifacts"][number],
 ): ArtifactPreview => {
   const data = "data" in artifact ? artifact.data : undefined;
   const title = artifact.title ?? artifact.id ?? "Artifact";

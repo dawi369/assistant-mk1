@@ -135,10 +135,10 @@ about many tools, but a given model run should see only the tools allowed for
 its tenant scope, agent, workflow stage, execution mode, policy, and child-run
 context.
 
-The provisional runtime contract is a tool exposure resolver. It receives the
-candidate tools plus scoped run context and returns visibility decisions. This
-keeps token cost and risk lower without deleting tools from the installed
-library.
+Runtime Module v1 is the executable tool contract. The compiler supplies the
+active pack catalog; `runtime-tool-execution.ts` applies scoped policy, schema,
+connection, limit, and inline/Fly dispatch decisions for workflow, model, and
+Admin surfaces. Registration never implies model exposure.
 
 ## Lifecycle Events
 

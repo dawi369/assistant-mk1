@@ -51,7 +51,7 @@ test.describe.serial("Agent-system executable conformance", () => {
         proposal?: { status?: string };
       };
     };
-    expect(receipt.run).toMatchObject({ runtimeVersion: "1.0.0", engine: "cloudflare" });
+    expect(receipt.run).toMatchObject({ runtimeVersion: "1.1.0", engine: "cloudflare" });
     expect(receipt.artifact).toMatchObject({ kind: "complex_operator_report" });
     expect(receipt.report).toMatchObject({
       signal: { signal: "nominal" },
@@ -77,7 +77,7 @@ test.describe.serial("Agent-system executable conformance", () => {
       data: {
         packId: "complex-operator",
         packVersion: "1.0.0",
-        runtimeVersion: "1.0.0",
+        runtimeVersion: "1.1.0",
         workflowType: "complex-operator.observe",
       },
     });
