@@ -1,4 +1,10 @@
-import { type TenantIdentity, createSmokeContext, runSmoke, sleep } from "./smoke-utils";
+import {
+  type TenantIdentity,
+  createSmokeContext,
+  defaultWorkspaceId,
+  runSmoke,
+  sleep,
+} from "./smoke-utils";
 
 type BoundarySnapshot = {
   ok?: boolean;
@@ -26,6 +32,7 @@ type BoundarySnapshot = {
 
 const {
   baseUrl,
+  suffix,
   pollTimeoutMs,
   pollIntervalMs,
   readJson,
@@ -35,11 +42,19 @@ const {
   startAcceptedStreamOnNewThread,
 } = createSmokeContext();
 
-const fixtureId = `${Date.now()}-${crypto.randomUUID().slice(0, 12)}`;
+const accountId = `workos-org:policy-org-${suffix}`;
 const tenant: TenantIdentity = {
-  userId: `policy-tenant-user-${fixtureId}`,
-  workspaceId: `policy-tenant-workspace-${fixtureId}`,
-  agentId: `policy-tenant-agent-${fixtureId}`,
+  userId: `policy-tenant-user-${suffix}`,
+  accountId,
+  accountSource: "workos-organization",
+  workspaceId: defaultWorkspaceId(accountId),
+  email: `policy-tenant-${suffix}@example.com`,
+  name: "Policy Boundary Smoke User",
+  role: "owner",
+  roles: ["owner"],
+  permissions: ["workbench:read"],
+  authMode: "workos",
+  workspaceSource: "workos-organization",
 };
 
 const getBoundarySnapshot = (identity: TenantIdentity, threadId: string) =>
@@ -123,6 +138,13 @@ const assertErrorResponse = async (
 
 runSmoke("Cloudflare policy boundary smoke", async () => {
   console.log(`Smoking Cloudflare policy boundary at ${baseUrl}`);
+
+  const workspaceContext = await readJson<{
+    context?: { identity?: { agentId?: string } };
+  }>("/workspace-context", tenant);
+  const agentId = workspaceContext.context?.identity?.agentId;
+  if (!agentId) throw new Error("workspace bootstrap did not resolve an active agent");
+  tenant.agentId = agentId;
 
   const allowedThreadId = await createThread(tenant);
   const allowedResponse = await startStream(
