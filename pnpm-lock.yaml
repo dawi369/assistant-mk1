@@ -21,6 +21,9 @@ importers:
 
   .:
     dependencies:
+      '@assistant-mk1/agent-sdk':
+        specifier: workspace:*
+        version: link:packages/agent-sdk
       '@assistant-ui/react':
         specifier: ^0.14.24
         version: 0.14.24(@types/react-dom@19.2.3(@types/react@19.2.15))(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(use-sync-external-store@1.6.0(react@19.2.6))
@@ -163,6 +166,39 @@ importers:
       wrangler:
         specifier: ^4.98.0
         version: 4.98.0(@cloudflare/workers-types@4.20260604.1)
+
+  agent-packs/baby-polymancer:
+    dependencies:
+      '@assistant-mk1/agent-sdk':
+        specifier: workspace:*
+        version: link:../../packages/agent-sdk
+
+  agent-packs/baby-swordfish:
+    dependencies:
+      '@assistant-mk1/agent-sdk':
+        specifier: workspace:*
+        version: link:../../packages/agent-sdk
+
+  agent-packs/repo-analyst:
+    dependencies:
+      '@assistant-mk1/agent-sdk':
+        specifier: workspace:*
+        version: link:../../packages/agent-sdk
+
+  examples/complex-operator:
+    dependencies:
+      '@assistant-mk1/agent-sdk':
+        specifier: workspace:*
+        version: link:../../packages/agent-sdk
+      react:
+        specifier: ^19.2.6
+        version: 19.2.6
+
+  packages/agent-sdk:
+    dependencies:
+      react:
+        specifier: '>=19'
+        version: 19.2.6
 
 packages:
 

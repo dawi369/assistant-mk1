@@ -162,6 +162,27 @@ const runnerEchoInvocationBody = (runId = `cf-run-runner-echo-${suffix}`) =>
       : undefined,
   });
 
+const operatorSnapshotInvocationBody = (runId = `cf-run-operator-snapshot-${suffix}`) =>
+  JSON.stringify({
+    scope,
+    agentId: `agent:${scope.workspaceId}:default`,
+    runId,
+    workflowIntentId: `cf-intent-operator-snapshot-${suffix}`,
+    toolName: "operator.snapshot",
+    execution: { mode: "dry_run", policy: "operator.snapshot.v1" },
+    input: { subject: "runner-conformance" },
+    runner: {
+      transport: "fly",
+      adapterVersion: "operator-snapshot-v1",
+      source: "agent-pack",
+      sandbox: {
+        ...repoSnapshotSandbox(),
+        lifecycle: { ...repoSnapshotSandbox().lifecycle, template: "operator-snapshot-v1" },
+      },
+    },
+    source: "agent-pack",
+  });
+
 const signedFetch = async (input?: {
   body?: string;
   runId?: string;
@@ -219,6 +240,15 @@ const signedRunnerEchoFetch = (input?: { nonce?: string }) =>
     runId: `cf-run-runner-echo-${suffix}`,
     workflowIntentId: `cf-intent-runner-echo-${suffix}`,
     toolName: "runner.echo",
+    nonce: input?.nonce,
+  });
+
+const signedOperatorSnapshotFetch = (input?: { nonce?: string }) =>
+  signedFetch({
+    body: operatorSnapshotInvocationBody(),
+    runId: `cf-run-operator-snapshot-${suffix}`,
+    workflowIntentId: `cf-intent-operator-snapshot-${suffix}`,
+    toolName: "operator.snapshot",
     nonce: input?.nonce,
   });
 
@@ -312,6 +342,28 @@ runSmoke("Fly tool runner smoke", async () => {
     (runnerCallbackUrl && runnerEchoBody.metrics?.callback?.status !== "completed")
   ) {
     throw new Error(`runner.echo response was unexpected: ${JSON.stringify(runnerEchoBody)}`);
+  }
+
+  const operatorSnapshot = await signedOperatorSnapshotFetch({
+    nonce: `operator-snapshot-${suffix}`,
+  });
+  if (!operatorSnapshot.ok) {
+    throw new Error(`operator.snapshot runner request failed: ${operatorSnapshot.status}`);
+  }
+  const operatorSnapshotBody = (await operatorSnapshot.json()) as {
+    ok?: boolean;
+    output?: { subject?: string; status?: string };
+    runner?: { adapterVersion?: string };
+  };
+  if (
+    !operatorSnapshotBody.ok ||
+    operatorSnapshotBody.output?.subject !== "runner-conformance" ||
+    operatorSnapshotBody.output.status !== "nominal" ||
+    operatorSnapshotBody.runner?.adapterVersion !== "operator-snapshot-v1"
+  ) {
+    throw new Error(
+      `operator.snapshot response was unexpected: ${JSON.stringify(operatorSnapshotBody)}`,
+    );
   }
 
   const blockedEgress = await signedFetch({

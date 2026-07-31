@@ -4,14 +4,10 @@ Assistant-mk1 uses docs-first DB contracts before adding migrations or storage
 implementations. These contracts define durable entity shapes and repository
 operations, not final D1 table schemas, SQL migrations, or stable public APIs.
 
-The provisional serializable TypeScript layer lives in
-`lib/agent-framework/db-contracts.ts`. That file mirrors these entity contracts
-for application code, but it still is not a migration or storage implementation.
-
-The provisional data-client interface layer lives in
-`lib/agent-framework/data-client.ts`. That file defines repository-style
-operations for workflow callers. It does not implement Cloudflare APIs, direct
-D1/R2 access, validation, or persistence.
+There is intentionally no parallel provisional TypeScript entity or data-client
+layer. Shipped records are typed beside their owning Cloudflare repositories
+and facades. This document stays a target vocabulary until a repeated,
+implemented boundary justifies a shared public contract.
 
 The goal is to define the data shapes the platform must preserve across
 Cloudflare, Fly, LangGraph, and future app-specific bots without locking the
@@ -438,13 +434,12 @@ Cloudflare-mediated APIs are the initial backing implementation for app-state
 reads and writes. Workflows, Fly runners, and LangGraph services should use
 repository-style operations instead of raw tables.
 
-The code-facing contract lives in `lib/agent-framework/data-client.ts`. It is
-an interface-only boundary:
+The target data-client boundary has these rules:
 
 - Every method takes trusted `scope` as the first argument.
 - Inputs exclude storage-owned fields such as `id`, `scope`, and timestamps
   unless the operation is explicitly updating an existing record.
-- Outputs return durable entity records from `db-contracts.ts`.
+- Outputs return durable entity records owned by their platform repository.
 - The interface does not imply HTTP paths, D1 tables, migrations, R2 object key
   layout, or Cloudflare/Fly implementation classes.
 

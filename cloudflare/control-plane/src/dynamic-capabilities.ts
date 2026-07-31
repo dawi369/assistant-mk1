@@ -1,6 +1,8 @@
-import { selectMembership } from "./authz-store";
+import { resolveAgentBehaviorConfig } from "./agent-records";
+import { selectAgent, selectMembership } from "./authz-store";
 import { connectionAuthForTool, type ConnectionAuthBrokerage } from "./connection-auth";
 import {
+  compiledAgentToolNames,
   evaluateToolPolicy,
   toolPolicyCatalog,
   type ToolPolicyResult,
@@ -102,16 +104,24 @@ export const resolveDynamicToolCapabilities = async (
   identity: AgentIdentity,
   context: DynamicCapabilityContext,
 ) => {
-  const membership = await selectMembership(env, identity.scope.userId, identity.scope.workspaceId);
+  const [membership, agent] = await Promise.all([
+    selectMembership(env, identity.scope.userId, identity.scope.workspaceId),
+    selectAgent(env, identity.agentId, identity.scope.workspaceId),
+  ]);
+  const declaredTools = new Set(
+    resolveAgentBehaviorConfig(agent).pack?.tools.map((tool) => tool.id) ?? [],
+  );
   return Promise.all(
-    Object.keys(toolPolicyCatalog).map(async (toolName) => {
-      const policy = await evaluateToolPolicy(env, identity, {
-        membership,
-        toolName,
-        executionMode: context.executionMode,
-        surface: context.surface,
-      });
-      return toDynamicCapabilityDecision(toolName, policy);
-    }),
+    Object.keys(toolPolicyCatalog)
+      .filter((toolName) => !compiledAgentToolNames.has(toolName) || declaredTools.has(toolName))
+      .map(async (toolName) => {
+        const policy = await evaluateToolPolicy(env, identity, {
+          membership,
+          toolName,
+          executionMode: context.executionMode,
+          surface: context.surface,
+        });
+        return toDynamicCapabilityDecision(toolName, policy);
+      }),
   );
 };

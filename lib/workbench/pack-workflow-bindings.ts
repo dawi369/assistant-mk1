@@ -10,7 +10,7 @@ import {
   type PackWorkflowFieldName,
   type PackWorkflowRequest,
   type PackWorkflowType,
-} from "../../agent-packs/workflow-catalog";
+} from "../agent-runtime/registry";
 
 type AgentPackWorkflow = NonNullable<AgentBehaviorTemplate["pack"]>["workflows"][number];
 

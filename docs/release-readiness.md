@@ -34,6 +34,7 @@ encrypted credential brokerage, or hosted artifact recovery.
 | Deterministic services        | `pnpm test:service-boundaries`                                              |
 | Level 2 conformance           | `pnpm conformance:level2` and `docs/level-2-conformance.md`                 |
 | Level 3 local conformance     | `pnpm conformance:level3` and `docs/level-3-conformance.md`                 |
+| Agent extension system        | `pnpm conformance:agent-system` and `docs/agent-runtime-kit.md`             |
 | Docker boundary               | `pnpm verify:docker`                                                        |
 | Hosted public boundaries      | `pnpm acceptance:hosted:public`                                             |
 | Hosted Level 3 preflight      | `pnpm acceptance:hosted:level3:preflight`                                   |
@@ -73,6 +74,8 @@ that state as retained customer history.
 - [ ] `pnpm release:check` and all GitHub Actions jobs are green.
 - [ ] `pnpm conformance:level2` is green and its report names the release commit.
 - [ ] `pnpm conformance:level3` is green and its report names the release commit.
+- [ ] `pnpm conformance:agent-system` is green; generated registries are current,
+      the SDK consumer compiles, and Complex Operator passes.
 - [ ] Hosted trigger evidence proves one real schedule, signed webhook duplicate,
       expired-lease recovery, cancellation, replay, logs, and alert delivery for
       the same commit before unattended work is enabled.

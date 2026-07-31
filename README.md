@@ -130,9 +130,9 @@ fallback from `.env.example`. Hosted deployments fail closed and require WorkOS.
 
 ## Agent Packs
 
-Agent packs are the code-first extension boundary. Each checked-in pack declares
-behavior, tools, workflows, UI hints, risk posture, context, and smoke scenarios
-without bypassing workspace policy or tenant authorization.
+Agent packs are trusted build-time packages. Pack API v2 snapshots behavior and
+declarations; Runtime Module v1 supplies schema-checked Cloudflare, Fly, and web
+bindings without bypassing workspace policy or tenant authorization.
 
 The bundled API v2 examples are **Repository Analyst**, **Polymancer Research**, and
 **Swordfish Runtime**. Each includes an immediate pack-specific welcome and a
@@ -144,13 +144,19 @@ mutating older agent snapshots.
 
 ```bash
 pnpm agent-packs:create --id my-agent --name "My Agent" --dry-run
+pnpm agent-packs:compile --check
 pnpm agent-packs:validate
 pnpm agent-packs:inspect --pack repo-analyst
-pnpm agent-packs:smoke --pack repo-analyst # static manifest/catalog mapping smoke
+pnpm agent-packs:smoke --pack repo-analyst # static manifest/registry mapping smoke
+pnpm agent-packs:test --pack repo-analyst  # executable package health/eval gate
+pnpm conformance:agent-system              # aggregate SDK/compiler/runtime gate
 pnpm test:service-boundaries               # live local Worker/Fly/browser workflow smoke
 ```
 
-The current contract supports local checked-in packs. See [Agent Packs](docs/agent-packs.md),
+Installing a package requires its files, one `workbench.config.ts` entry, and a
+deterministic compile. The current contract does not support remote executable
+installation, credential custody, or mutation. See [Agent Packs](docs/agent-packs.md),
+the [Agent Runtime Kit](docs/agent-runtime-kit.md),
 the [Capability Model](docs/capability-model.md), and
 [Agent Profile Authoring](docs/agent-profile-authoring.md).
 
@@ -163,6 +169,7 @@ pnpm verify        # fast gate, high-severity audit, and production build
 pnpm test:e2e      # signed-out and trusted-local browser journeys
 pnpm conformance:level2       # executable Level 0-2 evidence report
 pnpm conformance:level3       # executable local Level 3 evidence report
+pnpm conformance:agent-system # executable package and extension-system report
 pnpm verify:docker            # non-root image and excluded-context proof
 pnpm acceptance:hosted:public # hosted unauthenticated health parity
 pnpm acceptance:hosted:level3:preflight # read-only hosted prerequisites

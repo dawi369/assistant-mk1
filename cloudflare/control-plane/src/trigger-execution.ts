@@ -2,7 +2,7 @@ import {
   buildPackWorkflowRequest,
   packWorkflowBindings,
   type PackWorkflowType,
-} from "../../../agent-packs/workflow-catalog";
+} from "../../../lib/agent-runtime/registry";
 import { parseDataJson } from "./http";
 import { prepareOperatorAlertStatement } from "./operator-alerts";
 import { TriggerDispatchLeaseLostError } from "./pack-workflow-lifecycle";

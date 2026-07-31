@@ -1,4 +1,4 @@
-import type { ToolDefinition } from "@/lib/agent-framework/contracts";
+import type { ToolDefinition } from "@/lib/workbench/core-contracts";
 
 export type DemoInspectInput = {
   target: "workspace";

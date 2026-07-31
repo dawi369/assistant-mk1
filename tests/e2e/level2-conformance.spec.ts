@@ -59,7 +59,7 @@ test.describe.serial("Level 2 executable conformance", () => {
 
     await page.evaluate(() => {
       (window as typeof window & { level2Run?: Promise<unknown> }).level2Run = fetch(
-        "/api/workbench/workflows/repo/readiness-report",
+        "/api/workbench/workflows/repo.readiness_report",
         {
           method: "POST",
           headers: { "content-type": "application/json" },

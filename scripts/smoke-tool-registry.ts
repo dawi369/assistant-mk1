@@ -1,10 +1,10 @@
-import type { ToolDefinition, ToolExposureResolver } from "../lib/agent-framework/contracts";
+import type { ToolDefinition, ToolExposureResolver } from "../lib/workbench/core-contracts";
 import {
   createRuntimeToolRegistry,
   defaultToolExposureResolver,
   executeRegisteredTool,
   getVisibleTools,
-} from "../lib/agent-framework/tool-runtime";
+} from "../lib/workbench/core-tool-runtime";
 import {
   DEMO_INSPECT_TOOL_NAME,
   workbenchToolExposureResolver,

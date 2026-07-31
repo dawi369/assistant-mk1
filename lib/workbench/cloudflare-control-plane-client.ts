@@ -1,4 +1,4 @@
-import type { Id } from "@/lib/agent-framework/contracts";
+import type { Id } from "@/lib/workbench/core-contracts";
 import { getWorkbenchIdentityHeaders } from "@/lib/workbench/agent-identity";
 import {
   adminSummaryProjectionPath,
@@ -423,41 +423,35 @@ export const runCloudflareTool = (input: {
     body: JSON.stringify(input),
   });
 
-export const runPolymancerMarketResearch = (input: {
-  executionMode?: "dry_run";
-  input: Record<string, unknown>;
-}) =>
+export const runPackWorkflow = (
+  workflowType: string,
+  input: {
+    executionMode?: "dry_run";
+    input: Record<string, unknown>;
+  },
+) =>
   requestControlPlane<CloudflareToolRunResponse & { report?: unknown }>(
-    "/workflows/polymancer/market-research",
+    `/workbench/workflows/${encodeURIComponent(workflowType)}`,
     {
       method: "POST",
       body: JSON.stringify(input),
     },
   );
+
+export const runPolymancerMarketResearch = (input: {
+  executionMode?: "dry_run";
+  input: Record<string, unknown>;
+}) => runPackWorkflow("polymancer.market_research", input);
 
 export const runRepoReadinessReport = (input: {
   executionMode?: "dry_run";
   input: Record<string, unknown>;
-}) =>
-  requestControlPlane<CloudflareToolRunResponse & { report?: unknown }>(
-    "/workflows/repo/readiness-report",
-    {
-      method: "POST",
-      body: JSON.stringify(input),
-    },
-  );
+}) => runPackWorkflow("repo.readiness_report", input);
 
 export const runSwordfishRuntimeResearch = (input: {
   executionMode?: "dry_run";
   input: Record<string, unknown>;
-}) =>
-  requestControlPlane<CloudflareToolRunResponse & { report?: unknown }>(
-    "/workflows/swordfish/runtime-research",
-    {
-      method: "POST",
-      body: JSON.stringify(input),
-    },
-  );
+}) => runPackWorkflow("swordfish.runtime_research", input);
 
 export const updateCloudflareToolPolicy = (input: {
   toolName: "url.inspect" | "repo.snapshot";

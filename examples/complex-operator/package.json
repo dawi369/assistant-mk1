@@ -1,0 +1,17 @@
+{
+  "name": "@assistant-mk1/pack-complex-operator",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./manifest.ts",
+    "./manifest": "./manifest.ts",
+    "./control-plane": "./control-plane.ts",
+    "./runner": "./runner.ts",
+    "./web": "./web.ts"
+  },
+  "dependencies": {
+    "@assistant-mk1/agent-sdk": "workspace:*",
+    "react": "^19.2.6"
+  }
+}

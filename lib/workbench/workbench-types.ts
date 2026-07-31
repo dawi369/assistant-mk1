@@ -4,7 +4,7 @@ import type {
   RunStatus,
   TenantScope,
   WorkflowStage,
-} from "@/lib/agent-framework/contracts";
+} from "@/lib/workbench/core-contracts";
 import type { AdminSummaryProjection } from "./admin-summary-projection";
 
 export type RunRelationSummary = {

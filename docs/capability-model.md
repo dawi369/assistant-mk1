@@ -76,10 +76,12 @@ can declare, but cannot bypass platform enforcement for:
 - execution modes, risk posture, limits, budgets, and approval requirements
 - evals, smoke scenarios, health checks, migrations, and compatibility bounds
 
-Pack manifests remain serializable declarations. Trusted tool implementations,
-workflow handlers, connection brokers, storage migrations, and policy
-enforcement remain registered platform code. Installing a pack never grants
-authority by itself.
+Pack manifests remain serializable declarations. Trusted build-time Runtime
+Module v1 packages may supply schema-checked tool/workflow handlers and web
+renderers. Cloudflare still owns tenancy, policy, approvals, lifecycle,
+publication, audit, and resource enforcement. Connection brokers, storage
+migrations, and mutation authority remain platform code. Installing a pack
+never grants authority by itself.
 
 ## Domain State And UX
 
@@ -117,7 +119,8 @@ Fly/LangGraph for heavy execution. Portability comes from stable pack, tool,
 workflow, policy, context, and data-client contracts, not from pretending every
 infrastructure component is already interchangeable.
 
-An external SDK, remote pack installation, or alternate infrastructure adapter
-should ship only after downstream use proves these contracts. Replacement
-implementations must preserve tenant derivation, policy enforcement, durable
-lineage, redaction, and audit semantics.
+The initially unpublished `@assistant-mk1/agent-sdk` and Complex Operator
+fixture prove the build-time extension boundary. Remote pack installation and
+alternate infrastructure adapters remain deferred. Replacement implementations
+must preserve tenant derivation, policy enforcement, durable lineage,
+redaction, and audit semantics.

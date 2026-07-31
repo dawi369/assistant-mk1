@@ -1,73 +1,76 @@
-import {
-  formatAgentPackIssues,
-  inspectAgentPackForDeveloperLoop,
-} from "../lib/workbench/agent-pack-dev-loop";
+import { toolPolicyCatalog } from "../cloudflare/control-plane/src/tool-policy";
+import { packWorkflowBindings } from "../lib/agent-runtime/registry";
+import { loadAgentModules } from "./agent-pack-compiler";
 
 const readArg = (name: string) => {
   const index = process.argv.indexOf(name);
   return index >= 0 ? process.argv[index + 1] : undefined;
 };
 
-const packId = readArg("--pack");
-const json = process.argv.includes("--json");
+const main = async () => {
+  const packId = readArg("--pack");
+  const json = process.argv.includes("--json");
+  if (!packId) throw new Error("Usage: pnpm agent-packs:inspect --pack <pack-id> [--json]");
+  const loaded = (await loadAgentModules(process.cwd())).find(
+    (item) => item.manifest.id === packId || item.entry.package === packId,
+  );
+  if (!loaded) throw new Error(`Agent pack ${packId} is not configured.`);
+  const output = {
+    package: loaded.entry.package,
+    conformanceOnly: loaded.entry.conformanceOnly === true,
+    manifest: loaded.manifest,
+    runtime: {
+      version: loaded.controlPlane.runtimeVersion,
+      compatiblePackVersions: loaded.controlPlane.compatiblePackVersions,
+      tools: loaded.manifest.tools.map((tool) => ({
+        ...tool,
+        registered: Boolean(toolPolicyCatalog[tool.id]),
+        policyReference: toolPolicyCatalog[tool.id]?.policyReference,
+      })),
+      workflows: loaded.manifest.workflows.map((workflow) => {
+        const binding = packWorkflowBindings[workflow.type];
+        return {
+          ...workflow,
+          registered: Boolean(binding),
+          workerRoute: binding?.workerRoute,
+          vercelRoute: binding?.route,
+        };
+      }),
+      health: loaded.controlPlane.health.map((check) => ({
+        id: check.id,
+        required: check.required,
+      })),
+      evals: loaded.controlPlane.evals.map((evaluation) => ({
+        id: evaluation.id,
+        required: evaluation.required,
+      })),
+      runnerTools: loaded.runner.tools.map((tool) => tool.id),
+      artifactRenderers: Object.keys(loaded.web.artifactRenderers),
+      managedStateRenderers: Object.keys(loaded.web.managedStateRenderers),
+    },
+  };
+  if (json) {
+    console.log(JSON.stringify(output, null, 2));
+    return;
+  }
+  console.log(`${loaded.manifest.name} (${loaded.manifest.id})`);
+  console.log(
+    `package=${loaded.entry.package} packApi=v${loaded.manifest.apiVersion} pack=${loaded.manifest.version} runtime=${loaded.controlPlane.runtimeVersion}`,
+  );
+  console.log(
+    `compatibility=${loaded.controlPlane.compatiblePackVersions} conformanceOnly=${loaded.entry.conformanceOnly === true}`,
+  );
+  console.log(
+    `extensions: tools=${loaded.manifest.tools.length} workflows=${loaded.manifest.workflows.length} state=${loaded.manifest.managedState.length} triggers=${loaded.manifest.triggers.length} renderers=${loaded.manifest.artifactRenderers.length} health=${loaded.manifest.healthChecks.length} evals=${loaded.manifest.evals.length}`,
+  );
+  for (const workflow of output.runtime.workflows) {
+    console.log(
+      `- workflow ${workflow.type}: ${workflow.registered ? "runnable" : "missing"} ${workflow.vercelRoute ?? ""}`,
+    );
+  }
+};
 
-if (!packId) {
-  console.error("Usage: pnpm agent-packs:inspect --pack <pack-id> [--json]");
+main().catch((error) => {
+  console.error(error instanceof Error ? error.message : String(error));
   process.exit(1);
-}
-
-const result = inspectAgentPackForDeveloperLoop(packId);
-
-if (json) {
-  console.log(JSON.stringify(result, null, 2));
-} else if (!result.ok) {
-  console.log(formatAgentPackIssues(result.errors));
-} else {
-  console.log(`${result.pack.name} (${result.pack.id})`);
-  console.log(`pack api: v${result.pack.apiVersion}`);
-  console.log(`template: ${result.pack.templateId}`);
-  console.log(`capability: ${result.pack.capabilityLevel}`);
-  console.log(`prompt: ${result.pack.promptPath}`);
-  console.log(
-    `risk: financialData=${result.pack.risk.financialData} externalMutation=${result.pack.risk.externalMutation} requiresSecrets=${result.pack.risk.requiresSecrets} gate=${result.pack.risk.productionGate}`,
-  );
-  console.log(`ui: ${result.pack.ui.primarySurface} / ${result.pack.ui.configurationMode}`);
-  console.log(
-    `extensions: context=${result.pack.context.length} state=${result.pack.managedState.length} triggers=${result.pack.triggers.length} renderers=${result.pack.artifactRenderers.length} health=${result.pack.healthChecks.length} evals=${result.pack.evals.length}`,
-  );
-  console.log(`connections: ${result.pack.connections.length}`);
-  for (const connection of result.pack.connections) {
-    console.log(
-      `- ${connection.id}: provider=${connection.provider} credential=${connection.credentialClass} custody=${connection.custody} required=${connection.required}`,
-    );
-  }
-  console.log(
-    `compatibility: workbench>=${result.pack.compatibility.minimumWorkbenchVersion} packApi=${result.pack.compatibility.packApi}`,
-  );
-  console.log(
-    `limits: run=${result.pack.resourceLimits.maxRunSeconds}s tools=${result.pack.resourceLimits.maxToolCallsPerRun} concurrency=${result.pack.resourceLimits.maxConcurrentRuns} artifact=${result.pack.resourceLimits.maxArtifactBytes}B`,
-  );
-  console.log("tools:");
-  for (const tool of result.tools) {
-    console.log(
-      `- ${tool.id}: ${tool.registered ? "registered" : "missing"}${tool.policyReference ? ` (${tool.policyReference})` : ""}`,
-    );
-  }
-  console.log("workflows:");
-  if (!result.workflows.length) {
-    console.log("- none");
-  }
-  for (const workflow of result.workflows) {
-    console.log(
-      `- ${workflow.type}: ${workflow.registered ? "registered" : "missing"}${workflow.workerRoute ? ` worker=${workflow.workerRoute}` : ""}${workflow.vercelRoute ? ` vercel=${workflow.vercelRoute}` : ""}`,
-    );
-  }
-  console.log("smoke scenarios:");
-  for (const scenario of result.pack.smokeScenarios) {
-    console.log(`- ${scenario.id}: ${scenario.prompt}`);
-  }
-  const packWarnings = result.validation.warnings.filter((item) => item.packId === result.pack.id);
-  if (packWarnings.length) console.log(formatAgentPackIssues(packWarnings));
-}
-
-if (!result.ok) process.exit(1);
+});

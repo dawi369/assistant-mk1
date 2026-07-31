@@ -32,6 +32,9 @@ import {
   swordfishRuntimeOverviewToolName,
   swordfishSymbolSnapshotToolName,
 } from "../../../lib/workbench/swordfish-readonly";
+import { agentControlPlaneRegistry } from "../../../generated/agent-runtime/control-plane";
+import { agentRunnerRegistry } from "../../../generated/agent-runtime/runner";
+import type { RuntimeToolBinding } from "@assistant-mk1/agent-sdk/control-plane";
 
 export const urlInspectToolName = "url.inspect";
 export const urlInspectPolicy = "tool-admin-readonly-v0";
@@ -139,33 +142,40 @@ const emptyConstraints = (): ToolPolicyConstraints => ({
   denylist: [],
 });
 
+const compiledToolPolicyCatalog = () => {
+  const result: Record<string, ToolPolicyCatalogEntry> = {};
+  const tools: RuntimeToolBinding[] = [];
+  for (const entry of Object.values(agentControlPlaneRegistry)) {
+    tools.push(...entry.module.tools);
+  }
+  for (const entry of Object.values(agentRunnerRegistry)) {
+    tools.push(...entry.module.tools);
+  }
+  for (const tool of tools) {
+    result[tool.id] ??= {
+      policyReference: tool.policy.reference,
+      allowedExecutionModes: [...tool.executionModes],
+      adminVisible: tool.policy.adminVisible,
+      modelVisible: tool.policy.modelVisible,
+      requiresApproval: tool.policy.requiresApproval,
+      status: "enabled",
+      policyEditable: tool.policy.policyEditable,
+      mutationRisk: tool.policy.mutationRisk,
+      constraints: {
+        ...emptyConstraints(),
+        maxRuntimeMs: tool.timeoutMs,
+        maxArtifactBytes: tool.maxArtifactBytes,
+      },
+    };
+  }
+  return result;
+};
+
+const compiledAgentToolPolicyCatalog = compiledToolPolicyCatalog();
+export const compiledAgentToolNames = new Set(Object.keys(compiledAgentToolPolicyCatalog));
+
 export const toolPolicyCatalog: Record<string, ToolPolicyCatalogEntry> = {
-  [urlInspectToolName]: {
-    policyReference: urlInspectPolicy,
-    allowedExecutionModes: ["dry_run"],
-    adminVisible: true,
-    modelVisible: false,
-    requiresApproval: false,
-    status: "enabled",
-    policyEditable: true,
-    mutationRisk: "read_only",
-    constraints: emptyConstraints(),
-  },
-  [repoSnapshotToolName]: {
-    policyReference: repoSnapshotPolicy,
-    allowedExecutionModes: ["dry_run"],
-    adminVisible: true,
-    modelVisible: false,
-    requiresApproval: false,
-    status: "enabled",
-    policyEditable: true,
-    mutationRisk: "read_only",
-    constraints: {
-      ...emptyConstraints(),
-      maxRuntimeMs: 10_000,
-      maxArtifactBytes: 128 * 1024,
-    },
-  },
+  ...compiledAgentToolPolicyCatalog,
   [demoInspectToolName]: {
     policyReference: demoInspectPolicy,
     allowedExecutionModes: ["dry_run"],
@@ -215,96 +225,6 @@ export const toolPolicyCatalog: Record<string, ToolPolicyCatalogEntry> = {
     constraints: {
       ...emptyConstraints(),
       maxArtifactBytes: 16 * 1024,
-    },
-  },
-  [polymarketMarketSearchToolName]: {
-    policyReference: polymarketReadonlyPolicy,
-    allowedExecutionModes: ["dry_run"],
-    adminVisible: true,
-    modelVisible: false,
-    requiresApproval: false,
-    status: "enabled",
-    policyEditable: true,
-    mutationRisk: "read_only",
-    constraints: {
-      ...emptyConstraints(),
-      maxRuntimeMs: 8_000,
-      maxArtifactBytes: 64 * 1024,
-    },
-  },
-  [polymarketMarketSnapshotToolName]: {
-    policyReference: polymarketReadonlyPolicy,
-    allowedExecutionModes: ["dry_run"],
-    adminVisible: true,
-    modelVisible: false,
-    requiresApproval: false,
-    status: "enabled",
-    policyEditable: true,
-    mutationRisk: "read_only",
-    constraints: {
-      ...emptyConstraints(),
-      maxRuntimeMs: 8_000,
-      maxArtifactBytes: 64 * 1024,
-    },
-  },
-  [polymarketOrderbookSnapshotToolName]: {
-    policyReference: polymarketReadonlyPolicy,
-    allowedExecutionModes: ["dry_run"],
-    adminVisible: true,
-    modelVisible: false,
-    requiresApproval: false,
-    status: "enabled",
-    policyEditable: true,
-    mutationRisk: "read_only",
-    constraints: {
-      ...emptyConstraints(),
-      maxRuntimeMs: 8_000,
-      maxArtifactBytes: 64 * 1024,
-    },
-  },
-  [swordfishRuntimeOverviewToolName]: {
-    policyReference: swordfishReadonlyPolicy,
-    allowedExecutionModes: ["dry_run"],
-    adminVisible: true,
-    modelVisible: false,
-    requiresApproval: false,
-    status: "enabled",
-    policyEditable: true,
-    mutationRisk: "read_only",
-    constraints: {
-      ...emptyConstraints(),
-      maxRuntimeMs: 8_000,
-      maxArtifactBytes: 64 * 1024,
-    },
-  },
-  [swordfishSymbolSnapshotToolName]: {
-    policyReference: swordfishReadonlyPolicy,
-    allowedExecutionModes: ["dry_run"],
-    adminVisible: true,
-    modelVisible: false,
-    requiresApproval: false,
-    status: "enabled",
-    policyEditable: true,
-    mutationRisk: "read_only",
-    constraints: {
-      ...emptyConstraints(),
-      maxRuntimeMs: 8_000,
-      maxArtifactBytes: 64 * 1024,
-    },
-  },
-  [swordfishBarsRangeToolName]: {
-    policyReference: swordfishReadonlyPolicy,
-    allowedExecutionModes: ["dry_run"],
-    adminVisible: true,
-    modelVisible: false,
-    requiresApproval: false,
-    status: "enabled",
-    policyEditable: true,
-    mutationRisk: "read_only",
-    constraints: {
-      ...emptyConstraints(),
-      maxRuntimeMs: 8_000,
-      maxArtifactBytes: 64 * 1024,
     },
   },
 };

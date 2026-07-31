@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { approveApprovalAndResumeRun, denyApprovalAndCancelRun } from "./admin-tools";
+import { approveApprovalAndResumeRun, denyApprovalAndCancelRun } from "./tool-execution-service";
 import type {
   AgentIdentity,
   ControlApprovalRequestRow,

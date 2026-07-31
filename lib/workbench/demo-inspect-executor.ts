@@ -1,5 +1,5 @@
-import type { Id, TenantScope } from "@/lib/agent-framework/contracts";
-import { executeRegisteredTool } from "@/lib/agent-framework/tool-runtime";
+import type { Id, TenantScope } from "@/lib/workbench/core-contracts";
+import { executeRegisteredTool } from "@/lib/workbench/core-tool-runtime";
 import { signFacadeRequest } from "@/lib/workbench/control-plane-signing";
 import {
   type DemoInspectInput,

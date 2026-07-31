@@ -9,7 +9,7 @@ import {
 } from "./pack-workflow-runtime";
 import { dispatchWorkbenchSessionEvent } from "./session-coordinator";
 import { activeRunStatusSql, activeRunStatuses, isTerminalRunStatus } from "./run-transitions";
-import { packWorkflowBindings, type PackWorkflowType } from "../../../agent-packs/workflow-catalog";
+import { packWorkflowBindings, type PackWorkflowType } from "../../../lib/agent-runtime/registry";
 import { toJson, type AgentIdentity, type ControlRunRow, type Env } from "./types";
 
 type ControllableRunRow = ControlRunRow & {

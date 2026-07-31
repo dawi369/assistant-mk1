@@ -6,8 +6,19 @@ import {
   packWorkflowBindings,
   resolvePackWorkflowBinding,
 } from "./pack-workflow-bindings";
+import { resolvePackRuntime } from "../agent-runtime/registry";
 
 describe("pack workflow bindings", () => {
+  it("keeps incompatible historical snapshots chat-only", () => {
+    expect(resolvePackRuntime("repo-analyst", "1.2.0")).toMatchObject({
+      runnable: true,
+      runtimeVersion: "1.0.0",
+    });
+    expect(resolvePackRuntime("repo-analyst", "2.0.0")).toMatchObject({
+      runnable: false,
+      reason: "runtime_incompatible",
+    });
+  });
   it("returns runnable bindings for Polymancer and Swordfish", () => {
     expect(
       resolvePackWorkflowBinding({
@@ -19,7 +30,7 @@ describe("pack workflow bindings", () => {
     ).toMatchObject({
       runnable: true,
       binding: {
-        route: "/api/workbench/workflows/polymancer/market-research",
+        route: "/api/workbench/workflows/polymancer.market_research",
         requiredPackId: "baby-polymancer",
       },
     });
@@ -34,7 +45,7 @@ describe("pack workflow bindings", () => {
     ).toMatchObject({
       runnable: true,
       binding: {
-        route: "/api/workbench/workflows/swordfish/runtime-research",
+        route: "/api/workbench/workflows/swordfish.runtime_research",
         requiredPackId: "baby-swordfish",
       },
     });

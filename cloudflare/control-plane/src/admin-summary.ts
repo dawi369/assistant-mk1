@@ -1,5 +1,9 @@
 import { toAgentSummary } from "./agent-records";
-import { listLatestArtifacts, listLatestToolCalls, resolveToolSummaries } from "./admin-tools";
+import {
+  listLatestArtifacts,
+  listLatestToolCalls,
+  resolveToolSummaries,
+} from "./tool-execution-service";
 import { getChatRuntimeSummary } from "./chat-runtime-summary";
 import { handleLatestControlPlaneEvents } from "./control-plane-events";
 import { getControlRunSnapshot, readLatestControlRun } from "./demo-run-store";

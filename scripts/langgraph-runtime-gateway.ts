@@ -37,6 +37,17 @@ import {
   type DemoInspectExecutorRequest,
   validateDemoInspectExecutorRequest,
 } from "../lib/workbench/demo-inspect-executor";
+import {
+  assertSchemaValue,
+  defaultActionPort,
+  defaultConnectionPort,
+  type AgentExecutionContext,
+  type RuntimeResult,
+  type RuntimeToolBinding,
+} from "@assistant-mk1/agent-sdk/control-plane";
+import { agentManifestRegistry } from "../generated/agent-runtime/manifests";
+import { agentRunnerRegistry } from "../generated/agent-runtime/runner";
+import { isCoreRunnerTool } from "../lib/agent-runtime/core-runner-provider";
 
 const port = Number(process.env.PORT ?? 3000);
 const langGraphUpstreamUrl = (
@@ -326,7 +337,7 @@ type WorkflowCallbackPayload = {
   output?: Record<string, unknown>;
 };
 
-type RunnerToolResult = RepoSnapshotResult | RunnerEchoResult;
+type RunnerToolResult = RepoSnapshotResult | RunnerEchoResult | RuntimeResult;
 
 const repoSnapshotTimeoutMs = 10_000;
 const repoSnapshotMaxStdoutBytes = 64 * 1024;
@@ -856,22 +867,139 @@ const handleToolRunnerInvocation = async (
     json(response, 400, { ok: false, error: "request body must be JSON" });
     return;
   }
-  if (
-    parsed.toolName !== "url.inspect" &&
-    parsed.toolName !== repoSnapshotToolName &&
-    parsed.toolName !== runnerEchoToolName
-  ) {
+  const genericRunnerEntry = Object.values(agentRunnerRegistry).find((entry) =>
+    entry.module.tools.some((tool) => tool.id === parsed.toolName),
+  );
+  const genericRunnerTool = genericRunnerEntry?.module.tools.find(
+    (tool) => tool.id === parsed.toolName,
+  ) as RuntimeToolBinding | undefined;
+  if (!isCoreRunnerTool(parsed.toolName ?? "") && !genericRunnerTool) {
     json(response, 400, {
       ok: false,
       error: "unsupported tool",
       details: {
         code: "unsupported_tool",
-        message:
-          "Only url.inspect, repo.snapshot, and runner.echo are supported by this runner endpoint.",
+        message: "The requested tool is not registered by the compiled runner modules.",
         retryable: false,
         redacted: true,
       },
     });
+    return;
+  }
+
+  if (genericRunnerEntry && genericRunnerTool && !isCoreRunnerTool(parsed.toolName ?? "")) {
+    const network = isRecord(parsed.runner?.sandbox) ? parsed.runner.sandbox.network : null;
+    if (
+      parsed.runner?.adapterVersion !== genericRunnerTool.adapterVersion ||
+      !isRecord(network) ||
+      network.privateNetwork !== "deny"
+    ) {
+      json(response, 403, {
+        ok: false,
+        error: {
+          code: "runner_contract_mismatch",
+          message: "The signed invocation does not match the compiled runner contract.",
+          retryable: false,
+          redacted: true,
+        },
+      });
+      return;
+    }
+    if (!genericRunnerTool.execute || !isRecord(parsed.input)) {
+      json(response, 409, {
+        ok: false,
+        error: {
+          code: "runner_binding_unavailable",
+          message: "The compiled runner binding is not executable.",
+          retryable: false,
+          redacted: true,
+        },
+      });
+      return;
+    }
+    const manifestEntry =
+      agentManifestRegistry[genericRunnerEntry.module.packId as keyof typeof agentManifestRegistry];
+    const runId = typeof parsed.runId === "string" ? parsed.runId : "unknown-run";
+    const workflowIntentId =
+      typeof parsed.workflowIntentId === "string"
+        ? parsed.workflowIntentId
+        : "unknown-workflow-intent";
+    const context: AgentExecutionContext = {
+      scope: {
+        userId: typeof parsed.scope?.userId === "string" ? parsed.scope.userId : "unknown-user",
+        workspaceId:
+          typeof parsed.scope?.workspaceId === "string"
+            ? parsed.scope.workspaceId
+            : "unknown-workspace",
+        agentId: typeof parsed.agentId === "string" ? parsed.agentId : "unknown-agent",
+      },
+      pack: {
+        id: genericRunnerEntry.module.packId,
+        version: manifestEntry.module.version,
+        runtimeVersion: genericRunnerEntry.module.runtimeVersion,
+      },
+      run: {
+        id: runId,
+        workflowIntentId,
+        executionMode: "dry_run",
+        source: "user",
+      },
+      signal: new AbortController().signal,
+      connections: defaultConnectionPort(manifestEntry.module.connections),
+      actions: defaultActionPort,
+      tools: {
+        async invoke() {
+          throw Object.assign(new Error("Nested runner tool invocation is unavailable."), {
+            code: "nested_tool_invocation_disabled",
+          });
+        },
+      },
+      managedState: {
+        async upsert() {
+          throw Object.assign(new Error("Runner modules cannot write managed state."), {
+            code: "runner_state_write_disabled",
+          });
+        },
+      },
+      events: { async append() {} },
+    };
+    const startedAt = Date.now();
+    try {
+      assertSchemaValue(genericRunnerTool.inputSchema, parsed.input, `${parsed.toolName} input`);
+      if (e2eRunnerDelayMs > 0) await delay(e2eRunnerDelayMs);
+      const result = await genericRunnerTool.execute(parsed.input, context);
+      if (result.ok) {
+        assertSchemaValue(
+          genericRunnerTool.outputSchema,
+          result.output,
+          `${parsed.toolName} output`,
+        );
+      }
+      json(response, result.ok ? 200 : 502, {
+        ...result,
+        runner: parsed.runner,
+        metrics: {
+          transport: "fly",
+          durationMs: Date.now() - startedAt,
+          callback: { status: "skipped" },
+        },
+      });
+    } catch (error) {
+      json(response, 502, {
+        ok: false,
+        error: {
+          code:
+            error && typeof error === "object" && "code" in error && typeof error.code === "string"
+              ? error.code
+              : "runner_execution_failed",
+          message: error instanceof Error ? error.message : "Runner execution failed.",
+          retryable: false,
+          redacted: true,
+        },
+        runner: parsed.runner,
+        metrics: { transport: "fly", durationMs: Date.now() - startedAt },
+      });
+    }
     return;
   }
 

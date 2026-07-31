@@ -1,6 +1,6 @@
 import { withAuth } from "@workos-inc/authkit-nextjs";
 
-import type { Id, TenantScope } from "@/lib/agent-framework/contracts";
+import type { Id, TenantScope } from "@/lib/workbench/core-contracts";
 
 export type WorkbenchAgentIdentity = {
   scope: TenantScope;

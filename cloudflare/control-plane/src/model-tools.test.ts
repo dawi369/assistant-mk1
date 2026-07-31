@@ -1,9 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { hasModelVisibleToolCandidate, resetModelToolCandidateCacheForTests } from "./model-tools";
+import {
+  hasModelVisibleToolCandidate,
+  modelToolKey,
+  resetModelToolCandidateCacheForTests,
+  runtimeModelToolBindingsForPack,
+} from "./model-tools";
 import { swordfishRuntimeOverviewToolName, urlInspectToolName } from "./tool-policy";
 import { createAgentBehaviorSnapshot } from "./agent-behavior-templates";
 import type { AgentIdentity, Env } from "./types";
+import { manifest as complexOperator } from "../../../examples/complex-operator/manifest";
 
 const identity = {
   agentId: "agent_1",
@@ -174,5 +180,17 @@ describe("model tool exposure fast path", () => {
     );
 
     expect(prepare).toHaveBeenCalledTimes(4);
+  });
+
+  it("derives stable provider-safe names from arbitrary runtime tool ids", () => {
+    expect(modelToolKey("operator.signal.read")).toBe("operator_signal_read");
+    expect(modelToolKey(" vendor/tool:lookup ")).toBe("vendor_tool_lookup");
+    expect(modelToolKey("...")).toBe("runtime_tool");
+  });
+
+  it("builds model-visible candidates from an arbitrary active package runtime", () => {
+    expect(runtimeModelToolBindingsForPack(complexOperator).map((binding) => binding.id)).toEqual([
+      "operator.signal.read",
+    ]);
   });
 });

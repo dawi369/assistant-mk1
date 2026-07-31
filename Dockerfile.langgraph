@@ -13,6 +13,11 @@ RUN apt-get update \
 
 RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/agent-sdk/package.json packages/agent-sdk/package.json
+COPY agent-packs/repo-analyst/package.json agent-packs/repo-analyst/package.json
+COPY agent-packs/baby-polymancer/package.json agent-packs/baby-polymancer/package.json
+COPY agent-packs/baby-swordfish/package.json agent-packs/baby-swordfish/package.json
+COPY examples/complex-operator/package.json examples/complex-operator/package.json
 RUN pnpm install --prod --frozen-lockfile
 
 COPY --chown=node:node . .

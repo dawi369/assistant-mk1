@@ -3,8 +3,12 @@ import { join, resolve } from "node:path";
 
 import {
   registerAgentPackSource,
+  renderAgentPackControlPlane,
   renderAgentPackIndex,
+  renderAgentPackPackageJson,
   renderAgentPackPrompt,
+  renderAgentPackRunner,
+  renderAgentPackWeb,
   validateAgentPackScaffoldInput,
 } from "../lib/workbench/agent-pack-scaffold";
 
@@ -19,7 +23,7 @@ const dryRun = process.argv.includes("--dry-run");
 const input = validateAgentPackScaffoldInput({ id, name });
 const root = process.cwd();
 const packDirectory = resolve(root, "agent-packs", input.id);
-const registryPath = resolve(root, "agent-packs/index.ts");
+const registryPath = resolve(root, "workbench.config.ts");
 if (existsSync(packDirectory))
   throw new Error(`Agent Pack directory already exists: ${packDirectory}`);
 
@@ -29,7 +33,7 @@ const registrySource = registerAgentPackSource(readFileSync(registryPath, "utf8"
 
 if (dryRun) {
   console.log(
-    `Would create agent-packs/${input.id}/index.ts and prompt.xml and register the pack.`,
+    `Would create a complete Runtime Module v1 package at agent-packs/${input.id} and configure it.`,
   );
   process.exit(0);
 }
@@ -37,6 +41,19 @@ if (dryRun) {
 try {
   mkdirSync(packDirectory);
   writeFileSync(join(packDirectory, "index.ts"), indexSource, { flag: "wx" });
+  writeFileSync(
+    join(packDirectory, "manifest.ts"),
+    `export { ${input.id.replace(/-([a-z0-9])/g, (_, character: string) => character.toUpperCase())}Pack as manifest } from "./index";\n`,
+    { flag: "wx" },
+  );
+  writeFileSync(join(packDirectory, "control-plane.ts"), renderAgentPackControlPlane(input), {
+    flag: "wx",
+  });
+  writeFileSync(join(packDirectory, "runner.ts"), renderAgentPackRunner(input.id), { flag: "wx" });
+  writeFileSync(join(packDirectory, "web.ts"), renderAgentPackWeb(input.id), { flag: "wx" });
+  writeFileSync(join(packDirectory, "package.json"), renderAgentPackPackageJson(input), {
+    flag: "wx",
+  });
   writeFileSync(join(packDirectory, "prompt.xml"), promptSource, { flag: "wx" });
   writeFileSync(registryPath, registrySource);
 } catch (error) {
@@ -44,5 +61,7 @@ try {
   throw error;
 }
 
-console.log(`Created and registered Agent Pack ${input.id}.`);
-console.log(`Next: pnpm agent-packs:validate && pnpm agent-packs:inspect --pack ${input.id}`);
+console.log(`Created and configured Runtime Module v1 Agent Pack ${input.id}.`);
+console.log(
+  `Next: pnpm agent-packs:compile && pnpm agent-packs:validate && pnpm agent-packs:test --pack ${input.id}`,
+);

@@ -60,8 +60,8 @@ the normal Tools panel but are not directly invokable.
 `swordfish.runtime_research` is declared in the pack contract and implemented
 through the Cloudflare-owned workflow/history path.
 
-- Vercel facade: `POST /api/workbench/workflows/swordfish/runtime-research`
-- Worker route: `POST /workflows/swordfish/runtime-research`
+- Vercel facade: `POST /api/workbench/workflows/swordfish.runtime_research`
+- Worker route: `POST /workbench/workflows/swordfish.runtime_research`
 - Required active pack: `baby-swordfish`
 
 The workflow runs runtime overview, optional symbol snapshot, optional recent

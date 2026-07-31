@@ -147,7 +147,7 @@ any user-installed hook system.
 
 The canonical event vocabulary is documented in
 `docs/observability-and-audit.md` and backed by `LifecycleEventName` in
-`lib/agent-framework/contracts.ts`. These events feed audit logs, UI timelines,
+`lib/workbench/core-contracts.ts`. These events feed audit logs, UI timelines,
 policy checks, and future extension points. Arbitrary filesystem hooks are not
 part of the first implementation.
 

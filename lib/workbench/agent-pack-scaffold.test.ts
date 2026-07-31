@@ -27,12 +27,12 @@ describe("Agent Pack scaffold", () => {
     );
   });
 
-  it("adds one import and one registry entry and rejects duplicate registration", () => {
-    const registry = `import { existingPack } from "./existing";\n\nimport type { LocalAgentPackManifest } from "./types";\n\nexport const localAgentPacks = [existingPack] as const;\n`;
+  it("adds one package entry to workbench config and rejects duplicate registration", () => {
+    const registry = `export default defineWorkbenchConfig({\n  runtimeApiVersion: 1,\n  modules: [\n  ],\n});\n`;
     const updated = registerAgentPackSource(registry, "trade-watcher");
 
-    expect(updated).toContain('import { tradeWatcherPack } from "./trade-watcher";');
-    expect(updated).toContain("[existingPack, tradeWatcherPack] as const");
-    expect(() => registerAgentPackSource(updated, "trade-watcher")).toThrow("already registered");
+    expect(updated).toContain('package: "@assistant-mk1/pack-trade-watcher"');
+    expect(updated).toContain('source: "./agent-packs/trade-watcher"');
+    expect(() => registerAgentPackSource(updated, "trade-watcher")).toThrow("already configured");
   });
 });

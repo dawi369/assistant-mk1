@@ -29,6 +29,7 @@ import {
   StatusPill,
   StatusRow,
 } from "@/components/workbench/dev-monitor-primitives";
+import { RuntimeArtifactContent } from "@/components/workbench/runtime-artifact-content";
 import {
   buildArtifactPreview,
   countHistoryRuns,
@@ -770,6 +771,11 @@ function ArtifactPreviewCard({
           <pre className="bg-muted mt-2 max-h-44 overflow-auto rounded-md p-2 text-xs whitespace-pre-wrap">
             {preview.json}
           </pre>
+          {"kind" in artifact ? (
+            <div className="mt-2 text-xs">
+              <RuntimeArtifactContent artifact={artifact as ArtifactSummary} />
+            </div>
+          ) : null}
         </details>
       ) : null}
     </li>

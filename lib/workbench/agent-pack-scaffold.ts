@@ -33,7 +33,7 @@ export const renderAgentPackIndex = (input: { id: string; name: string }) => {
   const { id, name } = validateAgentPackScaffoldInput(input);
   const exportName = agentPackExportName(id);
   const prompt = renderAgentPackPrompt(name);
-  return `import { defineAgentPack } from "../types";
+  return `import { defineAgentPack } from "@assistant-mk1/agent-sdk/manifest";
 
 export const ${exportName}Prompt = ${JSON.stringify(prompt)};
 
@@ -50,7 +50,7 @@ export const ${exportName} = defineAgentPack({
   promptPath: "agent-packs/${id}/prompt.xml",
   tools: [
     {
-      id: "repo.snapshot",
+      id: "${id}.inspect",
       invocation: "workflow",
       required: false,
       executionModes: ["dry_run"],
@@ -58,7 +58,15 @@ export const ${exportName} = defineAgentPack({
       purpose: "Replace or remove this starter read-only tool declaration.",
     },
   ],
-  workflows: [],
+  workflows: [
+    {
+      type: "${id}.inspect",
+      engine: "cloudflare",
+      status: "declared",
+      userInvocable: true,
+      description: "Run the starter deterministic read-only workflow.",
+    },
+  ],
   ui: {
     primarySurface: "workbench",
     inspectorSections: ["prompt", "tools", "history"],
@@ -103,10 +111,16 @@ export const ${exportName} = defineAgentPack({
   artifactRenderers: [],
   healthChecks: [
     {
-      id: "repo.snapshot.binding",
-      target: { kind: "tool", id: "repo.snapshot" },
+      id: "inspect.binding",
+      target: { kind: "tool", id: "${id}.inspect" },
       description: "Verify the starter read-only tool is registered before making it required.",
-      required: false,
+      required: true,
+    },
+    {
+      id: "workflow.binding",
+      target: { kind: "workflow", type: "${id}.inspect" },
+      description: "Verify the starter workflow is compiled.",
+      required: true,
     },
   ],
   evals: [
@@ -136,18 +150,122 @@ export const ${exportName} = defineAgentPack({
 `;
 };
 
-export const registerAgentPackSource = (source: string, id: string) => {
-  if (!agentPackIdPattern.test(id)) throw new Error("Agent Pack id is invalid.");
-  const exportName = agentPackExportName(id);
-  const importLine = `import { ${exportName} } from "./${id}";`;
-  if (source.includes(importLine)) throw new Error(`Agent Pack ${id} is already registered.`);
-  const firstImportEnd = source.lastIndexOf("\nimport type");
-  if (firstImportEnd < 0) throw new Error("Agent Pack registry import boundary was not found.");
-  const withImport = `${source.slice(0, firstImportEnd)}\n${importLine}${source.slice(firstImportEnd)}`;
-  const registryPattern = /(export const localAgentPacks = \[)([^\]]*)(\] as const;)/;
-  const match = withImport.match(registryPattern);
-  if (!match) throw new Error("Agent Pack registry array was not found.");
-  const entries = match[2]?.trim();
-  const nextEntries = entries ? `${entries}, ${exportName}` : exportName;
-  return withImport.replace(registryPattern, `$1${nextEntries}$3`);
+export const renderAgentPackPackageJson = (input: { id: string; name: string }) => {
+  const { id } = validateAgentPackScaffoldInput(input);
+  return `${JSON.stringify(
+    {
+      name: `@assistant-mk1/pack-${id}`,
+      version: "0.1.0",
+      private: true,
+      type: "module",
+      exports: {
+        ".": "./index.ts",
+        "./manifest": "./manifest.ts",
+        "./control-plane": "./control-plane.ts",
+        "./runner": "./runner.ts",
+        "./web": "./web.ts",
+      },
+      dependencies: { "@assistant-mk1/agent-sdk": "workspace:*" },
+    },
+    null,
+    2,
+  )}\n`;
 };
+
+export const renderAgentPackControlPlane = (input: { id: string; name: string }) => {
+  const { id, name } = validateAgentPackScaffoldInput(input);
+  return `import { defineControlPlaneModule } from "@assistant-mk1/agent-sdk/control-plane";
+
+export const controlPlane = defineControlPlaneModule({
+  packId: ${JSON.stringify(id)},
+  runtimeVersion: "1.0.0",
+  compatiblePackVersions: "^0.1.0",
+  tools: [{
+    id: ${JSON.stringify(`${id}.inspect`)},
+    description: "Starter deterministic read-only tool.",
+    inputSchema: { type: "object", additionalProperties: false },
+    outputSchema: { type: "object", required: ["status"] },
+    executionModes: ["dry_run"],
+    transport: "cloudflare_inline",
+    adapterVersion: ${JSON.stringify(`${id}-inspect-v1`)},
+    timeoutMs: 1000,
+    maxArtifactBytes: 8192,
+    policy: {
+      reference: ${JSON.stringify(`${id}.inspect.v1`)},
+      adminVisible: true,
+      modelVisible: false,
+      requiresApproval: false,
+      policyEditable: true,
+      mutationRisk: "read_only",
+    },
+    execute: () => ({
+      ok: true,
+      output: { status: "ok" },
+      summary: ${JSON.stringify(`${name} inspection completed.`)},
+    }),
+  }],
+  workflows: [{
+    type: ${JSON.stringify(`${id}.inspect`)},
+    engine: "cloudflare",
+    label: "Inspect",
+    description: "Run the starter deterministic read-only workflow.",
+    inputSchema: { type: "object", additionalProperties: false },
+    outputSchema: { type: "object", required: ["status"] },
+    form: [],
+    toolIds: [${JSON.stringify(`${id}.inspect`)}],
+    cancellation: { adapter: "none", physicalAbort: "unsupported" },
+    async execute(_input, context) {
+      return context.tools.invoke(${JSON.stringify(`${id}.inspect`)}, {});
+    },
+  }],
+  health: [
+    { id: "inspect.binding", required: true, check: () => ({ ok: true, summary: "Tool binding compiled." }) },
+    { id: "workflow.binding", required: true, check: () => ({ ok: true, summary: "Workflow binding compiled." }) },
+  ],
+  evals: [
+    { id: "capabilities.static", required: true, run: () => ({ ok: true, summary: "Static contract passed." }) },
+  ],
+});
+`;
+};
+
+export const renderAgentPackRunner = (
+  id: string,
+) => `import { defineRunnerModule } from "@assistant-mk1/agent-sdk/runner";
+
+export const runner = defineRunnerModule({
+  packId: ${JSON.stringify(id)},
+  runtimeVersion: "1.0.0",
+  compatiblePackVersions: "^0.1.0",
+  tools: [],
+});
+`;
+
+export const renderAgentPackWeb = (
+  id: string,
+) => `import { defineWebModule } from "@assistant-mk1/agent-sdk/web";
+
+export const web = defineWebModule({
+  packId: ${JSON.stringify(id)},
+  runtimeVersion: "1.0.0",
+  compatiblePackVersions: "^0.1.0",
+  artifactRenderers: {},
+  managedStateRenderers: {},
+});
+`;
+
+export const registerWorkbenchModuleSource = (source: string, id: string) => {
+  if (!agentPackIdPattern.test(id)) throw new Error("Agent Pack id is invalid.");
+  const packageName = `@assistant-mk1/pack-${id}`;
+  if (source.includes(`package: "${packageName}"`)) {
+    throw new Error(`Agent Pack ${id} is already configured.`);
+  }
+  const marker = "  ],\n});";
+  const index = source.lastIndexOf(marker);
+  if (index < 0) throw new Error("Workbench module configuration boundary was not found.");
+  const entry = `    {\n      package: "${packageName}",\n      source: "./agent-packs/${id}",\n    },\n`;
+  return `${source.slice(0, index)}${entry}${source.slice(index)}`;
+};
+
+/** @deprecated Runtime Module v1 uses registerWorkbenchModuleSource. */
+export const registerAgentPackSource = registerWorkbenchModuleSource;

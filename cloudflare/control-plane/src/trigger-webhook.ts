@@ -1,4 +1,4 @@
-import { buildPackWorkflowRequest } from "../../../agent-packs/workflow-catalog";
+import { buildPackWorkflowRequest } from "../../../lib/agent-runtime/registry";
 import { sha256Hex } from "../../../lib/workbench/control-plane-signing";
 import { isRecord, json, parseDataJson, parseJson } from "./http";
 import { processPendingTriggerDispatches } from "./trigger-execution";

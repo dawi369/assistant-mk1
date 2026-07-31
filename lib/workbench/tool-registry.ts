@@ -1,5 +1,5 @@
-import type { ToolExposureResolver } from "@/lib/agent-framework/contracts";
-import { createRuntimeToolRegistry } from "@/lib/agent-framework/tool-runtime";
+import type { ToolExposureResolver } from "@/lib/workbench/core-contracts";
+import { createRuntimeToolRegistry } from "@/lib/workbench/core-tool-runtime";
 import { demoInspectTool } from "@/lib/workbench/demo-tool";
 import type { DemoInspectInput, DemoInspectOutput } from "@/lib/workbench/demo-tool";
 

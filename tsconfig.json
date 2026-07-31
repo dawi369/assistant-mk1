@@ -19,7 +19,9 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@assistant-mk1/agent-sdk": ["./packages/agent-sdk/src/index.ts"],
+      "@assistant-mk1/agent-sdk/*": ["./packages/agent-sdk/src/*"]
     }
   },
   "include": [

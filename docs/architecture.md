@@ -94,6 +94,15 @@ observe -> analyze -> propose -> execute -> review
 - `cloudflare/control-plane/*`: Worker, D1 schema/migrations, Durable Object
   Agents, authz, policy, chat, tools, events, traces, and the canonical
   schedule/monitor/webhook trigger runtime.
+- `workbench.config.ts`: the only manual registry for trusted build-time Agent
+  Runtime packages.
+- `packages/agent-sdk/*`: Pack API v2 and Runtime Module v1 public contracts.
+- `generated/agent-runtime/*`: deterministic manifest, Cloudflare, runner, web,
+  and conformance registries.
+- `cloudflare/control-plane/src/generic-workflow-kernel.ts`: scoped execution
+  context, schema/resource checks, lifecycle, CAS state, and publication
+  boundary for package workflows.
+- `examples/complex-operator/*`: provider-free external-style extension proof.
 
 ## Deployment Boundary
 

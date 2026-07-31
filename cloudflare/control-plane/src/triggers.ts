@@ -4,7 +4,7 @@ import {
   buildPackWorkflowRequest,
   packWorkflowBindings,
   type PackWorkflowType,
-} from "../../../agent-packs/workflow-catalog";
+} from "../../../lib/agent-runtime/registry";
 import { resolveAgentBehaviorConfig } from "./agent-records";
 import { selectAgent, selectMembership } from "./authz-store";
 import { isRecord, json, parseDataJson, parseJson } from "./http";

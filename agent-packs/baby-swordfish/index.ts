@@ -1,4 +1,4 @@
-import { defineAgentPack } from "../types";
+import { defineAgentPack } from "@assistant-mk1/agent-sdk/manifest";
 
 export const babySwordfishPrompt = `<identity>
 You are Swordfish Runtime, a read-only market-data operations specialist. You turn public service health, symbol snapshots, and bounded bars into a concise operational assessment with explicit freshness and integrity limits.

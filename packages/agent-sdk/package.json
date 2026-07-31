@@ -1,0 +1,43 @@
+{
+  "name": "@assistant-mk1/agent-sdk",
+  "version": "0.1.0",
+  "description": "Build-time Agent Pack and Runtime Module contracts for Assistant-mk1.",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "files": [
+    "src",
+    "schemas",
+    "README.md"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./manifest": {
+      "types": "./src/manifest.ts",
+      "default": "./src/manifest.ts"
+    },
+    "./control-plane": {
+      "types": "./src/control-plane.ts",
+      "default": "./src/control-plane.ts"
+    },
+    "./runner": {
+      "types": "./src/runner.ts",
+      "default": "./src/runner.ts"
+    },
+    "./web": {
+      "types": "./src/web.ts",
+      "default": "./src/web.ts"
+    }
+  },
+  "peerDependencies": {
+    "react": ">=19"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  }
+}

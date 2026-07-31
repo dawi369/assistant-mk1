@@ -36,13 +36,14 @@ scoped.
 - Read-only tools now include `url.inspect` and `repo.snapshot`, with
   Cloudflare-owned tool policy, runner metadata, artifacts, audit events,
   runtime traces, and model exposure controls.
-- Agent Pack API v1 validates semantic versions, derived template ids, prompt
-  parity, three curated welcome actions, risk, tools, workflows, and smoke
-  metadata before compiling packs into immutable workspace agent snapshots.
+- Agent Pack API v2 validates semantic versions, derived template ids, prompt
+  parity, welcome actions, risk, tools, workflows, extension descriptors, and
+  smoke metadata before compiling packs into immutable workspace snapshots.
 - Repository Analyst and Polymancer Research ship live typed read-only workflows
   and structured history artifacts. Swordfish Runtime preserves the same
-  packaged contract while its backend is intentionally parked. The shared
-  workflow catalog drives forms, routes, retry, artifact kinds, and smoke commands.
+  packaged contract while its backend is intentionally parked. Runtime Module
+  v1 packages and generated registries drive forms, generic routes, retry,
+  policy defaults, artifact rendering, health, evals, and smoke commands.
 - `/agents` remains the compact member-facing picker. Allowlisted Admin exposes
   installed packs and idempotently reuses or creates the current pack version
   before starting a fresh chat.
@@ -80,9 +81,12 @@ scoped.
 - Unattended trigger failures and expired leases create durable deduplicated
   operator alerts. Optional signed HTTPS delivery is retried and fenced; alert
   acknowledgement/resolution is tenant-scoped and audited.
-- `pnpm agent-packs:create` now scaffolds and registers a conservative Pack API
-  v2 starter. Pack connection descriptors can declare public or externally
-  brokered provider requirements without storing credentials.
+- `pnpm agent-packs:create` now scaffolds a complete Runtime Module v1 package
+  and adds one `workbench.config.ts` entry. Pack connection descriptors can
+  declare public or externally brokered requirements without storing credentials.
+- The unpublished `@assistant-mk1/agent-sdk`, deterministic compiler, generic
+  execution kernel, environment registries, renderer fallback, and synthetic
+  Complex Operator package make the extension boundary executable.
 - The repo now has a GitHub Actions verification gate for clean installs and
   the full pack, eval, unit, typecheck, lint, and production-build suite. A
   deterministic Playwright release gate covers signed-out and trusted-local UX.
@@ -94,11 +98,10 @@ scoped.
    materialization, and background reconciliation with Cloudflare-owned truth.
 2. Keep model-visible tools narrow and policy-gated; harden model-side tool
    rendering and approval explanations before broader model tool use.
-3. Finish the first complete pack-owned vertical with executable eval/health
-   evidence and hosted trigger recovery; typed context, a workflow/tool,
-   artifact metadata, managed state, and trusted read-only triggers now exist.
-4. Validate the resulting Agent Pack contract and capability levels with downstream repositories
-   before publishing an external SDK or adding remote installation.
+3. Move the remaining built-in workflow and runner adapter bodies behind the
+   shared core-provider module so the generic kernel is the only lifecycle path.
+4. Validate the Runtime Kit with a downstream repository before publishing the
+   SDK or adding remote installation.
 5. Keep promoting execution history and artifact metadata into richer product
    surfaces: previews, filters, and user-facing export/delete behavior over the
    existing bounded D1/R2 lifecycle API.

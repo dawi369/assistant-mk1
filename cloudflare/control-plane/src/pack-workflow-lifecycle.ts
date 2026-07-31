@@ -2,6 +2,8 @@ import { buildControlRunRelation, toControlRunRelationEventData } from "./run-re
 import type { ControlRunRelation } from "./run-relations";
 import type { WorkflowInvocationContext } from "./pack-workflow-runtime";
 import { createId, toJson, type AgentIdentity, type Env, type ExecutionMode } from "./types";
+import { packWorkflowBindings, resolveRuntimeTool } from "../../../lib/agent-runtime/registry";
+import { agentManifestRegistry } from "../../../generated/agent-runtime/manifests";
 
 export type PackWorkflowRun = {
   runId: string;
@@ -40,6 +42,7 @@ type StartPackWorkflowInput = {
   invocation?: WorkflowInvocationContext;
   source?: string;
   intentCreatedSummary?: string;
+  runtimeMetadata?: Record<string, unknown>;
 };
 
 type RecordToolCallInput = PackWorkflowRun & {
@@ -81,6 +84,23 @@ export const startPackWorkflowRun = async (
   const invocation = input.invocation ?? { source: "user" };
   const summary = input.intentCreatedSummary ?? `Created ${input.displayName} workflow intent.`;
   const execution = { mode: input.executionMode, policy: input.policyReference };
+  const binding = packWorkflowBindings[input.workflowType];
+  const manifest =
+    agentManifestRegistry[input.packId as keyof typeof agentManifestRegistry]?.module;
+  const runtimeMetadata = binding
+    ? {
+        packVersion: manifest?.version,
+        runtimeVersion: binding.runtimeVersion,
+        bindingVersion: 1,
+        transports: Array.from(
+          new Set(
+            binding.toolIds
+              .map((toolId) => resolveRuntimeTool(toolId)?.tool.transport)
+              .filter((transport): transport is "cloudflare_inline" | "fly" => Boolean(transport)),
+          ),
+        ),
+      }
+    : {};
   const triggerData =
     invocation.source === "trigger"
       ? {
@@ -107,6 +127,8 @@ export const startPackWorkflowRun = async (
     source: invocation.source === "trigger" ? "trigger" : source,
     packId: input.packId,
     relation,
+    ...runtimeMetadata,
+    ...input.runtimeMetadata,
     ...triggerData,
   });
   const auditData = toJson({

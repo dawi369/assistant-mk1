@@ -1,12 +1,11 @@
-import { babyPolymancerPack } from "./baby-polymancer";
-import { babySwordfishPack } from "./baby-swordfish";
-import { repoAnalystPack } from "./repo-analyst";
-
 import type { LocalAgentPackManifest } from "./types";
 import { agentPackProfiles, agentPackToolInvocations } from "./types";
-import { packWorkflowBindings } from "./workflow-catalog";
+import { packWorkflowBindings } from "../lib/agent-runtime/registry";
+import { agentManifestRegistry } from "../generated/agent-runtime/manifests";
 
-export const localAgentPacks = [repoAnalystPack, babyPolymancerPack, babySwordfishPack] as const;
+export const localAgentPacks = Object.values(agentManifestRegistry)
+  .filter((entry) => !entry.conformanceOnly)
+  .map((entry) => entry.module) as readonly LocalAgentPackManifest[];
 
 export type {
   AgentPackArtifactRenderer,
@@ -35,14 +34,14 @@ export {
   fieldDefinitionsForPackWorkflow,
   packWorkflowBindings,
   packWorkflowFieldDefinitions,
-} from "./workflow-catalog";
+} from "../lib/agent-runtime/registry";
 export type {
   PackWorkflowBinding,
   PackWorkflowFieldDefinition,
   PackWorkflowFieldName,
   PackWorkflowRequest,
   PackWorkflowType,
-} from "./workflow-catalog";
+} from "../lib/agent-runtime/registry";
 
 const semanticVersionPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/;
 const descriptorIdPattern = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/;

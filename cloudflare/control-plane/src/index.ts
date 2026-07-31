@@ -84,6 +84,7 @@ import { WorkbenchThreadChatAgent } from "./thread-chat-agent";
 import { WorkbenchSessionAgent } from "./session-agent";
 import { handleGetManagedState, handleListManagedState } from "./managed-state";
 import { runTriggerSchedulerTick } from "./trigger-scheduler";
+import { agentControlPlaneRegistry } from "../../../generated/agent-runtime/control-plane";
 import {
   deliverPendingOperatorAlerts,
   handleListOperatorAlerts,
@@ -129,6 +130,24 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
         !env.WorkbenchThreadChatAgent ||
         !env.WorkbenchSessionAgent
       ) {
+        return json({ ok: false, service: "assistant-mk1-control-plane" }, { status: 503 });
+      }
+      const runtimeChecks = await Promise.all(
+        Object.values(agentControlPlaneRegistry)
+          .filter((entry) => !entry.conformanceOnly)
+          .flatMap((entry) =>
+            entry.module.health
+              .filter((check) => check.required)
+              .map(async (check) => {
+                try {
+                  return await check.check();
+                } catch {
+                  return { ok: false, summary: "Runtime health check failed." };
+                }
+              }),
+          ),
+      );
+      if (runtimeChecks.some((check) => !check.ok)) {
         return json({ ok: false, service: "assistant-mk1-control-plane" }, { status: 503 });
       }
       return json({ ok: true, service: "assistant-mk1-control-plane", storage: "d1" });

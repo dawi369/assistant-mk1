@@ -9,9 +9,10 @@ The complete target composition boundary is defined in
 `capability-model.md`. API v2 implements serializable extension descriptors and
 the subset of runtime bindings that can be validated and enforced today.
 
-Document status: Agent Pack API v2 is implemented for trusted, checked-in
-packs. Remote installation, a marketplace, arbitrary executable uploads,
-secret binding, and automatic snapshot upgrades are not implemented.
+Document status: Agent Pack API v2 and Runtime Module v1 are implemented for
+trusted build-time packages. Remote installation, a marketplace, arbitrary
+executable uploads, secret binding, and automatic snapshot upgrades are not
+implemented.
 
 ## Contract
 
@@ -110,10 +111,11 @@ export const examplePack = defineAgentPack({
 template id `pack-<id>`. Versions must be semantic. The adjacent `prompt.xml`
 must match the inline prompt exactly.
 
-Pack definitions may declare capabilities but cannot implement trusted runtime
-code. The shared workflow catalog owns bounded forms, input normalization,
-same-origin and Worker routes, artifact kinds, and smoke commands. The Worker
-handler registry is exhaustive over runnable catalog entries.
+Pack manifests remain serializable snapshots. Adjacent Runtime Module v1
+exports provide trusted control-plane, runner, and web implementations. The
+deterministic compiler owns forms, schemas, generic routes, policy defaults,
+compatibility, health/eval bindings, and renderer lookup; there is no
+handwritten workflow catalog or per-workflow Vercel route.
 
 The manifest engine must match the registered workflow binding. `cloudflare`
 means Cloudflare owns orchestration even when a step uses the signed Fly runner.
@@ -136,8 +138,9 @@ workflow-internal adapters for the current agent without conflating them.
 
 API v2 declares typed context sources, namespaced managed state,
 schedules/webhooks/monitors, artifact renderers, health checks, eval mappings,
-compatibility bounds, and resource ceilings. These are data, not executable
-callbacks. They are snapshotted with the behavior template and visible through
+compatibility bounds, and resource ceilings. These remain data and are
+snapshotted with the behavior template. Executable callbacks live only in the
+environment-specific Runtime Module exports and are visible through
 `agent-packs:inspect`.
 
 Declarations remain inert until trusted platform code supplies a runtime
@@ -164,8 +167,9 @@ workbench projects them into a secret-free `authorization_required` status.
 No Pack receives tokens or broad broker credentials.
 
 Actual OAuth/API-key custody, authorization completion, refresh and revocation
-workers, connection health persistence, decision extensions, policy defaults,
-migrations, and remote installation remain future contract work.
+workers, connection health persistence, decision extensions, migrations, and
+remote installation remain future contract work. Policy defaults now compile
+from Runtime Module tool bindings.
 
 Pack-owned descriptors compose into generic workbench surfaces. They do not add
 unscoped routes, arbitrary executable uploads, domain tables, or private
@@ -224,11 +228,12 @@ pnpm agent-packs:create --id trade-watcher --name "Trade Watcher"
 ```
 
 The command validates the id/name before writing, refuses to overwrite an
-existing directory or registration, creates matching `index.ts` and
-`prompt.xml` files, and registers the pack. The starter is deliberately
+existing directory or configuration entry, creates the manifest,
+control-plane, runner, web, package metadata, and prompt exports, and adds the
+single `workbench.config.ts` entry. The starter is deliberately
 read-only, secret-free, disabled from model tool use, resource-bounded, and
 equipped with a static eval and health declaration. Replace its placeholder
-purpose and remove the optional `repo.snapshot` declaration if it does not fit.
+purpose and replace the deterministic starter binding with domain behavior.
 Add connection descriptors before introducing a provider-backed tool; a
 credentialed descriptor does not become usable until a broker adapter and
 health contract exist.
@@ -236,25 +241,29 @@ health contract exist.
 Then:
 
 1. Refine the generated manifest and prompt together.
-2. If it has a runnable workflow, add one shared workflow-catalog descriptor
-   and one exhaustive Worker handler.
-3. Register every tool in the runtime catalog and keep model exposure off until
-   policy explicitly allows it.
+2. Implement its schemas and handlers in `control-plane.ts` or `runner.ts`;
+   do not add a core route or registry entry.
+3. Keep model exposure off until policy explicitly allows it.
 4. Add report-derivation, authorization, retry, artifact-preview, resource-bound,
    and input-bound tests.
 5. Run:
 
 ```bash
 pnpm agent-packs:validate
+pnpm agent-packs:compile --check
 pnpm agent-packs:inspect --pack <pack-id>
 pnpm agent-packs:smoke --pack <pack-id>
+pnpm agent-packs:test --pack <pack-id>
+pnpm conformance:agent-system
 pnpm test:service-boundaries
 pnpm verify:fast
 ```
 
 Use `--json` on the pack scripts when integrating them into automation.
-`agent-packs:smoke` is a static manifest/catalog mapping smoke; the separate
-service-boundary command exercises the deterministic local runtime. Live
+`agent-packs:smoke` is a static manifest/compiled-registry mapping smoke; the separate
+`agent-packs:test` executes package health/eval bindings and any deterministic
+generic workflow. The service-boundary command exercises the deployed-shape
+local runtime. Live
 provider smokes remain explicit and are never triggered by local validation.
 
 ## Safety Rules
@@ -268,7 +277,10 @@ provider smokes remain explicit and are never triggered by local validation.
   Cloudflare policy approval.
 - Secret-requiring packs fail v2 validation.
 - Execute-mode tools require mutation risk and a production gate.
-- Missing runtime workflow bindings remain visible as declared-only and cannot
-  execute.
+- Missing or incompatible runtime workflow bindings remain visible and
+  chat-capable but cannot execute.
 - Pack results belong in `/history`; raw implementation details belong in the
   allowlisted Admin Diagnostics tab.
+
+See `agent-runtime-kit.md` for the complete executable package boundary and the
+Complex Operator golden path.

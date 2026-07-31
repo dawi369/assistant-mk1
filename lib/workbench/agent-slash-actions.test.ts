@@ -15,7 +15,7 @@ describe("agent slash actions", () => {
       binding: {
         workflowType: "polymancer.market_research",
         requiredPackId: "baby-polymancer",
-        route: "/api/workbench/workflows/polymancer/market-research",
+        route: "/api/workbench/workflows/polymancer.market_research",
       },
     });
     expect(actions[0]?.description).toContain("polymarket.market.search");
@@ -32,7 +32,7 @@ describe("agent slash actions", () => {
       binding: {
         workflowType: "swordfish.runtime_research",
         requiredPackId: "baby-swordfish",
-        route: "/api/workbench/workflows/swordfish/runtime-research",
+        route: "/api/workbench/workflows/swordfish.runtime_research",
       },
     });
   });

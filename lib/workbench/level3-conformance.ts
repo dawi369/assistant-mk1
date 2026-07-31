@@ -16,7 +16,9 @@ export type Level3Guarantee =
   | "operator_alerting"
   | "retained_data_lifecycle"
   | "agent_pack_scaffold"
-  | "connection_contracts";
+  | "connection_contracts"
+  | "runtime_module_v1"
+  | "extension_conformance";
 
 export type Level3ConformanceSuite = {
   id: string;
@@ -43,9 +45,26 @@ export const requiredLevel3Guarantees: Level3Guarantee[] = [
   "retained_data_lifecycle",
   "agent_pack_scaffold",
   "connection_contracts",
+  "runtime_module_v1",
+  "extension_conformance",
 ];
 
 export const level3ConformanceSuites: Level3ConformanceSuite[] = [
+  {
+    id: "level3-agent-runtime-kit",
+    command: "pnpm conformance:agent-system",
+    guarantees: [
+      "pack_api_v2",
+      "managed_state",
+      "trusted_triggers",
+      "workflow_tool_policy",
+      "tenant_isolation",
+      "agent_pack_scaffold",
+      "connection_contracts",
+      "runtime_module_v1",
+      "extension_conformance",
+    ],
+  },
   {
     id: "level3-forward-migration-boundary",
     command: "pnpm db:cloudflare:migrations:verify && pnpm db:cloudflare:backup:verify",

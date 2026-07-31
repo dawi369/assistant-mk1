@@ -28,6 +28,8 @@ These files should stay aligned with code changes:
 - `agent-profile-authoring.md`: behavior template authoring format and
   snapshot contract.
 - `agent-packs.md`: code-first local agent pack contract and current example.
+- `agent-runtime-kit.md`: executable Runtime Module v1 package, compiler,
+  scoped execution, renderer, compatibility, and conformance contract.
 - `implementation-roadmap.md`: current baseline, active next targets,
   production gates, and deferred work.
 - `migrations-and-retention.md`: current forward-only D1 migration path, reset

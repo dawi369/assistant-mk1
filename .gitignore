@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+**/node_modules
 /.pnp
 .pnp.*
 .yarn/*
@@ -55,5 +56,6 @@ cloudflare/control-plane/.wrangler/
 /.playwright-cli/
 /output/playwright/
 /output/conformance/
+/output/sdk-consumer/
 /output/release/
 /output/backups/
