@@ -106,7 +106,7 @@
     "smoke:cloudflare-event-stream": "tsx scripts/smoke-cloudflare-event-stream.ts",
     "smoke:cloudflare-deploy-readiness": "pnpm smoke:cloudflare-signed-facade && pnpm smoke:cloudflare-workspace-context && pnpm smoke:cloudflare-policy-boundary && pnpm smoke:cloudflare-session-boundary && pnpm smoke:cloudflare-event-stream",
     "smoke:fly-tool-runner": "tsx scripts/smoke-fly-tool-runner.ts",
-    "smoke:tenant-isolation": "tsx scripts/smoke-level2-tenant-isolation.ts"
+    "smoke:tenant-isolation": "pnpm smoke:cloudflare-workspace-context"
   },
   "dependencies": {
     "@assistant-mk1/agent-sdk": "workspace:*",
