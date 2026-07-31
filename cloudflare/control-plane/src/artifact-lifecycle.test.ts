@@ -6,6 +6,7 @@ import {
   handleGetRetentionPolicy,
   handleUpdateRetentionPolicy,
   sweepExpiredArtifacts,
+  sweepExpiredChatMessages,
   sweepExpiredOperationalData,
 } from "./artifact-lifecycle";
 import type { AgentIdentity, D1PreparedStatement, D1Result, Env, R2Bucket } from "./types";
@@ -252,6 +253,10 @@ describe("artifact lifecycle", () => {
         artifactRetentionDays: 90,
         operationalEventRetentionDays: 30,
         runtimeTraceRetentionDays: 14,
+        chatMessageRetentionDays: 90,
+        runPayloadRetentionDays: 90,
+        auditActionRetentionDays: 365,
+        confirmed: false,
         source: "default",
       },
     });
@@ -336,7 +341,7 @@ describe("artifact lifecycle", () => {
   });
 
   it("prunes operational events and traces in bounded policy-aware batches", async () => {
-    const statements = [createStatement(), createStatement(), createStatement()];
+    const statements = Array.from({ length: 12 }, () => createStatement());
     let index = 0;
     const env = {
       DB: {
@@ -347,6 +352,15 @@ describe("artifact lifecycle", () => {
               { meta: { changes: 3 } },
               { meta: { changes: 8 } },
               { meta: { changes: 2 } },
+              { meta: { changes: 5 } },
+              { meta: { changes: 4 } },
+              { meta: { changes: 7 } },
+              { meta: { changes: 9 } },
+              { meta: { changes: 2 } },
+              { meta: { changes: 1 } },
+              { meta: { changes: 3 } },
+              { meta: { changes: 2 } },
+              { meta: { changes: 6 } },
             ] as D1Result[],
         ),
       },
@@ -357,9 +371,83 @@ describe("artifact lifecycle", () => {
       limit: 25,
     });
 
-    expect(result).toEqual({ eventsDeleted: 3, spansDeleted: 8, tracesDeleted: 2 });
+    expect(result).toEqual({
+      eventsDeleted: 3,
+      spansDeleted: 8,
+      tracesDeleted: 2,
+      runPayloadsPruned: 5,
+      chatPayloadsPruned: 4,
+      workflowPayloadsPruned: 7,
+      toolPayloadsPruned: 9,
+      actionPayloadsPruned: 2,
+      auditEventsDeleted: 1,
+      policyDecisionsDeleted: 3,
+      approvalsDeleted: 2,
+      actionLedgerDeleted: 6,
+    });
     expect(statements[0]?.bind).toHaveBeenCalledWith("2026-07-12T00:00:00.000Z", 25);
     expect(statements[1]?.bind).toHaveBeenCalledWith("2026-07-12T00:00:00.000Z", 25);
     expect(statements[2]?.bind).toHaveBeenCalledWith("2026-07-12T00:00:00.000Z", 25);
+    expect(statements[3]?.bind).toHaveBeenCalledWith(
+      "2026-07-12T00:00:00.000Z",
+      "2026-07-12T00:00:00.000Z",
+      25,
+    );
+  });
+
+  it("purges expired Durable Object chat messages before marking the retained thread", async () => {
+    const list = createStatement({
+      all: vi.fn(async () => ({
+        results: [
+          {
+            thread_id: "thread-1",
+            session_id: "session-1",
+            user_id: "user-1",
+            workspace_id: "workspace-1",
+            agent_id: "agent-1",
+            status: "active",
+            upstream_json: JSON.stringify({ instanceName: "thread-instance-1" }),
+            created_at: "2026-01-01T00:00:00.000Z",
+            updated_at: "2026-01-01T00:00:00.000Z",
+            last_seen_at: "2026-01-01T00:00:00.000Z",
+          },
+        ],
+      })),
+    });
+    const update = createStatement();
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    const env = {
+      WORKBENCH_AGENT_CONNECTION_SECRET: "lifecycle-secret",
+      WorkbenchThreadChatAgent: {
+        idFromName: vi.fn((name: string) => name),
+        get: vi.fn(() => ({ fetch })),
+      },
+      DB: {
+        prepare: vi.fn((query: string) => (query.includes("FROM chat_threads") ? list : update)),
+        batch: vi.fn(),
+      },
+    } as unknown as Env;
+
+    const result = await sweepExpiredChatMessages(env, {
+      now: new Date("2026-07-12T00:00:00.000Z"),
+      limit: 10,
+    });
+
+    expect(result).toEqual({ inspected: 1, purged: 1, failed: 0, configured: true });
+    expect(fetch).toHaveBeenCalledWith(
+      "https://thread-agent.internal/internal/lifecycle-purge",
+      expect.objectContaining({
+        method: "POST",
+        headers: { "x-workbench-lifecycle-secret": "lifecycle-secret" },
+      }),
+    );
+    expect(update.bind).toHaveBeenCalledWith(
+      "2026-01-01T00:00:00.000Z",
+      "2026-07-12T00:00:00.000Z",
+      "thread-1",
+      "user-1",
+      "workspace-1",
+      "2026-01-01T00:00:00.000Z",
+    );
   });
 });

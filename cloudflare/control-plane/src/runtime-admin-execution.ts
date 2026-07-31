@@ -1,8 +1,4 @@
-import {
-  defaultActionPort,
-  defaultConnectionPort,
-  type AgentExecutionContext,
-} from "@assistant-mk1/agent-sdk/control-plane";
+import { type AgentExecutionContext } from "@assistant-mk1/agent-sdk/control-plane";
 
 import { json } from "./http";
 import {
@@ -13,6 +9,8 @@ import {
 import type { ResolvedRuntimeTool } from "./runtime-tool-catalog";
 import { executeRuntimeToolBinding, runtimeToolFailure } from "./runtime-tool-execution";
 import type { AgentIdentity, Env } from "./types";
+import { createBrokeredConnectionPort } from "./connection-broker";
+import { createDurableActionPort } from "./action-authority";
 
 export const executeResolvedRuntimeAdminTool = async (input: {
   requestUrl: string;
@@ -36,8 +34,16 @@ export const executeResolvedRuntimeAdminTool = async (input: {
       source: "user",
     },
     signal: new AbortController().signal,
-    connections: defaultConnectionPort(connections),
-    actions: defaultActionPort,
+    connections: createBrokeredConnectionPort(input.env, input.identity, connections),
+    actions: createDurableActionPort(input.env, input.identity, {
+      packId,
+      packVersion,
+      runtimeVersion,
+      bindingVersion: 1,
+      runId: started.runId,
+      workflowIntentId: started.workflowIntentId,
+      toolCallId,
+    }),
     tools: {
       async invoke() {
         throw Object.assign(new Error("Nested Admin tools are disabled."), {

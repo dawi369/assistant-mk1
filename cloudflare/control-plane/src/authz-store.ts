@@ -21,7 +21,8 @@ export const selectUser = (env: Env, userId: string) =>
 export const selectWorkspace = (env: Env, workspaceId: string) =>
   env.DB.prepare(
     `SELECT id, account_id, account_source, name, status, is_default,
-            created_by_user_id, data_json, created_at, updated_at
+            created_by_user_id, data_json, deletion_requested_by_user_id,
+            deletion_requested_at, purge_after, purged_at, created_at, updated_at
      FROM workspaces
      WHERE id = ?
      LIMIT 1`,
@@ -32,7 +33,8 @@ export const selectWorkspace = (env: Env, workspaceId: string) =>
 export const selectDefaultWorkspaceForAccount = (env: Env, accountId: string) =>
   env.DB.prepare(
     `SELECT id, account_id, account_source, name, status, is_default,
-            created_by_user_id, data_json, created_at, updated_at
+            created_by_user_id, data_json, deletion_requested_by_user_id,
+            deletion_requested_at, purge_after, purged_at, created_at, updated_at
      FROM workspaces
      WHERE account_id = ? AND is_default = 1
      LIMIT 1`,
@@ -73,7 +75,9 @@ export const selectAccountWorkspacesForUser = (
   env.DB.prepare(
     `SELECT workspaces.id, workspaces.account_id, workspaces.account_source,
             workspaces.name, workspaces.status, workspaces.is_default,
-            workspaces.created_by_user_id, workspaces.data_json, workspaces.created_at,
+            workspaces.created_by_user_id, workspaces.data_json,
+            workspaces.deletion_requested_by_user_id, workspaces.deletion_requested_at,
+            workspaces.purge_after, workspaces.purged_at, workspaces.created_at,
             workspaces.updated_at
      FROM workspaces
      INNER JOIN memberships ON memberships.workspace_id = workspaces.id

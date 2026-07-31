@@ -9,6 +9,8 @@ import {
   PlusIcon,
   RefreshCwIcon,
   ShieldCheckIcon,
+  DownloadIcon,
+  Trash2Icon,
   UsersIcon,
 } from "lucide-react";
 
@@ -26,11 +28,21 @@ import type {
   WorkbenchAccountContextResponse,
   WorkspaceMemberSummary,
   WorkspaceSummary,
+  CloudflareRetentionPolicyResponse,
+  CloudflareDataJobResponse,
 } from "@/lib/workbench/workbench-types";
 import { readJsonResponse } from "@/lib/workbench/read-json-response";
 
 const accountsPath = "/api/workbench/accounts";
 const workspacesPath = "/api/workbench/workspaces";
+const retentionFields = [
+  ["chatMessageRetentionDays", "Chat messages", 1, 3650],
+  ["runPayloadRetentionDays", "Run and tool payloads", 1, 3650],
+  ["artifactRetentionDays", "Artifacts", 1, 3650],
+  ["operationalEventRetentionDays", "Operational events", 1, 3650],
+  ["runtimeTraceRetentionDays", "Runtime traces", 1, 3650],
+  ["auditActionRetentionDays", "Audit and action ledger", 365, 3650],
+] as const;
 
 export function WorkbenchWorkspacePanel({
   open,
@@ -53,6 +65,11 @@ export function WorkbenchWorkspacePanel({
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [retention, setRetention] = useState<CloudflareRetentionPolicyResponse["policy"] | null>(
+    null,
+  );
+  const [dataJob, setDataJob] = useState<CloudflareDataJobResponse["job"] | null>(null);
+  const [deletionConfirmation, setDeletionConfirmation] = useState("");
 
   const canManageWorkspace =
     currentMembership?.status === "active" &&
@@ -99,6 +116,13 @@ export function WorkbenchWorkspacePanel({
       setMembers(memberBody.members ?? []);
       setAvailableMembers(memberBody.availableMembers ?? []);
       setCurrentMembership(memberBody.currentMembership ?? null);
+      const retentionResponse = await fetch("/api/workbench/retention-policy", {
+        cache: "no-store",
+      });
+      if (retentionResponse.ok) {
+        const retentionBody = (await retentionResponse.json()) as CloudflareRetentionPolicyResponse;
+        setRetention(retentionBody.policy);
+      }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Failed to load workspace access");
     } finally {
@@ -109,6 +133,23 @@ export function WorkbenchWorkspacePanel({
   useEffect(() => {
     if (open) void loadPanel();
   }, [loadPanel, open]);
+
+  useEffect(() => {
+    if (!open || !dataJob || !["queued", "running"].includes(dataJob.status)) return;
+    const timeout = window.setTimeout(() => {
+      void fetch(`/api/workbench/data-exports/${encodeURIComponent(dataJob.id)}`, {
+        cache: "no-store",
+      })
+        .then((response) =>
+          readJsonResponse<CloudflareDataJobResponse>(response, "Failed to refresh export"),
+        )
+        .then((body) => setDataJob(body.job))
+        .catch((pollError) =>
+          setError(pollError instanceof Error ? pollError.message : "Failed to refresh export"),
+        );
+    }, 1_000);
+    return () => window.clearTimeout(timeout);
+  }, [dataJob, open]);
 
   const sortedWorkspaces = useMemo(
     () =>
@@ -209,6 +250,78 @@ export function WorkbenchWorkspacePanel({
     } catch (addError) {
       setError(addError instanceof Error ? addError.message : "Failed to add workspace member");
     } finally {
+      setBusyId(null);
+    }
+  };
+
+  const confirmRetention = async () => {
+    if (!retention) return;
+    setBusyId("retention:confirm");
+    setError(null);
+    try {
+      const response = await fetch("/api/workbench/retention-policy", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          artifactRetentionDays: retention.artifactRetentionDays,
+          operationalEventRetentionDays: retention.operationalEventRetentionDays,
+          runtimeTraceRetentionDays: retention.runtimeTraceRetentionDays,
+          chatMessageRetentionDays: retention.chatMessageRetentionDays,
+          runPayloadRetentionDays: retention.runPayloadRetentionDays,
+          auditActionRetentionDays: retention.auditActionRetentionDays,
+          confirm: true,
+        }),
+      });
+      const body = await readJsonResponse<CloudflareRetentionPolicyResponse>(
+        response,
+        "Failed to confirm retention",
+      );
+      setRetention(body.policy);
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : "Failed to confirm retention");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const createDataExport = async () => {
+    setBusyId("export:create");
+    setError(null);
+    try {
+      const response = await fetch("/api/workbench/data-exports", { method: "POST" });
+      const body = await readJsonResponse<CloudflareDataJobResponse>(
+        response,
+        "Failed to create export",
+      );
+      setDataJob(body.job);
+    } catch (exportError) {
+      setError(exportError instanceof Error ? exportError.message : "Failed to create export");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const requestDeletion = async () => {
+    const workspace = workspaces.find((candidate) => candidate.id === activeWorkspaceId);
+    if (!workspace || deletionConfirmation !== workspace.name) return;
+    setBusyId("workspace:delete");
+    setError(null);
+    try {
+      await fetch("/api/workbench/workspace-deletion", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ workspaceName: deletionConfirmation }),
+      }).then((response) =>
+        readJsonResponse(
+          response,
+          "Workspace deletion requires a WorkOS sign-in from the last five minutes",
+        ),
+      );
+      window.location.reload();
+    } catch (deletionError) {
+      setError(
+        deletionError instanceof Error ? deletionError.message : "Failed to quarantine workspace",
+      );
       setBusyId(null);
     }
   };
@@ -349,6 +462,113 @@ export function WorkbenchWorkspacePanel({
               </form>
             ) : null}
           </section>
+
+          {canManageWorkspace && retention ? (
+            <section className="border-border border-b p-4">
+              <h2 className="mb-2 flex items-center gap-2 text-sm font-medium">
+                <ShieldCheckIcon className="text-muted-foreground size-4" />
+                Data lifecycle
+              </h2>
+              <p className="text-muted-foreground text-xs">
+                Chat, run payloads, and artifacts: {retention.chatMessageRetentionDays}–
+                {retention.artifactRetentionDays} days. Audit and action history:{" "}
+                {retention.auditActionRetentionDays} days.
+              </p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {retentionFields.map(([key, label, min, max]) => (
+                  <label key={key} className="text-muted-foreground grid gap-1 text-xs">
+                    <span>{label}</span>
+                    <input
+                      type="number"
+                      min={min}
+                      max={max}
+                      value={retention[key]}
+                      onChange={(event) =>
+                        setRetention((current) =>
+                          current
+                            ? {
+                                ...current,
+                                [key]: Math.max(
+                                  min,
+                                  Math.min(max, Number(event.target.value) || min),
+                                ),
+                              }
+                            : current,
+                        )
+                      }
+                      className="border-input bg-background h-8 rounded-md border px-2 text-sm text-foreground"
+                    />
+                  </label>
+                ))}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={Boolean(busyId)}
+                  onClick={() => void confirmRetention()}
+                >
+                  {retention.confirmed ? <CheckCircle2Icon /> : <ShieldCheckIcon />}
+                  {retention.confirmed ? "Save confirmed policy" : "Confirm privacy defaults"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={Boolean(busyId)}
+                  onClick={() => void createDataExport()}
+                >
+                  <DownloadIcon /> Create export
+                </Button>
+                {dataJob ? (
+                  dataJob.status === "completed" ? (
+                    <Button size="sm" asChild>
+                      <a
+                        href={`/api/workbench/data-exports/${encodeURIComponent(dataJob.id)}/download`}
+                      >
+                        Download ZIP
+                      </a>
+                    </Button>
+                  ) : (
+                    <span className="text-muted-foreground self-center text-xs">
+                      Export {dataJob.status}
+                    </span>
+                  )
+                ) : null}
+              </div>
+            </section>
+          ) : null}
+
+          {currentMembership?.role === "owner" ? (
+            <section className="border-destructive/30 border-b p-4">
+              <h2 className="mb-2 flex items-center gap-2 text-sm font-medium">
+                <Trash2Icon className="text-destructive size-4" /> Delete workspace
+              </h2>
+              <p className="text-muted-foreground mb-3 text-xs">
+                Credentials are revoked immediately. Retained content can be recovered for 30 days
+                before permanent purge.
+              </p>
+              <div className="flex gap-2">
+                <input
+                  className="border-input bg-background h-9 min-w-0 flex-1 rounded-md border px-3 text-sm"
+                  value={deletionConfirmation}
+                  onChange={(event) => setDeletionConfirmation(event.target.value)}
+                  placeholder={`Type ${workspaces.find((workspace) => workspace.id === activeWorkspaceId)?.name ?? "workspace name"}`}
+                />
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  disabled={
+                    deletionConfirmation !==
+                      workspaces.find((workspace) => workspace.id === activeWorkspaceId)?.name ||
+                    Boolean(busyId)
+                  }
+                  onClick={() => void requestDeletion()}
+                >
+                  Quarantine
+                </Button>
+              </div>
+            </section>
+          ) : null}
 
           {canManageWorkspace ? (
             <section className="p-4">

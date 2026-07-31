@@ -3,7 +3,10 @@ export {
   defaultConnectionPort,
   defineControlPlaneModule,
   type ActionPort,
+  type ActionExecutionResult,
+  type ActionProposal,
   type AgentExecutionContext,
+  type ConnectionCapability,
   type ConnectionPort,
   type ControlPlaneRuntimeModule,
   type RuntimeEvalBinding,
@@ -13,6 +16,7 @@ export {
   type RuntimeToolBinding,
   type RuntimeWorkflowBinding,
 } from "./runtime";
+export type { AgentPackConnectionDescriptor } from "./manifest";
 export {
   assertSchemaDefinition,
   assertSchemaValue,

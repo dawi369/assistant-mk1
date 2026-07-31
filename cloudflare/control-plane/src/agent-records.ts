@@ -211,6 +211,7 @@ export const insertAgent = async (
     profile: AgentProfile;
     model?: AllowedOpenRouterModel;
     behaviorTemplateId?: AgentBehaviorTemplateId;
+    behaviorSnapshot?: ReturnType<typeof createAgentBehaviorSnapshot>;
     agentId?: string;
     provisionedBy?: "manual" | "agent_pack";
     idempotent?: boolean;
@@ -226,7 +227,8 @@ export const insertAgent = async (
         maxTokens: defaultMaxTokens,
       }
     : undefined;
-  const behavior = createAgentBehaviorSnapshot(input.profile, input.behaviorTemplateId);
+  const behavior =
+    input.behaviorSnapshot ?? createAgentBehaviorSnapshot(input.profile, input.behaviorTemplateId);
   const result = (await env.DB.prepare(
     `${input.idempotent ? "INSERT OR IGNORE" : "INSERT"} INTO agents (
        id, workspace_id, name, description, status, is_default, created_by_user_id,

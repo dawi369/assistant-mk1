@@ -98,6 +98,41 @@ export const validateLoadedModules = (modules: readonly LoadedAgentModule[]) => 
       if (tool.executionModes.some((mode) => !["ask", "dry_run", "execute"].includes(mode))) {
         throw new Error(`${entry.package} tool ${tool.id} declares an unsupported execution mode.`);
       }
+      if (tool.executionModes.includes("execute")) {
+        if (!manifest.risk.externalMutation || manifest.risk.productionGate === "none") {
+          throw new Error(`${entry.package} tool ${tool.id} execute mode lacks a mutation gate.`);
+        }
+        if (!tool.action) {
+          throw new Error(`${entry.package} tool ${tool.id} execute mode lacks an action binding.`);
+        }
+      }
+      if (tool.action) {
+        assertSchemaDefinition(
+          tool.action.proposalSchema,
+          `${entry.package} tool ${tool.id} proposal`,
+        );
+        assertSchemaDefinition(
+          tool.action.resultSchema,
+          `${entry.package} tool ${tool.id} action result`,
+        );
+        if (tool.action.idempotency !== "required") {
+          throw new Error(`${entry.package} tool ${tool.id} action must require idempotency.`);
+        }
+        if (tool.action.approval === "required" && !tool.policy.requiresApproval) {
+          throw new Error(
+            `${entry.package} tool ${tool.id} action approval contract is inconsistent.`,
+          );
+        }
+        if (tool.action.connectionId) {
+          const connection = manifest.connections.find(
+            (candidate) =>
+              candidate.id === tool.action?.connectionId && candidate.toolIds.includes(tool.id),
+          );
+          if (!connection || connection.credentialClass === "none") {
+            throw new Error(`${entry.package} tool ${tool.id} action connection is undeclared.`);
+          }
+        }
+      }
       const runnerTool = runnerTools.get(tool.id);
       if (tool.transport === "fly") {
         if (!runnerTool) {
@@ -115,6 +150,17 @@ export const validateLoadedModules = (modules: readonly LoadedAgentModule[]) => 
           maxArtifactBytes: value.maxArtifactBytes,
           sandbox: value.sandbox,
           policy: value.policy,
+          action: value.action
+            ? {
+                connectionId: value.action.connectionId,
+                proposalSchema: value.action.proposalSchema,
+                resultSchema: value.action.resultSchema,
+                idempotency: value.action.idempotency,
+                approval: value.action.approval,
+                timeoutMs: value.action.timeoutMs,
+                hasReconcile: Boolean(value.action.reconcile),
+              }
+            : undefined,
         });
         if (JSON.stringify(contract(tool)) !== JSON.stringify(contract(runnerTool))) {
           throw new Error(`${entry.package} runner contract does not match ${tool.id}.`);

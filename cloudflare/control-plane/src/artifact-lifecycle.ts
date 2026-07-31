@@ -1,12 +1,14 @@
 import { isRecord, json } from "./http";
 import { selectMembership } from "./authz-store";
 import { requireAdminMembership } from "./membership-policy";
+import { resolveThreadAgentInstanceName } from "./chat-agent-connection-context";
 import {
   createId,
   toJson,
   type AgentIdentity,
   type ControlArtifactRow,
   type ControlRetentionPolicyRow,
+  type ChatThreadRow,
   type Env,
 } from "./types";
 
@@ -20,6 +22,9 @@ const defaultRetentionPolicy = {
   artifactRetentionDays: 90,
   operationalEventRetentionDays: 30,
   runtimeTraceRetentionDays: 14,
+  chatMessageRetentionDays: 90,
+  runPayloadRetentionDays: 90,
+  auditActionRetentionDays: 365,
 } as const;
 
 type StoredArtifactRow = Pick<
@@ -300,7 +305,7 @@ export const sweepExpiredOperationalData = async (
          SELECT events.rowid
          FROM control_plane_events events
          LEFT JOIN control_retention_policies policies
-           ON policies.user_id = events.user_id AND policies.workspace_id = events.workspace_id
+           ON policies.workspace_id = events.workspace_id
          WHERE events.created_at <= strftime(
            '%Y-%m-%dT%H:%M:%fZ', ?,
            '-' || COALESCE(policies.operational_event_retention_days, 30) || ' days'
@@ -315,7 +320,7 @@ export const sweepExpiredOperationalData = async (
          SELECT traces.trace_id
          FROM runtime_traces traces
          LEFT JOIN control_retention_policies policies
-           ON policies.user_id = traces.user_id AND policies.workspace_id = traces.workspace_id
+           ON policies.workspace_id = traces.workspace_id
          WHERE traces.created_at <= strftime(
            '%Y-%m-%dT%H:%M:%fZ', ?,
            '-' || COALESCE(policies.runtime_trace_retention_days, 14) || ' days'
@@ -330,7 +335,7 @@ export const sweepExpiredOperationalData = async (
          SELECT traces.trace_id
          FROM runtime_traces traces
          LEFT JOIN control_retention_policies policies
-           ON policies.user_id = traces.user_id AND policies.workspace_id = traces.workspace_id
+           ON policies.workspace_id = traces.workspace_id
          WHERE traces.created_at <= strftime(
            '%Y-%m-%dT%H:%M:%fZ', ?,
            '-' || COALESCE(policies.runtime_trace_retention_days, 14) || ' days'
@@ -339,12 +344,238 @@ export const sweepExpiredOperationalData = async (
          LIMIT ?
        )`,
     ).bind(timestamp, limit),
+    env.DB.prepare(
+      `UPDATE control_runs
+       SET data_json = json_object(
+         'displayName', json_extract(data_json, '$.displayName'),
+         'summary', json_extract(data_json, '$.summary'),
+         'payloadPrunedAt', ?
+       )
+       WHERE rowid IN (
+         SELECT runs.rowid
+         FROM control_runs runs
+         LEFT JOIN control_retention_policies policies
+           ON policies.workspace_id = runs.workspace_id
+         WHERE runs.updated_at <= strftime(
+           '%Y-%m-%dT%H:%M:%fZ', ?,
+           '-' || COALESCE(policies.run_payload_retention_days, 90) || ' days'
+         )
+           AND json_extract(runs.data_json, '$.payloadPrunedAt') IS NULL
+         ORDER BY runs.updated_at ASC
+         LIMIT ?
+       )`,
+    ).bind(timestamp, timestamp, limit),
+    env.DB.prepare(
+      `UPDATE chat_intents
+       SET payload_json = json_object('payloadPrunedAt', ?)
+       WHERE rowid IN (
+         SELECT intents.rowid
+         FROM chat_intents intents
+         LEFT JOIN control_retention_policies policies
+           ON policies.workspace_id = intents.workspace_id
+         WHERE intents.updated_at <= strftime(
+           '%Y-%m-%dT%H:%M:%fZ', ?,
+           '-' || COALESCE(policies.run_payload_retention_days, 90) || ' days'
+         )
+           AND json_extract(intents.payload_json, '$.payloadPrunedAt') IS NULL
+         ORDER BY intents.updated_at ASC
+         LIMIT ?
+       )`,
+    ).bind(timestamp, timestamp, limit),
+    env.DB.prepare(
+      `UPDATE control_workflow_intents
+       SET payload_json = json_object('payloadPrunedAt', ?)
+       WHERE rowid IN (
+         SELECT intents.rowid
+         FROM control_workflow_intents intents
+         LEFT JOIN control_retention_policies policies
+           ON policies.workspace_id = intents.workspace_id
+         WHERE intents.updated_at <= strftime(
+           '%Y-%m-%dT%H:%M:%fZ', ?,
+           '-' || COALESCE(policies.run_payload_retention_days, 90) || ' days'
+         )
+           AND json_extract(intents.payload_json, '$.payloadPrunedAt') IS NULL
+         ORDER BY intents.updated_at ASC
+         LIMIT ?
+       )`,
+    ).bind(timestamp, timestamp, limit),
+    env.DB.prepare(
+      `UPDATE control_tool_calls
+       SET input_summary = NULL, output_summary = NULL,
+           data_json = json_object('payloadPrunedAt', ?)
+       WHERE rowid IN (
+         SELECT calls.rowid
+         FROM control_tool_calls calls
+         LEFT JOIN control_retention_policies policies
+           ON policies.workspace_id = calls.workspace_id
+         WHERE calls.created_at <= strftime(
+           '%Y-%m-%dT%H:%M:%fZ', ?,
+           '-' || COALESCE(policies.run_payload_retention_days, 90) || ' days'
+         )
+           AND json_extract(calls.data_json, '$.payloadPrunedAt') IS NULL
+         ORDER BY calls.created_at ASC
+         LIMIT ?
+       )`,
+    ).bind(timestamp, timestamp, limit),
+    env.DB.prepare(
+      `UPDATE control_action_proposals
+       SET proposal_json = json_object('payloadPrunedAt', ?),
+           result_json = json_object('payloadPrunedAt', ?), error_json = '{}'
+       WHERE rowid IN (
+         SELECT proposals.rowid
+         FROM control_action_proposals proposals
+         LEFT JOIN control_retention_policies policies
+           ON policies.workspace_id = proposals.workspace_id
+         WHERE proposals.updated_at <= strftime(
+           '%Y-%m-%dT%H:%M:%fZ', ?,
+           '-' || COALESCE(policies.run_payload_retention_days, 90) || ' days'
+         )
+           AND json_extract(proposals.proposal_json, '$.payloadPrunedAt') IS NULL
+         ORDER BY proposals.updated_at ASC
+         LIMIT ?
+       )`,
+    ).bind(timestamp, timestamp, timestamp, limit),
+    env.DB.prepare(
+      `DELETE FROM control_audit_events
+       WHERE rowid IN (
+         SELECT events.rowid
+         FROM control_audit_events events
+         LEFT JOIN control_retention_policies policies
+           ON policies.workspace_id = events.workspace_id
+         WHERE events.created_at <= strftime(
+           '%Y-%m-%dT%H:%M:%fZ', ?,
+           '-' || COALESCE(policies.audit_action_retention_days, 365) || ' days'
+         )
+         ORDER BY events.created_at ASC
+         LIMIT ?
+       )`,
+    ).bind(timestamp, limit),
+    env.DB.prepare(
+      `DELETE FROM control_policy_decisions
+       WHERE rowid IN (
+         SELECT decisions.rowid
+         FROM control_policy_decisions decisions
+         LEFT JOIN control_retention_policies policies
+           ON policies.workspace_id = decisions.workspace_id
+         WHERE decisions.created_at <= strftime(
+           '%Y-%m-%dT%H:%M:%fZ', ?,
+           '-' || COALESCE(policies.audit_action_retention_days, 365) || ' days'
+         )
+         ORDER BY decisions.created_at ASC
+         LIMIT ?
+       )`,
+    ).bind(timestamp, limit),
+    env.DB.prepare(
+      `DELETE FROM control_approval_requests
+       WHERE rowid IN (
+         SELECT approvals.rowid
+         FROM control_approval_requests approvals
+         LEFT JOIN control_retention_policies policies
+           ON policies.workspace_id = approvals.workspace_id
+         WHERE approvals.updated_at <= strftime(
+           '%Y-%m-%dT%H:%M:%fZ', ?,
+           '-' || COALESCE(policies.audit_action_retention_days, 365) || ' days'
+         ) AND approvals.status <> 'requested'
+         ORDER BY approvals.updated_at ASC
+         LIMIT ?
+       )`,
+    ).bind(timestamp, limit),
+    env.DB.prepare(
+      `DELETE FROM control_action_ledger
+       WHERE rowid IN (
+         SELECT ledger.rowid
+         FROM control_action_ledger ledger
+         LEFT JOIN control_retention_policies policies
+           ON policies.workspace_id = ledger.workspace_id
+         WHERE ledger.created_at <= strftime(
+           '%Y-%m-%dT%H:%M:%fZ', ?,
+           '-' || COALESCE(policies.audit_action_retention_days, 365) || ' days'
+         )
+         ORDER BY ledger.created_at ASC
+         LIMIT ?
+       )`,
+    ).bind(timestamp, limit),
   ]);
   return {
     eventsDeleted: results[0]?.meta?.changes ?? 0,
     spansDeleted: results[1]?.meta?.changes ?? 0,
     tracesDeleted: results[2]?.meta?.changes ?? 0,
+    runPayloadsPruned: results[3]?.meta?.changes ?? 0,
+    chatPayloadsPruned: results[4]?.meta?.changes ?? 0,
+    workflowPayloadsPruned: results[5]?.meta?.changes ?? 0,
+    toolPayloadsPruned: results[6]?.meta?.changes ?? 0,
+    actionPayloadsPruned: results[7]?.meta?.changes ?? 0,
+    auditEventsDeleted: results[8]?.meta?.changes ?? 0,
+    policyDecisionsDeleted: results[9]?.meta?.changes ?? 0,
+    approvalsDeleted: results[10]?.meta?.changes ?? 0,
+    actionLedgerDeleted: results[11]?.meta?.changes ?? 0,
   };
+};
+
+export const sweepExpiredChatMessages = async (
+  env: Env,
+  input: { now?: Date; limit?: number } = {},
+) => {
+  if (!env.WorkbenchThreadChatAgent || !env.WORKBENCH_AGENT_CONNECTION_SECRET) {
+    return { inspected: 0, purged: 0, failed: 0, configured: false };
+  }
+  const timestamp = (input.now ?? new Date()).toISOString();
+  const limit = Math.min(Math.max(Math.trunc(input.limit ?? maximumSweepBatch), 1), 100);
+  const rows = await env.DB.prepare(
+    `SELECT threads.thread_id, threads.session_id, threads.user_id, threads.workspace_id,
+            threads.agent_id, threads.status, threads.upstream_json, threads.created_at,
+            threads.updated_at, threads.last_seen_at
+     FROM chat_threads threads
+     LEFT JOIN control_retention_policies policies
+       ON policies.workspace_id = threads.workspace_id
+     WHERE threads.last_seen_at <= strftime(
+       '%Y-%m-%dT%H:%M:%fZ', ?,
+       '-' || COALESCE(policies.chat_message_retention_days, 90) || ' days'
+     )
+       AND COALESCE(json_extract(threads.upstream_json, '$.messagesPrunedThrough'), '')
+         < threads.last_seen_at
+     ORDER BY threads.last_seen_at ASC
+     LIMIT ?`,
+  )
+    .bind(timestamp, limit)
+    .all<ChatThreadRow>();
+  let purged = 0;
+  let failed = 0;
+  for (const thread of rows.results) {
+    try {
+      const instanceName = await resolveThreadAgentInstanceName(thread);
+      const stub = env.WorkbenchThreadChatAgent.get(
+        env.WorkbenchThreadChatAgent.idFromName(instanceName),
+      );
+      const response = await stub.fetch("https://thread-agent.internal/internal/lifecycle-purge", {
+        method: "POST",
+        headers: {
+          "x-workbench-lifecycle-secret": env.WORKBENCH_AGENT_CONNECTION_SECRET,
+        },
+      });
+      if (!response.ok) throw new Error("durable_object_retention_failed");
+      const result = (await env.DB.prepare(
+        `UPDATE chat_threads SET
+           upstream_json = json_set(upstream_json, '$.messagesPrunedThrough', ?),
+           updated_at = ?
+         WHERE thread_id = ? AND user_id = ? AND workspace_id = ?
+           AND last_seen_at = ?`,
+      )
+        .bind(
+          thread.last_seen_at,
+          timestamp,
+          thread.thread_id,
+          thread.user_id,
+          thread.workspace_id,
+          thread.last_seen_at,
+        )
+        .run()) as { meta?: { changes?: number } };
+      if ((result.meta?.changes ?? 0) === 1) purged += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+  return { inspected: rows.results.length, purged, failed, configured: true };
 };
 
 const toRetentionPolicy = (row: ControlRetentionPolicyRow | null) => ({
@@ -353,9 +584,14 @@ const toRetentionPolicy = (row: ControlRetentionPolicyRow | null) => ({
         artifactRetentionDays: row.artifact_retention_days,
         operationalEventRetentionDays: row.operational_event_retention_days,
         runtimeTraceRetentionDays: row.runtime_trace_retention_days,
+        chatMessageRetentionDays: row.chat_message_retention_days,
+        runPayloadRetentionDays: row.run_payload_retention_days,
+        auditActionRetentionDays: row.audit_action_retention_days,
       }
     : defaultRetentionPolicy),
   source: row ? ("workspace" as const) : ("default" as const),
+  confirmed: Boolean(row?.confirmed_at),
+  confirmedAt: row?.confirmed_at ?? undefined,
   updatedAt: row?.updated_at,
 });
 
@@ -363,11 +599,13 @@ const selectRetentionPolicy = (env: Env, identity: AgentIdentity) =>
   env.DB.prepare(
     `SELECT user_id, workspace_id, artifact_retention_days,
             operational_event_retention_days, runtime_trace_retention_days,
+            chat_message_retention_days, run_payload_retention_days,
+            audit_action_retention_days, confirmed_at, confirmed_by_user_id,
             created_at, updated_at
      FROM control_retention_policies
-     WHERE user_id = ? AND workspace_id = ?`,
+     WHERE workspace_id = ?`,
   )
-    .bind(identity.scope.userId, identity.scope.workspaceId)
+    .bind(identity.scope.workspaceId)
     .first<ControlRetentionPolicyRow>();
 
 export const handleGetRetentionPolicy = async (env: Env, identity: AgentIdentity) =>
@@ -391,12 +629,41 @@ export const handleUpdateRetentionPolicy = async (
   if (!isRecord(body)) {
     return json({ ok: false, error: "Invalid retention policy payload." }, { status: 400 });
   }
-  const artifactRetentionDays = readRetentionDays(body.artifactRetentionDays);
-  const operationalEventRetentionDays = readRetentionDays(body.operationalEventRetentionDays);
-  const runtimeTraceRetentionDays = readRetentionDays(body.runtimeTraceRetentionDays);
-  if (!artifactRetentionDays || !operationalEventRetentionDays || !runtimeTraceRetentionDays) {
+  const current = toRetentionPolicy(await selectRetentionPolicy(env, identity));
+  const artifactRetentionDays = readRetentionDays(
+    body.artifactRetentionDays ?? current.artifactRetentionDays,
+  );
+  const operationalEventRetentionDays = readRetentionDays(
+    body.operationalEventRetentionDays ?? current.operationalEventRetentionDays,
+  );
+  const runtimeTraceRetentionDays = readRetentionDays(
+    body.runtimeTraceRetentionDays ?? current.runtimeTraceRetentionDays,
+  );
+  const chatMessageRetentionDays = readRetentionDays(
+    body.chatMessageRetentionDays ?? current.chatMessageRetentionDays,
+  );
+  const runPayloadRetentionDays = readRetentionDays(
+    body.runPayloadRetentionDays ?? current.runPayloadRetentionDays,
+  );
+  const auditActionRetentionDays = readRetentionDays(
+    body.auditActionRetentionDays ?? current.auditActionRetentionDays,
+  );
+  const confirm = body.confirm === true;
+  if (
+    !artifactRetentionDays ||
+    !operationalEventRetentionDays ||
+    !runtimeTraceRetentionDays ||
+    !chatMessageRetentionDays ||
+    !runPayloadRetentionDays ||
+    !auditActionRetentionDays ||
+    auditActionRetentionDays < 365
+  ) {
     return json(
-      { ok: false, error: "Retention periods must be whole days between 1 and 3650." },
+      {
+        ok: false,
+        error:
+          "Retention periods must be whole days between 1 and 3650; audit/action history must be at least 365 days.",
+      },
       { status: 400 },
     );
   }
@@ -406,12 +673,20 @@ export const handleUpdateRetentionPolicy = async (
     env.DB.prepare(
       `INSERT INTO control_retention_policies (
          user_id, workspace_id, artifact_retention_days, operational_event_retention_days,
-         runtime_trace_retention_days, created_at, updated_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(user_id, workspace_id) DO UPDATE SET
+         runtime_trace_retention_days, chat_message_retention_days, run_payload_retention_days,
+         audit_action_retention_days, confirmed_at, confirmed_by_user_id, created_at, updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(workspace_id) DO UPDATE SET
          artifact_retention_days = excluded.artifact_retention_days,
          operational_event_retention_days = excluded.operational_event_retention_days,
          runtime_trace_retention_days = excluded.runtime_trace_retention_days,
+         chat_message_retention_days = excluded.chat_message_retention_days,
+         run_payload_retention_days = excluded.run_payload_retention_days,
+         audit_action_retention_days = excluded.audit_action_retention_days,
+         confirmed_at = CASE WHEN excluded.confirmed_at IS NOT NULL
+           THEN excluded.confirmed_at ELSE control_retention_policies.confirmed_at END,
+         confirmed_by_user_id = CASE WHEN excluded.confirmed_by_user_id IS NOT NULL
+           THEN excluded.confirmed_by_user_id ELSE control_retention_policies.confirmed_by_user_id END,
          updated_at = excluded.updated_at`,
     ).bind(
       identity.scope.userId,
@@ -419,6 +694,11 @@ export const handleUpdateRetentionPolicy = async (
       artifactRetentionDays,
       operationalEventRetentionDays,
       runtimeTraceRetentionDays,
+      chatMessageRetentionDays,
+      runPayloadRetentionDays,
+      auditActionRetentionDays,
+      confirm ? timestamp : null,
+      confirm ? identity.scope.userId : null,
       timestamp,
       timestamp,
     ),
@@ -438,7 +718,15 @@ export const handleUpdateRetentionPolicy = async (
       identity.scope.userId,
       identity.scope.workspaceId,
       identity.scope.workspaceId,
-      toJson({ artifactRetentionDays, operationalEventRetentionDays, runtimeTraceRetentionDays }),
+      toJson({
+        artifactRetentionDays,
+        operationalEventRetentionDays,
+        runtimeTraceRetentionDays,
+        chatMessageRetentionDays,
+        runPayloadRetentionDays,
+        auditActionRetentionDays,
+        confirmed: confirm,
+      }),
       timestamp,
     ),
   ]);
@@ -449,7 +737,12 @@ export const handleUpdateRetentionPolicy = async (
       artifactRetentionDays,
       operationalEventRetentionDays,
       runtimeTraceRetentionDays,
+      chatMessageRetentionDays,
+      runPayloadRetentionDays,
+      auditActionRetentionDays,
       source: "workspace",
+      confirmed: confirm || current.confirmed,
+      confirmedAt: confirm ? timestamp : current.confirmedAt,
       updatedAt: timestamp,
     },
   });

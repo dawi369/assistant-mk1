@@ -366,14 +366,12 @@ Next UI targets:
 
 - Customer-facing run/status strip only when a real workflow produces state
   richer than the compact chat hint.
-- Richer artifact/history surfaces beyond metadata summaries: previews,
-  filters, and user-facing export/delete behavior over the bounded D1/R2
-  lifecycle API.
+- Extend artifact-specific renderers beyond the generic JSON, Markdown, and
+  table previews while retaining the D1/R2 export and deletion controls.
 - Chat-side approval display through assistant-ui tool rendering when a
   model-side workflow needs approve/deny/resume.
-- Broader policy visibility for durable limits, cooldowns, richer approvals,
-  kill switches, and model-visible exposure decisions beyond the current
-  read-only adapters.
+- Broader policy visibility for durable limits and cooldowns beyond the current
+  mutation opt-in, approval, connection, and pack/tool/connection kill-switch controls.
 
 Avoid building every panel before one vertical slice produces real data.
 

@@ -19,7 +19,7 @@ do not own.
 
 ## Supported Surface
 
-Security fixes target the current `main` branch and the hosted read-only
+Security fixes target the current `main` branch and the hosted production
 workbench. The repository does not currently claim durable customer-data
 retention or support mutation-capable production tools.
 

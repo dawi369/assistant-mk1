@@ -66,15 +66,25 @@ export type ConnectionPort = {
 };
 
 export type ActionProposal = {
+  toolId: string;
   type: string;
   summary: string;
   idempotencyKey: string;
   preview: RuntimeRecord;
 };
 
+export type ActionExecutionResult = {
+  proposalId: string;
+  status: "executed" | "failed" | "outcome_unknown" | "reconciled";
+  summary: string;
+  externalReference?: string;
+  output?: RuntimeRecord;
+};
+
 export type ActionPort = {
   propose(input: ActionProposal): Promise<{ proposalId: string; status: "proposed" }>;
-  execute(_proposalId: string): Promise<never>;
+  execute(proposalId: string): Promise<ActionExecutionResult>;
+  reconcile?(proposalId: string): Promise<ActionExecutionResult>;
 };
 
 export type ManagedStateWrite = {
@@ -139,6 +149,22 @@ export type RuntimeToolBinding = {
     requiresApproval: boolean;
     policyEditable: boolean;
     mutationRisk: "read_only" | "mutation_capable";
+  };
+  action?: {
+    connectionId?: string;
+    proposalSchema: JsonSchema;
+    resultSchema: JsonSchema;
+    idempotency: "required";
+    approval: "required" | "policy_controlled";
+    timeoutMs: number;
+    execute: (
+      proposal: ActionProposal,
+      context: AgentExecutionContext,
+    ) => Promise<ActionExecutionResult> | ActionExecutionResult;
+    reconcile?: (
+      proposal: ActionProposal,
+      context: AgentExecutionContext,
+    ) => Promise<ActionExecutionResult> | ActionExecutionResult;
   };
   execute?: (
     input: RuntimeRecord,

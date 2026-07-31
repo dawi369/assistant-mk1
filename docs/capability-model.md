@@ -1,126 +1,104 @@
 # Capability Model
 
-Assistant-mk1 grows through explicit capability levels rather than by giving a
-model ambient authority. Each level adds a class of work and requires the
-control-plane guarantees needed to operate it safely.
+Assistant-mk1 measures operational sophistication separately from external
+authority. A pack cannot acquire either by prompt wording or manifest metadata:
+the compiled runtime, workspace policy, platform gates, and executable evidence
+must all agree.
 
-Document status: north-star target contract. Levels 0 and 1 are implemented.
-Level 2 is preview-complete only when the repository release gates pass; it does
-not imply retained data or mutation authority. Level 3 now has a checked-in,
-read-only implementation plus deterministic local conformance and guarded
-hosted negative-path drills, but is not yet a production-unattended release
-claim. Levels 4 and 5 remain target behavior.
+Document status: current 1.0 contract. The release target is Operational L3 and
+Authority A2. Delegation is deferred; it is not a prerequisite for direct
+mutation safety.
 
-Executable evidence is mapped in `level-2-conformance.md` and
-`level-3-conformance.md`. A local Level 3 pass still requires separate hosted
-unattended-operation evidence before release.
+## Operational axis
 
-## Capability Levels
+| Level | Capability              | Required platform guarantees                                                                             |
+| ----- | ----------------------- | -------------------------------------------------------------------------------------------------------- |
+| L0    | Conversational          | Scoped identity, immutable behavior snapshot, thread continuity, bounded context                         |
+| L1    | Tool-using              | Typed tools, model-exposure policy, structured results, timeouts, redaction, audit                       |
+| L2    | Workflow-driven         | Typed intents, durable runs, artifacts, approvals, cancellation, retry, recovery                         |
+| L3    | Background/event-driven | Trusted triggers, schedules, idempotency, leases, heartbeats, concurrency, replay, alerts                |
+| L4    | Delegated               | Parent/child lineage, narrowed authority, depth and budget limits, durable handoff, cascade cancellation |
 
-| Level | Capability                  | Required platform guarantees                                                                             |
-| ----- | --------------------------- | -------------------------------------------------------------------------------------------------------- |
-| 0     | Conversational              | Scoped identity, behavior snapshot, thread continuity, and bounded context                               |
-| 1     | Tool-using                  | Typed tools, model exposure policy, structured results, timeouts, redaction, and audit                   |
-| 2     | Workflow-driven             | Typed intents, durable runs, artifacts, interrupts, cancellation, retry, and recovery                    |
-| 3     | Background and event-driven | Trusted triggers, schedules, idempotency, leases, heartbeats, concurrency limits, and replay             |
-| 4     | Delegated                   | Parent/child lineage, depth and budget limits, narrowed tools, durable handoff, and cascade cancellation |
-| 5     | Externally mutating         | Encrypted connections, dry-run, approvals, limits, ledgers, kill switches, and retained audit evidence   |
+L0–L2 are release-gated by `conformance:level2`; L3 is implemented and gated by
+`conformance:level3` plus hosted soak, redelivery, and signed-in operator
+evidence for the release commit. L4 remains deferred.
 
-Levels are cumulative. A pack cannot claim a higher level by prompt wording or
-manifest metadata alone. Its runtime bindings, workspace policy, deployment,
-and verification evidence must satisfy every required lower-level guarantee.
+## Authority axis
 
-## Current Level 3 Boundary
+| Level | Capability         | Required platform guarantees                                                                                                            |
+| ----- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| A0    | Read-only          | No provider credential custody or externally mutating dispatch                                                                          |
+| A1    | Durable proposal   | Redacted immutable proposal, schema validation, policy decision, approval and cancellation history                                      |
+| A2    | External execution | Vault-backed connections, explicit enablement, idempotent dispatch, kill switches, append-only ledger, ambiguous-outcome reconciliation |
 
-The checked-in Level 3 foundation currently provides:
+A2 does not claim exactly-once external effects. It provides stable idempotency,
+never automatically retries an ambiguous dispatched action, records
+`outcome_unknown`, and requires reconciliation before an operator retry.
 
-- API v2 schedule, monitor, and webhook declarations bound only to registered
-  checked-in pack workflows.
-- Tenant-scoped D1 trigger and dispatch records, operator CRUD, optimistic
-  versioning, audit/events, idempotency keys, and per-trigger concurrency limits.
-- A Cloudflare cron tick for due schedule/monitor dispatch, bounded occurrence
-  coalescing, lease/heartbeat timestamps, callback-owned completion,
-  expired-lease recovery, and replay of failed or cancelled dispatches.
-- Public webhook ids with a secret returned only at creation, only a hash stored
-  in D1, constant-time verification, bounded normalized input, and idempotent
-  dispatch creation.
-- Durable deduplicated operator alerts for immediate execution failures and
-  expired leases, with bounded signed HTTPS delivery and audited resolution.
-- Forward-only retained-data migrations, bounded artifact/event/trace retention,
-  deterministic D1 backup/restore evidence, and scoped preview export inventory.
+## 1.0 production boundary
 
-The guarded hosted drill now proves public signed-webhook deduplication,
-concurrency saturation, cancellation publication fencing, replay lineage,
-expired-lease recovery, and durable alert creation against isolated
-non-customer state. Non-customer D1 and R2 restore drills have also met the
-candidate RPO/RTO targets. This is still not a Level 3 release claim: a
-same-commit 24-hour schedule/webhook soak, receiver-outage/redelivery evidence,
-and signed-in operator acceptance remain gates. Streaming export, complete
-Durable Object deletion, credential brokerage, and external mutation are
-separate north-star capabilities, not prerequisites for this read-only Level 3
-implementation.
+The 1.0 implementation targets L3+A2 with these hard conditions:
 
-## Agent Pack Composition
+- Retained data, connections, and mutations are separate deployment feature
+  gates. Mutation defaults off globally.
+- A workspace must confirm its retention policy and explicitly authorize a
+  healthy connection before any mutation proposal can execute.
+- Runtime Module v1 execute bindings declare external mutation risk, proposal
+  and result schemas, connection identity, idempotency, timeout, reconciliation,
+  and approval policy. The compiler rejects incomplete bindings.
+- Cloudflare owns tenant scope, policy decisions, durable approval, proposal
+  CAS, terminal publication, audit, and ledger state. Agent Packs only declare
+  requirements and trusted adapters.
+- WorkOS Vault stores credentials. D1 stores tenant-scoped metadata and opaque
+  Vault object/version references only. Broker capabilities never return raw
+  credentials to models, packs, Fly envelopes, callbacks, logs, or exports.
+- Workspace, pack, tool, and connection kill switches fence new dispatch. They
+  do not claim to reverse an external side effect already accepted.
+- Workspace deletion immediately quarantines access, pauses triggers, cancels
+  active work, and irreversibly revokes credentials. Content recovery lasts 30
+  days; credentials, webhook secrets, approvals, and trigger enablement are not
+  restored.
 
-Agent Packs are the product extension boundary. The complete target contract
-can declare, but cannot bypass platform enforcement for:
+## Agent Pack composition
 
-- behavior and model guidance
-- user, agent, and workflow tool requirements
-- typed workflows and execution engines
-- trusted, retrieved, and untrusted context sources
-- user-facing starters, forms, managed-state views, and artifact renderers
-- managed-state and decision-record extension schemas
-- schedules, webhooks, monitors, and other trigger bindings
-- required external connections and secret classes, never secret values
-- execution modes, risk posture, limits, budgets, and approval requirements
-- evals, smoke scenarios, health checks, migrations, and compatibility bounds
+Pack API v2 manifests remain serializable. Trusted build-time Runtime Module v1
+packages may provide schema-checked tools, workflows, actions, health/eval
+bindings, and trusted renderers. They may declare:
 
-Pack manifests remain serializable declarations. Trusted build-time Runtime
-Module v1 packages may supply schema-checked tool/workflow handlers and web
-renderers. Cloudflare still owns tenancy, policy, approvals, lifecycle,
-publication, audit, and resource enforcement. Connection brokers, storage
-migrations, and mutation authority remain platform code. Installing a pack
-never grants authority by itself.
+- behavior, tools, workflows, triggers, context, managed state, and UI schemas;
+- required connection providers, principals, scopes, and credential classes;
+- execution modes, mutation risk, limits, approvals, and compatibility ranges;
+- artifacts, health checks, deterministic evals, and reconciliation bindings.
 
-## Domain State And UX
+The platform retains tenancy, credential custody, outbound-host enforcement,
+retention, deletion, policy, approval, kill switches, lifecycle, and audit.
+Installing a package never enables mutation.
 
-The base workbench owns generic product surfaces: chat, run control, History,
-approvals, tools, artifacts, managed state, decisions, connections, and Admin.
-A pack may contribute typed descriptors and renderers to those surfaces without
-forking core navigation or introducing domain tables into the platform model.
+## Runtime invariants
 
-Pack-owned state uses platform records with namespaced extension data until a
-shape proves generic. The pack declares how operators list, inspect, filter,
-and act on that state. Cloudflare still derives tenant scope, authorizes every
-operation, and writes canonical run, audit, artifact, decision, and ledger
-records.
+- The model never chooses tenant scope, credentials, approval bypass, budgets,
+  feature gates, or kill-switch state.
+- Terminal runs and terminal action proposals never reopen.
+- Cancellation revokes publication authority but cannot undo an accepted
+  provider side effect.
+- Raw external request/response bodies are not durable evidence; redacted
+  summaries, hashes, and provider references are.
+- Every capability can explain what ran, why it was allowed, what changed, and
+  how an operator can stop, recover, export, or delete it.
 
-## Runtime Invariants
+## Evidence
 
-- The model never chooses tenant scope, tool authority, credentials, budgets,
-  approval bypass, or kill-switch state.
-- Background work is idempotent at its trigger boundary and has a durable owner,
-  lease, heartbeat, and concurrency policy.
-- Delegated work inherits scope, receives narrower capabilities, and returns
-  structured outputs with durable lineage.
-- Mutation requires a dry-run representation or a documented policy exception;
-  unsupported mutation remains disabled.
-- Important outcomes become durable records. Conversation summaries are indexes,
-  not truth.
-- Every capability can explain what ran, why it was allowed, what it changed,
-  what it cost, and how an operator can stop or recover it.
+- Runtime packages: `pnpm conformance:agent-system`
+- L0–L2: `pnpm conformance:level2`
+- L3: `pnpm conformance:level3`
+- Retained data: `pnpm conformance:data-lifecycle`
+- Connection brokerage: `pnpm conformance:connections`
+- Mutation authority: `pnpm conformance:actions`
+- Same-commit hosted evidence: `pnpm acceptance:hosted:vault` and
+  `pnpm acceptance:hosted:mutation`
 
-## Portability Boundary
+The row-by-row release evidence matrix is in `production-1-conformance.md`.
 
-The first implementation is intentionally opinionated: Next.js and WorkOS at
-the web boundary, Cloudflare for authorization and canonical control state, and
-Fly/LangGraph for heavy execution. Portability comes from stable pack, tool,
-workflow, policy, context, and data-client contracts, not from pretending every
-infrastructure component is already interchangeable.
-
-The initially unpublished `@assistant-mk1/agent-sdk` and Complex Operator
-fixture prove the build-time extension boundary. Remote pack installation and
-alternate infrastructure adapters remain deferred. Replacement implementations
-must preserve tenant derivation, policy enforcement, durable lineage,
-redaction, and audit semantics.
+Remote package installation, arbitrary executable uploads, credential
+marketplaces, trading adapters, Polymancer mutation, Swordfish execution,
+delegation, and multi-region failover remain outside 1.0.

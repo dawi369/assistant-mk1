@@ -95,7 +95,7 @@ export const examplePack = defineAgentPack({
   ],
   healthChecks: [],
   evals: [],
-  compatibility: { packApi: 2, minimumWorkbenchVersion: "1.0.0-preview.1" },
+  compatibility: { packApi: 2, minimumWorkbenchVersion: "1.0.0" },
   resourceLimits: {
     maxRunSeconds: 30,
     maxToolCallsPerRun: 4,
@@ -163,18 +163,14 @@ key. Pack installation never grants credentials, model exposure, trigger
 authority, or mutation rights. Validation rejects non-serializable values,
 invalid references, duplicate identifiers, and non-positive limits.
 
-Connection descriptors are now part of Pack API v2. They bind declared tools
+Connection descriptors are part of Pack API v2. They bind declared tools
 to a provider, principal, credential class, scopes, required/optional posture,
-and either `none` or `external_broker` custody. Public no-auth descriptors are
-active metadata today. Credentialed descriptors are declaration-only: they
-must name external broker custody and a production connection gate, and the
-workbench projects them into a secret-free `authorization_required` status.
-No Pack receives tokens or broad broker credentials.
-
-Actual OAuth/API-key custody, authorization completion, refresh and revocation
-workers, connection health persistence, decision extensions, migrations, and
-remote installation remain future contract work. Policy defaults now compile
-from Runtime Module tool bindings.
+and either `none` or `external_broker` custody. Credentialed descriptors use the
+platform broker: WorkOS Vault stores values, D1 stores metadata and opaque
+references, OAuth uses Authorization Code + PKCE with single-use state, and
+refresh uses a D1 lease/CAS. Runtime code receives only a tool-scoped brokered
+request capability whose provider host is allowlisted. No Pack, model, callback,
+artifact, export, trace, log, or Fly envelope receives raw credentials.
 
 Pack-owned descriptors compose into generic workbench surfaces. They do not add
 unscoped routes, arbitrary executable uploads, domain tables, or private
@@ -238,9 +234,10 @@ single `workbench.config.ts` entry. The starter is deliberately
 read-only, secret-free, disabled from model tool use, resource-bounded, and
 equipped with a static eval and health declaration. Replace its placeholder
 purpose and replace the deterministic starter binding with domain behavior.
-Add connection descriptors before introducing a provider-backed tool; a
-credentialed descriptor does not become usable until a broker adapter and
-health contract exist.
+Add connection descriptors before introducing a provider-backed tool. A
+credentialed descriptor does not become usable until the platform provider
+module, connection health, retention confirmation, workspace enablement, and
+policy all agree.
 
 Then:
 
@@ -279,8 +276,10 @@ provider smokes remain explicit and are never triggered by local validation.
 - A tool's invocation class is descriptive, not an authorization bypass. User,
   agent, and workflow calls still require a registered runtime binding and
   Cloudflare policy approval.
-- Secret-requiring packs fail v2 validation.
-- Execute-mode tools require mutation risk and a production gate.
+- Packs declare credential classes but never contain credential values.
+- Execute-mode tools require external mutation risk, a production gate,
+  proposal/result schemas, a compatible action executor, connection identity,
+  idempotency, timeout, and approval policy.
 - Missing or incompatible runtime workflow bindings remain visible and
   chat-capable but cannot execute.
 - Pack results belong in `/history`; raw implementation details belong in the

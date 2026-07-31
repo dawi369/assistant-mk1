@@ -8,6 +8,7 @@ import { executeResolvedRuntimeAdminTool } from "./runtime-admin-execution";
 import { resolveRuntimeToolForAgent } from "./runtime-tool-catalog";
 import { dispatchWorkbenchSessionEvent } from "./session-coordinator";
 import { evaluateToolPolicy, recordToolPolicyDecision, toolPolicyError } from "./tool-policy";
+import { approveAndExecuteActionApproval, cancelActionForDeniedApproval } from "./action-authority";
 import {
   createId,
   toJson,
@@ -518,6 +519,10 @@ export const handleApproveToolApproval = async (
       },
       { status: 409 },
     );
+  const approvalData = parseDataJson(approval.data_json);
+  if (typeof approvalData.actionProposalId === "string") {
+    return approveAndExecuteActionApproval(env, identity, approval);
+  }
   const agent = await selectAgent(env, identity.agentId, identity.scope.workspaceId);
   const resolved = agent ? resolveRuntimeToolForAgent(agent, approval.tool_id) : undefined;
   if (!resolved)
@@ -642,6 +647,7 @@ export const handleDenyToolApproval = async (
       { status: 409 },
     );
   }
+  await cancelActionForDeniedApproval(env, identity, approval, reason);
   await dispatchWorkbenchSessionEvent(env, identity, {
     type: "approval.updated",
     data: {

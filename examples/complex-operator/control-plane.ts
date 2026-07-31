@@ -13,6 +13,15 @@ const policy = (reference: string, modelVisible = false) => ({
   mutationRisk: "read_only" as const,
 });
 
+const mutationPolicy = {
+  reference: "operator.action.execute.v1",
+  adminVisible: true,
+  modelVisible: false,
+  requiresApproval: true,
+  policyEditable: true,
+  mutationRisk: "mutation_capable" as const,
+};
+
 export const operatorSnapshotTool = {
   id: "operator.snapshot",
   description: "Return a deterministic signed-runner snapshot.",
@@ -58,8 +67,8 @@ export const operatorSnapshotTool = {
 
 export const controlPlane = defineControlPlaneModule({
   packId: "complex-operator",
-  runtimeVersion: "1.1.0",
-  compatiblePackVersions: "^1.0.0",
+  runtimeVersion: "1.2.0",
+  compatiblePackVersions: "^1.1.0",
   tools: [
     {
       id: "operator.signal.read",
@@ -85,7 +94,10 @@ export const controlPlane = defineControlPlaneModule({
         type: "object",
         required: ["summary"],
         additionalProperties: false,
-        properties: { summary: { type: "string", minLength: 1, maxLength: 160 } },
+        properties: {
+          summary: { type: "string", minLength: 1, maxLength: 160 },
+          preview: { type: "object", additionalProperties: true },
+        },
       },
       outputSchema: { type: "object", required: ["proposalId", "status"] },
       executionModes: ["dry_run"],
@@ -96,15 +108,150 @@ export const controlPlane = defineControlPlaneModule({
       policy: policy("operator.action.propose.v1"),
       async execute(input, context) {
         const proposal = await context.actions.propose({
+          toolId: "operator.action.execute",
           type: "operator.synthetic_action",
           summary: String(input.summary),
           idempotencyKey: `${context.run.id}-proposal`,
-          preview: { mutation: false },
+          preview:
+            input.preview && typeof input.preview === "object"
+              ? (input.preview as RuntimeRecord)
+              : { mutation: false },
         });
         return {
           ok: true,
           output: proposal as unknown as RuntimeRecord,
           summary: "Dry-run action proposal created; mutation remains disabled.",
+        };
+      },
+    },
+    {
+      id: "operator.action.execute",
+      description: "Execute an approved deterministic synthetic action.",
+      inputSchema: {
+        type: "object",
+        required: ["summary"],
+        additionalProperties: false,
+        properties: {
+          summary: { type: "string", minLength: 1, maxLength: 160 },
+          idempotencyKey: { type: "string", minLength: 1, maxLength: 200 },
+          preview: { type: "object", additionalProperties: true },
+        },
+      },
+      outputSchema: {
+        type: "object",
+        required: ["status", "summary"],
+        additionalProperties: true,
+      },
+      executionModes: ["dry_run", "execute"],
+      transport: "fly",
+      adapterVersion: "operator-action-v2",
+      timeoutMs: 2_000,
+      maxArtifactBytes: 8_192,
+      sandbox: {
+        lifecycle: {
+          template: "operator-action-v2",
+          setup: "per_invocation",
+          workspaceState: "none",
+          filesystem: "ephemeral",
+          artifactPromotion: "metadata_only",
+        },
+        network: {
+          egress: "broker_only",
+          allowedSchemes: ["https"],
+          allowedHosts: ["platform-connection-broker"],
+          deniedHosts: ["*"],
+          privateNetwork: "deny",
+          enforcement: "control_plane_and_runner",
+        },
+        limits: { maxRuntimeMs: 2_000, maxArtifactBytes: 8_192 },
+      },
+      policy: mutationPolicy,
+      action: {
+        connectionId: "operator.external-account",
+        proposalSchema: {
+          type: "object",
+          required: ["mutation"],
+          additionalProperties: true,
+          properties: { mutation: { type: "boolean" } },
+        },
+        resultSchema: {
+          type: "object",
+          required: ["status", "idempotencyKey"],
+          additionalProperties: true,
+          properties: {
+            status: { type: "string" },
+            idempotencyKey: { type: "string" },
+          },
+        },
+        idempotency: "required",
+        approval: "required",
+        timeoutMs: 1_000,
+        execute(proposal) {
+          if (proposal.preview.outcome === "unknown") {
+            return {
+              proposalId: "pending",
+              status: "outcome_unknown",
+              summary: "Synthetic provider accepted the request but withheld its outcome.",
+              externalReference: `synthetic:${proposal.idempotencyKey}`,
+              output: { status: "outcome_unknown", idempotencyKey: proposal.idempotencyKey },
+            };
+          }
+          return {
+            proposalId: "pending",
+            status: "executed",
+            summary: "Synthetic external action executed idempotently.",
+            externalReference: `synthetic:${proposal.idempotencyKey}`,
+            output: { status: "executed", idempotencyKey: proposal.idempotencyKey },
+          };
+        },
+        async reconcile(proposal, context) {
+          const connection = await context.connections.resolve(
+            "operator.external-account",
+            "operator.action.execute",
+          );
+          if (connection.status !== "authorized" || !connection.request) {
+            return {
+              proposalId: "pending",
+              status: "failed",
+              summary: "The synthetic provider could not be queried for reconciliation.",
+            };
+          }
+          const response = await connection.request({
+            url: "broker://configured",
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              idempotencyKey: proposal.idempotencyKey,
+              reconcile: true,
+            }),
+          });
+          const body = JSON.parse(response.body) as {
+            externalReference?: string;
+            found?: boolean;
+          };
+          return {
+            proposalId: "pending",
+            status: body.found ? "reconciled" : "outcome_unknown",
+            summary: body.found
+              ? "Synthetic external action outcome reconciled through the connection broker."
+              : "The synthetic provider has not recorded a terminal outcome.",
+            externalReference: body.externalReference,
+            output: {
+              status: body.found ? "reconciled" : "outcome_unknown",
+              idempotencyKey: proposal.idempotencyKey,
+            },
+          };
+        },
+      },
+      execute() {
+        return {
+          ok: false,
+          error: {
+            code: "action_authority_required",
+            message: "Use the durable action proposal and approval flow.",
+            redacted: true,
+          },
+          summary: "Durable action authority is required.",
         };
       },
     },
@@ -143,8 +290,13 @@ export const controlPlane = defineControlPlaneModule({
           subject: String(input.subject ?? "demo-system"),
         });
         if (!snapshot.ok) return snapshot;
+        const subject = String(input.subject ?? "demo-system");
         const proposal = await context.tools.invoke("operator.action.propose", {
-          summary: `Review ${String(input.subject ?? "demo-system")}`,
+          summary: `Review ${subject}`,
+          preview: {
+            mutation: false,
+            ...(subject === "timeout" ? { delayMs: 1_500 } : {}),
+          },
         });
         if (!proposal.ok) return proposal;
         const report = {
@@ -160,7 +312,6 @@ export const controlPlane = defineControlPlaneModule({
           status: "review",
           summary: "Deterministic observation completed.",
           data: report,
-          expectedVersion: 0,
         });
         return {
           ok: true,
@@ -208,3 +359,7 @@ export const controlPlane = defineControlPlaneModule({
     },
   ],
 });
+
+export const operatorActionTool = controlPlane.tools.find(
+  (tool) => tool.id === "operator.action.execute",
+)!;

@@ -1,11 +1,11 @@
 import { defineRunnerModule } from "@assistant-mk1/agent-sdk/runner";
 
-import { operatorSnapshotTool } from "./control-plane";
+import { operatorActionTool, operatorSnapshotTool } from "./control-plane";
 
 export const runner = defineRunnerModule({
   packId: "complex-operator",
-  runtimeVersion: "1.1.0",
-  compatiblePackVersions: "^1.0.0",
+  runtimeVersion: "1.2.0",
+  compatiblePackVersions: "^1.1.0",
   tools: [
     {
       ...operatorSnapshotTool,
@@ -18,6 +18,63 @@ export const runner = defineRunnerModule({
             status: "nominal",
           },
           summary: "Deterministic signed-runner snapshot completed.",
+        };
+      },
+    },
+    {
+      ...operatorActionTool,
+      async execute(input, context) {
+        const idempotencyKey = String(input.idempotencyKey ?? "missing-idempotency-key");
+        const preview =
+          input.preview && typeof input.preview === "object"
+            ? (input.preview as Record<string, unknown>)
+            : {};
+        const connection = await context.connections.resolve(
+          "operator.external-account",
+          "operator.action.execute",
+        );
+        if (connection.status !== "authorized" || !connection.request) {
+          return {
+            ok: false,
+            error: {
+              code: "connection_not_authorized",
+              message: connection.reason,
+              redacted: true,
+            },
+            summary: "The synthetic action connection is unavailable.",
+          };
+        }
+        const providerResponse = await connection.request({
+          url: "broker://configured",
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            idempotencyKey,
+            outcome: preview.outcome,
+            delayMs: preview.delayMs,
+          }),
+        });
+        const providerBody = JSON.parse(providerResponse.body) as {
+          externalReference?: string;
+        };
+        const status = preview.outcome === "unknown" ? "outcome_unknown" : "executed";
+        const externalReference = providerBody.externalReference ?? `synthetic:${idempotencyKey}`;
+        return {
+          ok: true,
+          output: {
+            status,
+            summary:
+              status === "executed"
+                ? "Synthetic external action executed idempotently."
+                : "Synthetic provider accepted the request but withheld its outcome.",
+            idempotencyKey,
+            externalReference,
+            transport: "fly",
+          },
+          summary:
+            status === "executed"
+              ? "Synthetic external action executed idempotently."
+              : "Synthetic provider accepted the request but withheld its outcome.",
         };
       },
     },

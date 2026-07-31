@@ -1,111 +1,95 @@
-# 1.0.0-preview.1 Developer Preview Readiness
+# 1.0.0 Production Readiness
 
-Document status: current release contract.
-
-The Assistant-mk1 preview is an authenticated, tenant-scoped, read-only agent
-workbench. Remote D1 and R2 state are disposable. This release makes no
-commitment to upgrade-safe customer-data retention, external mutation,
-encrypted credential brokerage, or hosted artifact recovery.
+Document status: release-candidate contract. Assistant-mk1 targets Operational
+L3 plus Authority A2. Local conformance is necessary but does not replace the
+same-commit hosted gates below.
 
 ## Included
 
-- WorkOS sign-in, sign-out, reload recovery, and organization switching.
-- Cloudflare-owned account, workspace, membership, role, and agent resolution.
-- Customer-facing workspace switching and owner/admin member administration.
-- Cloudflare Agents chat, local-new first paint, recent chats, and agent switching.
-- Typed read-only pack workflows and policy-gated read-only tools.
-- Checked-in read-only schedule/webhook execution, lease recovery, concurrency,
-  cancellation fencing, replay, and durable operator alerts. Guarded hosted
-  drills exercise the negative paths against isolated non-customer state; this
-  does not yet carry a production-unattended Level 3 release claim.
-- Searchable execution history, metadata artifacts, approvals, cancellation,
-  retry for supported pack workflows, and reconnect recovery.
-- Unit, contract, service-boundary, and browser release checks.
-- Local R2 create/read/export/expiry conformance behind the Vercel and
-  Cloudflare authorization boundary.
-- Vercel, Cloudflare, Fly, WorkOS, Sentry, and local-development runbooks.
+- WorkOS identity, organizations, tenant-scoped workspaces, membership roles,
+  agent snapshots, and fresh-auth fencing for workspace deletion.
+- Cloudflare-owned chat, typed tools/workflows, durable runs, approvals,
+  cancellation, retry, artifacts, policy, audit, triggers, leases, replay, and
+  unattended-failure alerts.
+- Runtime Module v1 packages with deterministic compilation, compatibility,
+  health/eval bindings, generic UI renderers, and no core registration edits.
+- Forward-only retained-data migrations, workspace retention confirmation,
+  asynchronous complete export, 30-day deletion quarantine/recovery, and
+  resumable D1/R2/Durable Object purge.
+- Provider-neutral `CredentialVault` with WorkOS Vault production custody,
+  API-key and OAuth 2.0 Authorization Code + PKCE brokerage, refresh CAS,
+  revocation, health, and permitted-host request capabilities.
+- Durable mutation proposals, policy and approval checks, stable idempotency,
+  kill switches, append-only action ledger, `outcome_unknown`, reconciliation,
+  and History/Admin projections.
+- Complex Operator as the deterministic non-financial mutation fixture. Baby
+  Polymancer remains read-only and Baby Swordfish remains parked.
 
-## Release Evidence
+## Feature-gate order
 
-| Gate                          | Evidence                                                                    |
-| ----------------------------- | --------------------------------------------------------------------------- |
-| Repository                    | `pnpm release:check`                                                        |
-| Runtime extension contract    | `pnpm conformance:agent-system`                                             |
-| Deterministic services        | `pnpm test:service-boundaries`                                              |
-| Level 2 conformance           | `pnpm conformance:level2` and `docs/level-2-conformance.md`                 |
-| Level 3 local conformance     | `pnpm conformance:level3` and `docs/level-3-conformance.md`                 |
-| Agent extension system        | `pnpm conformance:agent-system` and `docs/agent-runtime-kit.md`             |
-| Runtime architecture          | runtime architecture unit assertions and compiled-registry checks           |
-| Docker boundary               | `pnpm verify:docker`                                                        |
-| Hosted public boundaries      | `pnpm acceptance:hosted:public`                                             |
-| Hosted Level 3 preflight      | `pnpm acceptance:hosted:level3:preflight`                                   |
-| Hosted Level 3 failure drills | `pnpm acceptance:hosted:level3`                                             |
-| Dependency security           | `pnpm verify:security`                                                      |
-| Cloudflare authorization      | `pnpm smoke:cloudflare-authz` and `pnpm smoke:cloudflare-membership-policy` |
-| Tenant isolation              | `pnpm smoke:tenant-isolation` and the boundary smokes                       |
-| Run recovery                  | run-control unit tests, history smoke, and hosted browser acceptance        |
-| Browser UX                    | `pnpm test:e2e` plus signed-in Dia acceptance                               |
-| Documentation                 | `docs/README.md` current-state map and deploy runbooks                      |
+All three deployment gates default off:
 
-## Deferred Gates
+1. `WORKBENCH_RETAINED_DATA_ENABLED`
+2. `WORKBENCH_CONNECTIONS_ENABLED`
+3. `WORKBENCH_MUTATIONS_ENABLED`
 
-The following are intentionally outside the 1.0 read-only baseline:
+Enable them in that order for an isolated acceptance workspace. Mutation also
+requires retention confirmation, an authorized healthy connection, an
+execute-capable compiled binding, clear workspace/pack/tool/connection kill
+switches, an allow policy decision, and approval unless an operator explicitly
+edits the policy. General workspace mutation remains opt-in.
 
-- retained customer history and complete workspace deletion, including Durable
-  Object state
-- the final Level 3 unattended-production gate: same-commit 24-hour soak,
-  receiver-outage/redelivery evidence, and signed-in operator acceptance
-- encrypted credential custody and refresh brokerage
-- mutation-capable tools and external side effects
-- streaming exports and executable deletion including Durable Objects
-- plugin marketplace and multi-region deployment
+## Release evidence
 
-Forward-only D1 migrations, a deterministic D1 backup/restore verifier, bounded
-artifact/event/trace retention, scoped D1/R2 export, and non-customer hosted D1
-and R2 restore drills are implemented. Remote state remains development
-validation state until the deletion and full data-class retention gates in
-`docs/migrations-and-retention.md` are implemented. A release must not describe
-that state as retained customer history.
+| Boundary          | Required evidence                                                                          |
+| ----------------- | ------------------------------------------------------------------------------------------ |
+| Repository        | `pnpm release:check`, clean clone, `git diff --check`                                      |
+| Runtime extension | `pnpm conformance:agent-system`                                                            |
+| Operational L0–L2 | `pnpm conformance:level2`                                                                  |
+| Operational L3    | `pnpm conformance:level3`, 24-hour soak, receiver-outage redelivery                        |
+| Retained data     | `pnpm conformance:data-lifecycle`, migration/recovery rehearsal, D1/R2/DO export and purge |
+| Connections       | `pnpm conformance:connections`, `pnpm acceptance:hosted:vault`                             |
+| Mutation          | `pnpm conformance:actions`, `pnpm acceptance:hosted:mutation`                              |
+| Supply chain      | `pnpm verify:security`, `pnpm verify:docker`                                               |
+| Public hosting    | `pnpm acceptance:hosted:public`                                                            |
+| Signed-in product | WorkOS browser acceptance across Vercel, Cloudflare, and Fly                               |
 
-## Preview Release Checklist
+Ignored evidence records must name one full commit SHA. Hosted Vault evidence
+must prove create/read-version/replace/revoke-delete without disclosing values.
+Hosted mutation evidence must name the isolated workspace, run, proposal,
+approval, provider reference, connection revocation, and kill-switch/reconcile
+drills.
 
-- [ ] A clean clone installs with `pnpm install --frozen-lockfile`, applies
-      local D1 migrations, passes `pnpm workbench:doctor`, and reaches usable chat by
-      following only the README.
-- [ ] `pnpm release:check` and all GitHub Actions jobs are green.
-- [ ] `pnpm conformance:level2` is green and its report names the release commit.
-- [ ] `pnpm conformance:level3` is green and its report names the release commit.
-- [ ] `pnpm conformance:agent-system` is green; generated registries are current,
-      the SDK consumer compiles, and Complex Operator passes.
-- [ ] Hosted trigger evidence proves one real schedule, signed webhook duplicate,
-      expired-lease recovery, cancellation, replay, logs, and alert delivery for
-      the same commit before unattended work is enabled.
-- [ ] `pnpm verify:security` reports no high-severity advisory.
-- [ ] Docker context inspection proves synthetic sentinels under ignored local
-      state and secret paths do not enter the image; the runtime runs non-root.
-- [ ] Hosted Vercel, Cloudflare, and Fly unauthenticated health boundaries match
-      their runbooks and disclose no tenant or configuration data.
-- [ ] Signed-in manual acceptance covers pack activation, Repository Analyst
-      completion, structured History inspection, cancel/late-result rejection,
-      retry lineage, approval denial/recovery, and agent handoff.
-- [ ] Review whether any prior Fly build included local credentials; rotate every
-      affected credential class before tagging if exposure cannot be disproved.
-- [ ] Capture current workbench, History, and Agent Pack screenshots.
-- [ ] Confirm `CHANGELOG.md` and the disposable-data preview contract are current.
-- [ ] Create the `v1.0.0-preview.1` prerelease tag only after all preceding gates pass.
+## Final checklist
 
-## Hosted Acceptance
+- [ ] Clean clone installs with `pnpm install --frozen-lockfile`, applies local
+      migrations, passes `pnpm workbench:doctor`, and reaches usable chat from
+      README instructions only.
+- [ ] All repository, browser, conformance, Docker, build, formatting,
+      dependency-audit, and generated-registry gates are green.
+- [ ] Fresh and prior-baseline databases apply migrations `0006`–`0010`; backup
+      restore and forward-fix rehearsal meet recorded RPO/RTO.
+- [ ] D1/R2/DO export manifest checksums pass; quarantine recovery and
+      time-shifted final purge remove all customer state while retaining only a
+      non-identifying receipt.
+- [ ] WorkOS Vault create/read/rotate/revoke/delete and OAuth PKCE/refresh/replay
+      evidence pass without credentials entering logs, D1, exports, callbacks,
+      model context, artifacts, traces, or Fly envelopes.
+- [ ] Synthetic mutation proves approval denial and resume, idempotent duplicate
+      dispatch, every kill-switch scope, timeout ambiguity, reconciliation,
+      cancellation fencing, and cross-tenant `404`.
+- [ ] Same-commit 24-hour schedule/webhook soak, receiver-outage redelivery,
+      and signed-in operator journeys are recorded.
+- [ ] Dashboards and alerts cover lifecycle failures/backlog, Vault and OAuth
+      failures, blocked mutation, `outcome_unknown`, trigger failures, and alert
+      delivery failures.
+- [ ] Credential-class rotation review, security audit, screenshots, changelog,
+      evidence matrix, and production runbooks are complete.
+- [ ] Retained data, then connections, then mutation are enabled and accepted in
+      an isolated non-customer workspace before the `v1.0.0` tag.
 
-The deterministic local browser gate runs first. It uses an isolated D1 state
-directory, holds Worker staging long enough to prove the optimistic new-chat
-surface, and verifies workspace membership plus retry controls. The production
-pass then uses the existing WorkOS session and validates:
+## Explicit non-claims
 
-1. Signed-out reload shows only the deliberate sign-in surface.
-2. Signed-in reload never flashes cached workspace data before auth resolves.
-3. New chat paints immediately and the first prompt sends after background connection.
-4. Existing threads switch, rename, archive, restore, and delete correctly.
-5. Account, workspace, agent, workflow, history, and Admin surfaces enforce role scope.
-6. Failed/disconnected states expose a useful next action.
-7. Interrupted approvals resume or deny from History.
-8. Supported failed pack workflows retry as new linked runs.
+The release does not include real trading, Polymancer mutation, Swordfish
+execution, a credential marketplace, remote executable installation,
+delegation, legal hold, multi-region failover, or exactly-once provider effects.

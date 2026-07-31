@@ -1,166 +1,101 @@
-# Migrations And Retention
+# Migrations, Retention, Export, And Deletion
 
-Document status: current migration and retention runbook. Forward-only D1
-migrations, artifact lifecycle metadata, and bounded retention workers are
-implemented. Backup/restore and customer export/delete remain production gates.
+Document status: current 1.0 implementation and operator runbook.
 
-## Current State
+## Migration contract
 
-- `cloudflare/control-plane/migrations/` is the canonical retained D1 change
-  history. Wrangler records applied files in `d1_migrations`.
-- `0001_initial.sql` is the non-destructive baseline matching the current
-  control-plane schema. Its `IF NOT EXISTS` clauses let a schema created before
-  the ledger adopt the migration path without dropping existing rows.
-- `pnpm db:cloudflare:migrate:local` and
-  `pnpm db:cloudflare:migrate:remote` apply only unapplied migrations.
-- `pnpm db:cloudflare:migrations:verify` creates isolated local D1 databases,
-  applies migrations from empty, compares the result with the reset snapshot,
-  upgrades the prior trigger baseline with retained managed-state and trigger
-  rows, verifies the new webhook fields default safely, reapplies, and checks
-  ledger integrity. The current chain contains five migrations through
-  `0005_artifact_retention.sql`.
-- `cloudflare/control-plane/schema.sql` remains the canonical reset snapshot.
-  It intentionally starts with `DROP TABLE IF EXISTS` and is safe only for a
-  deliberate local or remote dev reset.
-- `pnpm db:cloudflare:rebuild:local` and
-  `pnpm db:cloudflare:rebuild:remote` remain visibly destructive reset commands.
-- Durable Object class migrations in `wrangler.jsonc` are separate from D1
-  table migrations.
+`cloudflare/control-plane/migrations/` is the forward-only D1 ledger. The chain
+contains ten migrations: the `0001` baseline, existing control-plane changes
+through `0005`, and new lifecycle (`0006`), connection (`0007`), action
+authority (`0008`), broker-capability (`0009`), and non-identifying deletion
+receipt (`0010`) schemas. Do not rewrite a migration after it is applied.
 
-`0005_artifact_retention.sql` adds workspace retention policy rows, explicit
-artifact storage and checksum metadata, expiry/tombstone fields, and a default
-90-day artifact expiry. The scheduled Worker runs bounded artifact, operational
-event, and runtime-trace sweeps. R2 deletion happens before the D1 artifact is
-tombstoned; a missing or failed R2 binding leaves metadata live for retry.
+`cloudflare/control-plane/schema.sql` is the matching reset snapshot. Its
+`DROP TABLE` preamble makes it destructive and appropriate only for deliberate
+dev resets. Production rollback is a forward fix.
 
-The deterministic local backup/restore verifier and bounded scoped export are
-committed. Non-customer hosted drills have restored a D1 export into a fresh
-recovery database and copied/read/checksummed an exported R2 object within the
-candidate RPO/RTO targets. Those ignored operator records prove the recovery
-procedure, not retained-customer readiness. There is still no executable
-customer deletion flow, Durable Object export/delete seam, or complete
-retention policy for every durable class. Each hosted environment must also
-provision the R2 bucket named by its binding. These gaps mean hosted dev state
-is not acceptable as retained customer history.
+Required checks and application order:
 
-## Adding A D1 Change
+1. `pnpm db:cloudflare:migrations:verify`
+2. encrypted D1/R2 backup and checksums for the target environment
+3. `pnpm db:cloudflare:migrate:remote`
+4. deploy the matching Worker
+5. run same-commit lifecycle and tenant-boundary acceptance
 
-1. Add the next numbered SQL file under
-   `cloudflare/control-plane/migrations/`, for example
-   `0005_add_example_status.sql`. Never edit an already-applied migration.
-2. Update `cloudflare/control-plane/schema.sql` to represent the same final
-   schema while preserving its reset-only `DROP TABLE` preamble.
-3. Run `pnpm db:cloudflare:migrations:verify`. It must prove empty-database
-   application, reset-snapshot parity, retained-row reapplication, and ledger
-   integrity.
-4. Run focused tests, typecheck, and lint for the changed repositories.
-5. Apply locally with `pnpm db:cloudflare:migrate:local`.
-6. Before a remote deploy, capture the environment's required backup/export,
-   then run `pnpm db:cloudflare:migrate:remote` before deploying the Worker.
+The verifier proves empty application, adoption from the prior baseline, reset
+schema parity, retained-row reapplication, and migration-ledger integrity.
 
-Wrangler applies each migration transactionally and records it in
-`d1_migrations`. Production rollback policy is forward-fix: do not delete or
-rewrite ledger entries and do not use `schema.sql` to roll back retained data.
-A destructive or data-transforming migration needs an explicit backup and
-recovery plan before remote application.
+## Workspace retention policy
 
-## Backup And Restore
+Every workspace receives an unconfirmed privacy-oriented policy:
 
-`pnpm db:cloudflare:backup:verify` creates an isolated migration-built D1
-database, writes retained sentinel records, produces a mode-0600 SQL backup,
-restores it into a fresh SQLite database, and verifies the tenant scope,
-artifact lifecycle metadata, payload, and migration ledger. The temporary
-backup is checksummed and removed in `finally`. This deterministic check runs in
-`verify:fast`.
+| Data class                             |  Default |                             Bounds |
+| -------------------------------------- | -------: | ---------------------------------: |
+| Raw chat messages                      |  90 days |                        1–3650 days |
+| Run and tool payloads                  |  90 days |                        1–3650 days |
+| Artifacts                              |  90 days |                        1–3650 days |
+| Operational events                     |  30 days |                        1–3650 days |
+| Runtime traces                         |  14 days |                        1–3650 days |
+| Audit, policy, approval, action ledger | 365 days | minimum 365 while workspace exists |
 
-Before a risky hosted migration, an operator must create an ignored backup:
+Owners/admins manage and confirm the policy through
+`GET/PATCH /workbench/retention-policy`. Mutation remains unavailable until an
+owner/admin confirms it. Scheduled sweeps are tenant-policy-aware, bounded,
+audited through durable state changes, and safe to retry. R2 objects are deleted
+before their D1 metadata is tombstoned.
 
-```bash
-mkdir -p output/backups
-pnpm exec wrangler d1 export assistant_mk1_dev --remote \
-  --config cloudflare/control-plane/wrangler.jsonc \
-  --output output/backups/d1-before-<commit>.sql --skip-confirmation
-shasum -a 256 output/backups/d1-before-<commit>.sql
-```
+## Asynchronous export
 
-Record the environment, commit, timestamp, Wrangler identity, row-count checks,
-path, and SHA-256 in the release evidence. The export contains customer data:
-keep it encrypted and access-controlled outside the checkout and delete the
-local copy after evidence is recorded.
+Owners/admins use:
 
-Restore drills target a newly provisioned recovery D1 database using a temporary
-Wrangler configuration. Never execute a backup over the active database. Apply
-the export to the recovery database, compare migration ledger and per-table row
-counts, smoke tenant-scoped reads, and only then make a separate cutover
-decision. Remote export, recovery-database creation, restore, and cutover are
-operator actions and are intentionally not performed by the local verifier.
+- `POST /workbench/data-exports`
+- `GET /workbench/data-exports/:id`
+- `GET /workbench/data-exports/:id/download`
 
-R2 disaster recovery is not satisfied by the D1 export. The non-customer
-preview drill restores an exported object under a recovery key and verifies its
-checksum. Before blob storage is enabled for retained customers, add bucket
-versioning or replication and repeat a same-release restore whose manifest is
-reconciled against `control_artifacts.storage_key` and `content_sha256`.
+The durable job moves through queued, running, completed, failed, cancelled, or
+expired states. It publishes only after a complete ZIP is assembled in private
+R2. The archive contains a checksummed `manifest.json`, paginated D1 NDJSON,
+Durable Object thread state, and original R2 artifact bodies. Credential
+payloads, Vault references, OAuth state, webhook hashes, and other secret state
+are omitted. Any missing object or checksum mismatch fails the job rather than
+publishing a partial archive. Downloads are private, `no-store`, owner/admin
+only, audited, and expire after seven days.
 
-## Customer Export And Deletion Inventory
+The legacy bounded `GET /workbench/data-export` remains for compatibility and is
+not the production completeness contract.
 
-Workspace owners/admins can call `GET /workbench/data-export` to download a
-private, no-store JSON export of the active `userId + workspaceId` scope. It
-includes bounded D1 collections plus base64-encoded R2 artifact bodies with
-their stored SHA-256 values. Nonces and trigger secret hashes are deliberately
-excluded. The export fails instead of returning a partial result when a
-collection exceeds 1,000 rows, R2 is unavailable, an object is missing, or the
-combined blob payload exceeds 10 MiB. Successful exports write audit evidence.
+## Workspace deletion
 
-This is the correct small-workspace preview path, not the final streaming export
-format. It explicitly reports Durable Object chat bodies/hot coordination state
-as unsupported until an export seam exists for those classes.
+The lifecycle is `active → quarantined → purging → purged|failed`.
 
-`GET /workbench/data-deletion-plan` returns counts for the same D1 collections
-and R2 objects. It is intentionally non-executable and names the two remaining
-blockers: Durable Object deletion and a resumable, two-phase destructive job.
-This inventory prevents the product from claiming complete deletion while
-preserving the current read-only capability boundary.
+An owner must provide the exact workspace name and a WorkOS `auth_time` no older
+than five minutes. Quarantine immediately blocks normal tenant access, pauses
+triggers/webhooks, cancels active runs and approvals, enables the workspace kill
+switch, and revokes/deletes Vault credentials. Credential revocation is
+irreversible.
 
-## Retention Path
+For 30 days, only the initiating owner may inspect deletion status or recover.
+Recovery restores retained content and access, but not credentials, webhook
+secrets, approvals, or enabled triggers. At the deadline, the resumable purge
+removes Durable Object state before D1 thread identities, then R2 objects,
+OAuth state, connection/action state, and remaining tenant D1 rows. Only a
+non-identifying deletion receipt remains.
 
-The implemented defaults are 90 days for standard artifacts, 30 days for
-control-plane operational events, and 14 days for runtime traces. Workspace
-owners and admins may change all three through
-`GET/PATCH /workbench/retention-policy`; values are bounded to 1–3650 days and
-changes are audited. `permanent` artifacts do not receive an automatic expiry.
-The authenticated blob-upload route accepts only `standard`; `permanent` is a
-reserved internal lifecycle class until a separate admin policy exists.
+## Backup and restore
 
-The remaining data classes still need explicit policy before accepting durable
-customer history:
+`pnpm db:cloudflare:backup:verify` proves deterministic D1 backup/restore against
+an isolated database. Before a hosted migration, create a mode-0600 remote
+export, record its SHA-256, environment, commit, operator, timestamp, and table
+counts, and restore only into a fresh recovery database. D1 export is not R2 or
+Durable Object disaster recovery; release evidence must separately verify those
+classes.
 
-- Identity, workspace, membership, and agent records: retained while the
-  account/workspace exists, with delete/export paths.
-- Chat and run state: bounded by workspace policy, with compact summaries kept
-  longer than raw message/tool payloads.
-- Audit events and policy decisions: define the accountability and regulatory
-  period before pruning is allowed.
-- Run and chat history: define raw versus summarized history periods.
+## Release evidence
 
-R2 artifact writes are capped at 5 MiB in the initial mediated API, store a
-SHA-256 digest, and use tenant-scoped object keys. Reads re-check the D1 tenant
-scope and return private, no-store responses. Metadata is capped at 32 KiB. An
-atomic D1 predicate caps each active tenant scope at 1,000 R2 objects and 100
-MiB total; a rejected or failed metadata write removes the staged R2 object.
-Larger streaming artifacts remain
-a follow-up contract rather than bypassing Cloudflare mediation. The Level 3
-browser boundary exercises create, scoped read, History projection, export
-integrity, policy shortening, scheduled deletion, and post-expiry denial against
-the local R2 implementation.
+- `pnpm conformance:data-lifecycle`
+- fresh-database forward migration and recovery rehearsal
+- same-commit D1/R2/DO export, quarantine/recovery, and time-shifted purge
+- retention backlog and lifecycle job-failure dashboards/alerts
 
-## Remaining Acceptance Gate
-
-The repo can stop calling D1 disposable only after these are true:
-
-- A tested backup and restore procedure exists for retained environments.
-- Retention periods and pruning jobs exist for each durable data class; artifact,
-  operational-event, and runtime-trace classes are implemented.
-- Customer/workspace export and deletion cover D1, R2, and Durable Object state;
-  bounded D1/R2 export and a non-executable deletion inventory are implemented.
-- Remote deploy policy requires backup evidence for risky migrations.
-- Tenant isolation tests cover every newly retained table touched by a slice.
+Legal hold, regulated-industry retention, multi-region replication, and
+customer-managed backup destinations remain outside 1.0.

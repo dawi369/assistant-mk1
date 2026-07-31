@@ -91,11 +91,10 @@ The repo lockfile is generated with pnpm 10. Keep `packageManager` pinned to
 build scripts become install errors. pnpm workspace settings and overrides
 belong in `pnpm-workspace.yaml`, not the legacy `package.json` `pnpm` field.
 
-When a deployed slice changes the remote D1 schema, rebuild the remote dev D1
-database before deploying Vercel. `assistant_mk1_dev` is intentionally
-disposable in the current pre-production phase; destructive rebuilds are
-expected until the migration and retention gate in
-`docs/migrations-and-retention.md` is implemented.
+When a deployed slice changes D1, apply the forward migration and verify the
+ledger before deploying Vercel. Do not rebuild a retained environment. The
+reset snapshot is for clean databases only; migration and recovery procedures
+are defined in `docs/migrations-and-retention.md`.
 
 ```bash
 vercel --prod --yes

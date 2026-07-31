@@ -51,13 +51,26 @@ import {
   readVercelTimingHeaders,
 } from "./runtime-traces";
 import { handleWorkspaceContext } from "./workspace-context";
-import { handleExportWorkspaceData, handleWorkspaceDeletionPlan } from "./workspace-data-lifecycle";
+import {
+  expireDataExports,
+  handleCreateWorkspaceExport,
+  handleDownloadWorkspaceExport,
+  handleExportWorkspaceData,
+  handleGetWorkspaceDataJob,
+  handleGetWorkspaceDeletion,
+  handleRecoverWorkspace,
+  handleRequestWorkspaceDeletion,
+  handleWorkspaceDeletionPlan,
+  processDataLifecycleJobs,
+  retryQuarantinedCredentialRevocations,
+} from "./workspace-data-lifecycle";
 import {
   handleCreateArtifactBlob,
   handleGetArtifactBlob,
   handleGetRetentionPolicy,
   handleUpdateRetentionPolicy,
   sweepExpiredArtifacts,
+  sweepExpiredChatMessages,
   sweepExpiredOperationalData,
 } from "./artifact-lifecycle";
 import { handleCancelExecutionRun, handleRetryExecutionRun } from "./run-control";
@@ -97,6 +110,26 @@ import {
   handleReplayTriggerDispatch,
   handleUpdateTrigger,
 } from "./triggers";
+import {
+  expireConnectionOAuthStates,
+  handleCompleteConnectionAuthorization,
+  handleConnectionHealth,
+  handleListConnections,
+  handleRedeemConnectionCapability,
+  handleRefreshConnection,
+  handleRevokeConnection,
+  handleStartConnectionAuthorization,
+  handleStoreConnectionCredential,
+} from "./connection-broker";
+import {
+  handleListActionProposals,
+  handleListKillSwitches,
+  handleReconcileAction,
+  handleRequestActionExecution,
+  handleUpdateKillSwitch,
+} from "./action-authority";
+import { releaseFeatureConfigurationValid } from "./feature-gates";
+import { connectionProviderRegistry } from "./connection-providers";
 
 export { WorkbenchThreadChatAgent };
 export { WorkbenchSessionAgent };
@@ -123,10 +156,12 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
         database?.ok !== 1 ||
         !env.ARTIFACTS ||
         !env.WorkbenchThreadChatAgent ||
-        !env.WorkbenchSessionAgent
+        !env.WorkbenchSessionAgent ||
+        !releaseFeatureConfigurationValid(env)
       ) {
         return json({ ok: false, service: "assistant-mk1-control-plane" }, { status: 503 });
       }
+      connectionProviderRegistry(env);
       const runtimeChecks = await Promise.all(
         Object.values(agentControlPlaneRegistry)
           .filter((entry) => !entry.conformanceOnly)
@@ -168,6 +203,10 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
     return handleWorkflowCallback(request, env);
   }
 
+  if (request.method === "POST" && url.pathname === "/workbench/connection-capabilities/redeem") {
+    return handleRedeemConnectionCapability(request, env);
+  }
+
   const triggerIngressMatch = url.pathname.match(/^\/trigger-ingress\/([^/]+)$/);
   if (request.method === "POST" && triggerIngressMatch?.[1]) {
     const authResult = await requireControlPlaneAuth(request, env);
@@ -184,7 +223,12 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
   if (!authResult.ok) return authResult.response;
 
   const authzStartedAtMs = Date.now();
-  const identityResult = await resolveAgentIdentity(request, env, authResult.context);
+  const deletionRecoveryRoute =
+    url.pathname === "/workbench/workspace-deletion" &&
+    (request.method === "GET" || request.method === "DELETE");
+  const identityResult = await resolveAgentIdentity(request, env, authResult.context, {
+    allowQuarantinedWorkspace: deletionRecoveryRoute,
+  });
   const authzEndedAtMs = Date.now();
   if (!identityResult.ok) return identityResult.response;
   const { identity } = identityResult;
@@ -216,6 +260,98 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
 
   if (request.method === "GET" && url.pathname === "/workbench/data-deletion-plan") {
     return handleWorkspaceDeletionPlan(env, identity);
+  }
+
+  if (request.method === "POST" && url.pathname === "/workbench/data-exports") {
+    return handleCreateWorkspaceExport(env, identity, (promise) => ctx.waitUntil(promise));
+  }
+
+  const dataExportDownloadMatch = url.pathname.match(
+    /^\/workbench\/data-exports\/([^/]+)\/download$/,
+  );
+  if (request.method === "GET" && dataExportDownloadMatch?.[1]) {
+    return handleDownloadWorkspaceExport(
+      env,
+      identity,
+      decodeURIComponent(dataExportDownloadMatch[1]),
+    );
+  }
+
+  const dataJobMatch = url.pathname.match(/^\/workbench\/data-exports\/([^/]+)$/);
+  if (request.method === "GET" && dataJobMatch?.[1]) {
+    return handleGetWorkspaceDataJob(env, identity, decodeURIComponent(dataJobMatch[1]));
+  }
+
+  if (url.pathname === "/workbench/workspace-deletion") {
+    if (request.method === "POST") return handleRequestWorkspaceDeletion(request, env, identity);
+    if (request.method === "GET") return handleGetWorkspaceDeletion(env, identity);
+    if (request.method === "DELETE") return handleRecoverWorkspace(env, identity);
+  }
+
+  if (request.method === "GET" && url.pathname === "/workbench/connections") {
+    return handleListConnections(env, identity);
+  }
+
+  if (request.method === "POST" && url.pathname === "/workbench/connections/oauth/callback") {
+    return handleCompleteConnectionAuthorization(request, env, identity);
+  }
+
+  const connectionAuthorizeMatch = url.pathname.match(
+    /^\/workbench\/connections\/([^/]+)\/authorize$/,
+  );
+  if (request.method === "POST" && connectionAuthorizeMatch?.[1]) {
+    return handleStartConnectionAuthorization(
+      request,
+      env,
+      identity,
+      decodeURIComponent(connectionAuthorizeMatch[1]),
+    );
+  }
+
+  const connectionCredentialMatch = url.pathname.match(
+    /^\/workbench\/connections\/([^/]+)\/credentials$/,
+  );
+  if (request.method === "POST" && connectionCredentialMatch?.[1]) {
+    return handleStoreConnectionCredential(
+      request,
+      env,
+      identity,
+      decodeURIComponent(connectionCredentialMatch[1]),
+    );
+  }
+
+  const connectionRefreshMatch = url.pathname.match(/^\/workbench\/connections\/([^/]+)\/refresh$/);
+  if (request.method === "POST" && connectionRefreshMatch?.[1]) {
+    return handleRefreshConnection(env, identity, decodeURIComponent(connectionRefreshMatch[1]));
+  }
+
+  const connectionHealthMatch = url.pathname.match(/^\/workbench\/connections\/([^/]+)\/health$/);
+  if (request.method === "POST" && connectionHealthMatch?.[1]) {
+    return handleConnectionHealth(env, identity, decodeURIComponent(connectionHealthMatch[1]));
+  }
+
+  const connectionMatch = url.pathname.match(/^\/workbench\/connections\/([^/]+)$/);
+  if (request.method === "DELETE" && connectionMatch?.[1]) {
+    return handleRevokeConnection(env, identity, decodeURIComponent(connectionMatch[1]));
+  }
+
+  if (request.method === "GET" && url.pathname === "/workbench/actions") {
+    return handleListActionProposals(env, identity, url);
+  }
+
+  const actionExecuteMatch = url.pathname.match(/^\/workbench\/actions\/([^/]+)\/execute$/);
+  if (request.method === "POST" && actionExecuteMatch?.[1]) {
+    return handleRequestActionExecution(env, identity, decodeURIComponent(actionExecuteMatch[1]));
+  }
+
+  const actionReconcileMatch = url.pathname.match(/^\/workbench\/actions\/([^/]+)\/reconcile$/);
+  if (request.method === "POST" && actionReconcileMatch?.[1]) {
+    return handleReconcileAction(env, identity, decodeURIComponent(actionReconcileMatch[1]));
+  }
+
+  if (url.pathname === "/workbench/kill-switches") {
+    if (request.method === "GET") return handleListKillSwitches(env, identity);
+    if (request.method === "PUT") return handleUpdateKillSwitch(request, env, identity);
   }
 
   const operatorAlertMatch = url.pathname.match(/^\/admin\/operator-alerts\/([^/]+)$/);
@@ -600,6 +736,16 @@ export default Sentry.withSentry<Env>(
           }),
           sweepExpiredArtifacts(env, { now: new Date(controller.scheduledTime) }),
           sweepExpiredOperationalData(env, { now: new Date(controller.scheduledTime) }),
+          sweepExpiredChatMessages(env, { now: new Date(controller.scheduledTime) }),
+          (async () => {
+            await retryQuarantinedCredentialRevocations(env);
+            return processDataLifecycleJobs(env, {
+              now: new Date(controller.scheduledTime),
+              owner: `cron:${controller.cron}:${controller.scheduledTime}`,
+            });
+          })(),
+          expireDataExports(env, new Date(controller.scheduledTime)),
+          expireConnectionOAuthStates(env, new Date(controller.scheduledTime)),
           deliverPendingOperatorAlerts(env, { now: new Date(controller.scheduledTime) }),
         ]),
       );

@@ -181,6 +181,14 @@ export type ToolRunnerInvocation = {
   input: Record<string, unknown>;
   runner: ToolRunnerMetadata;
   callback?: ToolRunnerCallbackContext;
+  connectionCapability?: {
+    url: string;
+    token: string;
+    connectionId: string;
+    allowedUrl: string;
+    allowedMethod: string;
+    expiresAt: string;
+  };
   policyDecisionId?: string;
   source?: ToolRunnerSource;
   traceId?: string | null;

@@ -8,12 +8,16 @@ user or operator hits and assert on durable product state: messages, runs,
 threads, tool calls, approvals, HITL state, events, traces, artifacts, and
 tenant isolation.
 
-## Current Level 2 Gate
+## Operational and Authority Gates
 
 The release gate executes the required unit and real service/browser boundaries:
 
 ```bash
 pnpm conformance:level2
+pnpm conformance:level3
+pnpm conformance:data-lifecycle
+pnpm conformance:connections
+pnpm conformance:actions
 ```
 
 The registry lives in `lib/workbench/level2-conformance.ts`. The runner writes

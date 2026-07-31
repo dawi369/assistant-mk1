@@ -1,6 +1,6 @@
 import { selectMembership } from "./authz-store";
 import { appendControlPlaneEvent } from "./control-plane-events";
-import { isRecord, json, parseJson } from "./http";
+import { isRecord, json, parseDataJson, parseJson } from "./http";
 import { isAdminMembership } from "./membership-policy";
 import {
   listLatestArtifacts,
@@ -77,6 +77,8 @@ export const handleUpdateToolPolicy = async (
     isRecord(body) && typeof body.requiresApproval === "boolean"
       ? body.requiresApproval
       : undefined;
+  const mutationEnabled =
+    isRecord(body) && typeof body.mutationEnabled === "boolean" ? body.mutationEnabled : undefined;
   const modelVisible =
     isRecord(body) && typeof body.modelVisible === "boolean" ? body.modelVisible : undefined;
   const killSwitchReason =
@@ -121,6 +123,7 @@ export const handleUpdateToolPolicy = async (
   const changes = {
     status: status as ToolPermissionStatus | undefined,
     requiresApproval,
+    mutationEnabled,
     modelVisible,
     killSwitchReason,
     approvalReason,
@@ -182,6 +185,9 @@ export const handleUpdateToolPolicy = async (
     toolName,
     status: permission?.status,
     requiresApproval: tool?.approvalRequired,
+    mutationEnabled:
+      tool?.mutationRisk === "mutation_capable" &&
+      parseDataJson(permission?.data_json ?? "{}").mutationEnabled === true,
     modelVisible: tool?.modelVisible,
     policyConstraints: tool?.policyConstraints,
     permissionId: permission?.id,

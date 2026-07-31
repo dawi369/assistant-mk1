@@ -1,7 +1,5 @@
 import {
   assertSchemaValue,
-  defaultActionPort,
-  defaultConnectionPort,
   type AgentExecutionContext,
   type RuntimeResult,
   type RuntimeToolBinding,
@@ -23,6 +21,8 @@ import type { WorkflowInvocationContext } from "./pack-workflow-runtime";
 import { executeRuntimeToolBinding } from "./runtime-tool-execution";
 import type { AgentIdentity, Env } from "./types";
 import { authorizeWorkflowTools } from "./workflow-tool-policy";
+import { createBrokeredConnectionPort } from "./connection-broker";
+import { createDurableActionPort } from "./action-authority";
 
 const runtimeError = (code: string, message: string, status = 400) =>
   json(
@@ -236,8 +236,15 @@ export const executeRuntimeWorkflowRequest = async (
       source: invocation.source === "trigger" ? "trigger" : "user",
     },
     signal: controller.signal,
-    connections: defaultConnectionPort(pack.connections),
-    actions: defaultActionPort,
+    connections: createBrokeredConnectionPort(env, identity, pack.connections),
+    actions: createDurableActionPort(env, identity, {
+      packId: pack.id,
+      packVersion: pack.version,
+      runtimeVersion: runtime.runtimeVersion,
+      bindingVersion: 1,
+      runId: started.runId,
+      workflowIntentId: started.workflowIntentId,
+    }),
     tools: { invoke: invokeTool },
     managedState: {
       async upsert(state) {

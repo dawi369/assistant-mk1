@@ -91,6 +91,14 @@ export type Env = {
   WORKBENCH_OPERATOR_ALERT_WEBHOOK_URL?: string;
   WORKBENCH_OPERATOR_ALERT_SIGNING_SECRET?: string;
   WORKBENCH_E2E_MODE?: string;
+  WORKBENCH_CONFORMANCE_MODE?: string;
+  WORKBENCH_RETAINED_DATA_ENABLED?: string;
+  WORKBENCH_CONNECTIONS_ENABLED?: string;
+  WORKBENCH_MUTATIONS_ENABLED?: string;
+  WORKBENCH_VAULT_BACKEND?: "workos" | "memory";
+  WORKOS_API_KEY?: string;
+  WORKOS_VAULT_API_URL?: string;
+  WORKBENCH_OAUTH_PROVIDERS_JSON?: string;
   ALLOWED_ORIGINS?: string;
 };
 
@@ -143,6 +151,10 @@ export type WorkspaceRow = {
   is_default: number;
   created_by_user_id: string;
   data_json: string;
+  deletion_requested_by_user_id?: string | null;
+  deletion_requested_at?: string | null;
+  purge_after?: string | null;
+  purged_at?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -313,8 +325,105 @@ export type ControlRetentionPolicyRow = {
   artifact_retention_days: number;
   operational_event_retention_days: number;
   runtime_trace_retention_days: number;
+  chat_message_retention_days: number;
+  run_payload_retention_days: number;
+  audit_action_retention_days: number;
+  confirmed_at: string | null;
+  confirmed_by_user_id: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type ControlDataJobRow = {
+  id: string;
+  user_id: string;
+  workspace_id: string;
+  kind: "export" | "purge";
+  status: "queued" | "running" | "completed" | "failed" | "cancelled" | "expired";
+  cursor_json: string;
+  result_json: string;
+  error_json: string;
+  storage_key: string | null;
+  content_sha256: string | null;
+  size_bytes: number | null;
+  attempt_count: number;
+  lease_owner: string | null;
+  lease_expires_at: string | null;
+  expires_at: string | null;
+  created_by_user_id: string;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+};
+
+export type ControlConnectionRow = {
+  id: string;
+  user_id: string;
+  workspace_id: string;
+  agent_id: string;
+  pack_id: string;
+  connection_id: string;
+  provider_id: string;
+  principal: "app" | "user";
+  credential_class: "oauth2" | "api_key";
+  status: "authorization_required" | "authorized" | "refresh_required" | "unhealthy" | "revoked";
+  scopes_json: string;
+  vault_object_id: string | null;
+  vault_version: string | null;
+  token_expires_at: string | null;
+  refresh_lease_owner: string | null;
+  refresh_lease_expires_at: string | null;
+  last_used_at: string | null;
+  last_health_at: string | null;
+  last_error_code: string | null;
+  version: number;
+  data_json: string;
+  created_at: string;
+  updated_at: string;
+  revoked_at: string | null;
+};
+
+export type ControlActionProposalStatus =
+  | "proposed"
+  | "approval_requested"
+  | "approved"
+  | "executing"
+  | "executed"
+  | "failed"
+  | "outcome_unknown"
+  | "reconciled"
+  | "cancelled"
+  | "expired";
+
+export type ControlActionProposalRow = {
+  id: string;
+  user_id: string;
+  workspace_id: string;
+  agent_id: string;
+  workflow_intent_id: string;
+  run_id: string;
+  tool_call_id: string | null;
+  pack_id: string;
+  pack_version: string;
+  runtime_version: string;
+  binding_version: number;
+  tool_id: string;
+  action_type: string;
+  connection_record_id: string | null;
+  status: ControlActionProposalStatus;
+  summary: string;
+  idempotency_key: string;
+  input_sha256: string;
+  proposal_json: string;
+  policy_decision_id: string | null;
+  approval_request_id: string | null;
+  external_reference: string | null;
+  result_json: string;
+  error_json: string;
+  version: number;
+  created_at: string;
+  updated_at: string;
+  terminal_at: string | null;
 };
 
 export type ControlOperatorAlertRow = {

@@ -102,6 +102,23 @@ export function WorkbenchHistoryPanel({
 }) {
   const [runs, setRuns] = useState<ExecutionHistoryRunSummary[]>([]);
   const [artifacts, setArtifacts] = useState<ArtifactSummary[]>([]);
+  const [actions, setActions] = useState<
+    Array<{
+      id: string;
+      toolId: string;
+      status: string;
+      summary: string;
+      externalReference?: string;
+      createdAt: string;
+      ledger: Array<{
+        sequence: number;
+        status: string;
+        summary: string;
+        externalReference?: string;
+        createdAt: string;
+      }>;
+    }>
+  >([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [selectedRunSnapshot, setSelectedRunSnapshot] = useState<ExecutionRunSnapshot | null>(null);
   const [activeFilter, setActiveFilter] = useState<HistoryFilter>("all");
@@ -139,11 +156,12 @@ export function WorkbenchHistoryPanel({
     setIsLoadingHistory(true);
     setHistoryError(null);
     try {
-      const [runsResponse, artifactsResponse] = await Promise.all([
+      const [runsResponse, artifactsResponse, actionsResponse] = await Promise.all([
         fetch(`${historyRunsPath}?limit=20`, { cache: "no-store" }),
         fetch(`${historyArtifactsPath}?limit=20`, { cache: "no-store" }),
+        fetch("/api/workbench/actions?limit=20", { cache: "no-store" }),
       ]);
-      const [runsBody, artifactsBody] = await Promise.all([
+      const [runsBody, artifactsBody, actionsBody] = await Promise.all([
         readJsonResponse<CloudflareExecutionHistoryResponse>(
           runsResponse,
           "Failed to load execution history",
@@ -152,11 +170,15 @@ export function WorkbenchHistoryPanel({
           artifactsResponse,
           "Failed to load artifact history",
         ),
+        actionsResponse.ok
+          ? (actionsResponse.json() as Promise<{ proposals?: typeof actions }>)
+          : Promise.resolve({ proposals: [] }),
       ]);
       const nextRuns = runsBody.runs ?? [];
       const nextArtifacts = artifactsBody.artifacts ?? [];
       setRuns(nextRuns);
       setArtifacts(nextArtifacts);
+      setActions(actionsBody.proposals ?? []);
       return { runs: nextRuns, artifacts: nextArtifacts };
     } catch (error) {
       setHistoryError(error instanceof Error ? error.message : "Failed to load history");
@@ -232,6 +254,28 @@ export function WorkbenchHistoryPanel({
     [inspectRun, loadHistory, selectedRunId],
   );
 
+  const performProposalAction = useCallback(
+    async (proposalId: string, action: "execute" | "reconcile") => {
+      setBusyAction(`proposal:${action}:${proposalId}`);
+      setHistoryError(null);
+      try {
+        const response = await fetch(
+          `/api/workbench/actions/${encodeURIComponent(proposalId)}/${action}`,
+          { method: "POST" },
+        );
+        if (!response.ok && response.status !== 202) {
+          await readJsonResponse(response, `Failed to ${action} action`);
+        }
+        await loadHistory();
+      } catch (error) {
+        setHistoryError(error instanceof Error ? error.message : `Failed to ${action} action`);
+      } finally {
+        setBusyAction(null);
+      }
+    },
+    [loadHistory],
+  );
+
   useEffect(() => {
     if (!open) return;
 
@@ -297,7 +341,7 @@ export function WorkbenchHistoryPanel({
         </DialogHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-5">
             <StatusRow
               label="Recent runs"
               value={isLoadingHistory ? "Loading" : String(runs.length)}
@@ -320,6 +364,12 @@ export function WorkbenchHistoryPanel({
               label="Selected"
               value={selectedRun ? runHistoryTitle(selectedRun) : "No run selected"}
               compact
+            />
+            <StatusRow
+              label="Actions"
+              value={isLoadingHistory ? "Loading" : String(actions.length)}
+              compact
+              tone={actions.length ? "ok" : "muted"}
             />
           </div>
 
@@ -414,6 +464,66 @@ export function WorkbenchHistoryPanel({
               <EmptyPanelText>
                 Run a tool, callback, or workflow to populate execution history.
               </EmptyPanelText>
+            )}
+          </HistorySection>
+
+          <HistorySection icon={CircleStopIcon} title="Action Ledger">
+            {actions.length ? (
+              <ol className="space-y-2">
+                {actions.map((action) => (
+                  <li key={action.id} className="border-border rounded-md border p-3 text-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="min-w-0">
+                        <span className="block font-medium">{action.summary}</span>
+                        <span className="text-muted-foreground block text-xs">
+                          {action.toolId} · {formatAge(action.createdAt)}
+                        </span>
+                        {action.externalReference ? (
+                          <span className="text-muted-foreground block break-all text-xs">
+                            {action.externalReference}
+                          </span>
+                        ) : null}
+                      </span>
+                      <StatusPill status={action.status} tone={action.status} />
+                    </div>
+                    {action.status === "proposed" ? (
+                      <Button
+                        className="mt-2"
+                        size="sm"
+                        disabled={Boolean(busyAction)}
+                        onClick={() => void performProposalAction(action.id, "execute")}
+                      >
+                        Request approval
+                      </Button>
+                    ) : null}
+                    {action.status === "outcome_unknown" ? (
+                      <Button
+                        className="mt-2"
+                        size="sm"
+                        variant="outline"
+                        disabled={Boolean(busyAction)}
+                        onClick={() => void performProposalAction(action.id, "reconcile")}
+                      >
+                        Reconcile outcome
+                      </Button>
+                    ) : null}
+                    {action.ledger.length ? (
+                      <ol className="border-border mt-3 space-y-1 border-l pl-3">
+                        {action.ledger.map((entry) => (
+                          <li key={`${action.id}:${entry.sequence}`} className="text-xs">
+                            <span className="font-medium">{entry.status}</span>
+                            <span className="text-muted-foreground">
+                              {` · ${entry.summary} · ${formatAge(entry.createdAt)}`}
+                            </span>
+                          </li>
+                        ))}
+                      </ol>
+                    ) : null}
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <EmptyPanelText>No durable action proposals have been recorded.</EmptyPanelText>
             )}
           </HistorySection>
 

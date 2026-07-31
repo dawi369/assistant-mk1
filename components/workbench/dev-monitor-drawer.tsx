@@ -603,6 +603,11 @@ export function AdminPanel({
                           {tool.modelVisible ? (
                             <span className="text-muted-foreground text-xs">Model visible</span>
                           ) : null}
+                          {tool.mutationRisk === "mutation_capable" ? (
+                            <span className="text-muted-foreground text-xs">
+                              {tool.mutationEnabled ? "Mutation enabled" : "Mutation disabled"}
+                            </span>
+                          ) : null}
                         </div>
                         <p className="text-muted-foreground mt-1 text-xs">{tool.description}</p>
                       </div>
@@ -621,6 +626,20 @@ export function AdminPanel({
                           >
                             {tool.permissionStatus === "enabled" ? "Disable" : "Enable"}
                           </Button>
+                          {tool.mutationRisk === "mutation_capable" ? (
+                            <Button
+                              size="sm"
+                              variant={tool.mutationEnabled ? "destructive" : "outline"}
+                              disabled={busyTool === tool.name}
+                              onClick={() =>
+                                void updateToolPolicy(tool, {
+                                  mutationEnabled: !tool.mutationEnabled,
+                                })
+                              }
+                            >
+                              {tool.mutationEnabled ? "Revoke mutation" : "Enable mutation"}
+                            </Button>
+                          ) : null}
                           <Button
                             size="sm"
                             variant="outline"

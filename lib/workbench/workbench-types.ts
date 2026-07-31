@@ -149,6 +149,7 @@ export type ToolSummary = {
   reason: string;
   requiresSecrets: boolean;
   mutationRisk: "read_only" | "mutation_capable";
+  mutationEnabled?: boolean;
   runner?: {
     transport?: "cloudflare_inline" | "fly";
     adapterVersion?: string;
@@ -434,6 +435,7 @@ export type CloudflareToolPolicyUpdateResponse = {
   toolName?: string;
   status?: "enabled" | "disabled";
   requiresApproval?: boolean;
+  mutationEnabled?: boolean;
   modelVisible?: boolean;
   policyConstraints?: ToolSummary["policyConstraints"];
   permissionId?: Id;
@@ -1293,9 +1295,101 @@ export type CloudflareRetentionPolicyResponse = {
     artifactRetentionDays: number;
     operationalEventRetentionDays: number;
     runtimeTraceRetentionDays: number;
+    chatMessageRetentionDays: number;
+    runPayloadRetentionDays: number;
+    auditActionRetentionDays: number;
+    confirmed: boolean;
+    confirmedAt?: string;
     source: "default" | "workspace";
     updatedAt?: string;
   };
+  error?: string;
+};
+
+export type CloudflareConnectionsResponse = {
+  ok?: boolean;
+  enabled?: boolean;
+  packId?: string | null;
+  connections?: Array<{
+    id: string;
+    provider: string;
+    principal: "none" | "app" | "user";
+    credentialClass: "none" | "oauth2" | "api_key";
+    required: boolean;
+    toolIds: string[];
+    requestedScopes: string[];
+    status: string;
+    grantedScopes: string[];
+    tokenExpiresAt?: string;
+    lastHealthAt?: string;
+    lastErrorCode?: string;
+    version?: number;
+  }>;
+  error?: string;
+};
+
+export type CloudflareActionsResponse = {
+  ok?: boolean;
+  proposals?: Array<{
+    id: Id;
+    toolId: string;
+    actionType: string;
+    status: string;
+    summary: string;
+    externalReference?: string;
+    version: number;
+    createdAt: string;
+    updatedAt: string;
+    terminalAt?: string;
+    ledger: Array<{
+      sequence: number;
+      status: string;
+      summary: string;
+      externalReference?: string;
+      createdAt: string;
+    }>;
+  }>;
+  result?: Record<string, unknown>;
+  approvalRequest?: { id: Id; status: string };
+  error?: string;
+};
+
+export type CloudflareDataJobResponse = {
+  ok?: boolean;
+  job?: {
+    id: Id;
+    kind: "export" | "purge";
+    status: string;
+    attemptCount?: number;
+    sizeBytes?: number;
+    contentSha256?: string;
+    expiresAt?: string;
+    createdAt: string;
+    updatedAt?: string;
+    completedAt?: string;
+  };
+  error?: string;
+};
+
+export type CloudflareWorkspaceDeletionResponse = {
+  ok?: boolean;
+  deletion?: {
+    status: string;
+    requestedAt?: string;
+    purgeAfter?: string;
+    recoveredAt?: string;
+    credentialsRecoverable?: boolean;
+    credentialRevocation?: "completed" | "pending_retry";
+    credentialsRestored?: boolean;
+    triggersRestored?: boolean;
+  };
+  error?: string;
+};
+
+export type CloudflareKillSwitchesResponse = {
+  ok?: boolean;
+  killSwitches?: Array<Record<string, unknown>>;
+  killSwitch?: Record<string, unknown>;
   error?: string;
 };
 

@@ -75,10 +75,16 @@ describe("tool policy catalog", () => {
     });
   });
 
-  it("keeps every currently registered tool dry-run-only", () => {
+  it("keeps mutation authority isolated to the explicit Complex Operator action", () => {
     for (const [toolName, policy] of Object.entries(toolPolicyCatalog)) {
-      expect(policy.mutationRisk, toolName).toBe("read_only");
-      expect(policy.allowedExecutionModes, toolName).toEqual(["dry_run"]);
+      if (toolName === "operator.action.execute") {
+        expect(policy.mutationRisk).toBe("mutation_capable");
+        expect(policy.allowedExecutionModes).toEqual(["dry_run", "execute"]);
+        expect(policy.requiresApproval).toBe(true);
+      } else {
+        expect(policy.mutationRisk, toolName).toBe("read_only");
+        expect(policy.allowedExecutionModes, toolName).toEqual(["dry_run"]);
+      }
     }
   });
 });

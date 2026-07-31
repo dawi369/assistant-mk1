@@ -85,4 +85,41 @@ describe("agent pack compiler", () => {
       "unsupported execution mode",
     );
   });
+
+  it("rejects unsafe execute bindings and undeclared action connections", async () => {
+    const modules = await loadAgentModules(process.cwd());
+    const source = modules[3]!;
+    const executeTool = source.controlPlane.tools.find((tool) =>
+      tool.executionModes.includes("execute"),
+    );
+    if (!executeTool) throw new Error("Complex Operator must declare an execute tool.");
+
+    const missingAction = {
+      ...source,
+      controlPlane: {
+        ...source.controlPlane,
+        tools: source.controlPlane.tools.map((tool) =>
+          tool.id === executeTool.id ? { ...tool, action: undefined } : tool,
+        ),
+      },
+    };
+    expect(() => validateLoadedModules([missingAction as typeof source])).toThrow(
+      "execute mode lacks an action binding",
+    );
+
+    const undeclaredConnection = {
+      ...source,
+      controlPlane: {
+        ...source.controlPlane,
+        tools: source.controlPlane.tools.map((tool) =>
+          tool.id === executeTool.id && tool.action
+            ? { ...tool, action: { ...tool.action, connectionId: "missing.connection" } }
+            : tool,
+        ),
+      },
+    };
+    expect(() => validateLoadedModules([undeclaredConnection as typeof source])).toThrow(
+      "action connection is undeclared",
+    );
+  });
 });

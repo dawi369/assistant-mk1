@@ -73,20 +73,23 @@ schema-checked. Artifact size and tool-call count are enforced before
 failure-atomic publication. Cancellation permanently revokes publication
 authority; executor termination remains best effort.
 
-Current platform adapters for the three bundled packs live behind the core
-workflow provider while their manifests, forms, policy defaults, routes,
-compatibility, and environment bindings come from compiled modules. New
-packages use the generic kernel directly.
+Every supported pack uses the same compiled runtime registry and generic
+Cloudflare execution kernel. Fly executors are loaded only by the signed runner;
+Cloudflare never imports Node runner code.
 
 ## Connections And Actions
 
-`ConnectionPort` returns `authorization_required` for any credentialed
-connection until a platform broker supplies a scoped capability. No token is
-passed to the pack.
+`ConnectionPort.resolve()` returns status and, for an authorized binding, a
+provider-host-, method-, run-, tool-call-, and tool-scoped request capability.
+For Fly actions the capability is short-lived and single-use; the runner calls
+the Cloudflare broker, which injects the WorkOS Vault credential without
+returning it to package code or the Fly envelope.
 
-`ActionPort.propose()` creates a dry-run proposal contract.
-`ActionPort.execute()` always throws `mutation_disabled`. These are Level 5
-composition seams, not mutation authority.
+`ActionPort.propose()` persists an immutable redacted proposal and stable
+idempotency key. `ActionPort.execute()` accepts only the stored proposal after
+retention, connection, feature-gate, kill-switch, policy, and approval checks.
+Ambiguous dispatched outcomes become `outcome_unknown` and require the
+binding's reconciliation operation.
 
 ## Forms, Artifacts, State, Health, And Evals
 
@@ -108,8 +111,9 @@ composition seams, not mutation authority.
 proves a Cloudflare-native tool, signed Fly tool, multi-step workflow,
 schedule/webhook declarations, managed-state CAS, structured artifact and
 trusted renderer, required health/evals, connection authorization posture, and
-a dry-run action proposal with mutation disabled. It performs no provider
-traffic, credential handling, or external mutation.
+a durable action proposal, OAuth/API-key connection posture, approval, and an
+idempotent deterministic synthetic mutation. It performs no financial action
+or public provider traffic.
 
 `pnpm conformance:agent-system` executes that package through the isolated
 Worker, signed local Fly-shaped runner, and D1 boundary, then verifies the
@@ -131,6 +135,24 @@ pnpm conformance:agent-system
 Generated registries are tracked. CI runs `agent-packs:compile --check`, so
 configuration or package changes cannot land with stale environment registries.
 
+For mutation-capable packages, the golden path is:
+
+1. Declare `risk.externalMutation`, provider connection, principal, scopes,
+   credential class, and affected tool IDs in the manifest.
+2. Implement schema-checked dry-run proposal and action bindings. Execute must
+   declare stable idempotency, timeout, approval posture, and an inline or Fly executor.
+3. Use `ConnectionPort`; never accept, log, persist, render, or return a raw
+   credential. Provider hosts and methods come from the platform provider module.
+4. Supply reconciliation for executors that can time out after dispatch. Never
+   automatically retry an `outcome_unknown` proposal.
+5. Add required health/eval bindings and generic redacted History rendering.
+6. Pass package, compiler, agent-system, connection, and action conformance.
+
+Installation grants no authority. A workspace owner must confirm retention,
+authorize the connection, explicitly enable mutation for the tool, and clear
+applicable kill switches; approval is mandatory unless an editable workspace
+policy explicitly permits autonomous execution.
+
 ## Compatibility And Limits
 
 An incompatible historical Agent snapshot remains available for chat but its
@@ -138,6 +160,5 @@ workflows return `runtime_incompatible` until an explicit agent upgrade creates
 a compatible snapshot. A runtime package deploys one version at a time.
 
 Not implemented: remote package installation, arbitrary executable uploads,
-credential brokerage, actual external mutation, package-owned D1 access,
-retained-data migration hooks, or marketplace distribution. Swordfish remains
-packaged and intentionally parked.
+package-owned D1 access, pack-supplied migration hooks, trading adapters, or
+marketplace distribution. Swordfish remains packaged and intentionally parked.

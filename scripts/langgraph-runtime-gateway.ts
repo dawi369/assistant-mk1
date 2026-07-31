@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { Readable } from "node:stream";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
@@ -18,6 +18,8 @@ import {
   defaultActionPort,
   defaultConnectionPort,
   type AgentExecutionContext,
+  type AgentPackConnectionDescriptor,
+  type ConnectionPort,
   type RuntimeResult,
   type RuntimeToolBinding,
 } from "@assistant-mk1/agent-sdk/control-plane";
@@ -33,6 +35,7 @@ const runnerInvocationPath = "/workbench/tool-runners/invocations";
 const signatureWindowMs = 5 * 60 * 1000;
 const runnerNonces = new Map<string, number>();
 const e2eMode = process.env.WORKBENCH_E2E_MODE === "true";
+const syntheticConformanceMode = e2eMode || process.env.WORKBENCH_CONFORMANCE_MODE === "true";
 const requestedE2eDelayMs = Number(process.env.WORKBENCH_E2E_RUNNER_DELAY_MS ?? "0");
 if (requestedE2eDelayMs > 0 && !e2eMode) {
   throw new Error("WORKBENCH_E2E_RUNNER_DELAY_MS requires WORKBENCH_E2E_MODE=true");
@@ -42,6 +45,8 @@ const e2eRunnerDelayMs = e2eMode
   : 0;
 const delay = (milliseconds: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+const e2eOAuthCodes = new Map<string, string>();
+const e2eSyntheticActions = new Map<string, { externalReference: string }>();
 
 const json = (response: ServerResponse, status: number, body: unknown) => {
   response.writeHead(status, { "content-type": "application/json; charset=utf-8" });
@@ -219,6 +224,10 @@ type ToolRunnerInvocation = {
   packVersion?: unknown;
   runtimeVersion?: unknown;
   bindingVersion?: unknown;
+  execution?: {
+    mode?: unknown;
+    policy?: unknown;
+  };
   policyDecisionId?: unknown;
   source?: unknown;
   traceId?: unknown;
@@ -226,6 +235,14 @@ type ToolRunnerInvocation = {
     url?: unknown;
     protocolVersion?: unknown;
     traceId?: unknown;
+  };
+  connectionCapability?: {
+    url?: unknown;
+    token?: unknown;
+    connectionId?: unknown;
+    allowedUrl?: unknown;
+    allowedMethod?: unknown;
+    expiresAt?: unknown;
   };
   runner?: {
     transport?: unknown;
@@ -442,6 +459,82 @@ const emitRunnerCallback = async (
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
+const runnerConnectionPort = (
+  connections: readonly AgentPackConnectionDescriptor[],
+  rawCapability: ToolRunnerInvocation["connectionCapability"],
+): ConnectionPort => ({
+  async resolve(connectionId, toolId) {
+    const descriptor = connections.find(
+      (candidate) => candidate.id === connectionId && candidate.toolIds.includes(toolId),
+    );
+    if (!descriptor || descriptor.credentialClass === "none") {
+      return defaultConnectionPort(connections).resolve(connectionId, toolId);
+    }
+    if (
+      rawCapability?.connectionId !== connectionId ||
+      typeof rawCapability.url !== "string" ||
+      typeof rawCapability.token !== "string" ||
+      typeof rawCapability.allowedUrl !== "string" ||
+      typeof rawCapability.allowedMethod !== "string" ||
+      typeof rawCapability.expiresAt !== "string" ||
+      Date.parse(rawCapability.expiresAt) <= Date.now()
+    ) {
+      return {
+        id: connectionId,
+        status: "authorization_required",
+        reason: `${toolId} has no valid broker capability.`,
+      };
+    }
+    const capability = {
+      url: rawCapability.url,
+      token: rawCapability.token,
+      allowedUrl: rawCapability.allowedUrl,
+      allowedMethod: rawCapability.allowedMethod,
+    };
+    return {
+      id: connectionId,
+      status: "authorized",
+      reason: `${connectionId} is available through a single-use broker capability.`,
+      request: async (input) => {
+        const method = (input.method ?? "GET").toUpperCase();
+        const requestedUrl =
+          input.url === "broker://configured" ? capability.allowedUrl : input.url;
+        if (requestedUrl !== capability.allowedUrl || method !== capability.allowedMethod) {
+          throw Object.assign(new Error("Broker capability request is out of scope."), {
+            code: "capability_scope_violation",
+          });
+        }
+        const response = await fetch(capability.url, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${capability.token}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ ...input, url: requestedUrl }),
+          redirect: "manual",
+          signal: AbortSignal.timeout(10_000),
+        });
+        const parsed = (await response.json().catch(() => null)) as unknown;
+        if (!response.ok || !isRecord(parsed) || !isRecord(parsed.response)) {
+          throw Object.assign(new Error("Brokered provider request failed."), {
+            code:
+              isRecord(parsed) && typeof parsed.code === "string"
+                ? parsed.code
+                : "broker_request_failed",
+          });
+        }
+        return {
+          status: Number(parsed.response.status),
+          headers: isRecord(parsed.response.headers)
+            ? (parsed.response.headers as Record<string, string>)
+            : {},
+          body: typeof parsed.response.body === "string" ? parsed.response.body : "",
+        };
+      },
+    };
+  },
+});
+
 const handleToolRunnerInvocation = async (
   request: IncomingMessage,
   response: ServerResponse,
@@ -499,6 +592,10 @@ const handleToolRunnerInvocation = async (
       parsed.packVersion !== packVersion ||
       parsed.runtimeVersion !== runtimeVersion ||
       parsed.bindingVersion !== 1 ||
+      !["ask", "dry_run", "execute"].includes(String(parsed.execution?.mode)) ||
+      !runnerTool.executionModes.includes(
+        parsed.execution?.mode as "ask" | "dry_run" | "execute",
+      ) ||
       !isRecord(network) ||
       network.privateNetwork !== "deny"
     ) {
@@ -551,11 +648,14 @@ const handleToolRunnerInvocation = async (
       run: {
         id: runId,
         workflowIntentId,
-        executionMode: "dry_run",
+        executionMode: parsed.execution!.mode as "ask" | "dry_run" | "execute",
         source: "user",
       },
       signal: new AbortController().signal,
-      connections: defaultConnectionPort(manifestEntry?.module.connections ?? []),
+      connections: runnerConnectionPort(
+        manifestEntry?.module.connections ?? [],
+        parsed.connectionCapability,
+      ),
       actions: defaultActionPort,
       tools: {
         async invoke() {
@@ -726,6 +826,107 @@ const proxyToLangGraph = async (request: IncomingMessage, response: ServerRespon
 const server = createServer((request, response) => {
   void (async () => {
     const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
+
+    if (
+      syntheticConformanceMode &&
+      request.method === "GET" &&
+      url.pathname === "/e2e/oauth/authorize"
+    ) {
+      const redirectUri = new URL(url.searchParams.get("redirect_uri") ?? "");
+      if (!["localhost", "127.0.0.1"].includes(redirectUri.hostname)) {
+        json(response, 400, { ok: false, error: "redirect_not_permitted" });
+        return;
+      }
+      const state = url.searchParams.get("state") ?? "";
+      const challenge = url.searchParams.get("code_challenge") ?? "";
+      if (!state || !challenge || url.searchParams.get("code_challenge_method") !== "S256") {
+        json(response, 400, { ok: false, error: "pkce_required" });
+        return;
+      }
+      const code = `e2e-code-${crypto.randomUUID()}`;
+      e2eOAuthCodes.set(code, challenge);
+      redirectUri.searchParams.set("state", state);
+      redirectUri.searchParams.set("code", code);
+      response.writeHead(302, { location: redirectUri.toString(), "cache-control": "no-store" });
+      response.end();
+      return;
+    }
+
+    if (
+      syntheticConformanceMode &&
+      request.method === "POST" &&
+      url.pathname === "/e2e/oauth/token"
+    ) {
+      const form = new URLSearchParams((await readBody(request)).toString("utf8"));
+      if (form.get("grant_type") === "refresh_token") {
+        json(response, 200, {
+          access_token: `e2e-access-${crypto.randomUUID()}`,
+          refresh_token: form.get("refresh_token"),
+          token_type: "Bearer",
+          expires_in: 3600,
+          scope: "observe propose",
+        });
+        return;
+      }
+      const code = form.get("code") ?? "";
+      const verifier = form.get("code_verifier") ?? "";
+      const expected = e2eOAuthCodes.get(code);
+      const actual = createHash("sha256").update(verifier).digest("base64url");
+      if (!expected || !constantTimeEqual(expected, actual)) {
+        json(response, 400, { ok: false, error: "invalid_grant" });
+        return;
+      }
+      e2eOAuthCodes.delete(code);
+      json(response, 200, {
+        access_token: `e2e-access-${crypto.randomUUID()}`,
+        refresh_token: `e2e-refresh-${crypto.randomUUID()}`,
+        token_type: "Bearer",
+        expires_in: 3600,
+        scope: "observe propose",
+      });
+      return;
+    }
+
+    if (syntheticConformanceMode && request.method === "POST" && url.pathname === "/e2e/actions") {
+      if (!request.headers.authorization) {
+        json(response, 401, { ok: false, error: "credential_required" });
+        return;
+      }
+      const body = parseJsonBuffer<{
+        idempotencyKey?: string;
+        outcome?: string;
+        delayMs?: number;
+        reconcile?: boolean;
+      }>(await readBody(request));
+      const idempotencyKey = body?.idempotencyKey?.trim() ?? "";
+      if (!idempotencyKey) {
+        json(response, 400, { ok: false, error: "idempotency_key_required" });
+        return;
+      }
+      if (body?.reconcile === true) {
+        const existing = e2eSyntheticActions.get(idempotencyKey);
+        json(response, 200, {
+          ok: true,
+          found: Boolean(existing),
+          status: existing ? "executed" : "outcome_unknown",
+          externalReference: existing?.externalReference,
+        });
+        return;
+      }
+      if (typeof body?.delayMs === "number" && body.delayMs > 0) {
+        await delay(Math.min(2_000, Math.trunc(body.delayMs)));
+      }
+      const existing = e2eSyntheticActions.get(idempotencyKey);
+      const externalReference = existing?.externalReference ?? `synthetic:${idempotencyKey}`;
+      e2eSyntheticActions.set(idempotencyKey, { externalReference });
+      json(response, 200, {
+        ok: true,
+        status: body?.outcome === "unknown" ? "accepted" : "executed",
+        externalReference,
+        duplicate: Boolean(existing),
+      });
+      return;
+    }
 
     if (request.method === "GET" && url.pathname === "/health/live") {
       json(response, 200, {

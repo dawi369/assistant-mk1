@@ -72,8 +72,8 @@ observe -> analyze -> propose -> execute -> review
   cancellation, retry/replay, leases, heartbeats, concurrency, and recovery as
   durable state. Delegated parent/child execution remains a target capability.
 - Canonical state: outputs return as scoped decision records, managed state,
-  artifacts, audit events, traces, and UI events. Mutation/action ledgers remain
-  a target capability.
+  artifacts, audit events, traces, UI events, immutable action proposals, and
+  append-only action-ledger entries.
 - Observability: Admin and D1 runtime summaries are product truth; Sentry and
   external tracing are downstream visibility layers.
 
@@ -87,6 +87,14 @@ observe -> analyze -> propose -> execute -> review
   Admin surfaces.
 - `app/api/[..._path]/route.ts`: LangGraph API proxy.
 - `app/api/workbench/*`: Vercel same-origin facades over Cloudflare.
+- `cloudflare/control-plane/src/connection-broker.ts`: tenant-scoped WorkOS
+  Vault metadata, OAuth/API-key authorization, refresh/revoke/health, and
+  provider-host-scoped request capabilities.
+- `cloudflare/control-plane/src/action-authority.ts`: durable proposals,
+  policy/approval rechecks, kill switches, execution CAS, terminal ledger, and
+  ambiguous-outcome reconciliation.
+- `cloudflare/control-plane/src/workspace-data-lifecycle.ts`: asynchronous
+  D1/R2/DO export plus workspace quarantine, recovery, and purge.
 - `app/api/external-signals/[publicId]/route.ts`: signed public facade for
   per-trigger Agent Pack webhooks. Tenant scope comes from the retained trigger,
   never the caller.

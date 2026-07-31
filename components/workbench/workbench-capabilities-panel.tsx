@@ -1,7 +1,15 @@
 "use client";
 
-import { useMemo, type ReactNode } from "react";
-import { BotIcon, CircleUserRoundIcon, PlayIcon, WorkflowIcon, WrenchIcon } from "lucide-react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  BotIcon,
+  CircleUserRoundIcon,
+  LinkIcon,
+  PlayIcon,
+  ShieldAlertIcon,
+  WorkflowIcon,
+  WrenchIcon,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -40,6 +48,171 @@ export function WorkbenchCapabilitiesPanel({
   const workflowTools = tools.filter((tool) => tool.invocation === "workflow");
   const userWorkflows =
     pack?.workflows.filter((workflow) => workflow.userInvocable !== false) ?? [];
+  const [connections, setConnections] = useState<
+    Array<{
+      id: string;
+      provider: string;
+      credentialClass: "none" | "oauth2" | "api_key";
+      status: string;
+      requestedScopes: string[];
+    }>
+  >([]);
+  const [connectionSecrets, setConnectionSecrets] = useState<Record<string, string>>({});
+  const [connectionNotice, setConnectionNotice] = useState<string | null>(null);
+  const [killSwitches, setKillSwitches] = useState<
+    Array<{
+      scope_kind: "workspace" | "pack" | "tool" | "connection";
+      scope_id: string;
+      enabled: number;
+      reason: string;
+    }>
+  >([]);
+  const [mutationPermissions, setMutationPermissions] = useState<Record<string, boolean>>({});
+
+  const refreshConnections = async () => {
+    const response = await fetch("/api/workbench/connections", { cache: "no-store" });
+    const body = (await response.json().catch(() => ({}))) as { connections?: typeof connections };
+    setConnections(body.connections ?? []);
+  };
+
+  const refreshKillSwitches = async () => {
+    const response = await fetch("/api/workbench/kill-switches", { cache: "no-store" });
+    const body = (await response.json().catch(() => ({}))) as {
+      killSwitches?: typeof killSwitches;
+    };
+    setKillSwitches(body.killSwitches ?? []);
+  };
+
+  const refreshMutationPermissions = async () => {
+    const response = await fetch(
+      "/api/workbench/tools?stage=execute&executionMode=execute&surface=admin_list",
+      { cache: "no-store" },
+    );
+    const body = (await response.json().catch(() => ({}))) as {
+      tools?: Array<{ name: string; mutationEnabled?: boolean }>;
+    };
+    setMutationPermissions(
+      Object.fromEntries(
+        (body.tools ?? []).map((tool) => [tool.name, tool.mutationEnabled === true]),
+      ),
+    );
+  };
+
+  useEffect(() => {
+    if (!open || !pack) return;
+    void Promise.all([
+      refreshConnections(),
+      refreshKillSwitches(),
+      refreshMutationPermissions(),
+    ]).catch(() => {
+      setConnections([]);
+      setKillSwitches([]);
+      setMutationPermissions({});
+    });
+  }, [open, pack?.id]);
+
+  const authorizeConnection = async (connectionId: string) => {
+    setConnectionNotice("Authorizing connection...");
+    const response = await fetch(
+      `/api/workbench/connections/${encodeURIComponent(connectionId)}/credentials`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ secret: connectionSecrets[connectionId] ?? "" }),
+      },
+    );
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    setConnectionNotice(
+      response.ok ? "Connection authorized." : (body.error ?? "Authorization failed."),
+    );
+    if (response.ok) {
+      setConnectionSecrets((current) => ({ ...current, [connectionId]: "" }));
+      await refreshConnections();
+    }
+  };
+
+  const revokeConnection = async (connectionId: string) => {
+    const response = await fetch(`/api/workbench/connections/${encodeURIComponent(connectionId)}`, {
+      method: "DELETE",
+    });
+    setConnectionNotice(response.ok ? "Connection revoked." : "Connection revocation failed.");
+    if (response.ok) await refreshConnections();
+  };
+
+  const checkConnection = async (connectionId: string, refresh = false) => {
+    const response = await fetch(
+      `/api/workbench/connections/${encodeURIComponent(connectionId)}/${refresh ? "refresh" : "health"}`,
+      { method: "POST" },
+    );
+    const body = (await response.json().catch(() => ({}))) as { error?: string; status?: string };
+    setConnectionNotice(
+      response.ok
+        ? `Connection ${refresh ? "refreshed" : "checked"}: ${body.status ?? "authorized"}.`
+        : (body.error ?? `Connection ${refresh ? "refresh" : "health check"} failed.`),
+    );
+    await refreshConnections();
+  };
+
+  const updateKillSwitch = async (
+    scopeKind: "pack" | "tool" | "connection",
+    scopeId: string,
+    enabled: boolean,
+  ) => {
+    const response = await fetch("/api/workbench/kill-switches", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        scopeKind,
+        scopeId,
+        enabled,
+        reason: enabled
+          ? "Paused by a workspace operator from the capability controls."
+          : "Resumed by a workspace operator from the capability controls.",
+      }),
+    });
+    setConnectionNotice(
+      response.ok ? "Mutation authority updated." : "Mutation authority update failed.",
+    );
+    if (response.ok) await refreshKillSwitches();
+  };
+
+  const updateMutationPermission = async (toolName: string, enabled: boolean) => {
+    const response = await fetch("/api/workbench/tools/policy", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ toolName, mutationEnabled: enabled }),
+    });
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    setConnectionNotice(
+      response.ok
+        ? `Mutation execution ${enabled ? "enabled" : "disabled"} for ${toolName}.`
+        : (body.error ?? "Mutation authority update failed."),
+    );
+    if (response.ok) await refreshMutationPermissions();
+  };
+
+  const killSwitchEnabled = (scopeKind: "pack" | "tool" | "connection", scopeId: string) =>
+    killSwitches.some(
+      (entry) =>
+        entry.scope_kind === scopeKind && entry.scope_id === scopeId && entry.enabled === 1,
+    );
+
+  const startOAuthConnection = async (connectionId: string) => {
+    setConnectionNotice("Starting secure authorization...");
+    const response = await fetch(
+      `/api/workbench/connections/${encodeURIComponent(connectionId)}/authorize`,
+      { method: "POST" },
+    );
+    const body = (await response.json().catch(() => ({}))) as {
+      authorizationUrl?: string;
+      error?: string;
+    };
+    if (!response.ok || !body.authorizationUrl) {
+      setConnectionNotice(body.error ?? "Authorization could not be started.");
+      return;
+    }
+    window.location.assign(body.authorizationUrl);
+  };
 
   const closeFromOverlay = (event: { preventDefault: () => void }) => {
     event.preventDefault();
@@ -116,6 +289,199 @@ export function WorkbenchCapabilitiesPanel({
                   <EmptyCapabilityRow text="No user-runnable tools are declared for this agent." />
                 ) : null}
               </CapabilitySection>
+
+              <CapabilitySection
+                icon={LinkIcon}
+                title="Connections"
+                description="Credentials remain in the platform vault and are never exposed to the agent."
+              >
+                {connections.map((connection) => (
+                  <div
+                    key={connection.id}
+                    className="border-border space-y-2 border-b px-3 py-3 last:border-b-0"
+                  >
+                    <CapabilityRow
+                      name={connection.id}
+                      description={`${connection.provider} · ${connection.requestedScopes.join(", ") || "no scopes"}`}
+                      badge={connection.status}
+                      action={
+                        connection.status === "authorized" ? (
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => void checkConnection(connection.id)}
+                            >
+                              Check
+                            </Button>
+                            {connection.credentialClass === "oauth2" ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => void checkConnection(connection.id, true)}
+                              >
+                                Refresh
+                              </Button>
+                            ) : null}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => void revokeConnection(connection.id)}
+                            >
+                              Revoke
+                            </Button>
+                          </div>
+                        ) : undefined
+                      }
+                    />
+                    {connection.status !== "authorized" &&
+                    connection.credentialClass === "api_key" ? (
+                      <div className="flex gap-2">
+                        <input
+                          className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring h-9 min-w-0 flex-1 rounded-md border px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                          type="password"
+                          value={connectionSecrets[connection.id] ?? ""}
+                          autoComplete="off"
+                          aria-label={`${connection.id} credential`}
+                          placeholder="API key"
+                          onChange={(event) =>
+                            setConnectionSecrets((current) => ({
+                              ...current,
+                              [connection.id]: event.target.value,
+                            }))
+                          }
+                        />
+                        <Button
+                          size="sm"
+                          disabled={!connectionSecrets[connection.id]}
+                          onClick={() => void authorizeConnection(connection.id)}
+                        >
+                          Connect
+                        </Button>
+                      </div>
+                    ) : null}
+                    {connection.status !== "authorized" &&
+                    connection.credentialClass === "oauth2" ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => void startOAuthConnection(connection.id)}
+                      >
+                        Authorize with OAuth
+                      </Button>
+                    ) : null}
+                  </div>
+                ))}
+                {connections.length === 0 ? (
+                  <EmptyCapabilityRow text="This agent does not require an external connection." />
+                ) : null}
+                {connectionNotice ? (
+                  <p className="text-muted-foreground border-border border-t px-3 py-2 text-xs">
+                    {connectionNotice}
+                  </p>
+                ) : null}
+              </CapabilitySection>
+
+              {pack.risk.externalMutation ? (
+                <CapabilitySection
+                  icon={ShieldAlertIcon}
+                  title="Mutation authority"
+                  description="Emergency switches revoke new dispatch immediately; completed external effects are not reversed."
+                >
+                  <CapabilityRow
+                    name={pack.id}
+                    description="Pause every mutation-capable tool in this Agent Pack."
+                    badge={killSwitchEnabled("pack", pack.id) ? "paused" : "clear"}
+                    action={
+                      <Button
+                        size="sm"
+                        variant={killSwitchEnabled("pack", pack.id) ? "outline" : "destructive"}
+                        onClick={() =>
+                          void updateKillSwitch(
+                            "pack",
+                            pack.id,
+                            !killSwitchEnabled("pack", pack.id),
+                          )
+                        }
+                      >
+                        {killSwitchEnabled("pack", pack.id) ? "Resume pack" : "Pause pack"}
+                      </Button>
+                    }
+                  />
+                  {tools
+                    .filter((tool) => tool.executionModes.includes("execute"))
+                    .map((tool) => (
+                      <CapabilityRow
+                        key={tool.id}
+                        name={tool.id}
+                        description="Explicit workspace permission and emergency tool-level pause."
+                        badge={mutationPermissions[tool.id] ? "enabled" : "disabled"}
+                        action={
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              size="sm"
+                              variant={mutationPermissions[tool.id] ? "destructive" : "outline"}
+                              onClick={() =>
+                                void updateMutationPermission(
+                                  tool.id,
+                                  !mutationPermissions[tool.id],
+                                )
+                              }
+                            >
+                              {mutationPermissions[tool.id]
+                                ? "Disable execution"
+                                : "Enable execution"}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant={
+                                killSwitchEnabled("tool", tool.id) ? "outline" : "destructive"
+                              }
+                              onClick={() =>
+                                void updateKillSwitch(
+                                  "tool",
+                                  tool.id,
+                                  !killSwitchEnabled("tool", tool.id),
+                                )
+                              }
+                            >
+                              {killSwitchEnabled("tool", tool.id) ? "Resume" : "Pause"}
+                            </Button>
+                          </div>
+                        }
+                      />
+                    ))}
+                  {connections
+                    .filter((connection) => connection.credentialClass !== "none")
+                    .map((connection) => (
+                      <CapabilityRow
+                        key={`kill-${connection.id}`}
+                        name={connection.id}
+                        description="Connection-scoped external mutation authority."
+                        badge={killSwitchEnabled("connection", connection.id) ? "paused" : "clear"}
+                        action={
+                          <Button
+                            size="sm"
+                            variant={
+                              killSwitchEnabled("connection", connection.id)
+                                ? "outline"
+                                : "destructive"
+                            }
+                            onClick={() =>
+                              void updateKillSwitch(
+                                "connection",
+                                connection.id,
+                                !killSwitchEnabled("connection", connection.id),
+                              )
+                            }
+                          >
+                            {killSwitchEnabled("connection", connection.id) ? "Resume" : "Pause"}
+                          </Button>
+                        }
+                      />
+                    ))}
+                </CapabilitySection>
+              ) : null}
 
               <CapabilitySection
                 icon={BotIcon}

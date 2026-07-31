@@ -37,10 +37,8 @@ const makeEnv = (role: "owner" | "member" = "owner") => {
     DB: {
       prepare(query: string): D1PreparedStatement {
         queries.push(query);
-        let values: unknown[] = [];
         const statement: D1PreparedStatement = {
           bind(...nextValues: unknown[]) {
-            values = nextValues;
             bindings.push(nextValues);
             return statement;
           },
@@ -73,7 +71,7 @@ const makeEnv = (role: "owner" | "member" = "owner") => {
               };
             }
             if (query.includes("FROM control_runs")) {
-              return { results: [{ id: "run-1", user_id: values[0] }] as T[] };
+              return { results: [{ id: "run-1", user_id: "user-1" }] as T[] };
             }
             return { results: [] as T[] };
           },
@@ -121,9 +119,7 @@ describe("workspace data lifecycle", () => {
     expect(body.unsupportedState[0]).toContain("Durable Object");
     const triggerQuery = queries.find((query) => query.includes("FROM control_triggers"));
     expect(triggerQuery).not.toContain("secret_hash");
-    expect(bindings.some((values) => values[0] === "user-1" && values[1] === "workspace-1")).toBe(
-      true,
-    );
+    expect(bindings.some((values) => values[0] === "workspace-1")).toBe(true);
   });
 
   it("returns an exact non-executable deletion inventory", async () => {

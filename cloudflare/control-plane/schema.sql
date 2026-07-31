@@ -12,6 +12,14 @@ DROP TABLE IF EXISTS control_trigger_dispatches;
 DROP TABLE IF EXISTS control_triggers;
 DROP TABLE IF EXISTS control_managed_state;
 DROP TABLE IF EXISTS control_decisions;
+DROP TABLE IF EXISTS control_kill_switches;
+DROP TABLE IF EXISTS control_action_ledger;
+DROP TABLE IF EXISTS control_action_proposals;
+DROP TABLE IF EXISTS control_connection_capabilities;
+DROP TABLE IF EXISTS control_connection_oauth_states;
+DROP TABLE IF EXISTS control_connections;
+DROP TABLE IF EXISTS control_deletion_receipts;
+DROP TABLE IF EXISTS control_data_jobs;
 DROP TABLE IF EXISTS control_retention_policies;
 DROP TABLE IF EXISTS control_artifacts;
 DROP TABLE IF EXISTS control_tool_calls;
@@ -48,7 +56,11 @@ CREATE TABLE workspaces (
   created_by_user_id TEXT NOT NULL,
   data_json TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  deletion_requested_by_user_id TEXT,
+  deletion_requested_at TEXT,
+  purge_after TEXT,
+  purged_at TEXT
 );
 
 CREATE UNIQUE INDEX idx_workspaces_account_default
@@ -57,6 +69,10 @@ CREATE UNIQUE INDEX idx_workspaces_account_default
 
 CREATE INDEX idx_workspaces_account
   ON workspaces (account_id, status, is_default DESC, created_at ASC);
+
+CREATE INDEX idx_workspaces_purge_due
+  ON workspaces (status, purge_after)
+  WHERE status = 'quarantined' AND purge_after IS NOT NULL;
 
 CREATE TABLE active_workspace_preferences (
   user_id TEXT NOT NULL,
@@ -274,8 +290,19 @@ CREATE TABLE control_retention_policies (
     CHECK (runtime_trace_retention_days BETWEEN 1 AND 3650),
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
+  chat_message_retention_days INTEGER NOT NULL DEFAULT 90
+    CHECK (chat_message_retention_days BETWEEN 1 AND 3650),
+  run_payload_retention_days INTEGER NOT NULL DEFAULT 90
+    CHECK (run_payload_retention_days BETWEEN 1 AND 3650),
+  audit_action_retention_days INTEGER NOT NULL DEFAULT 365
+    CHECK (audit_action_retention_days BETWEEN 365 AND 3650),
+  confirmed_at TEXT,
+  confirmed_by_user_id TEXT,
   PRIMARY KEY (user_id, workspace_id)
 );
+
+CREATE UNIQUE INDEX idx_control_retention_policies_workspace
+  ON control_retention_policies (workspace_id);
 
 CREATE TRIGGER control_artifacts_default_expiry
 AFTER INSERT ON control_artifacts
@@ -289,13 +316,196 @@ BEGIN
       (
         SELECT artifact_retention_days
         FROM control_retention_policies
-        WHERE user_id = NEW.user_id AND workspace_id = NEW.workspace_id
+        WHERE workspace_id = NEW.workspace_id
       ),
       90
     ) || ' days'
   )
   WHERE id = NEW.id;
 END;
+
+CREATE TABLE control_data_jobs (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  workspace_id TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('export', 'purge')),
+  status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'completed', 'failed', 'cancelled', 'expired')),
+  cursor_json TEXT NOT NULL DEFAULT '{}',
+  result_json TEXT NOT NULL DEFAULT '{}',
+  error_json TEXT NOT NULL DEFAULT '{}',
+  storage_key TEXT,
+  content_sha256 TEXT,
+  size_bytes INTEGER,
+  attempt_count INTEGER NOT NULL DEFAULT 0,
+  lease_owner TEXT,
+  lease_expires_at TEXT,
+  expires_at TEXT,
+  created_by_user_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  completed_at TEXT
+);
+
+CREATE INDEX idx_control_data_jobs_scope_latest
+  ON control_data_jobs (user_id, workspace_id, created_at DESC);
+
+CREATE INDEX idx_control_data_jobs_runnable
+  ON control_data_jobs (status, lease_expires_at, created_at)
+  WHERE status IN ('queued', 'running');
+
+CREATE TABLE control_deletion_receipts (
+  receipt_sha256 TEXT PRIMARY KEY,
+  completed_at TEXT NOT NULL
+);
+
+CREATE INDEX idx_control_deletion_receipts_completed
+  ON control_deletion_receipts (completed_at DESC);
+
+CREATE TABLE control_connections (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  workspace_id TEXT NOT NULL,
+  agent_id TEXT NOT NULL,
+  pack_id TEXT NOT NULL,
+  connection_id TEXT NOT NULL,
+  provider_id TEXT NOT NULL,
+  principal TEXT NOT NULL CHECK (principal IN ('app', 'user')),
+  credential_class TEXT NOT NULL CHECK (credential_class IN ('oauth2', 'api_key')),
+  status TEXT NOT NULL CHECK (status IN ('authorization_required', 'authorized', 'refresh_required', 'unhealthy', 'revoked')),
+  scopes_json TEXT NOT NULL DEFAULT '[]',
+  vault_object_id TEXT,
+  vault_version TEXT,
+  token_expires_at TEXT,
+  refresh_lease_owner TEXT,
+  refresh_lease_expires_at TEXT,
+  last_used_at TEXT,
+  last_health_at TEXT,
+  last_error_code TEXT,
+  version INTEGER NOT NULL DEFAULT 1,
+  data_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  revoked_at TEXT,
+  UNIQUE (user_id, workspace_id, agent_id, pack_id, connection_id)
+);
+
+CREATE INDEX idx_control_connections_scope
+  ON control_connections (user_id, workspace_id, agent_id, status, updated_at DESC);
+
+CREATE TABLE control_connection_oauth_states (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  workspace_id TEXT NOT NULL,
+  agent_id TEXT NOT NULL,
+  connection_record_id TEXT NOT NULL,
+  state_hash TEXT NOT NULL UNIQUE,
+  pkce_verifier_vault_object_id TEXT NOT NULL,
+  pkce_verifier_vault_version TEXT NOT NULL,
+  redirect_uri TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  used_at TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX idx_control_connection_oauth_states_expiry
+  ON control_connection_oauth_states (expires_at, used_at);
+
+CREATE TABLE control_action_proposals (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  workspace_id TEXT NOT NULL,
+  agent_id TEXT NOT NULL,
+  workflow_intent_id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  tool_call_id TEXT,
+  pack_id TEXT NOT NULL,
+  pack_version TEXT NOT NULL,
+  runtime_version TEXT NOT NULL,
+  binding_version INTEGER NOT NULL,
+  tool_id TEXT NOT NULL,
+  action_type TEXT NOT NULL,
+  connection_record_id TEXT,
+  status TEXT NOT NULL CHECK (status IN ('proposed', 'approval_requested', 'approved', 'executing', 'executed', 'failed', 'outcome_unknown', 'reconciled', 'cancelled', 'expired')),
+  summary TEXT NOT NULL,
+  idempotency_key TEXT NOT NULL,
+  input_sha256 TEXT NOT NULL,
+  proposal_json TEXT NOT NULL,
+  policy_decision_id TEXT,
+  approval_request_id TEXT,
+  external_reference TEXT,
+  result_json TEXT NOT NULL DEFAULT '{}',
+  error_json TEXT NOT NULL DEFAULT '{}',
+  version INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  terminal_at TEXT,
+  UNIQUE (user_id, workspace_id, tool_id, idempotency_key)
+);
+
+CREATE INDEX idx_control_action_proposals_scope_latest
+  ON control_action_proposals (user_id, workspace_id, status, created_at DESC);
+
+CREATE TABLE control_action_ledger (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  workspace_id TEXT NOT NULL,
+  agent_id TEXT NOT NULL,
+  proposal_id TEXT NOT NULL,
+  sequence INTEGER NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('proposed', 'approved', 'blocked', 'executing', 'executed', 'failed', 'outcome_unknown', 'reconciled', 'cancelled', 'reviewed')),
+  summary TEXT NOT NULL,
+  request_sha256 TEXT,
+  response_sha256 TEXT,
+  external_reference TEXT,
+  data_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  UNIQUE (proposal_id, sequence)
+);
+
+CREATE INDEX idx_control_action_ledger_scope_latest
+  ON control_action_ledger (user_id, workspace_id, created_at DESC);
+
+CREATE TABLE control_kill_switches (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  workspace_id TEXT NOT NULL,
+  scope_kind TEXT NOT NULL CHECK (scope_kind IN ('workspace', 'pack', 'tool', 'connection')),
+  scope_id TEXT NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+  reason TEXT NOT NULL,
+  created_by_user_id TEXT NOT NULL,
+  version INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE (user_id, workspace_id, scope_kind, scope_id)
+);
+
+CREATE INDEX idx_control_kill_switches_scope
+  ON control_kill_switches (user_id, workspace_id, enabled, scope_kind, scope_id);
+
+CREATE TABLE control_connection_capabilities (
+  id TEXT PRIMARY KEY,
+  token_sha256 TEXT NOT NULL UNIQUE,
+  user_id TEXT NOT NULL,
+  workspace_id TEXT NOT NULL,
+  agent_id TEXT NOT NULL,
+  connection_record_id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  workflow_intent_id TEXT NOT NULL,
+  tool_call_id TEXT NOT NULL,
+  tool_id TEXT NOT NULL,
+  allowed_url TEXT NOT NULL,
+  allowed_method TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  consumed_at TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX idx_control_connection_capabilities_expiry
+  ON control_connection_capabilities (expires_at, consumed_at);
+
+CREATE INDEX idx_control_connection_capabilities_scope
+  ON control_connection_capabilities (user_id, workspace_id, run_id, tool_call_id);
 
 CREATE TABLE control_operator_alerts (
   id TEXT PRIMARY KEY,

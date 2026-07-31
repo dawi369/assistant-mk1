@@ -16,15 +16,20 @@ Secrets must be:
 
 Secrets include model keys, account keys, API tokens, webhook signing keys, OAuth refresh tokens, and any credential that can spend money, move assets, mutate production systems, or access private data.
 
-Connection auth brokering is metadata-only. Pack API v2 may declare provider,
+Connection auth brokering is operational. Pack API v2 declares provider,
 principal, credential class, scopes, tool bindings, and external-broker custody.
 Tool summaries and capability decisions expose only the compact
 `connectionAuth` posture: whether authorization is required, which principal
 owns it, whether refresh is brokered, how tool filters apply, and whether
 connection authorization precedes policy approval. Public tools report
-`not_required`; credentialed declarations report `authorization_required`.
-There is no OAuth flow, encrypted credential store, refresh/revocation worker,
-or browser-visible secret surface.
+`not_required`; credentialed declarations report `authorization_required`,
+`authorized`, `refresh_required`, or `unhealthy`. WorkOS Vault is the production
+credential store; D1 retains opaque references and metadata only. OAuth uses
+Authorization Code + PKCE with hashed single-use state and refresh CAS. API keys
+travel through the signed Vercel facade directly to the broker. Brokered
+requests enforce declared provider hosts and never expose the credential to the
+pack, browser response, Fly envelope, callback, artifact, trace, export, or
+model context.
 
 ## Execution Modes
 

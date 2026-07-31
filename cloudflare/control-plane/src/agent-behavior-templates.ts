@@ -102,7 +102,7 @@ type BuiltInAgentBehaviorTemplate = Omit<AgentBehaviorTemplate, "id" | "version"
   authoring: Extract<AgentBehaviorAuthoringMetadata, { kind: "built_in_template" }>;
 };
 
-const toPackTemplate = (pack: LocalAgentPackManifest): AgentBehaviorTemplate => ({
+export const toPackTemplate = (pack: LocalAgentPackManifest): AgentBehaviorTemplate => ({
   id: pack.templateId,
   name: pack.name,
   description: pack.description,
@@ -365,23 +365,25 @@ export const agentBehaviorTemplateForProfile = (profile: AgentProfile): AgentBeh
 export const getAgentBehaviorTemplate = (id: AgentBehaviorTemplateId): AgentBehaviorTemplate =>
   agentBehaviorTemplates.find((template) => template.id === id) ?? agentBehaviorTemplates[0];
 
+export const createAgentBehaviorSnapshotFromTemplate = (template: AgentBehaviorTemplate) => ({
+  templateId: template.id,
+  version: template.version,
+  source: "template-snapshot" as const,
+  format: "xml" as const,
+  authoring: template.authoring,
+  ...(template.pack ? { pack: template.pack } : {}),
+  prompt: template.prompt,
+  createdFrom: {
+    templateId: template.id,
+    templateVersion: template.version,
+    ...(template.pack ? { packId: template.pack.id, packVersion: template.version } : {}),
+  },
+});
+
 export const createAgentBehaviorSnapshot = (
   profile: AgentProfile,
   templateId?: AgentBehaviorTemplateId,
-) => {
-  const template = getAgentBehaviorTemplate(templateId ?? agentBehaviorTemplateForProfile(profile));
-  return {
-    templateId: template.id,
-    version: template.version,
-    source: "template-snapshot" as const,
-    format: "xml" as const,
-    authoring: template.authoring,
-    ...(template.pack ? { pack: template.pack } : {}),
-    prompt: template.prompt,
-    createdFrom: {
-      templateId: template.id,
-      templateVersion: template.version,
-      ...(template.pack ? { packId: template.pack.id, packVersion: template.version } : {}),
-    },
-  };
-};
+) =>
+  createAgentBehaviorSnapshotFromTemplate(
+    getAgentBehaviorTemplate(templateId ?? agentBehaviorTemplateForProfile(profile)),
+  );

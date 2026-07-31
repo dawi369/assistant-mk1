@@ -171,6 +171,20 @@ const upsertDefaultWorkspace = async (
       input.name ? 1 : 0,
     )
     .run();
+  await ensureDefaultRetentionPolicy(env, input.userId, input.workspaceId);
+};
+
+const ensureDefaultRetentionPolicy = async (env: Env, userId: string, workspaceId: string) => {
+  const timestamp = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO control_retention_policies (
+       user_id, workspace_id, artifact_retention_days, operational_event_retention_days,
+       runtime_trace_retention_days, chat_message_retention_days, run_payload_retention_days,
+       audit_action_retention_days, created_at, updated_at
+     ) VALUES (?, ?, 90, 30, 14, 90, 90, 365, ?, ?)`,
+  )
+    .bind(userId, workspaceId, timestamp, timestamp)
+    .run();
 };
 
 export const insertWorkspace = async (
@@ -208,6 +222,7 @@ export const insertWorkspace = async (
       timestamp,
     )
     .run();
+  await ensureDefaultRetentionPolicy(env, input.userId, input.workspaceId);
 };
 
 export const upsertMembership = async (
@@ -451,6 +466,7 @@ export const resolveAgentIdentity = async (
   request: Request,
   env: Env,
   auth: ControlPlaneAuthContext,
+  options: { allowQuarantinedWorkspace?: boolean } = {},
 ): Promise<ResolveResult> => {
   const authzSpans: RuntimeTraceInputSpan[] = [];
   const headerStartedAtMs = Date.now();
@@ -544,7 +560,8 @@ export const resolveAgentIdentity = async (
     }
     if (
       !workspace ||
-      workspace.status !== "active" ||
+      (workspace.status !== "active" &&
+        !(options.allowQuarantinedWorkspace && workspace.status === "quarantined")) ||
       (accountId && workspace.account_id !== accountId) ||
       (accountSource && workspace.account_source !== accountSource)
     ) {
@@ -654,7 +671,12 @@ export const resolveAgentIdentity = async (
     },
     () => selectWorkspace(env, activeWorkspaceId),
   );
-  if (!workspace || workspace.account_id !== accountId || workspace.status !== "active") {
+  if (
+    !workspace ||
+    workspace.account_id !== accountId ||
+    (workspace.status !== "active" &&
+      !(options.allowQuarantinedWorkspace && workspace.status === "quarantined"))
+  ) {
     return {
       ok: false,
       response: json({ ok: false, error: "Workspace is not active" }, { status: 403 }),

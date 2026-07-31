@@ -32,10 +32,10 @@ the same rule: validate autonomy, secrets, ledgers, browser automation,
 external signals, and policy without baking a single domain into the base
 workbench.
 
-The north-star autonomy ladder and the guarantees required at each level live
-in `capability-model.md`. Capability is cumulative: conversation, tools,
-workflows, background execution, delegation, and mutation add progressively
-stronger runtime requirements rather than progressively broader prompt access.
+The capability contract in `capability-model.md` separates operational depth
+from external authority. The 1.0 target is background/event-driven operation
+(L3) plus policy-controlled external execution (A2); delegation remains
+deferred rather than blocking safe direct mutation.
 
 ## Core Surfaces
 
@@ -78,7 +78,7 @@ stronger runtime requirements rather than progressively broader prompt access.
   The runtime hint also links directly to this surface.
 - `/workspace` opens the product-facing account and access panel for WorkOS
   organization switching, assigned workspace switching, workspace creation,
-  and owner/admin member controls.
+  owner/admin member controls, retention confirmation, export, and deletion.
 - History exposes supported cancellation and pack-workflow retry plus approval
   resume/deny actions. Connection failures expose a direct reconnect action.
 - `/admin` opens a server-gated Admin panel and is stripped before model send.
@@ -89,18 +89,17 @@ stronger runtime requirements rather than progressively broader prompt access.
 - Cloudflare exposes backend execution and artifact history metadata through
   scoped workbench APIs. The normal `/history` surface can inspect recent runs
   and artifact metadata; Admin remains the deeper diagnostic surface. A
-  mediated D1/R2 API now stores, reads, exports, and expires bounded blobs, but
-  History does not yet render those object bodies and hosted recovery remains
-  a release gate.
+  mediated D1/R2 API stores, reads, exports, and expires bounded blobs. History
+  also projects durable action proposals, approval entry points, terminal
+  outcomes, and reconciliation.
 
 ## Near-Term Milestones
 
 1. Keep the connected workbench local-feeling: fast first paint, immediate
    draft input, responsive thread switching, and background Cloudflare
    reconciliation.
-2. Expand `/history` from metadata summaries into richer artifact previews,
-   filtering, and user-facing export/delete behavior over the existing bounded
-   D1/R2 lifecycle API.
+2. Expand `/history` with more domain renderers and filtering while preserving
+   the current previews, action ledger, reconciliation, and workspace export/delete controls.
 3. Prove one complete pack-owned application slice across context, tools,
    workflow, artifact rendering, managed state, trigger handling, evals, and
    recovery before widening the external pack contract.

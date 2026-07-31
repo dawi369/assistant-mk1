@@ -3,7 +3,7 @@
 A code-first agent workbench for durable runs, approvals, tool policy, artifacts,
 audit, and tenant-safe operations.
 
-[![Version](https://img.shields.io/badge/version-1.0.0--preview.1-111827)](#release-status)
+[![Version](https://img.shields.io/badge/version-1.0.0-111827)](#release-status)
 [![Verify](https://github.com/dawi369/assistant-mk1/actions/workflows/verify.yml/badge.svg)](https://github.com/dawi369/assistant-mk1/actions/workflows/verify.yml)
 [![License](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-2563eb)](LICENSE)
 
@@ -13,17 +13,12 @@ audit, and tenant-safe operations.
 
 ## Release Status
 
-Assistant-mk1 is preparing `1.0.0-preview.1` as a developer preview. It is
-production-oriented source-available software, not a retained production service.
-All remote D1 records and metadata artifacts must be treated as disposable; no
-upgrade-safe retention is promised between preview versions.
-
-The implemented surface is an authenticated, read-only workbench. External
-mutation, encrypted credential brokerage, hosted artifact recovery, and
-upgrade-safe retained customer-data migrations remain explicit production
-gates. Mediated D1/R2 artifact custody is implemented and exercised locally;
-the preview still promises disposable data until hosted restore and deletion
-evidence exists.
+Assistant-mk1 is preparing the `1.0.0` production candidate: an authenticated,
+tenant-scoped workbench targeting Operational L3 plus Authority A2. The code now
+includes forward-only retained-data migrations, full workspace export and
+deletion lifecycle, WorkOS Vault credential custody, OAuth/API-key brokerage,
+and policy-controlled durable mutation. The release remains blocked until all
+same-commit hosted gates in [Release Readiness](docs/release-readiness.md) pass.
 
 ## Product Tour
 
@@ -51,7 +46,8 @@ tenant scope are visible outside the model conversation.
   backup/restore evidence.
 - Current-agent Tools separates user-run workflows, agent-only tools, and
   workflow-internal adapters.
-- Typed read-only workflows with bounded inputs and inspectable artifacts.
+- Typed workflows with bounded inputs, inspectable artifacts, durable action
+  proposals, approvals, kill switches, and reconciliation.
 - Signed per-trigger webhooks, Cloudflare schedules, and callback-backed
   Fly/LangGraph execution.
 - Sentry and first-party runtime traces across Vercel, Cloudflare, and Fly.
@@ -154,8 +150,9 @@ pnpm test:service-boundaries               # live local Worker/Fly/browser workf
 ```
 
 Installing a package requires its files, one `workbench.config.ts` entry, and a
-deterministic compile. The current contract does not support remote executable
-installation, credential custody, or mutation. See [Agent Packs](docs/agent-packs.md),
+deterministic compile. Packs can declare brokered connections and mutation
+bindings, but cannot grant themselves credentials or authority. Remote
+executable installation remains unsupported. See [Agent Packs](docs/agent-packs.md),
 the [Agent Runtime Kit](docs/agent-runtime-kit.md),
 the [Capability Model](docs/capability-model.md), and
 [Agent Profile Authoring](docs/agent-profile-authoring.md).
@@ -170,10 +167,15 @@ pnpm test:e2e      # signed-out and trusted-local browser journeys
 pnpm conformance:level2       # executable Level 0-2 evidence report
 pnpm conformance:level3       # executable local Level 3 evidence report
 pnpm conformance:agent-system # executable package and extension-system report
+pnpm conformance:data-lifecycle # retention, export, recovery, and purge
+pnpm conformance:connections    # Vault and OAuth/API-key brokerage
+pnpm conformance:actions        # policy-controlled synthetic mutation
 pnpm verify:docker            # non-root image and excluded-context proof
 pnpm acceptance:hosted:public # hosted unauthenticated health parity
 pnpm acceptance:hosted:level3:preflight # read-only hosted prerequisites
 pnpm acceptance:hosted:level3 # guarded non-customer hosted failure drills
+pnpm acceptance:hosted:vault  # guarded WorkOS Vault lifecycle evidence
+pnpm acceptance:hosted:mutation # guarded isolated synthetic mutation evidence
 pnpm release:check            # repository, Docker, and Level 2-3 local gates
 ```
 
@@ -201,11 +203,11 @@ Deploy Cloudflare and Fly before a Vercel release that depends on them:
 - [Cloudflare and local infrastructure](docs/dev-infrastructure-readiness.md)
 - [Fly](docs/deployment-fly.md)
 
-Remote D1 and R2 records remain disposable preview state. Forward-only
-migrations, bounded artifact/event/trace retention, a scoped D1/R2 export, and
-a deterministic D1 backup/restore verifier are implemented; hosted R2 recovery
-and complete export/deletion gates remain tracked in
-[Migrations and Retention](docs/migrations-and-retention.md).
+Production enablement is gated in order: retained data, connections, then
+mutation for an isolated acceptance workspace. Migration, export, recovery,
+purge, Vault, and mutation evidence are tracked in
+[Migrations and Retention](docs/migrations-and-retention.md) and
+[Release Readiness](docs/release-readiness.md).
 
 ## Contributing and Security
 

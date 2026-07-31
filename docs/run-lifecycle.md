@@ -140,9 +140,11 @@ Cancellation rules:
 - Write audit event with actor, source, and reason.
 - Cascade cancellation to non-durable child runs unless policy says otherwise.
 
-For the preview, bounded inline work has no physical abort adapter. Cancellation
+Bounded inline work has no physical abort adapter. Cancellation
 is still authoritative because it durably revokes publication authority. Future
 LangGraph and Fly job adapters may use external run ids for best-effort abort.
+For external mutations, cancellation also cannot reverse a side effect already
+accepted by a provider; ambiguous outcomes enter reconciliation instead.
 
 ## Child Runs
 

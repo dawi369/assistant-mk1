@@ -134,9 +134,10 @@ agent are the committed authorization boundaries.
   running in production. Hosted production fails closed when WorkOS is
   incomplete.
 
-The 1.0 read-only baseline authorization surface is implemented. Richer customer
-invitation lifecycle, mutation policy, and secret access remain production
-gates for capabilities outside that release contract.
+The 1.0 authorization surface includes retained workspace data, brokered
+connections, and policy-controlled external mutation. Packs declare needs but
+cannot grant authority: retention confirmation, explicit per-tool enablement,
+connection health, policy, approval, and kill switches remain platform-owned.
 
 ## Ownership Roadmap
 
@@ -181,7 +182,8 @@ The next steps should keep WorkOS and assistant-mk1 responsibilities separate:
 
 ## Acceptance Bar
 
-For the 1.0 read-only baseline, two users in separate workspaces must receive
+For 1.0, two users in separate workspaces must receive
 isolated agents, chats, runs, tools, artifacts, and history, while role tests
-prove that members cannot administer workspace access. Memory, ledgers,
-schedules, secrets, and mutation add their own acceptance gates when implemented.
+prove that members cannot administer workspace access. Connections, action
+proposals, ledgers, exports, deletion, and mutation controls must also return
+cross-tenant `404` without disclosing resource existence.

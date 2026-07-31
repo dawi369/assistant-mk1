@@ -367,6 +367,7 @@ const defaultData = (defaults: ToolPolicyCatalogEntry) => ({
   adminVisible: defaults.adminVisible,
   modelVisible: defaults.modelVisible,
   requiresApproval: defaults.requiresApproval,
+  mutationEnabled: false,
   allowlist: defaults.constraints.allowlist,
   denylist: defaults.constraints.denylist,
 });
@@ -432,6 +433,7 @@ export const updateToolPermissionStatus = async (
     toolName: string;
     status?: ToolPermissionStatus;
     requiresApproval?: boolean;
+    mutationEnabled?: boolean;
     killSwitchReason?: string | null;
     modelVisible?: boolean;
     approvalReason?: string;
@@ -497,6 +499,12 @@ export const updateToolPermissionStatus = async (
       typeof input.requiresApproval === "boolean"
         ? input.requiresApproval
         : readDataFlag(data, "requiresApproval", defaults.requiresApproval),
+    mutationEnabled:
+      defaults.mutationRisk === "mutation_capable"
+        ? typeof input.mutationEnabled === "boolean"
+          ? input.mutationEnabled
+          : readDataFlag(data, "mutationEnabled", false)
+        : false,
     allowlist: input.allowlist ?? readStringList(data.allowlist),
     denylist: input.denylist ?? readStringList(data.denylist),
   };

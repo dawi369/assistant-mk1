@@ -232,6 +232,22 @@ export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
 
   async fetch(request: Request) {
     const url = new URL(request.url);
+    if (
+      request.method === "POST" &&
+      (url.pathname === "/internal/lifecycle-export" ||
+        url.pathname === "/internal/lifecycle-purge")
+    ) {
+      const provided = request.headers.get("x-workbench-lifecycle-secret")?.trim();
+      if (!provided || provided !== getRequiredSecret(this.getEnv())) {
+        return jsonResponse({ ok: false, error: "Lifecycle authorization failed" }, 401);
+      }
+      if (url.pathname === "/internal/lifecycle-export") {
+        return jsonResponse({ ok: true, messages: this.messages });
+      }
+      await this.saveMessages(() => []);
+      this.agentConfigCache = null;
+      return jsonResponse({ ok: true, purged: true });
+    }
     if (request.method === "POST" && url.pathname === "/internal/programmatic-submit") {
       return this.handleProgrammaticSubmit(request);
     }

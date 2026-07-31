@@ -7,10 +7,14 @@ import {
 } from "./agent-records";
 import {
   agentBehaviorTemplates,
+  createAgentBehaviorSnapshotFromTemplate,
   normalizeAgentBehaviorTemplateId,
+  toPackTemplate,
   type AgentBehaviorTemplate,
   type AgentBehaviorTemplateId,
 } from "./agent-behavior-templates";
+import { agentManifestRegistry } from "../../../generated/agent-runtime/manifests";
+import type { LocalAgentPackManifest } from "../../../agent-packs";
 import { upsertActiveAgentPreference } from "./authz";
 import { selectAgent, selectMembership, selectWorkspaceAgents } from "./authz-store";
 import { isRecord, json, parseJson } from "./http";
@@ -149,9 +153,17 @@ export const handleInstantiateAgentPack = async (
   const adminError = requireAdminMembership(currentMembership);
   if (adminError) return adminError;
 
-  const template = (agentBehaviorTemplates as AgentBehaviorTemplate[]).find(
+  const installedTemplate = (agentBehaviorTemplates as AgentBehaviorTemplate[]).find(
     (candidate) => candidate.pack?.id === packId,
   );
+  const compiledEntry = agentManifestRegistry[packId as keyof typeof agentManifestRegistry];
+  const conformanceTemplate =
+    !installedTemplate &&
+    compiledEntry?.conformanceOnly &&
+    (env.WORKBENCH_E2E_MODE === "true" || env.WORKBENCH_CONFORMANCE_MODE === "true")
+      ? toPackTemplate(compiledEntry.module as LocalAgentPackManifest)
+      : undefined;
+  const template = installedTemplate ?? conformanceTemplate;
   if (!template?.pack) {
     return json({ ok: false, error: "Agent pack not found" }, { status: 404 });
   }
@@ -184,6 +196,9 @@ export const handleInstantiateAgentPack = async (
     description: template.description,
     profile: template.profile,
     behaviorTemplateId: template.id as AgentBehaviorTemplateId,
+    ...(conformanceTemplate
+      ? { behaviorSnapshot: createAgentBehaviorSnapshotFromTemplate(conformanceTemplate) }
+      : {}),
     agentId,
     provisionedBy: "agent_pack",
     idempotent: true,

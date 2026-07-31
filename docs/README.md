@@ -38,7 +38,9 @@ These files should stay aligned with code changes:
 - `dev-infrastructure-readiness.md`: local/remote setup, smoke commands, and
   resource checklist.
 - `evals.md`: real-session eval posture, manifest, and verifier command.
-- `release-readiness.md`: 1.0 read-only baseline, deferred gates, and release evidence.
+- `release-readiness.md`: 1.0 L3+A2 candidate gates and hosted release evidence.
+- `production-1-conformance.md`: retained-data, Vault, mutation, and same-commit
+  Operational L3 plus Authority A2 evidence matrix.
 - `level-2-conformance.md`: executable Level 0-2 guarantees and release evidence mapping.
 - `level-3-conformance.md`: executable read-only background-work guarantees and evidence mapping.
 - `unattended-operations.md`: Level 3 enablement, alert/replay recovery, soak,
@@ -52,7 +54,7 @@ These files are intentionally ahead of implementation. They define north-star
 contracts and constraints; any implementation still needs to land behind the
 Cloudflare authorization boundary in `tenancy.md`.
 
-- `capability-model.md`
+- `capability-model.md`: separate operational and external-authority axes.
 - `db-contracts.md`
 - `control-plane-api.md`
 - `data-and-state.md`

@@ -24,6 +24,10 @@ export async function PATCH(request: NextRequest) {
         artifactRetentionDays: Number(body.artifactRetentionDays),
         operationalEventRetentionDays: Number(body.operationalEventRetentionDays),
         runtimeTraceRetentionDays: Number(body.runtimeTraceRetentionDays),
+        chatMessageRetentionDays: Number(body.chatMessageRetentionDays),
+        runPayloadRetentionDays: Number(body.runPayloadRetentionDays),
+        auditActionRetentionDays: Number(body.auditActionRetentionDays),
+        confirm: body.confirm === true,
       }),
     );
   } catch (error) {

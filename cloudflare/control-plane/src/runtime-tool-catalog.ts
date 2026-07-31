@@ -351,6 +351,9 @@ export const resolveToolSummaries = async (
         supportedExecutionModes: [...binding.executionModes],
         requiresSecrets: false,
         mutationRisk: binding.policy.mutationRisk,
+        mutationEnabled:
+          binding.policy.mutationRisk === "mutation_capable" &&
+          permissionData.mutationEnabled === true,
         runner: runnerMetadataFor(
           {
             toolName: binding.id,

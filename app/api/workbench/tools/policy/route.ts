@@ -11,6 +11,7 @@ export async function POST(request: NextRequest) {
       toolName?: unknown;
       status?: unknown;
       requiresApproval?: unknown;
+      mutationEnabled?: unknown;
       killSwitchReason?: unknown;
       modelVisible?: unknown;
     };
@@ -59,6 +60,21 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
+    if (body.mutationEnabled !== undefined && typeof body.mutationEnabled !== "boolean") {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Unsupported mutation authority flag",
+          details: {
+            code: "unsupported_mutation_enabled",
+            message: "mutationEnabled must be a boolean when provided.",
+            retryable: false,
+            redacted: true,
+          },
+        },
+        { status: 400 },
+      );
+    }
     if (body.modelVisible !== undefined && typeof body.modelVisible !== "boolean") {
       return NextResponse.json(
         {
@@ -95,6 +111,7 @@ export async function POST(request: NextRequest) {
         toolName: body.toolName,
         status: body.status,
         requiresApproval: body.requiresApproval,
+        mutationEnabled: body.mutationEnabled,
         killSwitchReason: body.killSwitchReason,
         modelVisible: body.modelVisible,
       }),

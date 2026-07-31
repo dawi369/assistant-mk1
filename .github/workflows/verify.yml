@@ -96,6 +96,15 @@ jobs:
       - name: Verify agent extension system
         run: pnpm conformance:agent-system
 
+      - name: Verify customer data lifecycle
+        run: pnpm conformance:data-lifecycle
+
+      - name: Verify connection brokerage
+        run: pnpm conformance:connections
+
+      - name: Verify mutation authority
+        run: pnpm conformance:actions
+
       - name: Verify Level 2 conformance
         run: pnpm conformance:level2
 

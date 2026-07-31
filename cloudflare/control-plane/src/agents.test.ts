@@ -58,6 +58,7 @@ const createRecordingEnv = (input: {
   role: string;
   agent?: AgentRow | null;
   agents?: AgentRow[];
+  e2eMode?: boolean;
 }) => {
   const statements: RecordedStatement[] = [];
   const membership = membershipRow(input.role);
@@ -88,6 +89,7 @@ const createRecordingEnv = (input: {
   };
 
   const env = {
+    WORKBENCH_E2E_MODE: input.e2eMode ? "true" : undefined,
     DB: {
       prepare: createStatement,
       async batch(batchStatements: Array<D1PreparedStatement & Partial<RecordedStatement>>) {
@@ -203,5 +205,24 @@ describe("agents", () => {
       ),
     ).toBe(true);
     expect(oldAgent.data_json).toContain('"packVersion":"0.9.0"');
+  });
+
+  it("keeps conformance-only packages hidden except in explicit E2E mode", async () => {
+    const normal = createRecordingEnv({ role: "owner", agent: agentRow() });
+    const hidden = await handleInstantiateAgentPack(normal.env, identity, "complex-operator");
+    expect(hidden.status).toBe(404);
+
+    const conformanceAgent = agentRow({ id: "agent-complex" });
+    const e2e = createRecordingEnv({ role: "owner", agent: conformanceAgent, e2eMode: true });
+    const instantiated = await handleInstantiateAgentPack(e2e.env, identity, "complex-operator");
+    expect(instantiated.status).toBe(201);
+    const insert = e2e.statements.find((statement) =>
+      statement.query.includes("INSERT OR IGNORE INTO agents"),
+    );
+    expect(
+      insert?.values.some(
+        (value) => typeof value === "string" && value.includes('"packId":"complex-operator"'),
+      ),
+    ).toBe(true);
   });
 });

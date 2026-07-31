@@ -113,6 +113,8 @@ function normalizeSchema(rows: SchemaRow[]): SchemaRow[] {
     sql: row.sql
       .replace(/\bIF NOT EXISTS\b/gi, "")
       .replace(/\s+/g, " ")
+      .replace(/\s+([,)])/g, "$1")
+      .replace(/([(,])\s+/g, "$1")
       .trim(),
   }));
 }
@@ -160,7 +162,19 @@ function main(): void {
     const resetSchema = normalizeSchema(executeJson<SchemaRow>(resetState, schemaQuery));
 
     if (JSON.stringify(migratedSchema) !== JSON.stringify(resetSchema)) {
-      throw new Error("Applied migrations do not match cloudflare/control-plane/schema.sql.");
+      const migratedByName = new Map(
+        migratedSchema.map((row) => [`${row.type}:${row.name}`, row.sql]),
+      );
+      const resetByName = new Map(resetSchema.map((row) => [`${row.type}:${row.name}`, row.sql]));
+      const differences = Array.from(new Set([...migratedByName.keys(), ...resetByName.keys()]))
+        .filter((name) => migratedByName.get(name) !== resetByName.get(name))
+        .map(
+          (name) =>
+            `${name}\n  migrated: ${migratedByName.get(name) ?? "<missing>"}\n  reset: ${resetByName.get(name) ?? "<missing>"}`,
+        );
+      throw new Error(
+        `Applied migrations do not match cloudflare/control-plane/schema.sql:\n${differences.join("\n")}`,
+      );
     }
 
     const markerId = "migration-verification-user";

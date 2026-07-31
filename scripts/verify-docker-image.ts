@@ -5,7 +5,7 @@ import path from "node:path";
 
 const root = process.cwd();
 const sentinelName = `assistant-mk1-docker-sentinel-${randomUUID()}`;
-const imageTag = `assistant-mk1:preview-verify-${process.pid}`;
+const imageTag = `assistant-mk1:release-verify-${process.pid}`;
 const sentinelPaths = [
   ".assistant-mk1",
   ".vercel",
@@ -77,7 +77,7 @@ const main = async () => {
       "langgraphjs",
       "--help",
     ]);
-    console.log("Docker preview image boundary verified.");
+    console.log("Docker release image boundary verified.");
   } finally {
     await Promise.all(sentinelPaths.map((sentinelPath) => rm(sentinelPath, { force: true })));
     await run("docker", ["image", "rm", "--force", imageTag], { quiet: true }).catch(() => {});

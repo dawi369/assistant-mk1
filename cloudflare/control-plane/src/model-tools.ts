@@ -1,7 +1,5 @@
 import { jsonSchema, tool, type ToolSet } from "ai";
 import {
-  defaultActionPort,
-  defaultConnectionPort,
   type AgentExecutionContext,
   type RuntimeRecord,
   type RuntimeToolBinding,
@@ -26,6 +24,8 @@ import {
   startPackWorkflowRun,
 } from "./runtime-run-lifecycle";
 import { executeRuntimeToolBinding, runtimeToolFailure } from "./runtime-tool-execution";
+import { createBrokeredConnectionPort } from "./connection-broker";
+import { createDurableActionPort } from "./action-authority";
 
 type ResolveModelToolsInput = {
   chatRunId: string | null;
@@ -190,8 +190,20 @@ const buildRuntimeModelTool = (input: {
           source: "user",
         },
         signal: controller.signal,
-        connections: defaultConnectionPort(input.pack.connections),
-        actions: defaultActionPort,
+        connections: createBrokeredConnectionPort(
+          input.env,
+          input.identity,
+          input.pack.connections,
+        ),
+        actions: createDurableActionPort(input.env, input.identity, {
+          packId: input.pack.id,
+          packVersion: input.pack.version,
+          runtimeVersion: input.runtimeVersion,
+          bindingVersion: 1,
+          runId: started.runId,
+          workflowIntentId: started.workflowIntentId,
+          toolCallId,
+        }),
         tools: {
           async invoke() {
             throw Object.assign(new Error("Nested model-tool invocation is disabled."), {

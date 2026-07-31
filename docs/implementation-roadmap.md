@@ -5,9 +5,8 @@ completed slice as live planning text. Current implementation truth still comes
 from the code and the current-runbook docs listed in `docs/README.md`.
 
 Default rule: docs and contracts first, then the smallest working vertical
-slice. Do not add persistence, Cloudflare resources, migrations, secret
-storage, or live mutation tools until the slice that needs them is explicitly
-scoped.
+slice. New authority must extend the retained-data, Vault, policy, approval,
+kill-switch, ledger, and conformance boundaries rather than bypassing them.
 
 ## Current Baseline
 
@@ -71,11 +70,12 @@ scoped.
   Diagnostics. Normal workspace, agent, and history operations link to their
   dedicated product surfaces instead of being duplicated in Admin.
 - Forward-only D1 migrations use Wrangler's ledger and are verified against the
-  rebuildable `cloudflare/control-plane/schema.sql` reset snapshot. Remote data
-  now has a deterministic backup/restore verifier, bounded artifact/event/trace
-  retention, a scoped D1/R2 export, and an exact deletion inventory. Hosted R2
-  recovery, streaming export, Durable Object coverage, and executable deletion
-  remain in `docs/migrations-and-retention.md`.
+  reset snapshot. Retention covers every durable class; asynchronous exports
+  combine checksummed D1, R2, and Durable Object state; and workspace
+  quarantine/recovery/final purge is executable.
+- WorkOS Vault custody, OAuth/API-key brokerage, durable action proposals,
+  approval, idempotency, kill switches, ledger outcomes, and reconciliation are
+  implemented behind default-off production gates.
 - Unattended trigger failures and expired leases create durable deduplicated
   operator alerts. Optional signed HTTPS delivery is retried and fenced; alert
   acknowledgement/resolution is tenant-scoped and audited.
@@ -96,28 +96,25 @@ scoped.
    materialization, and background reconciliation with Cloudflare-owned truth.
 2. Keep model-visible tools narrow and policy-gated; harden model-side tool
    rendering and approval explanations before broader model tool use.
-3. Move the remaining built-in workflow and runner adapter bodies behind the
-   shared core-provider module so the generic kernel is the only lifecycle path.
+3. Complete same-commit hosted lifecycle, Vault, mutation, soak, redelivery,
+   alerting, and signed-in operator evidence for 1.0.
 4. Validate the Runtime Kit with a downstream repository before publishing the
    SDK or adding remote installation.
-5. Keep promoting execution history and artifact metadata into richer product
-   surfaces: previews, filters, and user-facing export/delete behavior over the
-   existing bounded D1/R2 lifecycle API.
+5. Keep promoting execution history, artifacts, connections, exports, deletion,
+   proposals, and action ledgers into richer generic product surfaces.
 6. Add pack-contributed domain context, managed-state descriptors, and shared
    views for downstream apps without introducing a committed `Project` entity.
 7. Move more Fly/LangGraph producers onto scoped callbacks and session-event
    fanout instead of one-off status paths.
-8. Add another read-only adapter only when it proves a missing common contract,
-   then keep developer/customer packaging current as capabilities,
-   setup requirements, and upgrade boundaries change.
+8. Add real provider adapters only in separately reviewed packs after the
+   deterministic synthetic mutation and broker gates are green in production.
 
 ## Production Gates
 
 Mutation-capable tools stay blocked until the platform has:
 
-- A retention policy, backup/restore path, and export/delete behavior for any
-  table or artifact class the tool needs to preserve. Forward-only D1
-  migrations are already implemented.
+- A confirmed retention policy, backup/restore, complete export/delete, and
+  tenant-isolation evidence for every durable class the tool preserves.
 - WorkOS-backed invitation and customer-lifecycle administration beyond the
   current organization switcher and Cloudflare workspace/member controls.
 - Cloudflare-owned membership and tool authorization for customer-facing roles.
@@ -129,8 +126,9 @@ Mutation-capable tools stay blocked until the platform has:
 - Redaction across logs, traces, artifacts, provider payloads, and
   model-visible content.
 
-Live trading, deploy mutation, database mutation, billing, email sending, and
-production admin actions remain blocked until these gates exist.
+The framework now supplies these gates; real trading, deploy mutation, database
+mutation, billing, email, and production-admin adapters remain separately
+blocked until their pack-specific threat model and hosted acceptance exist.
 
 ## Deferred Until Proven Needed
 

@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.0.0
+
+Production candidate extending the workbench to Operational L3 and Authority A2.
+
+- Forward-only customer-data migrations, confirmed per-workspace retention,
+  checksummed D1/R2/Durable Object export, and 30-day deletion recovery/purge.
+- WorkOS Vault credential custody with API-key and OAuth 2.0 + PKCE brokerage,
+  scoped provider requests, refresh CAS, health, and revocation.
+- Durable mutation proposals, approvals, policy rechecks, kill switches,
+  idempotency, terminal action ledger, ambiguous outcomes, and reconciliation.
+- Deterministic Complex Operator mutation evidence without financial actions or
+  public provider traffic.
+- New lifecycle, connection, mutation, hosted Vault, and hosted mutation gates.
+
+The tag remains blocked until the same-commit hosted checklist in
+`docs/release-readiness.md` is complete.
+
 ## 1.0.0-preview.1
 
 Developer preview of the source-available Assistant-mk1 agent workbench.
