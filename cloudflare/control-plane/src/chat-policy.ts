@@ -12,6 +12,15 @@ export type ChatPolicyResult = {
 
 const executionModes = new Set<ExecutionMode>(["ask", "dry_run", "execute"]);
 
+export const runningChatRunPolicy = (executionMode: ExecutionMode): ChatPolicyResult => ({
+  decision: "block",
+  executionMode,
+  reason: "A response is already running. Wait or start a new chat.",
+  status: 409,
+  errorCode: "already_running",
+  retryable: true,
+});
+
 export const deriveChatExecutionMode = (body: unknown) => {
   const requested = isRecord(body) ? body.execution_mode : undefined;
   if (typeof requested !== "string") {
@@ -49,14 +58,7 @@ export const evaluateChatRunPolicy = (input: {
   }
 
   if (input.runningRun) {
-    return {
-      decision: "block",
-      executionMode: input.executionMode,
-      reason: "A response is already running. Wait or start a new chat.",
-      status: 409,
-      errorCode: "already_running",
-      retryable: true,
-    };
+    return runningChatRunPolicy(input.executionMode);
   }
 
   if (input.executionMode === "execute") {

@@ -304,30 +304,73 @@ export const createChatPolicyDecision = async (
   return decisionId;
 };
 
-export const createChatRun = async (
+export const createAllowedChatRunBoundary = async (
   env: Env,
   identity: AgentIdentity,
   input: {
+    sessionId: string;
     threadId: string;
-    intentId: string;
-    policyDecisionId: string;
+    executionMode: ExecutionMode;
+    payload: Record<string, unknown>;
+    reason: string;
+    limits?: Record<string, unknown>;
     metadata?: Record<string, unknown>;
   },
 ) => {
   const timestamp = new Date().toISOString();
+  const intentId = createId("cf-chat-intent");
+  const policyDecisionId = createId("cf-chat-policy");
   const runId = createId("cf-chat-run");
-  await env.DB.prepare(
-    `INSERT INTO chat_runs (
-       id, intent_id, policy_decision_id, thread_id, user_id, workspace_id, agent_id,
-       status, metadata_json,
-       started_at, updated_at
-     )
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  )
-    .bind(
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO chat_intents (
+         id, session_id, thread_id, user_id, workspace_id, agent_id, type, execution_mode,
+         status, payload_json, created_at, updated_at
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      intentId,
+      input.sessionId,
+      input.threadId,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.agentId,
+      "chat.respond",
+      input.executionMode,
+      "allowed",
+      toJson(input.payload),
+      timestamp,
+      timestamp,
+    ),
+    env.DB.prepare(
+      `INSERT INTO chat_policy_decisions (
+         id, intent_id, thread_id, user_id, workspace_id, agent_id, decision, reason,
+         execution_mode, limits_json, created_at
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      policyDecisionId,
+      intentId,
+      input.threadId,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      identity.agentId,
+      "allow",
+      input.reason,
+      input.executionMode,
+      toJson(input.limits ?? {}),
+      timestamp,
+    ),
+    env.DB.prepare(
+      `INSERT INTO chat_runs (
+         id, intent_id, policy_decision_id, thread_id, user_id, workspace_id, agent_id,
+         status, metadata_json, started_at, updated_at
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
       runId,
-      input.intentId,
-      input.policyDecisionId,
+      intentId,
+      policyDecisionId,
       input.threadId,
       identity.scope.userId,
       identity.scope.workspaceId,
@@ -336,10 +379,15 @@ export const createChatRun = async (
       toJson(input.metadata ?? {}),
       timestamp,
       timestamp,
-    )
-    .run();
-  return runId;
+    ),
+  ]);
+  return { intentId, policyDecisionId, runId };
 };
+
+export const isChatRunClaimConflict = (error: unknown) =>
+  /UNIQUE constraint failed:\s*chat_runs\.user_id,\s*chat_runs\.workspace_id,\s*chat_runs\.thread_id/i.test(
+    error instanceof Error ? error.message : String(error),
+  );
 
 export const createAgentChatRunStartMirror = async (
   env: Env,

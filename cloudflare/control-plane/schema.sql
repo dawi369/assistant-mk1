@@ -802,3 +802,7 @@ CREATE TABLE chat_runs (
 
 CREATE INDEX idx_chat_runs_thread_latest
   ON chat_runs (user_id, workspace_id, thread_id, updated_at DESC, started_at DESC);
+
+CREATE UNIQUE INDEX idx_chat_runs_one_running_per_thread
+  ON chat_runs (user_id, workspace_id, thread_id)
+  WHERE status = 'running';

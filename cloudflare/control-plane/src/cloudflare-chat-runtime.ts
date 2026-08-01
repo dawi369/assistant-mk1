@@ -1,10 +1,11 @@
 import {
+  createAllowedChatRunBoundary,
   createChatIntent,
   createChatPolicyDecision,
-  createChatRun,
   createChatSession,
   getLatestChatSession,
   getLatestRunningChatRun,
+  isChatRunClaimConflict,
   storeChatThread,
   touchChatSession,
   updateChatRun,
@@ -19,7 +20,11 @@ import {
   type AgentRuntimeConfig,
 } from "./agent-records";
 import { selectAgent } from "./authz-store";
-import { deriveChatExecutionMode, evaluateChatRunPolicy } from "./chat-policy";
+import {
+  deriveChatExecutionMode,
+  evaluateChatRunPolicy,
+  runningChatRunPolicy,
+} from "./chat-policy";
 import { appendControlPlaneEvent } from "./control-plane-events";
 import { isRecord, json, parseDataJson, parseJson } from "./http";
 import {
@@ -516,78 +521,87 @@ export const handleCloudflareRunStream = async (
     },
   });
   const recordsStartedAtMs = Date.now();
-  const intentId = await createChatIntent(env, identity, {
-    sessionId: thread.session_id,
-    threadId: thread.thread_id,
-    executionMode,
-    status: policy.decision === "allow" ? "allowed" : "blocked",
-    payload: {
-      assistantId: requestedAssistantId,
-      bodyBytes: bodyText.length,
-      messageCount: inputMessages.length,
-      requestedExecutionMode,
-      runtime: "cloudflare-simple-chat",
-      agent: agentMetadata,
-      runtimeConfig,
-      behaviorConfig,
-    },
+  const intentPayload = {
+    assistantId: requestedAssistantId,
+    bodyBytes: bodyText.length,
+    messageCount: inputMessages.length,
+    requestedExecutionMode,
+    runtime: "cloudflare-simple-chat",
+    agent: agentMetadata,
+    runtimeConfig,
+    behaviorConfig,
+  };
+  const limitsFor = (currentPolicy: typeof policy) => ({
+    sameThreadConcurrency: 1,
+    errorCode: currentPolicy.errorCode,
+    retryable: currentPolicy.retryable,
   });
-  timing.mark("intentCreated");
-  void safeWaitUntil(
-    ctx,
-    appendControlPlaneEvent(env, identity, {
-      type: "chat.intent.created",
-      summary: "Created Cloudflare-owned chat response intent.",
-      targetType: "chat_intent",
-      targetId: intentId,
-      data: {
-        threadId: thread.thread_id,
-        sessionId: thread.session_id,
-        executionMode,
-        status: policy.decision,
-        runtime: "cloudflare-simple-chat",
-        agent: agentMetadata,
-        runtimeConfig,
-        behaviorConfig,
-        timings: timing.snapshot(),
-      },
-    }),
-    "Failed to append chat intent event",
-  );
-  const policyDecisionId = await createChatPolicyDecision(env, identity, {
-    intentId,
-    threadId: thread.thread_id,
-    decision: policy.decision,
-    reason: policy.reason,
-    executionMode,
-    limits: {
-      sameThreadConcurrency: 1,
-      errorCode: policy.errorCode,
-      retryable: policy.retryable,
-    },
-  });
-  timing.mark("policyDecisionCreated");
-  void safeWaitUntil(
-    ctx,
-    appendControlPlaneEvent(env, identity, {
-      type: policy.decision === "allow" ? "chat.policy.allowed" : "chat.policy.blocked",
-      summary: policy.reason,
-      targetType: "chat_policy_decision",
-      targetId: policyDecisionId,
-      data: {
-        threadId: thread.thread_id,
-        intentId,
-        executionMode,
-        agent: agentMetadata,
-        runtimeConfig,
-        behaviorConfig,
-        timings: timing.snapshot(),
-      },
-    }),
-    "Failed to append chat policy event",
-  );
+  const publishIntentAndPolicyEvents = (
+    intentId: string,
+    policyDecisionId: string,
+    currentPolicy: typeof policy,
+  ) => {
+    void safeWaitUntil(
+      ctx,
+      appendControlPlaneEvent(env, identity, {
+        type: "chat.intent.created",
+        summary: "Created Cloudflare-owned chat response intent.",
+        targetType: "chat_intent",
+        targetId: intentId,
+        data: {
+          threadId: thread.thread_id,
+          sessionId: thread.session_id,
+          executionMode,
+          status: currentPolicy.decision,
+          runtime: "cloudflare-simple-chat",
+          agent: agentMetadata,
+          runtimeConfig,
+          behaviorConfig,
+          timings: timing.snapshot(),
+        },
+      }),
+      "Failed to append chat intent event",
+    );
+    void safeWaitUntil(
+      ctx,
+      appendControlPlaneEvent(env, identity, {
+        type: currentPolicy.decision === "allow" ? "chat.policy.allowed" : "chat.policy.blocked",
+        summary: currentPolicy.reason,
+        targetType: "chat_policy_decision",
+        targetId: policyDecisionId,
+        data: {
+          threadId: thread.thread_id,
+          intentId,
+          executionMode,
+          agent: agentMetadata,
+          runtimeConfig,
+          behaviorConfig,
+          timings: timing.snapshot(),
+        },
+      }),
+      "Failed to append chat policy event",
+    );
+  };
 
   if (policy.decision === "block") {
+    const intentId = await createChatIntent(env, identity, {
+      sessionId: thread.session_id,
+      threadId: thread.thread_id,
+      executionMode,
+      status: "blocked",
+      payload: intentPayload,
+    });
+    timing.mark("intentCreated");
+    const policyDecisionId = await createChatPolicyDecision(env, identity, {
+      intentId,
+      threadId: thread.thread_id,
+      decision: "block",
+      reason: policy.reason,
+      executionMode,
+      limits: limitsFor(policy),
+    });
+    timing.mark("policyDecisionCreated");
+    publishIntentAndPolicyEvents(intentId, policyDecisionId, policy);
     timing.mark("policyBlocked");
     await recordSpan(env, identity, {
       traceId: trace.traceId,
@@ -621,22 +635,84 @@ export const handleCloudflareRunStream = async (
     );
   }
 
-  const runId = await createChatRun(env, identity, {
-    threadId: thread.thread_id,
-    intentId,
-    policyDecisionId,
-    metadata: {
+  let boundary: { intentId: string; policyDecisionId: string; runId: string };
+  try {
+    boundary = await createAllowedChatRunBoundary(env, identity, {
+      sessionId: thread.session_id,
+      threadId: thread.thread_id,
       executionMode,
-      runtime: "cloudflare-simple-chat",
-      modelProvider: runtimeConfig.provider,
-      model: runtimeConfig.model,
-      runtimeConfig,
-      behaviorConfig,
-      agent: agentMetadata,
-      timings: timing.snapshot(),
-    },
-  });
+      payload: intentPayload,
+      reason: policy.reason,
+      limits: limitsFor(policy),
+      metadata: {
+        executionMode,
+        runtime: "cloudflare-simple-chat",
+        modelProvider: runtimeConfig.provider,
+        model: runtimeConfig.model,
+        runtimeConfig,
+        behaviorConfig,
+        agent: agentMetadata,
+        timings: timing.snapshot(),
+      },
+    });
+  } catch (error) {
+    if (!isChatRunClaimConflict(error)) throw error;
+    const claimPolicy = runningChatRunPolicy(executionMode);
+    const intentId = await createChatIntent(env, identity, {
+      sessionId: thread.session_id,
+      threadId: thread.thread_id,
+      executionMode,
+      status: "blocked",
+      payload: intentPayload,
+    });
+    const policyDecisionId = await createChatPolicyDecision(env, identity, {
+      intentId,
+      threadId: thread.thread_id,
+      decision: "block",
+      reason: claimPolicy.reason,
+      executionMode,
+      limits: limitsFor(claimPolicy),
+    });
+    timing.mark("intentCreated");
+    timing.mark("policyDecisionCreated");
+    publishIntentAndPolicyEvents(intentId, policyDecisionId, claimPolicy);
+    timing.mark("policyBlocked");
+    await recordSpan(env, identity, {
+      traceId: trace.traceId,
+      name: "Atomic chat run claim",
+      layer: "d1",
+      startedAtMs: recordsStartedAtMs,
+      status: "blocked",
+      data: { intentId, policyDecisionId, reason: claimPolicy.reason },
+    });
+    await finishTrace(env, identity, trace, {
+      status: "blocked",
+      summary: claimPolicy.reason,
+      data: {
+        threadId: thread.thread_id,
+        intentId,
+        policyDecisionId,
+        errorCode: claimPolicy.errorCode,
+      },
+    });
+    return json(
+      {
+        ok: false,
+        error: claimPolicy.reason,
+        errorCode: claimPolicy.errorCode,
+        retryable: claimPolicy.retryable,
+        intentId,
+        policyDecisionId,
+        decision: claimPolicy.decision,
+      },
+      { status: claimPolicy.status },
+    );
+  }
+  const { intentId, policyDecisionId, runId } = boundary;
+  timing.mark("intentCreated");
+  timing.mark("policyDecisionCreated");
   timing.mark("runCreated");
+  publishIntentAndPolicyEvents(intentId, policyDecisionId, policy);
   await updateChatThreadUpstream(
     env,
     identity.scope,
