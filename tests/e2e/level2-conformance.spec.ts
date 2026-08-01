@@ -208,17 +208,20 @@ test.describe.serial("Level 2 executable conformance", () => {
     });
     expect(bootstrapOther.ok()).toBe(true);
     for (const operation of [
-      request.get(`${workerOrigin}/workbench/history/runs/${retriedRunId}`, {
-        headers: otherHeaders,
-      }),
-      request.post(`${workerOrigin}/workbench/history/runs/${retriedRunId}/cancel`, {
-        headers: otherHeaders,
-      }),
-      request.post(`${workerOrigin}/workbench/history/runs/${retriedRunId}/retry`, {
-        headers: otherHeaders,
-      }),
+      () =>
+        request.get(`${workerOrigin}/workbench/history/runs/${retriedRunId}`, {
+          headers: otherHeaders,
+        }),
+      () =>
+        request.post(`${workerOrigin}/workbench/history/runs/${retriedRunId}/cancel`, {
+          headers: otherHeaders,
+        }),
+      () =>
+        request.post(`${workerOrigin}/workbench/history/runs/${retriedRunId}/retry`, {
+          headers: otherHeaders,
+        }),
     ]) {
-      expect((await operation).status()).toBe(404);
+      expect((await operation()).status()).toBe(404);
     }
     const otherArtifacts = await request.get(`${workerOrigin}/workbench/history/artifacts`, {
       headers: otherHeaders,

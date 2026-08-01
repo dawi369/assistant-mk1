@@ -9,13 +9,14 @@ import {
 } from "@assistant-mk1/agent-sdk";
 
 import { loadAgentModules } from "./agent-pack-compiler";
+import { createAgentPackTestFetch } from "./agent-pack-test-fetch";
 
 const readArg = (name: string) => {
   const index = process.argv.indexOf(name);
   return index >= 0 ? process.argv[index + 1] : undefined;
 };
 
-const main = async () => {
+const run = async () => {
   const requested = readArg("--pack");
   if (!requested) throw new Error("Usage: pnpm agent-packs:test --pack <pack-id>");
   const modules = await loadAgentModules(process.cwd());
@@ -172,6 +173,16 @@ const main = async () => {
     ),
   );
   if (failed.length) process.exit(1);
+};
+
+const main = async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = createAgentPackTestFetch();
+  try {
+    await run();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 };
 
 main().catch((error) => {
