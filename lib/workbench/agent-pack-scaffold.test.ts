@@ -4,6 +4,8 @@ import {
   registerAgentPackSource,
   renderAgentPackIndex,
   renderAgentPackPrompt,
+  renderAgentPackReadme,
+  renderAgentPackTest,
   validateAgentPackScaffoldInput,
 } from "./agent-pack-scaffold";
 
@@ -34,5 +36,17 @@ describe("Agent Pack scaffold", () => {
     expect(updated).toContain('package: "@assistant-mk1/pack-trade-watcher"');
     expect(updated).toContain('source: "./agent-packs/trade-watcher"');
     expect(() => registerAgentPackSource(updated, "trade-watcher")).toThrow("already configured");
+  });
+
+  it("renders a self-documenting package with focused runtime characterization", () => {
+    const input = { id: "trade-watcher", name: "Trade Watcher" };
+
+    expect(renderAgentPackReadme(input)).toContain(
+      "pnpm workbench pack check --pack trade-watcher",
+    );
+    expect(renderAgentPackReadme(input)).toContain("Package boundaries");
+    expect(renderAgentPackTest(input)).toContain('expect(manifest.id).toBe("trade-watcher")');
+    expect(renderAgentPackTest(input)).toContain("health.check()");
+    expect(renderAgentPackTest(input)).toContain("evaluation.run()");
   });
 });

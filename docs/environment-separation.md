@@ -73,7 +73,7 @@ remains a dashboard action and must be recorded with
 an AuthKit application.
 
 Vercel provisioning also converges the project to the repository contract:
-Next.js with Node 22. A project left on a provider default runtime is not ready
+Next.js with Node 24. A project left on a provider default runtime is not ready
 for deployment.
 
 For a new Worker, run the guarded Cloudflare bootstrap before configuring

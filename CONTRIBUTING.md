@@ -8,24 +8,28 @@ keeping the reusable assistant-ui layer product-agnostic.
 
 Requirements:
 
-- Node.js 22
+- Node.js 24 LTS for release parity; Node.js 26 is accepted for local development
 - pnpm 10.33.0
 - Chromium for the Playwright release suite (`pnpm exec playwright install chromium`)
 - a Cloudflare account for remote Worker work
 - a WorkOS environment for hosted authentication work
 
+Release evidence is authoritative only on Node 24. Node 26 is supported for
+local iteration, but runtime-sensitive failures must be reproduced on Node 24.
+
 ```bash
 pnpm install --frozen-lockfile
-pnpm workbench:init
+pnpm workbench init
 ```
 
 The initializer creates only missing local files, fills blank or documented
-placeholder development secrets, and applies forward D1 migrations. It never
-overwrites configured values. Set `OPENROUTER_API_KEY` in both local environment
-files, then verify setup:
+placeholder development secrets, upgrades the retired inline local-runner
+default, and applies forward D1 migrations. It preserves configured credentials
+and custom endpoints. Set `OPENROUTER_API_KEY` in both local environment files,
+then verify setup:
 
 ```bash
-pnpm workbench:doctor --offline
+pnpm workbench doctor --offline
 ```
 
 Use `pnpm db:cloudflare:rebuild:local` only for a deliberate destructive reset.
@@ -33,12 +37,13 @@ Use `pnpm db:cloudflare:rebuild:local` only for a deliberate destructive reset.
 Start the complete workbench:
 
 ```bash
-pnpm dev:workbench
+pnpm workbench dev
 ```
 
 The frontend runs at `http://localhost:3000`, LangGraph at
-`http://localhost:2024`, and the Cloudflare Worker at
-`http://localhost:8787`.
+`http://localhost:2024`, the Cloudflare Worker at `http://localhost:8787`, and
+the signed runner gateway at `http://localhost:3101`. The supervisor stops the
+complete process set when one required service exits.
 
 ## Change Workflow
 

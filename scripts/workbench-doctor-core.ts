@@ -1,7 +1,10 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
-type Values = Record<string, string>;
+import { assessLocalNodeRuntime } from "./node-runtime";
+import { readLocalEnvironment, type LocalEnvironment } from "./workbench-local-env";
+
+type Values = LocalEnvironment;
 
 export type WorkbenchDoctorResult = {
   checks: string[];
@@ -12,29 +15,14 @@ export type WorkbenchDoctorOptions = {
   root: string;
   offline: boolean;
   environment?: Readonly<Record<string, string | undefined>>;
+  allowMissingProviderKey?: boolean;
 };
 
 const readEnvFile = (root: string, file: string, checks: string[], failures: string[]): Values => {
-  const absolute = path.join(root, file);
-  if (!existsSync(absolute)) {
+  const values = readLocalEnvironment(root, file);
+  if (!values) {
     failures.push(`${file} is missing`);
     return {};
-  }
-  const values: Values = {};
-  for (const rawLine of readFileSync(absolute, "utf8").split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith("#")) continue;
-    const separator = line.indexOf("=");
-    if (separator < 1) continue;
-    const key = line.slice(0, separator).trim();
-    let value = line.slice(separator + 1).trim();
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
-    }
-    values[key] = value;
   }
   checks.push(`${file} loaded`);
   return values;
@@ -44,15 +32,13 @@ export const diagnoseWorkbench = async ({
   root,
   offline,
   environment = process.env,
+  allowMissingProviderKey = false,
 }: WorkbenchDoctorOptions): Promise<WorkbenchDoctorResult> => {
   const failures: string[] = [];
   const checks: string[] = [];
-  const nodeMajor = Number.parseInt(process.versions.node.split(".")[0] ?? "", 10);
-  if (nodeMajor !== 22) {
-    failures.push(`Node.js 22.x is required; current runtime is ${process.version}`);
-  } else {
-    checks.push(`Node.js ${process.versions.node} matches the supported 22.x runtime`);
-  }
+  const nodeRuntime = assessLocalNodeRuntime();
+  if (nodeRuntime.supported) checks.push(nodeRuntime.message);
+  else failures.push(nodeRuntime.message);
 
   const frontend = {
     ...readEnvFile(root, ".env.local", checks, failures),
@@ -60,7 +46,8 @@ export const diagnoseWorkbench = async ({
   } as Values;
   const worker = readEnvFile(root, "cloudflare/control-plane/.dev.vars", checks, failures);
   const requireValue = (source: Values, key: string, label: string) => {
-    if (!source[key]?.trim()) failures.push(`${label} is missing ${key}`);
+    const value = source[key]?.trim();
+    if (!value || value.startsWith("replace-with-")) failures.push(`${label} is missing ${key}`);
   };
 
   for (const key of [
@@ -75,6 +62,10 @@ export const diagnoseWorkbench = async ({
   for (const key of ["CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN", "WORKBENCH_AGENT_CONNECTION_SECRET"]) {
     requireValue(worker, key, "cloudflare/control-plane/.dev.vars");
   }
+  if (!allowMissingProviderKey) {
+    requireValue(frontend, "OPENROUTER_API_KEY", ".env.local");
+    requireValue(worker, "OPENROUTER_API_KEY", "cloudflare/control-plane/.dev.vars");
+  }
   if (frontend.WORKBENCH_ALLOW_LOCAL_DEV_IDENTITY !== "true") {
     failures.push(".env.local must explicitly enable WORKBENCH_ALLOW_LOCAL_DEV_IDENTITY");
   }
@@ -86,14 +77,24 @@ export const diagnoseWorkbench = async ({
     failures.push("frontend and Worker control-plane tokens do not match");
   }
   if (worker.WORKBENCH_RUNNER_TRANSPORT === "fly") {
+    requireValue(worker, "LANGGRAPH_UPSTREAM_TOKEN", "cloudflare/control-plane/.dev.vars");
     requireValue(worker, "WORKBENCH_RUNNER_URL", "cloudflare/control-plane/.dev.vars");
     requireValue(worker, "WORKBENCH_RUNNER_SIGNING_SECRET", "cloudflare/control-plane/.dev.vars");
+    requireValue(worker, "WORKBENCH_CALLBACK_URL", "cloudflare/control-plane/.dev.vars");
+    requireValue(worker, "WORKBENCH_CALLBACK_SIGNING_SECRET", "cloudflare/control-plane/.dev.vars");
     if (
       frontend.WORKBENCH_RUNNER_SIGNING_SECRET &&
       frontend.WORKBENCH_RUNNER_SIGNING_SECRET !== worker.WORKBENCH_RUNNER_SIGNING_SECRET
     ) {
       failures.push("frontend runner signing secret does not match the Worker runner secret");
     }
+  }
+  if (
+    frontend.WORKBENCH_CALLBACK_SIGNING_SECRET &&
+    worker.WORKBENCH_CALLBACK_SIGNING_SECRET &&
+    frontend.WORKBENCH_CALLBACK_SIGNING_SECRET !== worker.WORKBENCH_CALLBACK_SIGNING_SECRET
+  ) {
+    failures.push("frontend and Worker callback signing secrets do not match");
   }
   const alertWebhookUrl = worker.WORKBENCH_OPERATOR_ALERT_WEBHOOK_URL?.trim();
   const alertSigningSecret = worker.WORKBENCH_OPERATOR_ALERT_SIGNING_SECRET?.trim();
@@ -161,8 +162,27 @@ export const diagnoseWorkbench = async ({
       if (!workspace.ok)
         failures.push(`local identity validation returned HTTP ${workspace.status}`);
       else checks.push("local user, workspace, membership, agent, and preferences validated");
+
+      const langGraphOrigin = (worker.LANGGRAPH_UPSTREAM_URL || "http://127.0.0.1:2024").replace(
+        /\/$/,
+        "",
+      );
+      const langGraph = await fetch(`${langGraphOrigin}/ok`, {
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!langGraph.ok) failures.push(`LangGraph health returned HTTP ${langGraph.status}`);
+      else checks.push("LangGraph runtime is reachable");
+
+      if (worker.WORKBENCH_RUNNER_TRANSPORT === "fly" && worker.WORKBENCH_RUNNER_URL) {
+        const runnerOrigin = new URL(worker.WORKBENCH_RUNNER_URL).origin;
+        const runner = await fetch(`${runnerOrigin}/health`, {
+          signal: AbortSignal.timeout(5_000),
+        });
+        if (!runner.ok) failures.push(`signed runner health returned HTTP ${runner.status}`);
+        else checks.push("signed runner gateway and LangGraph dependency are reachable");
+      }
     } catch {
-      failures.push("Worker is unreachable; start pnpm dev:cloudflare or use --offline");
+      failures.push("A local service is unreachable; start pnpm workbench dev or use --offline");
     }
   }
 

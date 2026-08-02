@@ -41,7 +41,7 @@ import { defineWebModule } from "@assistant-mk1/agent-sdk/web";
 Its JSON contracts are `schemas/agent-pack-v2.schema.json` and
 `schemas/runtime-module-v1.schema.json`. `pnpm agent-sdk:verify` builds and packs
 the SDK, installs the tarball into an ignored zero-context consumer, executes
-every runtime export under Node 22, resolves declarations without TypeScript
+every runtime export under Node 24, resolves declarations without TypeScript
 path aliases, and compiles a separately packed Agent Module using only its
 package name. The SDK is not published by this repository.
 
@@ -128,9 +128,7 @@ To add a comparable package:
 ```bash
 pnpm agent-packs:create --id my-operator --name "My Operator"
 # edit only agent-packs/my-operator/* and its generated workbench.config.ts entry
-pnpm agent-packs:compile
-pnpm agent-packs:inspect --pack my-operator
-pnpm agent-packs:test --pack my-operator
+pnpm workbench pack check --pack my-operator
 pnpm conformance:agent-system
 ```
 

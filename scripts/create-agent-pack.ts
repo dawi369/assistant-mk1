@@ -7,7 +7,9 @@ import {
   renderAgentPackIndex,
   renderAgentPackPackageJson,
   renderAgentPackPrompt,
+  renderAgentPackReadme,
   renderAgentPackRunner,
+  renderAgentPackTest,
   renderAgentPackWeb,
   validateAgentPackScaffoldInput,
 } from "../lib/workbench/agent-pack-scaffold";
@@ -51,6 +53,10 @@ try {
   });
   writeFileSync(join(packDirectory, "runner.ts"), renderAgentPackRunner(input.id), { flag: "wx" });
   writeFileSync(join(packDirectory, "web.ts"), renderAgentPackWeb(input.id), { flag: "wx" });
+  writeFileSync(join(packDirectory, "README.md"), renderAgentPackReadme(input), { flag: "wx" });
+  writeFileSync(join(packDirectory, "control-plane.test.ts"), renderAgentPackTest(input), {
+    flag: "wx",
+  });
   writeFileSync(join(packDirectory, "package.json"), renderAgentPackPackageJson(input), {
     flag: "wx",
   });

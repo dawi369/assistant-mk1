@@ -44,6 +44,33 @@ if (/<!--\s*Add the .* screenshot/i.test(readme)) {
   failures.push("README.md still contains a release screenshot placeholder");
 }
 
+const packageJson = JSON.parse(readRepositoryFile("package.json")) as {
+  scripts?: Record<string, string>;
+};
+const documentedCommandFiles = [
+  "README.md",
+  "CONTRIBUTING.md",
+  "docs/complex-agent-golden-path.md",
+];
+const packageManagerBuiltins = new Set(["install", "exec", "dlx"]);
+for (const file of documentedCommandFiles) {
+  const content = readRepositoryFile(file);
+  for (const match of content.matchAll(/^pnpm ([a-z][a-z0-9:-]*)/gim)) {
+    const command = match[1]!;
+    if (!packageManagerBuiltins.has(command) && !packageJson.scripts?.[command]) {
+      failures.push(`${file} documents missing package script ${command}`);
+    }
+  }
+}
+
+const currentTopology = readRepositoryFile("docs/diagrams/current-implementation-topology.mmd");
+if (currentTopology.includes("R2 artifacts planned")) {
+  failures.push("current implementation topology still labels active R2 artifacts as planned");
+}
+if (!currentTopology.includes("R2 artifacts + exports")) {
+  failures.push("current implementation topology must show active R2 artifact/export storage");
+}
+
 const migrationDirectory = join(repositoryRoot, "cloudflare/control-plane/migrations");
 const migrations = readdirSync(migrationDirectory)
   .filter((name) => /^\d{4}_.+\.sql$/.test(name))

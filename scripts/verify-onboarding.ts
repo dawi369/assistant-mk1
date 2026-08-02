@@ -18,9 +18,13 @@ const main = async () => {
     );
   }
   await initializeWorkbench({ root: fixture, runMigration: false });
-  const result = await diagnoseWorkbench({ root: fixture, offline: true, environment: {} });
-  const failures = result.failures.filter((failure) => !failure.startsWith("Node.js 22.x"));
-  if (failures.length) throw new Error(failures.join("\n"));
+  const result = await diagnoseWorkbench({
+    root: fixture,
+    offline: true,
+    environment: {},
+    allowMissingProviderKey: true,
+  });
+  if (result.failures.length) throw new Error(result.failures.join("\n"));
   const worker = readFileSync(resolve(fixture, "cloudflare/control-plane/.dev.vars"), "utf8");
   if (worker.includes("WORKBENCH_EXECUTOR_")) {
     throw new Error("Local setup still contains retired executor configuration");

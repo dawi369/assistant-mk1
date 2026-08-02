@@ -229,8 +229,9 @@ pnpm agent-packs:create --id trade-watcher --name "Trade Watcher"
 
 The command validates the id/name before writing, refuses to overwrite an
 existing directory or configuration entry, creates the manifest,
-control-plane, runner, web, package metadata, and prompt exports, and adds the
-single `workbench.config.ts` entry. The starter is deliberately
+control-plane, runner, web, package metadata, prompt exports, package-local
+README, and characterization test, and adds the single `workbench.config.ts`
+entry. The starter is deliberately
 read-only, secret-free, disabled from model tool use, resource-bounded, and
 equipped with a static eval and health declaration. Replace its placeholder
 purpose and replace the deterministic starter binding with domain behavior.
@@ -255,6 +256,7 @@ pnpm agent-packs:compile --check
 pnpm agent-packs:inspect --pack <pack-id>
 pnpm agent-packs:smoke --pack <pack-id>
 pnpm agent-packs:test --pack <pack-id>
+pnpm workbench pack check --pack <pack-id>
 pnpm conformance:agent-system
 pnpm test:service-boundaries
 pnpm verify:fast

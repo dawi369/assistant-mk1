@@ -104,40 +104,29 @@ The local Cloudflare loop uses Wrangler with a local D1 binding named `DB` and
 the same Worker run-control routes as remote dev. It remains the cheapest inner
 loop for Worker changes.
 
-Local commands:
+Initialize and start the complete local path:
 
 ```bash
-cat > cloudflare/control-plane/.dev.vars <<'EOF'
-CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=local-dev-token
-LANGGRAPH_UPSTREAM_URL=http://127.0.0.1:2024
-LANGGRAPH_UPSTREAM_TOKEN=local-langgraph-proxy-token
-SENTRY_DSN=
-SENTRY_ENVIRONMENT=development
-SENTRY_TRACES_SAMPLE_RATE=1.0
-WORKBENCH_CALLBACK_SIGNING_SECRET=local-callback-signing-secret
-WORKBENCH_RUNNER_TRANSPORT=fly
-WORKBENCH_RUNNER_URL=http://127.0.0.1:3101/workbench/tool-runners/invocations
-WORKBENCH_RUNNER_SIGNING_SECRET=local-runner-signing-secret
-EOF
-pnpm db:cloudflare:migrate:local
-pnpm dev:cloudflare
+pnpm workbench init
+# Set OPENROUTER_API_KEY in both generated local environment files.
+pnpm workbench doctor --offline
+pnpm workbench dev
 ```
 
 The migration command applies only unapplied files and preserves local dev D1
 state. Use `pnpm db:cloudflare:rebuild:local` only for a deliberate destructive
 reset.
 
-In another terminal, run the Next app and local LangGraph dev server with:
+`workbench dev` supervises the ordinary deployed-shape local services:
 
-```bash
-CLOUDFLARE_CONTROL_PLANE_URL=http://localhost:8787 \
-CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=local-dev-token \
-LANGGRAPH_UPSTREAM_TOKEN=local-langgraph-proxy-token \
-WORKBENCH_DEV_USER_ID=dev-user \
-WORKBENCH_DEV_WORKSPACE_ID=dev-workspace \
-WORKBENCH_DEV_AGENT_ID=dev-agent \
-pnpm dev
-```
+- Next.js at `http://localhost:3000`;
+- LangGraph at `http://localhost:2024`;
+- Cloudflare at `http://localhost:8787`;
+- the signed runner gateway at `http://localhost:3101`.
+
+Run `pnpm workbench doctor` in another terminal. It verifies the provider keys,
+Worker and D1 identity path, LangGraph health, signed runner health, and matching
+local transport secrets without printing their values.
 
 Then smoke the same Cloudflare-owned path locally:
 

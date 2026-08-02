@@ -36,7 +36,7 @@ site, npm publication, license changes, or changing Pack API/Runtime Module APIs
 
 ## Steps
 
-1. Pin the supported production runtime to Node `22.x`; keep pnpm major pinned.
+1. Pin the supported production runtime to Node `24.x`; keep pnpm major pinned.
    Make `workbench:doctor` fail on the wrong Node major. Ensure CI, Docker, and
    Vercel use the same major. Do not upgrade Node in this slice.
 
@@ -82,7 +82,7 @@ site, npm publication, license changes, or changing Pack API/Runtime Module APIs
   credentials; use local deterministic state instead.
 - Stop if a documentation claim lacks executable or hosted evidence; mark it
   pending rather than inferring completion.
-- Stop if Node 22 is unsupported by any current deployment target and report the
+- Stop if Node 24 is unsupported by any current deployment target and report the
   exact primary-source constraint.
 
 ## Maintenance notes

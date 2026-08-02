@@ -21,7 +21,7 @@
     "projectId": "local",
     "origin": "http://localhost:3000",
     "framework": "nextjs",
-    "nodeVersion": "22.x"
+    "nodeVersion": "24.x"
   },
   "workos": {
     "applicationName": "assistant-mk1-local",

@@ -65,7 +65,7 @@ Runtime Module v2, Pack API v3, runtime sandboxing, or publishing to npm.
 2. Rewrite `agent-sdk:verify` to create an ignored clean consumer with its own
    `package.json`, install the tarball as a dependency, and use normal package
    resolution. Remove all `paths` mappings. Typecheck imports from every public
-   subpath, then execute a `.mjs` file with Node 22 that calls harmless SDK
+   subpath, then execute a `.mjs` file with Node 24 that calls harmless SDK
    helpers.
 
    **Verify**: temporarily rename the extracted source directory if retained;
@@ -90,7 +90,7 @@ Runtime Module v2, Pack API v3, runtime sandboxing, or publishing to npm.
 ## Done criteria
 
 - `npm`/`pnpm` package consumers resolve only `dist`, never repository source.
-- Node 22 can execute every runtime-bearing public subpath.
+- Node 24 can execute every runtime-bearing public subpath.
 - TypeScript resolves declarations without `paths`, workspace links, or source
   inclusion.
 - A no-`source` package compiles into deterministic registries.
