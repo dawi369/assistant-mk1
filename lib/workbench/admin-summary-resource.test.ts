@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  getAdminSummarySnapshot,
   refreshAdminSummary,
   resetAdminSummaryResourceForTests,
   scheduleAdminSummaryRefresh,
   setAdminSummaryProjectionPreference,
+  subscribeAdminSummary,
 } from "./admin-summary-resource";
 
 const summaryBody = {
@@ -93,6 +95,150 @@ describe("admin summary resource", () => {
     void scheduleAdminSummaryRefresh({ source: "fallback-poll" });
     await vi.runAllTimersAsync();
 
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("schedules one trailing refresh when a request lands inside the cooldown", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-18T12:00:00.000Z"));
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse()));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("window", {
+      setTimeout: globalThis.setTimeout.bind(globalThis),
+      clearTimeout: globalThis.clearTimeout.bind(globalThis),
+    });
+
+    await refreshAdminSummary({ source: "initial" });
+    void scheduleAdminSummaryRefresh({ source: "event" });
+    void scheduleAdminSummaryRefresh({ source: "fallback-poll" });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(899);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("bounds catch-up refreshes and stops once the requested event is represented", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-18T12:00:00.000Z"));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse())
+      .mockResolvedValueOnce(
+        jsonResponse({ summary: { generatedAt: "2026-06-18T12:00:02.000Z" } }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("window", {
+      setTimeout: globalThis.setTimeout.bind(globalThis),
+      clearTimeout: globalThis.clearTimeout.bind(globalThis),
+    });
+
+    const first = await refreshAdminSummary({
+      source: "event",
+      minimumGeneratedAt: "2026-06-18T12:00:01.000Z",
+    });
+    expect(first.syncStatus).toBe("catching_up");
+    await vi.advanceTimersByTimeAsync(900);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(getAdminSummarySnapshot().syncStatus).toBe("idle");
+  });
+
+  it("caps stale catch-up at three trailing requests", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-18T12:00:00.000Z"));
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse()));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("window", {
+      setTimeout: globalThis.setTimeout.bind(globalThis),
+      clearTimeout: globalThis.clearTimeout.bind(globalThis),
+    });
+
+    await refreshAdminSummary({
+      source: "event",
+      minimumGeneratedAt: "2026-06-18T12:00:05.000Z",
+    });
+    await vi.advanceTimersByTimeAsync(2_700);
+
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(getAdminSummarySnapshot().syncStatus).toBe("exhausted");
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("starts a fresh bounded catch-up budget when a newer event arrives", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-18T12:00:00.000Z"));
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse()));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("window", {
+      setTimeout: globalThis.setTimeout.bind(globalThis),
+      clearTimeout: globalThis.clearTimeout.bind(globalThis),
+    });
+
+    await refreshAdminSummary({
+      source: "event",
+      minimumGeneratedAt: "2026-06-18T12:00:05.000Z",
+    });
+    await vi.advanceTimersByTimeAsync(1_800);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+
+    void scheduleAdminSummaryRefresh({
+      source: "event",
+      minimumGeneratedAt: "2026-06-18T12:00:06.000Z",
+    });
+    void scheduleAdminSummaryRefresh({
+      source: "fallback-poll",
+      minimumGeneratedAt: "2026-06-18T12:00:06.000Z",
+    });
+    await vi.advanceTimersByTimeAsync(1_800);
+
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+    expect(getAdminSummarySnapshot().syncStatus).toBe("catching_up");
+  });
+
+  it("keeps the newest projection and strongest source in a cooldown burst", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-18T12:00:00.000Z"));
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse()));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("window", {
+      setTimeout: globalThis.setTimeout.bind(globalThis),
+      clearTimeout: globalThis.clearTimeout.bind(globalThis),
+    });
+
+    await refreshAdminSummary({ source: "initial" });
+    void scheduleAdminSummaryRefresh({ source: "fallback-poll", projection: "compact" });
+    void scheduleAdminSummaryRefresh({ source: "drawer-open", projection: "drawer" });
+    await vi.advanceTimersByTimeAsync(900);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenLastCalledWith("/api/workbench/admin-summary?projection=drawer", {
+      cache: "no-store",
+    });
+    expect(getAdminSummarySnapshot().lastRefreshSource).toBe("drawer-open");
+  });
+
+  it("cleans a pending catch-up timer when the last subscriber unmounts", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-18T12:00:00.000Z"));
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse()));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("window", {
+      setTimeout: globalThis.setTimeout.bind(globalThis),
+      clearTimeout: globalThis.clearTimeout.bind(globalThis),
+    });
+    const unsubscribe = subscribeAdminSummary(() => undefined);
+
+    await refreshAdminSummary({
+      source: "event",
+      minimumGeneratedAt: "2026-06-18T12:00:05.000Z",
+    });
+    expect(vi.getTimerCount()).toBe(1);
+    unsubscribe();
+
+    expect(vi.getTimerCount()).toBe(0);
+    await vi.runAllTimersAsync();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

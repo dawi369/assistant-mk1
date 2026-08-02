@@ -856,7 +856,10 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
     }
 
     if (sessionEventShouldRefreshAdminSummary(event.type)) {
-      requestWorkbenchSummaryRefresh({ source: "event" });
+      requestWorkbenchSummaryRefresh({
+        source: "event",
+        minimumGeneratedAt: event.createdAt,
+      });
     }
   }, []);
 

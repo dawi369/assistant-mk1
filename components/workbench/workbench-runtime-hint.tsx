@@ -31,7 +31,13 @@ export function WorkbenchRuntimeHint({
   onOpenCapabilities: () => void;
   onOpenHistory: () => void;
 }) {
-  const { summary, error: summaryError, refreshSummary, clearSummary } = useAdminSummaryResource();
+  const {
+    summary,
+    error: summaryError,
+    refreshSummary,
+    clearSummary,
+    syncStatus: summarySyncStatus,
+  } = useAdminSummaryResource();
   const { user, loading } = useAuth();
   const {
     connection,
@@ -93,7 +99,10 @@ export function WorkbenchRuntimeHint({
   }, [liveRuntime.chatTone]);
 
   return (
-    <div className="border-border bg-background/95 text-muted-foreground hidden w-[min(22rem,calc(100vw-1.5rem))] flex-col gap-1.5 rounded-md border px-2.5 py-2 text-xs shadow-xs backdrop-blur md:flex">
+    <div
+      className="border-border bg-background/95 text-muted-foreground hidden w-[min(22rem,calc(100vw-1.5rem))] flex-col gap-1.5 rounded-md border px-2.5 py-2 text-xs shadow-xs backdrop-blur md:flex"
+      data-summary-sync-status={summarySyncStatus}
+    >
       <div className="flex min-w-0 items-center justify-between gap-2">
         <span className={cn("rounded-md border px-2 py-0.5 font-medium", statusClassName)}>
           {liveRuntime.chatLabel}
@@ -162,8 +171,28 @@ export function WorkbenchRuntimeHint({
           Cached shell is visible; chat actions unlock after Cloudflare returns a live token.
         </div>
       ) : liveRuntime.summaryIsStale ? (
-        <div className="text-muted-foreground/80 text-[11px]">
-          Admin summary is behind the latest live event; waiting for refreshed details.
+        <div className="text-muted-foreground/80 flex items-center justify-between gap-2 text-[11px]">
+          <span>
+            {summarySyncStatus === "exhausted"
+              ? "Live updates are connected; details refresh is delayed."
+              : "Live updates are connected; synchronizing refreshed details."}
+          </span>
+          {summarySyncStatus === "exhausted" ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 shrink-0 px-1.5 text-[11px]"
+              onClick={() =>
+                void refreshSummary({
+                  source: "manual",
+                  force: true,
+                  minimumGeneratedAt: latestSessionEvent?.createdAt,
+                })
+              }
+            >
+              Refresh
+            </Button>
+          ) : null}
         </div>
       ) : isSessionStreamConnected ? (
         <div className="text-muted-foreground/80 text-[11px]">Live session updates connected.</div>

@@ -1,6 +1,9 @@
 import * as Sentry from "@sentry/nextjs";
 
-import { verifyOperatorAlertWebhook } from "@/lib/workbench/operator-alert-receiver";
+import {
+  shouldInjectOperatorAlertReceiverOutage,
+  verifyOperatorAlertWebhook,
+} from "@/lib/workbench/operator-alert-receiver";
 
 export const runtime = "nodejs";
 
@@ -22,6 +25,17 @@ export async function POST(request: Request) {
   }
 
   const { alert } = verification.payload;
+  if (
+    shouldInjectOperatorAlertReceiverOutage(
+      verification.payload,
+      process.env.WORKBENCH_OPERATOR_ALERT_CONFORMANCE_MODE === "true",
+    )
+  ) {
+    return Response.json(
+      { ok: false, code: "conformance_receiver_outage", error: "receiver unavailable" },
+      { status: 503 },
+    );
+  }
   Sentry.captureMessage(`Assistant-mk1 operator alert: ${alert.code}`, {
     level: alert.severity === "critical" ? "error" : "warning",
     fingerprint: ["assistant-mk1-operator-alert", alert.id],

@@ -4,17 +4,24 @@ import { resolve } from "node:path";
 import { promisify } from "node:util";
 
 import { createSmokeContext, defaultWorkspaceId, sleep, type TenantIdentity } from "./smoke-utils";
+import { renderEnvironmentConfig } from "./render-environment-config";
+import { isEnvironmentTarget } from "./workbench-environment";
 
 const execFileAsync = promisify(execFile);
 const commit = process.env.GITHUB_SHA?.trim();
+const requestedTarget = process.env.WORKBENCH_ENVIRONMENT?.trim() ?? "";
 const vercelOrigin = process.env.HOSTED_VERCEL_ORIGIN?.trim().replace(/\/$/, "");
-const flyAppName = process.env.HOSTED_FLY_APP?.trim() || "assistant-mk1-langgraph-dev";
 const signingSecret = process.env.CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET?.trim();
 const enabled = process.env.WORKBENCH_HOSTED_DRILL_MODE === "true";
 const pollTimeoutMs = Number(process.env.HOSTED_DRILL_TIMEOUT_MS ?? 120_000);
 const pollIntervalMs = 250;
 
 if (!enabled) throw new Error("WORKBENCH_HOSTED_DRILL_MODE=true is required");
+if (!isEnvironmentTarget(requestedTarget) || requestedTarget === "local") {
+  throw new Error("WORKBENCH_ENVIRONMENT must be acceptance|production");
+}
+const rendered = renderEnvironmentConfig(requestedTarget);
+const flyAppName = process.env.HOSTED_FLY_APP?.trim() || rendered.manifest.fly.appName;
 if (!commit || !/^[a-f0-9]{40}$/.test(commit)) throw new Error("GITHUB_SHA must be a full commit");
 if (!vercelOrigin) throw new Error("HOSTED_VERCEL_ORIGIN is required");
 if (!signingSecret) {
@@ -91,10 +98,10 @@ const d1Execute = async (sql: string) => {
       "wrangler",
       "d1",
       "execute",
-      "assistant_mk1_dev",
+      rendered.manifest.cloudflare.d1DatabaseName,
       "--remote",
       "--config",
-      "cloudflare/control-plane/wrangler.jsonc",
+      rendered.wranglerPath,
       "--command",
       sql,
       "--yes",
@@ -472,10 +479,11 @@ const main = async () => {
     },
   };
 
-  const outputDirectory = resolve("output", "release", shortCommit);
+  const outputDirectory = resolve("output", "release", commit);
   const outputPath = resolve(outputDirectory, "hosted-level3-drills.json");
   const report = {
     version: 1,
+    target: requestedTarget,
     commit,
     generatedAt: new Date().toISOString(),
     startedAt,

@@ -1,4 +1,4 @@
-import type { JsonSchema } from "./runtime";
+import type { JsonSchema } from "./runtime.js";
 
 export type SchemaIssue = {
   path: string;

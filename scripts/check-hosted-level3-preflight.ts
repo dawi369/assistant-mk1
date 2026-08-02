@@ -3,16 +3,43 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { renderEnvironmentConfig } from "./render-environment-config";
+import { isEnvironmentTarget } from "./workbench-environment";
+
 type CommandResult = { ok: true; output: string } | { ok: false; output: string };
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const wranglerConfig = "cloudflare/control-plane/wrangler.jsonc";
-const expectedBucket = "assistant-mk1-dev-artifacts";
+const requestedTarget = process.env.WORKBENCH_ENVIRONMENT?.trim() ?? "";
+if (!isEnvironmentTarget(requestedTarget) || requestedTarget === "local") {
+  throw new Error("WORKBENCH_ENVIRONMENT must be acceptance|production");
+}
+const rendered = renderEnvironmentConfig(requestedTarget);
+const wranglerConfig = rendered.wranglerPath;
+const expectedBucket = rendered.manifest.cloudflare.r2BucketName;
 const requiredWorkerSecrets = [
-  "WORKBENCH_OPERATOR_ALERT_WEBHOOK_URL",
+  "CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET",
+  "WORKBENCH_RUNNER_SIGNING_SECRET",
+  "WORKBENCH_CALLBACK_SIGNING_SECRET",
+  "WORKBENCH_AGENT_CONNECTION_SECRET",
   "WORKBENCH_OPERATOR_ALERT_SIGNING_SECRET",
+  "LANGGRAPH_UPSTREAM_TOKEN",
+  "WORKOS_API_KEY",
+  "OPENROUTER_API_KEY",
 ] as const;
-const requiredVercelVariables = ["WORKBENCH_OPERATOR_ALERT_SIGNING_SECRET"] as const;
+const requiredFlySecrets = [
+  "WORKBENCH_RUNNER_SIGNING_SECRET",
+  "WORKBENCH_CALLBACK_SIGNING_SECRET",
+  "LANGGRAPH_PROXY_TOKEN",
+  "OPENROUTER_API_KEY",
+] as const;
+const requiredVercelVariables = [
+  "CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET",
+  "WORKBENCH_OPERATOR_ALERT_SIGNING_SECRET",
+  "WORKOS_API_KEY",
+  "WORKOS_COOKIE_PASSWORD",
+  "WORKOS_CLIENT_ID",
+  "CLOUDFLARE_CONTROL_PLANE_URL",
+] as const;
 
 const run = (command: string, args: string[]): CommandResult => {
   const result = spawnSync(command, args, {
@@ -38,6 +65,7 @@ const main = () => {
   const bindingDeclared =
     configSource.includes('"binding": "ARTIFACTS"') &&
     configSource.includes(`"bucket_name": "${expectedBucket}"`);
+  const releaseBound = configSource.includes(`"WORKBENCH_RELEASE_SHA": "${commit}"`);
 
   const migrationResult = run("pnpm", [
     "exec",
@@ -45,7 +73,7 @@ const main = () => {
     "d1",
     "migrations",
     "list",
-    "assistant_mk1_dev",
+    rendered.manifest.cloudflare.d1DatabaseName,
     "--remote",
     "--config",
     wranglerConfig,
@@ -71,9 +99,24 @@ const main = () => {
     (name) => !workerSecretNames.includes(name),
   );
 
-  const vercelResult = run("pnpm", ["exec", "vercel", "env", "ls", "production"]);
+  const flySecretResult = run("fly", ["secrets", "list", "--app", rendered.manifest.fly.appName]);
+  const missingFlySecrets = requiredFlySecrets.filter(
+    (name) => !flySecretResult.ok || !flySecretResult.output.includes(name),
+  );
+
+  const vercelResult = spawnSync("pnpm", ["exec", "vercel", "env", "ls", "production"], {
+    cwd: root,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      VERCEL_ORG_ID: rendered.manifest.vercel.organizationId,
+      VERCEL_PROJECT_ID: rendered.manifest.vercel.projectId,
+      CI: "true",
+      NO_COLOR: "1",
+    },
+  });
   const missingVercelVariables = requiredVercelVariables.filter(
-    (name) => !vercelResult.ok || !vercelResult.output.includes(name),
+    (name) => vercelResult.status !== 0 || !String(vercelResult.stdout).includes(name),
   );
 
   const r2Result = run("pnpm", [
@@ -96,14 +139,17 @@ const main = () => {
   const checks = {
     cleanCommitEvidence: !dirty,
     artifactBindingDeclared: bindingDeclared,
+    immutableReleaseBound: releaseBound,
     remoteMigrationsCurrent: migrationResult.ok && pendingMigrations.length === 0,
     r2Enabled,
     artifactBucketExists: bucketExists,
-    workerAlertConfigurationPresent: missingWorkerSecrets.length === 0,
+    workerSecretsPresent: missingWorkerSecrets.length === 0,
+    flyTransportSecretsPresent: missingFlySecrets.length === 0,
     vercelAlertReceiverConfigurationPresent: missingVercelVariables.length === 0,
   };
   const report = {
     version: 1,
+    target: requestedTarget,
     generatedAt: new Date().toISOString(),
     commit,
     dirty,
@@ -114,6 +160,7 @@ const main = () => {
       expectedBucket,
       r2FailureCode,
       missingWorkerSecrets,
+      missingFlySecrets,
       missingVercelVariables,
     },
     nextActions: [
@@ -122,9 +169,8 @@ const main = () => {
       ...(pendingMigrations.length
         ? ["Export remote D1, checksum it, then apply pending migrations."]
         : []),
-      ...(missingWorkerSecrets.length
-        ? ["Configure the Worker alert URL and signing secret."]
-        : []),
+      ...(missingWorkerSecrets.length ? ["Configure every required Worker secret role."] : []),
+      ...(missingFlySecrets.length ? ["Configure every required Fly secret role."] : []),
       ...(missingVercelVariables.length
         ? ["Configure the matching Vercel alert signing secret."]
         : []),
@@ -134,7 +180,7 @@ const main = () => {
     ],
   };
 
-  const outputDirectory = join(root, "output", "release", commit.slice(0, 7));
+  const outputDirectory = join(root, "output", "release", commit);
   mkdirSync(outputDirectory, { recursive: true });
   const outputPath = join(outputDirectory, "level3-hosted-preflight.json");
   writeFileSync(outputPath, `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });

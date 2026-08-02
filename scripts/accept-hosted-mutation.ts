@@ -2,13 +2,18 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { createSmokeContext, defaultWorkspaceId, type TenantIdentity } from "./smoke-utils";
+import { isEnvironmentTarget } from "./workbench-environment";
 
 const main = async () => {
   const enabled = process.env.WORKBENCH_HOSTED_MUTATION_MODE === "true";
+  const target = process.env.WORKBENCH_ENVIRONMENT?.trim() ?? "";
   const commit = process.env.GITHUB_SHA?.trim() ?? "";
   const organizationId = process.env.HOSTED_MUTATION_ORGANIZATION_ID?.trim() ?? "";
   const connectionSecret = process.env.HOSTED_MUTATION_CONNECTION_SECRET?.trim() ?? "";
   if (!enabled) throw new Error("WORKBENCH_HOSTED_MUTATION_MODE=true is required");
+  if (!isEnvironmentTarget(target) || target === "local") {
+    throw new Error("WORKBENCH_ENVIRONMENT must be acceptance|production");
+  }
   if (!/^[a-f0-9]{40}$/.test(commit)) throw new Error("GITHUB_SHA must be a full commit");
   if (!organizationId || !connectionSecret)
     throw new Error("Hosted mutation organization and connection secret are required");
@@ -164,6 +169,7 @@ const main = async () => {
 
   const report = {
     schemaVersion: 1,
+    target,
     commit,
     generatedAt: new Date().toISOString(),
     ok: true,
@@ -179,7 +185,7 @@ const main = async () => {
     reconciled: true,
     connectionRevoked: true,
   };
-  const directory = resolve(process.cwd(), "output/release", commit.slice(0, 7));
+  const directory = resolve(process.cwd(), "output/release", commit);
   mkdirSync(directory, { recursive: true });
   const outputPath = resolve(directory, "mutation-acceptance.json");
   writeFileSync(outputPath, `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });

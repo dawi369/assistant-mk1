@@ -1,6 +1,7 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, relative, resolve, sep } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import type {
   AgentModuleEntry,
@@ -12,6 +13,7 @@ import type {
 } from "@assistant-mk1/agent-sdk";
 import { assertSchemaDefinition, isPackVersionCompatible } from "@assistant-mk1/agent-sdk";
 import { format } from "oxfmt";
+import ts from "typescript";
 
 export type LoadedAgentModule = {
   entry: AgentModuleEntry;
@@ -19,12 +21,109 @@ export type LoadedAgentModule = {
   controlPlane: ControlPlaneRuntimeModule;
   runner: RunnerRuntimeModule;
   web: WebRuntimeModule;
+  packageMetadata: { name: string; version: string };
 };
 
-const importTarget = (root: string, entry: AgentModuleEntry, subpath: string) =>
-  entry.source
-    ? pathToFileURL(resolve(root, entry.source, `${subpath}.ts`)).href
-    : `${entry.package}/${subpath}`;
+const pathIsInside = (parent: string, candidate: string) => {
+  const path = relative(parent, candidate);
+  return path === "" || (!path.startsWith(`..${sep}`) && path !== ".." && !path.startsWith(sep));
+};
+
+export const resolveAgentModuleImportTarget = (
+  root: string,
+  entry: AgentModuleEntry,
+  subpath: string,
+) => {
+  if (entry.source) return pathToFileURL(resolve(root, entry.source, `${subpath}.ts`)).href;
+  const specifier = `${entry.package}/${subpath}`;
+  let resolved: string;
+  try {
+    resolved = createRequire(resolve(root, "package.json")).resolve(specifier);
+  } catch {
+    throw new Error(`${specifier} is not installed or does not expose the required subpath.`);
+  }
+  const localNodeModules = resolve(root, "node_modules");
+  const canonicalNodeModules = existsSync(localNodeModules)
+    ? realpathSync(localNodeModules)
+    : localNodeModules;
+  const canonicalResolved = realpathSync(resolved);
+  if (!pathIsInside(canonicalNodeModules, canonicalResolved)) {
+    throw new Error(
+      `${specifier} resolved outside ${relative(process.cwd(), localNodeModules) || "node_modules"}; install it in the consumer instead of relying on workspace hoisting.`,
+    );
+  }
+  return pathToFileURL(resolved).href;
+};
+
+const readPackageMetadata = (root: string, entry: AgentModuleEntry) => {
+  let directory = entry.source
+    ? resolve(root, entry.source)
+    : dirname(fileURLToPath(resolveAgentModuleImportTarget(root, entry, "manifest")));
+  while (true) {
+    const packagePath = resolve(directory, "package.json");
+    if (existsSync(packagePath)) {
+      const parsed = JSON.parse(readFileSync(packagePath, "utf8")) as {
+        name?: unknown;
+        version?: unknown;
+      };
+      if (typeof parsed.name === "string" && typeof parsed.version === "string") {
+        return { name: parsed.name, version: parsed.version };
+      }
+      throw new Error(`${packagePath} must declare string name and version fields.`);
+    }
+    const parent = dirname(directory);
+    if (parent === directory) {
+      throw new Error(`${entry.package} package metadata could not be located.`);
+    }
+    directory = parent;
+  }
+};
+
+export const validateInstalledPackageContract = (root: string, entry: AgentModuleEntry) => {
+  if (entry.source) return;
+  let directory = dirname(
+    realpathSync(fileURLToPath(resolveAgentModuleImportTarget(root, entry, "manifest"))),
+  );
+  while (!existsSync(resolve(directory, "package.json"))) {
+    const parent = dirname(directory);
+    if (parent === directory)
+      throw new Error(`${entry.package} package metadata could not be located.`);
+    directory = parent;
+  }
+  const packageJsonPath = resolve(directory, "package.json");
+  const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")) as {
+    exports?: Record<string, unknown>;
+  };
+  for (const subpath of ["manifest", "control-plane", "runner", "web"] as const) {
+    const exportValue = packageJson.exports?.[`./${subpath}`];
+    const exportMap =
+      exportValue && typeof exportValue === "object" && !Array.isArray(exportValue)
+        ? (exportValue as Record<string, unknown>)
+        : null;
+    if (!exportMap || typeof exportMap.types !== "string") {
+      throw new Error(
+        `${entry.package}/${subpath} must expose a declaration file through exports.types.`,
+      );
+    }
+    const declarationPath = resolve(directory, exportMap.types);
+    if (!existsSync(declarationPath)) {
+      throw new Error(`${entry.package}/${subpath} declaration file is missing.`);
+    }
+    const source = ts.createSourceFile(
+      declarationPath,
+      readFileSync(declarationPath, "utf8"),
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TS,
+    );
+    const parseDiagnostics = (
+      source as ts.SourceFile & { parseDiagnostics?: readonly ts.Diagnostic[] }
+    ).parseDiagnostics;
+    if (parseDiagnostics?.length) {
+      throw new Error(`${entry.package}/${subpath} declaration file is invalid.`);
+    }
+  }
+};
 
 const loadExport = async <T>(
   root: string,
@@ -32,7 +131,7 @@ const loadExport = async <T>(
   subpath: string,
   exportName: string,
 ): Promise<T> => {
-  const target = importTarget(root, entry, subpath);
+  const target = resolveAgentModuleImportTarget(root, entry, subpath);
   const loaded = (await import(target)) as Record<string, unknown>;
   const value = loaded[exportName];
   if (!value) throw new Error(`${entry.package}/${subpath} must export ${exportName}.`);
@@ -63,6 +162,16 @@ export const validateLoadedModules = (modules: readonly LoadedAgentModule[]) => 
     const { manifest, controlPlane, runner, web, entry } = item;
     if (manifest.apiVersion !== 2 || manifest.kind !== "agent_pack") {
       throw new Error(`${entry.package} must export a Pack API v2 manifest.`);
+    }
+    if (item.packageMetadata.name !== entry.package) {
+      throw new Error(
+        `${entry.package} resolves package metadata for ${item.packageMetadata.name}.`,
+      );
+    }
+    if (item.packageMetadata.version !== manifest.version) {
+      throw new Error(
+        `${entry.package} package version ${item.packageMetadata.version} does not match manifest ${manifest.version}.`,
+      );
     }
     requireUnique(packIds, "Pack id", manifest.id, entry.package);
     for (const runtime of [controlPlane, runner, web]) {
@@ -240,18 +349,22 @@ export const loadAgentModules = async (root: string): Promise<LoadedAgentModule[
   const config = await loadWorkbenchConfig(root);
   const entries = config.modules.filter((entry) => entry.enabled !== false);
   const modules = await Promise.all(
-    entries.map(async (entry) => ({
-      entry,
-      manifest: await loadExport<LocalAgentPackManifest>(root, entry, "manifest", "manifest"),
-      controlPlane: await loadExport<ControlPlaneRuntimeModule>(
-        root,
+    entries.map(async (entry) => {
+      validateInstalledPackageContract(root, entry);
+      return {
         entry,
-        "control-plane",
-        "controlPlane",
-      ),
-      runner: await loadExport<RunnerRuntimeModule>(root, entry, "runner", "runner"),
-      web: await loadExport<WebRuntimeModule>(root, entry, "web", "web"),
-    })),
+        packageMetadata: readPackageMetadata(root, entry),
+        manifest: await loadExport<LocalAgentPackManifest>(root, entry, "manifest", "manifest"),
+        controlPlane: await loadExport<ControlPlaneRuntimeModule>(
+          root,
+          entry,
+          "control-plane",
+          "controlPlane",
+        ),
+        runner: await loadExport<RunnerRuntimeModule>(root, entry, "runner", "runner"),
+        web: await loadExport<WebRuntimeModule>(root, entry, "web", "web"),
+      };
+    }),
   );
   return [...validateLoadedModules(modules)];
 };

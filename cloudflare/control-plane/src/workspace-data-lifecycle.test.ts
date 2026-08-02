@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { handleExportWorkspaceData, handleWorkspaceDeletionPlan } from "./workspace-data-lifecycle";
+import {
+  handleOperatorRetryWorkspaceDeletion,
+  handleRetryWorkspaceDeletion,
+  handleWorkspaceDeletionPlan,
+} from "./workspace-data-lifecycle";
 import type { AgentIdentity, D1PreparedStatement, Env } from "./types";
 
 const identity: AgentIdentity = {
@@ -90,38 +94,6 @@ const makeEnv = (role: "owner" | "member" = "owner") => {
 };
 
 describe("workspace data lifecycle", () => {
-  it("exports only scoped D1 collections and retained R2 blobs for an admin", async () => {
-    const { env, queries, bindings } = makeEnv();
-
-    const response = await handleExportWorkspaceData(env, identity);
-    const body = (await response.json()) as {
-      collections: Record<string, unknown[]>;
-      artifactBlobs: Array<{ artifactId: string; contentBase64: string }>;
-      excludedSecurityState: string[];
-      unsupportedState: string[];
-    };
-
-    expect(response.status).toBe(200);
-    expect(response.headers.get("cache-control")).toBe("private, no-store");
-    expect(response.headers.get("content-disposition")).toContain("workspace-1-export.json");
-    expect(body.collections.control_runs).toEqual([{ id: "run-1", user_id: "user-1" }]);
-    expect(body.artifactBlobs).toEqual([
-      {
-        artifactId: "artifact-1",
-        storageKey: expect.any(String),
-        contentSha256: "9938be87d35f2a7a2b80237e8dc71806b209aaea8252f12c1b12949f61d40476",
-        mimeType: "text/plain",
-        sizeBytes: 13,
-        contentBase64: btoa("artifact body"),
-      },
-    ]);
-    expect(body.excludedSecurityState).toContain("control_triggers.secret_hash");
-    expect(body.unsupportedState[0]).toContain("Durable Object");
-    const triggerQuery = queries.find((query) => query.includes("FROM control_triggers"));
-    expect(triggerQuery).not.toContain("secret_hash");
-    expect(bindings.some((values) => values[0] === "workspace-1")).toBe(true);
-  });
-
   it("returns an exact non-executable deletion inventory", async () => {
     const { env } = makeEnv();
 
@@ -142,30 +114,173 @@ describe("workspace data lifecycle", () => {
     expect(body.plan.blockers).toHaveLength(2);
   });
 
-  it("fails the whole export when retained blob integrity does not match D1", async () => {
-    const { env } = makeEnv();
-    vi.mocked(env.ARTIFACTS!.get).mockResolvedValueOnce({
-      body: new ReadableStream(),
-      arrayBuffer: async () => new TextEncoder().encode("tampered").buffer,
-      httpMetadata: { contentType: "text/plain" },
-    });
-
-    const response = await handleExportWorkspaceData(env, identity);
-
-    expect(response.status).toBe(503);
-    expect(await response.json()).toMatchObject({
-      code: "artifact_checksum_mismatch:artifact-1",
-    });
-  });
-
-  it("does not expose exports or deletion inventories to ordinary members", async () => {
+  it("does not expose deletion inventories to ordinary members", async () => {
     const { env, queries } = makeEnv("member");
 
-    const exportResponse = await handleExportWorkspaceData(env, identity);
     const deletionResponse = await handleWorkspaceDeletionPlan(env, identity);
 
-    expect(exportResponse.status).toBe(403);
     expect(deletionResponse.status).toBe(403);
     expect(queries.filter((query) => !query.includes("FROM memberships"))).toHaveLength(0);
+  });
+
+  it("queues a failed purge for a fresh-authenticated initiating owner without resetting progress", async () => {
+    const queries: string[] = [];
+    const env = {
+      DB: {
+        prepare(query: string) {
+          queries.push(query);
+          const statement = {
+            bind() {
+              return statement;
+            },
+            async first<T>() {
+              if (query.includes("FROM memberships")) return membership("owner") as T;
+              if (query.includes("FROM workspaces")) {
+                return {
+                  id: "workspace-1",
+                  name: "Example Workspace",
+                  status: "failed",
+                  deletion_requested_by_user_id: "user-1",
+                } as T;
+              }
+              if (query.includes("FROM control_data_jobs")) {
+                return { id: "purge-1", status: "failed" } as T;
+              }
+              return null;
+            },
+          };
+          return statement;
+        },
+        async batch(statements: unknown[]) {
+          return statements.map(() => ({ success: true, meta: { changes: 1 } }));
+        },
+      },
+    } as unknown as Env;
+    const response = await handleRetryWorkspaceDeletion(
+      new Request("https://control.test/workbench/workspace-deletion/retry", {
+        method: "POST",
+        body: JSON.stringify({
+          workspaceName: "Example Workspace",
+          reauthenticatedAt: new Date().toISOString(),
+        }),
+      }),
+      env,
+      identity,
+    );
+
+    expect(response.status).toBe(202);
+    expect(await response.json()).toMatchObject({
+      deletion: { status: "purging", purgeJobId: "purge-1", canRetry: false },
+    });
+    const retryUpdate = queries.find((query) =>
+      query.includes("manual_retry_count = manual_retry_count + 1"),
+    );
+    expect(retryUpdate).toBeDefined();
+    expect(retryUpdate).not.toContain("cursor_json");
+    expect(queries.some((query) => query.includes("workspace.purge.retry_requested"))).toBe(true);
+  });
+
+  it("rejects failed purge retry without fresh reauthentication", async () => {
+    const { env } = makeEnv();
+    vi.spyOn(env.DB, "prepare").mockImplementation((query: string) => {
+      const statement = {
+        bind() {
+          return statement;
+        },
+        async first<T>() {
+          if (query.includes("FROM memberships")) return membership("owner") as T;
+          if (query.includes("FROM workspaces")) {
+            return {
+              id: "workspace-1",
+              name: "Example Workspace",
+              status: "failed",
+              deletion_requested_by_user_id: "user-1",
+            } as T;
+          }
+          return null;
+        },
+      };
+      return statement as D1PreparedStatement;
+    });
+    const response = await handleRetryWorkspaceDeletion(
+      new Request("https://control.test/workbench/workspace-deletion/retry", {
+        method: "POST",
+        body: JSON.stringify({
+          workspaceName: "Example Workspace",
+          reauthenticatedAt: "2026-01-01T00:00:00.000Z",
+        }),
+      }),
+      env,
+      identity,
+    );
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ code: "reauthentication_required" });
+  });
+
+  it("allows a signed platform operator to resume only an alerted failed purge", async () => {
+    const queries: string[] = [];
+    const env = {
+      DB: {
+        prepare(query: string) {
+          queries.push(query);
+          const statement = {
+            bind() {
+              return statement;
+            },
+            async first<T>() {
+              if (query.includes("FROM workspaces")) {
+                return {
+                  id: "orphaned-workspace",
+                  name: "Orphaned Workspace",
+                  status: "failed",
+                } as T;
+              }
+              if (query.includes("FROM control_data_jobs")) {
+                return { id: "purge-orphaned", status: "failed" } as T;
+              }
+              return null;
+            },
+          };
+          return statement;
+        },
+        async batch(statements: unknown[]) {
+          return statements.map(() => ({ success: true, meta: { changes: 1 } }));
+        },
+      },
+    } as unknown as Env;
+    const response = await handleOperatorRetryWorkspaceDeletion(
+      new Request("https://control.test/admin/workspace-purges/orphaned-workspace/retry", {
+        method: "POST",
+        headers: { "x-assistant-mk1-platform-operator": "true" },
+        body: JSON.stringify({
+          workspaceName: "Orphaned Workspace",
+          reason: "The initiating owner account is no longer available.",
+        }),
+      }),
+      env,
+      identity,
+      "orphaned-workspace",
+      true,
+    );
+
+    expect(response.status).toBe(202);
+    expect(queries.some((query) => query.includes("severity = 'critical'"))).toBe(true);
+    expect(queries.some((query) => query.includes("workspace.purge.retry_requested"))).toBe(true);
+  });
+
+  it("hides the operator purge command without a signed platform assertion", async () => {
+    const { env } = makeEnv();
+    const response = await handleOperatorRetryWorkspaceDeletion(
+      new Request("https://control.test/admin/workspace-purges/workspace-1/retry", {
+        method: "POST",
+        body: JSON.stringify({ workspaceName: "Example", reason: "A sufficient reason." }),
+      }),
+      env,
+      identity,
+      "workspace-1",
+      false,
+    );
+    expect(response.status).toBe(404);
   });
 });

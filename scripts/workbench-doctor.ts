@@ -8,6 +8,13 @@ const offline = process.argv.includes("--offline");
 const failures: string[] = [];
 const checks: string[] = [];
 
+const nodeMajor = Number.parseInt(process.versions.node.split(".")[0] ?? "", 10);
+if (nodeMajor !== 22) {
+  failures.push(`Node.js 22.x is required; current runtime is ${process.version}`);
+} else {
+  checks.push(`Node.js ${process.versions.node} matches the supported 22.x runtime`);
+}
+
 const readEnvFile = (file: string): Values => {
   const absolute = path.join(root, file);
   if (!existsSync(absolute)) {

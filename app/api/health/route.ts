@@ -13,6 +13,8 @@ export function GET() {
   return NextResponse.json({
     ok: true,
     service: "assistant-mk1",
+    release:
+      process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.WORKBENCH_RELEASE_SHA ?? "development",
     langGraphConfigured: Boolean(process.env.LANGGRAPH_API_URL),
     assistantId: process.env.NEXT_PUBLIC_LANGGRAPH_ASSISTANT_ID ?? null,
   });

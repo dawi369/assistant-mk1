@@ -7,7 +7,7 @@ import {
   defaultConnectionPort,
   isPackVersionCompatible,
   validateSchemaValue,
-} from "./index";
+} from "./index.js";
 
 describe("Agent Runtime SDK", () => {
   it("resolves supported compatibility ranges", () => {

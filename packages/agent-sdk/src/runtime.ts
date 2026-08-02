@@ -2,7 +2,7 @@ import type {
   AgentPackConnectionDescriptor,
   AgentPackExecutionMode,
   LocalAgentPackManifest,
-} from "./manifest";
+} from "./manifest.js";
 
 export type JsonSchema = Readonly<Record<string, unknown>>;
 export type RuntimeRecord = Record<string, unknown>;

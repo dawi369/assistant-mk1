@@ -34,6 +34,8 @@ These files should stay aligned with code changes:
   production gates, and deferred work.
 - `migrations-and-retention.md`: current forward-only D1 migration path, reset
   boundary, and remaining retained-data/retention gates.
+- `environment-separation.md`: explicit local, acceptance, and production
+  targets, fail-closed deploy commands, promotion, and same-commit evidence.
 - `workbench-ui.md`: current UI baseline and target workbench surfaces.
 - `dev-infrastructure-readiness.md`: local/remote setup, smoke commands, and
   resource checklist.

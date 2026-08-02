@@ -84,18 +84,23 @@ export const deriveRuntimeState = (input: {
   const liveEventState = liveChatStateFromEvent(input.latestSessionEvent);
   const summaryState = summaryIsFresh ? summary?.chatRuntime?.state : undefined;
   const chatState = liveEventState ?? summaryState;
+  const isLiveSummarySyncing = summaryIsStale && input.isSessionStreamConnected && !liveEventState;
   const chatLabel =
     input.pending?.type === "create" || input.pending?.type === "activate"
       ? "Opening"
-      : chatRuntimeStateLabel(chatState);
-  const chatTone = chatRuntimeStateTone(chatState);
+      : isLiveSummarySyncing
+        ? "Syncing"
+        : chatRuntimeStateLabel(chatState);
+  const chatTone = isLiveSummarySyncing ? "running" : chatRuntimeStateTone(chatState);
 
   const activeAgent = input.session?.activeAgent ?? summary?.activeAgent ?? null;
   const activeThread = isVisibleThread(input.session?.activeThread)
     ? (input.session?.activeThread ?? null)
     : null;
   const summaryThread = summary?.chatRuntime?.latestThread ?? null;
-  const errorMessage = input.error ?? input.summaryError ?? summary?.lastError?.message;
+  // Historical workflow/tool failures belong in History and the Admin detail
+  // projection. They must not degrade the current chat connection indicator.
+  const errorMessage = input.error ?? input.summaryError ?? undefined;
 
   let source: RuntimeSource = "connecting";
   let sourceLabel = "Connecting";

@@ -1,16 +1,18 @@
 # Dev Infrastructure Readiness
 
-This checklist tracks the tiny dev infrastructure baseline for assistant-mk1.
-The current remote Cloudflare scope is intentionally narrow: one Worker, one D1
-database, the Vercel frontend, and the dedicated Fly LangGraph runtime gateway.
+This checklist tracks local infrastructure and hosted target prerequisites.
+Hosted resource ownership is defined by `config/environments/*.json` and the
+promotion runbook in `environment-separation.md`; this file is not a deployment
+default.
 
-## Current Remote Baseline
+## Hosted target baseline
 
-- Fly runtime app: `assistant-mk1-langgraph-dev`
+- Fly runtime apps: distinct `assistant-mk1-acceptance-runner` and
+  `assistant-mk1-production-runner`
 - Region: `fra`
-- Runtime URL: `https://assistant-mk1-langgraph-dev.fly.dev`
+- Runtime URL: the target-specific `WORKBENCH_TARGET_FLY_ORIGIN`
 - Runtime shape: one Fly Machine runs the gateway and LangGraph dev server.
-- Vercel frontend: `https://assistant-mk1.vercel.app`
+- Vercel frontend: distinct protected acceptance and production projects
 - Hosted auth: WorkOS AuthKit on Vercel; WorkOS `user.id` maps to internal
   `userId`. WorkOS `organizationId` maps to `workos-org:<organizationId>` when
   present. Pre-user sessions without an organization use
@@ -19,8 +21,8 @@ database, the Vercel frontend, and the dedicated Fly LangGraph runtime gateway.
   active workspace from D1.
 - Required public evidence: `pnpm acceptance:hosted:public` with the Vercel,
   Cloudflare, and Fly URLs for the same commit.
-- Cloudflare Worker: `assistant-mk1-dev-control-plane`
-- Cloudflare D1 database: `assistant_mk1_dev`
+- Cloudflare Workers: distinct acceptance and production names
+- Cloudflare D1/R2/DO: distinct acceptance and production resources
 - D1 binding: `DB`
 - Sentry: org `t23`, project `assistant-mk1`. Vercel and Cloudflare share the
   project and are separated by `runtime.surface` tags.
@@ -31,9 +33,9 @@ database, the Vercel frontend, and the dedicated Fly LangGraph runtime gateway.
     identity, policy, session, and event boundaries without creating a pack run.
 
 The Vercel frontend uses the same Cloudflare-owned workbench routes. Its
-LangGraph proxy points at the Cloudflare `/langgraph` facade, which
-authenticates Vercel with the dev control-plane token and then authenticates to
-the Fly gateway with `LANGGRAPH_UPSTREAM_TOKEN`.
+LangGraph proxy points at the target Cloudflare `/langgraph` facade, which
+authenticates Vercel with a target-specific signed facade secret and then
+authenticates to the target Fly gateway with `LANGGRAPH_UPSTREAM_TOKEN`.
 
 Hosted Vercel requests derive tenant scope from the WorkOS server session.
 Users must complete WorkOS sign-in before the workbench can call Cloudflare.
@@ -93,8 +95,8 @@ Committed Fly env:
 
 - `LANGGRAPH_PORT=2024`
 - `LANGGRAPH_UPSTREAM_URL=http://127.0.0.1:2024`
-- `OPENROUTER_APP_NAME=assistant-mk1-langgraph-dev`
-- `OPENROUTER_SITE_URL=https://assistant-mk1-langgraph-dev.fly.dev`
+- target-specific `OPENROUTER_APP_NAME`
+- target-specific Fly `OPENROUTER_SITE_URL`
 
 ## Local Cloudflare Control Plane
 
@@ -183,9 +185,9 @@ The local Worker code is split by responsibility: route dispatch, HTTP/auth
 helpers, the compiled runtime workflow/tool kernel, atomic D1 lifecycle, and
 approval recovery.
 
-## Remote Cloudflare Control Plane
+## Hosted Cloudflare Control Plane
 
-The remote dev baseline proves this production-shaped path:
+Each acceptance or production target proves this production-shaped path:
 
 ```text
 Vercel Next proxy -> remote Cloudflare Worker -> remote D1
@@ -197,19 +199,19 @@ Provisioning and deploy commands:
 
 ```bash
 pnpm wrangler d1 list
-pnpm wrangler d1 create assistant_mk1_dev --config cloudflare/control-plane/wrangler.jsonc
-pnpm db:cloudflare:migrate:remote
-pnpm deploy:cloudflare
+pnpm wrangler d1 create assistant_mk1_acceptance
+pnpm environment:check --target acceptance
+pnpm db:cloudflare:migrate -- --target acceptance
+pnpm deploy:cloudflare -- --target acceptance
 ```
 
 The migration command uses Wrangler's `d1_migrations` ledger and preserves
-existing rows. `pnpm db:cloudflare:rebuild:remote` remains available only for a
-deliberate destructive dev reset. Backup/restore, retention, and customer
-export/delete remain production gates in `docs/migrations-and-retention.md`, so
-`assistant_mk1_dev` is not yet durable customer storage.
+existing rows. It is a dry run until separately approved and requires
+same-commit backup evidence before `--execute`. No hosted rebuild command is
+available.
 
-Only run `d1 create` when `assistant_mk1_dev` is missing. After creation, copy
-the returned `database_id` into `cloudflare/control-plane/wrangler.jsonc`.
+Only run `d1 create` in an approved provisioning phase. Store the returned ID
+in the target environment variable, never in the local Wrangler config.
 
 Remote Worker secrets and vars:
 
@@ -224,9 +226,8 @@ pnpm wrangler secret put WORKBENCH_RUNNER_SIGNING_SECRET --config cloudflare/con
 pnpm wrangler secret put SENTRY_DSN --config cloudflare/control-plane/wrangler.jsonc
 ```
 
-Use
-`https://assistant-mk1-langgraph-dev.fly.dev/workbench/tool-runners/invocations`
-as the remote runner URL when enabling `WORKBENCH_RUNNER_TRANSPORT=fly`.
+Use `<target-fly-origin>/workbench/tool-runners/invocations` as the remote
+runner URL when enabling `WORKBENCH_RUNNER_TRANSPORT=fly`.
 `WORKBENCH_RUNNER_SIGNING_SECRET` must match the Fly secret with the same name.
 When the transport, URL, or secret is absent, Fly-bound tools are unavailable;
 the Worker never falls back to inline execution for a Fly declaration.
@@ -235,7 +236,7 @@ Verify runner transport without printing secrets by setting the secret only in
 the command environment:
 
 ```bash
-LANGGRAPH_RUNTIME_BASE_URL=https://assistant-mk1-langgraph-dev.fly.dev \
+LANGGRAPH_RUNTIME_BASE_URL=<target-fly-origin> \
 WORKBENCH_RUNNER_SIGNING_SECRET=<runner-secret> \
 pnpm smoke:fly-tool-runner
 ```
@@ -244,9 +245,8 @@ Fly machine health uses the shallow `GET /health/live` endpoint. The deeper
 `GET /health` endpoint still checks LangGraph readiness and is the right manual
 check when debugging runtime boot or proxy behavior.
 
-`LANGGRAPH_UPSTREAM_URL` is committed in `wrangler.jsonc` and points at
-`https://assistant-mk1-langgraph-dev.fly.dev`. `LANGGRAPH_UPSTREAM_TOKEN` must
-match the Fly `LANGGRAPH_PROXY_TOKEN`.
+`LANGGRAPH_UPSTREAM_URL` is rendered from the selected environment manifest.
+`LANGGRAPH_UPSTREAM_TOKEN` must match the target Fly `LANGGRAPH_PROXY_TOKEN`.
 
 `CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET` must match the Vercel
 Production environment variable with the same name. When this secret is present,
@@ -254,94 +254,24 @@ normal control-plane facade routes require fresh signed requests and reject
 stale or replayed nonces. Local `wrangler dev` can keep using the dev token only
 when this signing secret is absent or `CLOUDFLARE_CONTROL_PLANE_REQUIRE_FACADE_SIGNATURE=false`.
 
-`SENTRY_ENVIRONMENT=production` is committed for the deployed Worker. Keep
-`SENTRY_DSN` out of source and configure it as a Worker secret.
+`SENTRY_ENVIRONMENT` is rendered from the selected target. Keep `SENTRY_DSN`
+out of source and configure it as a target Worker secret.
 `SENTRY_TRACES_SAMPLE_RATE=0.02` is committed for the deployed Worker to keep
 production telemetry low-noise.
 
-Cloudflare LangGraph facade smoke:
+The old remote dev-token smoke path is intentionally unavailable. Hosted
+verification uses fresh facade signatures and the protected target workflow:
 
 ```bash
-CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
-CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
-pnpm smoke:cloudflare-langgraph-facade
+pnpm environment:check --target acceptance
+pnpm acceptance:hosted:level3:preflight
+pnpm acceptance:hosted:public
+WORKBENCH_HOSTED_DRILL_MODE=true pnpm acceptance:hosted:level3
 ```
 
-Cloudflare workspace context smoke:
-
-```bash
-CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
-CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
-pnpm smoke:cloudflare-workspace-context
-```
-
-Cloudflare chat boundary smoke:
-
-```bash
-CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
-CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
-pnpm smoke:cloudflare-chat-boundary
-```
-
-Cloudflare session boundary smoke:
-
-```bash
-CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
-CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
-pnpm smoke:cloudflare-session-boundary
-```
-
-Cloudflare policy boundary smoke:
-
-```bash
-CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
-CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
-pnpm smoke:cloudflare-policy-boundary
-```
-
-Cloudflare event feed smoke:
-
-```bash
-CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
-CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
-pnpm smoke:cloudflare-event-feed
-```
-
-Cloudflare event stream smoke:
-
-```bash
-CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
-CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
-pnpm smoke:cloudflare-event-stream
-```
-
-Remote deploy readiness smoke:
-
-```bash
-CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
-CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
-CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET=<same-secret-as-worker> \
-pnpm smoke:cloudflare-deploy-readiness
-```
-
-This composed smoke is the minimum approval/tool-policy deploy gate. It runs
-workspace context, Admin tool policy/approval lifecycle, policy boundary,
-session boundary, and live event-stream coverage against the same Worker URL.
-
-Remote Worker smoke:
-
-```bash
-CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
-CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
-CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET=<same-secret-as-worker> \
-pnpm smoke:cloudflare-deploy-readiness
-```
-
-The deploy-readiness smoke calls the Worker directly because hosted Vercel
-workbench routes require a signed-in WorkOS browser session. The signed-in
-acceptance journey must separately activate Repository Analyst, complete its
-readiness workflow through Fly, and inspect the resulting History artifact.
-Missing Cloudflare or runner configuration fails visibly; there is no local
+The signed-in WorkOS browser journey separately activates Repository Analyst,
+completes its workflow through Fly, and inspects the History artifact. Missing
+Cloudflare or runner configuration fails visibly; there is no local
 compatibility execution route.
 
 Tenant scope for the hosted Vercel baseline is server-derived from WorkOS
@@ -373,11 +303,11 @@ signed progress/artifact evidence.
 
 ## Artifact R2 Resource
 
-Wrangler now declares `ARTIFACTS` with hosted bucket name
-`assistant-mk1-dev-artifacts` and local preview name
-`assistant-mk1-local-artifacts`. Local development and Level 3 conformance use
-Wrangler's isolated R2 persistence. The hosted bucket is not created by normal
-development or verification commands.
+The selected environment manifest binds `ARTIFACTS` to one target-only bucket:
+`assistant-mk1-local-artifacts`, `assistant-mk1-acceptance-artifacts`, or
+`assistant-mk1-production-artifacts`. Local development and deterministic
+conformance use isolated R2 persistence. Configuration verification never
+creates a hosted bucket.
 
 The object key is
 `tenants/<userId>/<workspaceId>/artifacts/<artifactId>`. Cloudflare alone owns
@@ -385,20 +315,14 @@ the binding; Fly/LangGraph do not receive broad R2 credentials. D1 stores the
 provider, key, SHA-256, size, retention class, expiry, and tombstone. Reads and
 exports re-authorize the tenant through Cloudflare.
 
-Before the first hosted R2 deployment:
+Before the first hosted R2 deployment, use the guarded acceptance provisioning,
+encrypted D1 backup, forward migration, deployment, and data-lifecycle evidence
+commands in `environment-separation.md`. Production provisioning is a separate
+approval and cannot reuse the acceptance bucket or D1 database.
 
-- export/checksum remote D1 and apply migration `0005`;
-- create `assistant-mk1-dev-artifacts` in the correct Cloudflare account;
-- deploy the Worker only after `pnpm release:check` passes;
-- prove create/read/export/expiry and cross-tenant denial on the deployed commit;
-- configure bucket recovery/versioning and perform a restore drill.
+## Remaining infrastructure exclusions
 
-## Out Of Scope For This Step
-
-- Production authorization policy beyond WorkOS sign-in.
-- Secret custody implementation.
-- Hosted R2 resource provisioning and restore evidence.
-- Durable Object provisioning.
-- Direct D1/R2 access from Fly or LangGraph workers.
-- Mutation-capable tools.
-- New Cloudflare Agent or Durable Object deployment outside the existing bindings.
+- multi-region failover and automatic cross-environment promotion;
+- direct D1/R2 access from Fly or LangGraph workers;
+- real financial or trading providers;
+- Cloudflare Agent or Durable Object classes outside the two declared bindings.

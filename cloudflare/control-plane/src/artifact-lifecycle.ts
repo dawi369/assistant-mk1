@@ -256,6 +256,11 @@ export const sweepExpiredArtifacts = async (
     `SELECT id, user_id, workspace_id, storage_provider, storage_key, expires_at, deleted_at
      FROM control_artifacts
      WHERE deleted_at IS NULL AND expires_at IS NOT NULL AND expires_at <= ?
+       AND NOT EXISTS (
+         SELECT 1 FROM control_data_export_objects pinned
+         WHERE pinned.storage_key = control_artifacts.storage_key
+           AND pinned.status IN ('pinned', 'verified')
+       )
      ORDER BY expires_at ASC, created_at ASC
      LIMIT ?`,
   )

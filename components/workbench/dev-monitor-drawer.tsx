@@ -173,8 +173,7 @@ export function AdminPanel({
   });
   const packTemplates = useMemo(() => templates.filter((template) => template.pack), [templates]);
   const pendingApprovals = approvals.filter((approval) => approval.status === "requested");
-  const importantError =
-    error ?? summaryError ?? liveRuntime.errorMessage ?? summary?.lastError?.message;
+  const importantError = error ?? summaryError ?? liveRuntime.errorMessage;
   const currentPack =
     session?.activeAgent?.behavior.pack ?? summary?.activeAgent?.behavior.pack ?? null;
   const canManageAutomations = ["owner", "admin"].includes(

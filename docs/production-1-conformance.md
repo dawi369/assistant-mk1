@@ -11,8 +11,8 @@ unattended hosted evidence.
 | ----------------------- | -------------------------------------------- | ---------------------------------- | ------------------------------------- | ----------------------------------- |
 | Forward retained schema | D1 migration ledger                          | `db:cloudflare:migrations:verify`  | fresh apply and recovery rehearsal    | no down migrations                  |
 | Workspace retention     | Cloudflare policy and scheduled sweep        | `conformance:data-lifecycle`       | backlog and sweep evidence            | no legal hold                       |
-| Complete export         | D1/R2/DO lifecycle job                       | export ZIP/checksum tests          | encrypted archive download            | seven-day download lifetime         |
-| Delete and recover      | quarantine and resumable purge               | lifecycle service tests            | time-shifted recovery/purge rehearsal | credentials are never recovered     |
+| Complete export         | D1 fence, DO freeze, R2 pin, lifecycle job   | snapshot/ZIP/checksum tests        | encrypted archive download            | bounded writes return 423           |
+| Delete and recover      | quarantine and phase-checkpointed purge      | failure/manual-retry tests         | time-shifted recovery/purge rehearsal | credentials are never recovered     |
 | Credential custody      | `CredentialVault` and broker                 | `conformance:connections`          | `acceptance:hosted:vault`             | WorkOS Vault only in production     |
 | OAuth/API key           | signed Vercel facade and Cloudflare broker   | PKCE/replay/redaction tests        | isolated provider authorization       | trusted provider modules only       |
 | Fly credential use      | single-use scoped broker capability          | agent-system service journey       | signed Fly mutation acceptance        | one provider request per capability |
@@ -22,6 +22,7 @@ unattended hosted evidence.
 | Emergency stop          | workspace/pack/tool/connection kill switches | denial and cancellation assertions | operator drill                        | cannot reverse accepted effects     |
 | Operational L3          | trigger leases, replay, alerts               | `conformance:level3`               | 24-hour soak and receiver outage      | single region                       |
 | Tenant isolation        | D1/R2/DO/Vault/action predicates             | cross-tenant suites                | separate WorkOS account               | no cross-region failover            |
+| Environment isolation   | typed target manifests and guarded commands  | `verify:environment-config`        | protected target preflight            | no automatic promotion              |
 
 Required repository gates:
 
@@ -49,12 +50,22 @@ secret-free evidence under `output/release/<commit>/`:
 pnpm acceptance:hosted:vault
 pnpm acceptance:hosted:mutation
 pnpm acceptance:hosted:level3
+pnpm acceptance:hosted:data-lifecycle
+pnpm acceptance:hosted:alert-redelivery
+pnpm acceptance:hosted:soak -- --phase start
+pnpm acceptance:hosted:soak -- --phase finish --state <same-sha-state.json>
 ```
 
 The synthetic Complex Operator is hidden unless the isolated acceptance
 deployment explicitly sets `WORKBENCH_CONFORMANCE_MODE=true`. Never enable that
 mode on the customer-serving deployment; production feature gates and workspace
 opt-ins remain separate.
+
+Acceptance lifecycle fault injection and the first-failure alert receiver are
+enabled only by the acceptance conformance configuration. Production validation
+rejects both modes. Export and purge drills operate only on a newly created,
+non-customer workspace; the final purge is verified through remote D1 without
+re-authenticating and accidentally recreating the deleted tenant.
 
 Enable retained data first, then connections, then mutation only for the
 acceptance workspace. General mutation remains an owner-controlled per-tool

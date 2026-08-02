@@ -57,5 +57,7 @@ cloudflare/control-plane/.wrangler/
 /output/playwright/
 /output/conformance/
 /output/sdk-consumer/
+/packages/agent-sdk/dist/
 /output/release/
 /output/backups/
+/output/environments/

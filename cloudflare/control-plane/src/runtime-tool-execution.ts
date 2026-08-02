@@ -42,7 +42,34 @@ export const runtimeToolFailure = (error: unknown): RuntimeResult => ({
 
 const normalizeResult = (value: unknown): RuntimeResult => {
   if (value && typeof value === "object" && "ok" in value && typeof value.ok === "boolean") {
-    return value as RuntimeResult;
+    const candidate = value as Record<string, unknown> & { ok: boolean };
+    if (candidate.ok && candidate.output && typeof candidate.output === "object") {
+      return {
+        ...(candidate as unknown as Extract<RuntimeResult, { ok: true }>),
+        summary:
+          typeof candidate.summary === "string" && candidate.summary
+            ? candidate.summary
+            : "Runtime tool completed.",
+      };
+    }
+    const error = candidate.error;
+    if (
+      !candidate.ok &&
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      typeof error.code === "string" &&
+      "message" in error &&
+      typeof error.message === "string"
+    ) {
+      return {
+        ...(candidate as unknown as Extract<RuntimeResult, { ok: false }>),
+        summary:
+          typeof candidate.summary === "string" && candidate.summary
+            ? candidate.summary
+            : error.message,
+      };
+    }
   }
   return runtimeToolFailure(
     Object.assign(new Error("Runtime tool returned an invalid result."), {

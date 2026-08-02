@@ -41,24 +41,31 @@ edits the policy. General workspace mutation remains opt-in.
 
 ## Release evidence
 
-| Boundary          | Required evidence                                                                          |
-| ----------------- | ------------------------------------------------------------------------------------------ |
-| Repository        | `pnpm release:check`, clean clone, `git diff --check`                                      |
-| Runtime extension | `pnpm conformance:agent-system`                                                            |
-| Operational L0–L2 | `pnpm conformance:level2`                                                                  |
-| Operational L3    | `pnpm conformance:level3`, 24-hour soak, receiver-outage redelivery                        |
-| Retained data     | `pnpm conformance:data-lifecycle`, migration/recovery rehearsal, D1/R2/DO export and purge |
-| Connections       | `pnpm conformance:connections`, `pnpm acceptance:hosted:vault`                             |
-| Mutation          | `pnpm conformance:actions`, `pnpm acceptance:hosted:mutation`                              |
-| Supply chain      | `pnpm verify:security`, `pnpm verify:docker`                                               |
-| Public hosting    | `pnpm acceptance:hosted:public`                                                            |
-| Signed-in product | WorkOS browser acceptance across Vercel, Cloudflare, and Fly                               |
+| Boundary          | Required evidence                                                                    |
+| ----------------- | ------------------------------------------------------------------------------------ |
+| Repository        | `pnpm release:check`, clean clone, `git diff --check`                                |
+| Environment split | `pnpm verify:environment-config`, protected target preflight                         |
+| Runtime extension | `pnpm conformance:agent-system`                                                      |
+| Operational L0–L2 | `pnpm conformance:level2`                                                            |
+| Operational L3    | `conformance:level3`, `acceptance:hosted:soak`, `acceptance:hosted:alert-redelivery` |
+| Retained data     | `conformance:data-lifecycle`, encrypted backup, hosted export/recovery/purge         |
+| Connections       | `pnpm conformance:connections`, `pnpm acceptance:hosted:vault`                       |
+| Mutation          | `pnpm conformance:actions`, `pnpm acceptance:hosted:mutation`                        |
+| Supply chain      | `pnpm verify:security`, `pnpm verify:docker`                                         |
+| Public hosting    | `pnpm acceptance:hosted:public`                                                      |
+| Signed-in product | WorkOS browser acceptance across Vercel, Cloudflare, and Fly                         |
 
 Ignored evidence records must name one full commit SHA. Hosted Vault evidence
 must prove create/read-version/replace/revoke-delete without disclosing values.
 Hosted mutation evidence must name the isolated workspace, run, proposal,
 approval, provider reference, connection revocation, and kill-switch/reconcile
 drills.
+
+The hosted evidence collector requires ordered same-SHA Cloudflare promotion
+records (`disabled` -> `retained-data` -> `connections` -> acceptance-only
+`mutations`), an elapsed soak record, and manual signed-in evidence. A passing
+short workflow run cannot synthesize either elapsed time or an authenticated
+browser observation.
 
 ## Final checklist
 
@@ -67,7 +74,10 @@ drills.
       README instructions only.
 - [ ] All repository, browser, conformance, Docker, build, formatting,
       dependency-audit, and generated-registry gates are green.
-- [ ] Fresh and prior-baseline databases apply migrations `0006`–`0010`; backup
+- [ ] Local, acceptance, and production Worker/D1/R2/DO, Fly, Vercel, WorkOS,
+      origin, and signing-secret references are distinct; production rejects
+      conformance, memory Vault, dev tokens, and global mutation enablement.
+- [ ] Fresh and prior-baseline databases apply migrations `0006`–`0013`; backup
       restore and forward-fix rehearsal meet recorded RPO/RTO.
 - [ ] D1/R2/DO export manifest checksums pass; quarantine recovery and
       time-shifted final purge remove all customer state while retaining only a
@@ -93,3 +103,9 @@ drills.
 The release does not include real trading, Polymancer mutation, Swordfish
 execution, a credential marketplace, remote executable installation,
 delegation, legal hold, multi-region failover, or exactly-once provider effects.
+
+Deterministic release screenshots are regenerated with
+`pnpm release:screenshots` from synthetic local state and tracked under
+`docs/assets/release/`. Hosted rows remain pending until the protected
+`Hosted release evidence` workflow produces one full-SHA acceptance manifest
+and the elapsed 24-hour evidence described in `environment-separation.md`.

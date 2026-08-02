@@ -19,7 +19,7 @@ export async function POST(
   const signingSecret =
     process.env.CLOUDFLARE_CONTROL_PLANE_WEBHOOK_FACADE_SIGNING_SECRET?.trim() ??
     process.env.CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET?.trim();
-  if (!baseUrl || !controlToken || !signingSecret) {
+  if (!baseUrl || !signingSecret) {
     return NextResponse.json(
       { ok: false, error: "Webhook ingress is unavailable" },
       { status: 503 },
@@ -39,11 +39,11 @@ export async function POST(
   }
   const path = `/trigger-ingress/${encodeURIComponent(publicId)}`;
   const headers: Record<string, string> = {
-    authorization: `Bearer ${controlToken}`,
     "content-type": "application/json",
     "idempotency-key": idempotencyKey,
     "x-assistant-mk1-trigger-secret": triggerSecret,
   };
+  if (controlToken) headers.authorization = `Bearer ${controlToken}`;
   Object.assign(
     headers,
     await signFacadeRequest({

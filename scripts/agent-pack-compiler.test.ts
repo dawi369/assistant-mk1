@@ -1,6 +1,27 @@
-import { describe, expect, it } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { resolve } from "node:path";
 
-import { loadAgentModules, validateLoadedModules } from "./agent-pack-compiler";
+import { afterEach, describe, expect, it } from "vitest";
+
+import {
+  loadAgentModules,
+  resolveAgentModuleImportTarget,
+  validateInstalledPackageContract,
+  validateLoadedModules,
+} from "./agent-pack-compiler";
+
+const temporaryRoots: string[] = [];
+const temporaryRoot = () => {
+  const root = mkdtempSync(resolve(tmpdir(), "assistant-mk1-pack-"));
+  temporaryRoots.push(root);
+  writeFileSync(resolve(root, "package.json"), '{"type":"module"}\n');
+  return root;
+};
+
+afterEach(() => {
+  for (const root of temporaryRoots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
 
 describe("agent pack compiler", () => {
   it("loads the configured modules and verifies complete bindings", async () => {
@@ -23,6 +44,15 @@ describe("agent pack compiler", () => {
       manifest: { ...modules[1]!.manifest, id: modules[0]!.manifest.id },
     };
     expect(() => validateLoadedModules([modules[0]!, duplicate])).toThrow("Pack id");
+  });
+
+  it("rejects package and manifest version drift", async () => {
+    const modules = await loadAgentModules(process.cwd());
+    const mismatch = {
+      ...modules[0]!,
+      packageMetadata: { ...modules[0]!.packageMetadata, version: "9.9.9" },
+    };
+    expect(() => validateLoadedModules([mismatch])).toThrow("does not match manifest");
   });
 
   it("rejects missing providers and incompatible runtimes", async () => {
@@ -120,6 +150,71 @@ describe("agent pack compiler", () => {
     };
     expect(() => validateLoadedModules([undeclaredConnection as typeof source])).toThrow(
       "action connection is undeclared",
+    );
+  });
+
+  it("names a package subpath that is absent from exports", () => {
+    const root = temporaryRoot();
+    const packageDirectory = resolve(root, "node_modules/example-pack");
+    mkdirSync(packageDirectory, { recursive: true });
+    writeFileSync(
+      resolve(packageDirectory, "package.json"),
+      JSON.stringify({ name: "example-pack", version: "1.0.0", exports: {} }),
+    );
+
+    expect(() =>
+      resolveAgentModuleImportTarget(root, { package: "example-pack" }, "manifest"),
+    ).toThrow("example-pack/manifest is not installed or does not expose the required subpath");
+  });
+
+  it("rejects a package that resolves only through a parent workspace", () => {
+    const parent = temporaryRoot();
+    const root = resolve(parent, "consumer");
+    mkdirSync(root, { recursive: true });
+    writeFileSync(resolve(root, "package.json"), '{"type":"module"}\n');
+    const packageDirectory = resolve(parent, "node_modules/hoisted-pack");
+    mkdirSync(packageDirectory, { recursive: true });
+    writeFileSync(resolve(packageDirectory, "manifest.mjs"), "export const manifest = {};\n");
+    writeFileSync(
+      resolve(packageDirectory, "package.json"),
+      JSON.stringify({
+        name: "hoisted-pack",
+        version: "1.0.0",
+        exports: { "./manifest": "./manifest.mjs" },
+      }),
+    );
+
+    expect(() =>
+      resolveAgentModuleImportTarget(root, { package: "hoisted-pack" }, "manifest"),
+    ).toThrow("install it in the consumer instead of relying on workspace hoisting");
+  });
+
+  it("rejects invalid declaration files in installed runtime subpaths", () => {
+    const root = temporaryRoot();
+    const packageDirectory = resolve(root, "node_modules/invalid-types-pack");
+    mkdirSync(packageDirectory, { recursive: true });
+    const exports = Object.fromEntries(
+      ["manifest", "control-plane", "runner", "web"].map((subpath) => [
+        `./${subpath}`,
+        { types: `./${subpath}.d.ts`, default: `./${subpath}.mjs` },
+      ]),
+    );
+    writeFileSync(
+      resolve(packageDirectory, "package.json"),
+      JSON.stringify({ name: "invalid-types-pack", version: "1.0.0", type: "module", exports }),
+    );
+    for (const subpath of ["manifest", "control-plane", "runner", "web"]) {
+      writeFileSync(resolve(packageDirectory, `${subpath}.mjs`), "export const value = {};\n");
+      writeFileSync(
+        resolve(packageDirectory, `${subpath}.d.ts`),
+        subpath === "runner"
+          ? "export declare const runner: ;\n"
+          : "export declare const value: {};\n",
+      );
+    }
+
+    expect(() => validateInstalledPackageContract(root, { package: "invalid-types-pack" })).toThrow(
+      "invalid-types-pack/runner declaration file is invalid",
     );
   });
 });

@@ -205,6 +205,9 @@ describe("artifact lifecycle", () => {
     });
 
     expect(result).toEqual({ inspected: 1, deleted: 1, failed: 0 });
+    expect(vi.mocked(env.DB.prepare).mock.calls[0]?.[0]).toContain(
+      "NOT EXISTS (\n         SELECT 1 FROM control_data_export_objects pinned",
+    );
     expect(bucket.delete).toHaveBeenCalledWith(expired.storage_key);
     expect(update.bind).toHaveBeenCalledWith(
       "2026-07-12T00:00:00.000Z",

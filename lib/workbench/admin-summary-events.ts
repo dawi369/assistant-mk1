@@ -10,10 +10,19 @@ export type WorkbenchSummaryRefreshSource =
 export type WorkbenchSummaryRefreshDetail = {
   source?: WorkbenchSummaryRefreshSource;
   force?: boolean;
+  minimumGeneratedAt?: string;
 };
 
 let refreshTimeout: number | null = null;
 let pendingDetail: WorkbenchSummaryRefreshDetail = {};
+
+const laterTimestamp = (left?: string, right?: string) => {
+  const leftTime = left ? Date.parse(left) : NaN;
+  const rightTime = right ? Date.parse(right) : NaN;
+  if (!Number.isFinite(leftTime)) return Number.isFinite(rightTime) ? right : undefined;
+  if (!Number.isFinite(rightTime)) return left;
+  return rightTime > leftTime ? right : left;
+};
 
 const dispatchSummaryRefresh = (detail: WorkbenchSummaryRefreshDetail) => {
   window.dispatchEvent(new CustomEvent(workbenchSummaryRefreshEvent, { detail }));
@@ -26,6 +35,7 @@ export const requestWorkbenchSummaryRefresh = (
   pendingDetail = {
     source: input.source ?? pendingDetail.source ?? "event",
     force: Boolean(input.force || pendingDetail.force),
+    minimumGeneratedAt: laterTimestamp(pendingDetail.minimumGeneratedAt, input.minimumGeneratedAt),
   };
   if (refreshTimeout) {
     window.clearTimeout(refreshTimeout);

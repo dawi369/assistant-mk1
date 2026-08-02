@@ -6,6 +6,10 @@ Production candidate extending the workbench to Operational L3 and Authority A2.
 
 - Forward-only customer-data migrations, confirmed per-workspace retention,
   checksummed D1/R2/Durable Object export, and 30-day deletion recovery/purge.
+- Snapshot-consistent exports using a bounded D1 write fence, Durable Object
+  freeze, keyset staging, R2 pins, and an auditable manifest v3 snapshot cut.
+- Phase-checkpointed purge failure recovery with fresh-auth owner retry,
+  compare-and-set fencing, redacted errors, and preserved deletion authority.
 - WorkOS Vault credential custody with API-key and OAuth 2.0 + PKCE brokerage,
   scoped provider requests, refresh CAS, health, and revocation.
 - Durable mutation proposals, approvals, policy rechecks, kill switches,
@@ -13,6 +17,8 @@ Production candidate extending the workbench to Operational L3 and Authority A2.
 - Deterministic Complex Operator mutation evidence without financial actions or
   public provider traffic.
 - New lifecycle, connection, mutation, hosted Vault, and hosted mutation gates.
+- Deterministic synthetic release screenshots and strict Node 22/package
+  metadata validation.
 
 The tag remains blocked until the same-commit hosted checklist in
 `docs/release-readiness.md` is complete.

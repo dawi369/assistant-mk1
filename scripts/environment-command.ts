@@ -1,0 +1,190 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { resolve } from "node:path";
+
+import {
+  featureStages,
+  renderEnvironmentConfig,
+  type FeatureStage,
+} from "./render-environment-config";
+import {
+  environmentTargets,
+  isEnvironmentTarget,
+  loadWorkbenchEnvironment,
+  resolveEnvironmentReferences,
+  validateEnvironmentSet,
+} from "./workbench-environment";
+
+const phases = ["migrate-cloudflare", "deploy-cloudflare", "deploy-fly", "deploy-vercel"] as const;
+type Phase = (typeof phases)[number];
+const isPhase = (value: string): value is Phase => phases.includes(value as Phase);
+const valueAfter = (name: string) => {
+  const index = process.argv.indexOf(name);
+  return index >= 0 ? process.argv[index + 1] : undefined;
+};
+const run = (command: string, args: string[], env?: NodeJS.ProcessEnv) => {
+  const result = spawnSync(command, args, { cwd: process.cwd(), env, stdio: "inherit" });
+  if (result.status !== 0) throw new Error(`${command} exited with ${result.status ?? "signal"}`);
+};
+const git = (...args: string[]) => {
+  const result = spawnSync("git", args, { cwd: process.cwd(), encoding: "utf8" });
+  if (result.status !== 0) throw new Error(`git ${args.join(" ")} failed`);
+  return result.stdout.trim();
+};
+
+const target = valueAfter("--target") ?? "";
+const phase = valueAfter("--phase") ?? "";
+const execute = process.argv.includes("--execute");
+const featureStageValue = valueAfter("--feature-stage") ?? "disabled";
+if (!isEnvironmentTarget(target)) {
+  throw new Error(`--target must be one of ${environmentTargets.join("|")}`);
+}
+if (target === "local") throw new Error("external environment commands reject target=local");
+if (!isPhase(phase)) throw new Error(`--phase must be one of ${phases.join("|")}`);
+if (!featureStages.includes(featureStageValue as FeatureStage)) {
+  throw new Error(`--feature-stage must be one of ${featureStages.join("|")}`);
+}
+const featureStage = featureStageValue as FeatureStage;
+if (phase !== "deploy-cloudflare" && featureStage !== "disabled") {
+  throw new Error("--feature-stage is supported only for deploy-cloudflare");
+}
+if (target === "production" && featureStage === "mutations") {
+  throw new Error("production deployment cannot globally enable mutations");
+}
+
+const configured = environmentTargets.map(loadWorkbenchEnvironment);
+const failures = validateEnvironmentSet(configured);
+const resolved = resolveEnvironmentReferences(loadWorkbenchEnvironment(target));
+if (resolved.unresolved.length)
+  failures.push(`missing variables: ${resolved.unresolved.join(", ")}`);
+if (failures.length) throw new Error(failures.join("; "));
+
+const sha = git("rev-parse", "HEAD");
+const confirmation = `${target}:${phase}:${featureStage}:${sha}`;
+const rendered = renderEnvironmentConfig(target, { featureStage, releaseSha: sha });
+const commands: Record<Phase, { command: string; args: string[]; env?: NodeJS.ProcessEnv }> = {
+  "migrate-cloudflare": {
+    command: "pnpm",
+    args: [
+      "exec",
+      "wrangler",
+      "d1",
+      "migrations",
+      "apply",
+      rendered.manifest.cloudflare.d1DatabaseName,
+      "--remote",
+      "--config",
+      rendered.wranglerPath,
+    ],
+  },
+  "deploy-cloudflare": {
+    command: "pnpm",
+    args: ["exec", "wrangler", "deploy", "--config", rendered.wranglerPath],
+  },
+  "deploy-fly": {
+    command: "fly",
+    args: ["deploy", "--config", rendered.flyPath, "--app", rendered.manifest.fly.appName],
+  },
+  "deploy-vercel": {
+    command: "vercel",
+    args: [
+      "--prod",
+      "--yes",
+      "--build-env",
+      `WORKBENCH_RELEASE_SHA=${sha}`,
+      "--env",
+      `WORKBENCH_RELEASE_SHA=${sha}`,
+      "--build-env",
+      `WORKBENCH_ENVIRONMENT=${target}`,
+      "--env",
+      `WORKBENCH_ENVIRONMENT=${target}`,
+      "--build-env",
+      `WORKBENCH_OPERATOR_ALERT_CONFORMANCE_MODE=${target === "acceptance" ? "true" : "false"}`,
+      "--env",
+      `WORKBENCH_OPERATOR_ALERT_CONFORMANCE_MODE=${target === "acceptance" ? "true" : "false"}`,
+    ],
+    env: {
+      ...process.env,
+      VERCEL_ORG_ID: rendered.manifest.vercel.organizationId,
+      VERCEL_PROJECT_ID: rendered.manifest.vercel.projectId,
+    },
+  },
+};
+const selected = commands[phase];
+
+if (!execute) {
+  console.log(`Dry run only: ${target} ${phase} (${featureStage}) at ${sha}.`);
+  console.log(`Re-run with --execute --confirm ${confirmation} after approval is recorded.`);
+  process.exit(0);
+}
+if (valueAfter("--confirm") !== confirmation) {
+  throw new Error(`execution requires --confirm ${confirmation}`);
+}
+if (git("status", "--porcelain")) throw new Error("hosted execution requires a clean worktree");
+if (phase === "migrate-cloudflare") {
+  const backupPath = valueAfter("--backup-evidence");
+  if (!backupPath || !existsSync(backupPath)) {
+    throw new Error("migration execution requires --backup-evidence <same-commit JSON>");
+  }
+  const backup = JSON.parse(readFileSync(backupPath, "utf8")) as {
+    target?: unknown;
+    commit?: unknown;
+    checksum?: unknown;
+  };
+  if (backup.target !== target || backup.commit !== sha || typeof backup.checksum !== "string") {
+    throw new Error("backup evidence must match target and commit and include a checksum");
+  }
+}
+if (phase === "deploy-cloudflare" && featureStage !== "disabled") {
+  const stageOrder: FeatureStage[] = ["disabled", "retained-data", "connections", "mutations"];
+  const previousStage = stageOrder[stageOrder.indexOf(featureStage) - 1];
+  const previousPath = resolve(
+    process.cwd(),
+    "output/release",
+    sha,
+    `promotion-${target}-${previousStage}.json`,
+  );
+  if (!previousStage || !existsSync(previousPath)) {
+    throw new Error(`feature promotion to ${featureStage} requires ${previousStage} evidence`);
+  }
+  const previous = JSON.parse(readFileSync(previousPath, "utf8")) as {
+    target?: unknown;
+    commit?: unknown;
+    featureStage?: unknown;
+    status?: unknown;
+  };
+  if (
+    previous.target !== target ||
+    previous.commit !== sha ||
+    previous.featureStage !== previousStage ||
+    previous.status !== "deployed"
+  ) {
+    throw new Error(`feature promotion evidence for ${previousStage} is invalid`);
+  }
+}
+run(selected.command, selected.args, selected.env);
+const evidenceDirectory = resolve(process.cwd(), "output/release", sha);
+mkdirSync(evidenceDirectory, { recursive: true });
+writeFileSync(
+  resolve(
+    evidenceDirectory,
+    phase === "deploy-cloudflare"
+      ? `promotion-${target}-${featureStage}.json`
+      : `deployment-${target}-${phase}.json`,
+  ),
+  `${JSON.stringify(
+    {
+      schemaVersion: 1,
+      target,
+      commit: sha,
+      phase,
+      featureStage,
+      status: "deployed",
+      completedAt: new Date().toISOString(),
+      operator: process.env.WORKBENCH_RELEASE_OPERATOR?.trim() || process.env.USER || "unknown",
+    },
+    null,
+    2,
+  )}\n`,
+  { mode: 0o600 },
+);

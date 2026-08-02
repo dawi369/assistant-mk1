@@ -36,18 +36,19 @@ organization gets a stable personal account id derived from the WorkOS
 
 ## Required Environment
 
-Set these in Vercel Production before deploying:
+Create distinct protected Vercel projects for `acceptance` and `production`.
+Resolve the non-secret project IDs and origins required by
+`config/environments/<target>.json`, then set these in that target only:
 
 ```bash
 NEXT_PUBLIC_LANGGRAPH_ASSISTANT_ID=agent
-LANGGRAPH_API_URL=https://assistant-mk1-dev-control-plane.david-erwin-cz68.workers.dev/langgraph
-CLOUDFLARE_CONTROL_PLANE_URL=https://assistant-mk1-dev-control-plane.david-erwin-cz68.workers.dev
-CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<secret>
+LANGGRAPH_API_URL=<target-cloudflare-origin>/langgraph
+CLOUDFLARE_CONTROL_PLANE_URL=<target-cloudflare-origin>
 CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET=<same-secret-as-worker>
 WORKOS_CLIENT_ID=<secret>
 WORKOS_API_KEY=<secret>
 WORKOS_COOKIE_PASSWORD=<secret>
-NEXT_PUBLIC_WORKOS_REDIRECT_URI=https://assistant-mk1.vercel.app/auth/callback
+NEXT_PUBLIC_WORKOS_REDIRECT_URI=<target-vercel-origin>/auth/callback
 WORKBENCH_ADMIN_USER_IDS=<comma-separated-workos-user-ids>
 WORKBENCH_ADMIN_EMAILS=<comma-separated-admin-emails>
 ```
@@ -68,9 +69,9 @@ Do not mirror local `.env.local` into Vercel Production blindly:
 - Production redirect URI: `https://assistant-mk1.vercel.app/auth/callback`
 
 The Vercel `/api` proxy authenticates to Cloudflare with a signed facade
-request. `CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN` remains the shared transport
-token for current dev operations, but Cloudflare trusts WorkOS-derived identity
-headers only when the request signature is fresh and non-replayed. WorkOS
+request. Hosted targets reject the local development transport token and trust
+WorkOS-derived identity headers only when the request signature is fresh and
+non-replayed. WorkOS
 `user.id` becomes the internal `userId`. WorkOS `organizationId` becomes
 `workos-org:<organizationId>` when available; otherwise the personal fallback
 account id is
@@ -96,39 +97,30 @@ ledger before deploying Vercel. Do not rebuild a retained environment. The
 reset snapshot is for clean databases only; migration and recovery procedures
 are defined in `docs/migrations-and-retention.md`.
 
+Render and validate the target first. Deployment is dry-run by default and
+requires the full-SHA confirmation token described in
+`docs/environment-separation.md`:
+
 ```bash
-vercel --prod --yes
-```
-
-Current production alias:
-
-```text
-https://assistant-mk1.vercel.app
+pnpm environment:check --target production
+pnpm deploy:vercel -- --target production
 ```
 
 ## Smoke Checks
 
 ```bash
-curl https://assistant-mk1.vercel.app/api/health
-node -e "fetch('https://assistant-mk1.vercel.app/sign-in',{redirect:'manual'}).then(r=>console.log(r.status,r.headers.get('location')))"
-node -e "fetch('https://assistant-mk1.vercel.app/api/workbench/context').then(async r=>console.log(r.status, await r.text()))"
-CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
-CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
-CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET=<same-secret-as-worker> \
-pnpm smoke:cloudflare-workspace-context
-CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
-CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
-CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET=<same-secret-as-worker> \
-pnpm smoke:cloudflare-deploy-readiness
+curl <target-vercel-origin>/api/health
+node -e "fetch('<target-vercel-origin>/sign-in',{redirect:'manual'}).then(r=>console.log(r.status,r.headers.get('location')))"
+node -e "fetch('<target-vercel-origin>/api/workbench/context').then(async r=>console.log(r.status, await r.text()))"
+pnpm acceptance:hosted:public
+WORKBENCH_HOSTED_DRILL_MODE=true pnpm acceptance:hosted:level3
 ```
 
 The unauthenticated workbench context check should return `401`. Hosted Vercel
-workbench routes require a signed-in WorkOS browser session. Run
-`pnpm smoke:cloudflare-deploy-readiness` against the Worker after
-rebuilding the current D1 schema. It composes the minimum remote deploy suite:
-workspace context, Admin tool policy/approvals, policy boundary, session
-boundary, and live event stream coverage. Run broader chat or workbench smokes
-when the touched slice changes those paths.
+workbench routes require a signed-in WorkOS browser session. Hosted D1 uses
+forward migrations only; it is never rebuilt. The protected hosted workflow
+uses fresh facade signatures and composes the remote control-plane, runner,
+session, trigger, lifecycle, Vault, and mutation evidence.
 
 ## Approval/tool policy deploy validation
 
@@ -139,20 +131,19 @@ PATH=/opt/homebrew/bin:$PATH pnpm typecheck
 PATH=/opt/homebrew/bin:$PATH pnpm test:unit
 PATH=/opt/homebrew/bin:$PATH pnpm lint
 PATH=/opt/homebrew/bin:$PATH SENTRY_AUTH_TOKEN= pnpm build
-PATH=/opt/homebrew/bin:$PATH pnpm db:cloudflare:migrate:remote
-PATH=/opt/homebrew/bin:$PATH pnpm deploy:cloudflare
-CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
-CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
-CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET=<same-secret-as-worker> \
-PATH=/opt/homebrew/bin:$PATH pnpm smoke:cloudflare-deploy-readiness
-vercel --prod --yes
-curl https://assistant-mk1.vercel.app/api/health
-node -e "fetch('https://assistant-mk1.vercel.app/sign-in',{redirect:'manual'}).then(r=>console.log(r.status,r.headers.get('location')))"
+PATH=/opt/homebrew/bin:$PATH pnpm db:cloudflare:backup -- --target acceptance
+PATH=/opt/homebrew/bin:$PATH pnpm db:cloudflare:migrate -- --target acceptance
+PATH=/opt/homebrew/bin:$PATH pnpm deploy:cloudflare -- --target acceptance
+PATH=/opt/homebrew/bin:$PATH pnpm acceptance:hosted:level3:preflight
+PATH=/opt/homebrew/bin:$PATH pnpm acceptance:hosted:level3
+pnpm deploy:vercel -- --target acceptance
+curl <acceptance-vercel-origin>/api/health
+node -e "fetch('<acceptance-vercel-origin>/sign-in',{redirect:'manual'}).then(r=>console.log(r.status,r.headers.get('location')))"
 ```
 
-`pnpm db:cloudflare:migrate:remote` applies only unapplied forward migrations.
-The separate rebuild command remains destructive and is not part of a normal
-deploy.
+The target migration command applies only unapplied forward migrations and
+requires same-commit backup evidence before `--execute`. No hosted rebuild
+command exists.
 
 Hosted Admin manual QA after sign-in:
 
@@ -168,6 +159,6 @@ Hosted Admin manual QA after sign-in:
 
 ## Runtime Dependency
 
-Deploy `assistant-mk1-langgraph-dev` and the Cloudflare Worker before deploying
+Deploy the target-specific Fly app and Cloudflare Worker before deploying
 Vercel changes that point `LANGGRAPH_API_URL` at `/langgraph`. See
 `docs/deployment-fly.md` and `docs/dev-infrastructure-readiness.md`.

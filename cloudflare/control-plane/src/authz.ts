@@ -466,8 +466,10 @@ export const resolveAgentIdentity = async (
   request: Request,
   env: Env,
   auth: ControlPlaneAuthContext,
-  options: { allowQuarantinedWorkspace?: boolean } = {},
+  options: { allowedInactiveWorkspaceStatuses?: readonly string[] } = {},
 ): Promise<ResolveResult> => {
+  const workspaceStatusAllowed = (status: string) =>
+    status === "active" || options.allowedInactiveWorkspaceStatuses?.includes(status) === true;
   const authzSpans: RuntimeTraceInputSpan[] = [];
   const headerStartedAtMs = Date.now();
   const userId = readRequiredHeader(request, userIdHeader);
@@ -521,19 +523,40 @@ export const resolveAgentIdentity = async (
           ),
         };
       }
-      await bootstrapAuthz(env, request, { userId, accountId, accountSource, workspaceId });
-      await createLocalExplicitAgentIfMissing(env, {
-        userId,
-        workspaceId,
-        agentId: explicitAgentId,
-      });
-      await upsertActiveWorkspacePreference(env, {
-        userId,
-        accountId,
-        workspaceId,
-        reason: "local-dev-bootstrap",
-      });
-      const activeAgentPreference = await selectActiveAgentPreference(env, { userId, workspaceId });
+      const [existingUser, existingWorkspace, existingMembership, existingWorkspacePreference] =
+        await Promise.all([
+          selectUser(env, userId),
+          selectWorkspace(env, workspaceId),
+          selectMembership(env, userId, workspaceId),
+          selectActiveWorkspacePreference(env, { userId, accountId }),
+        ]);
+      let activeAgentPreference = await selectActiveAgentPreference(env, { userId, workspaceId });
+      const existingAgent = activeAgentPreference
+        ? await selectAgent(env, activeAgentPreference.agent_id, workspaceId)
+        : null;
+      const identityAlreadyBootstrapped =
+        existingUser?.status === "active" &&
+        existingWorkspace?.status === "active" &&
+        existingWorkspace.account_id === accountId &&
+        existingWorkspace.account_source === accountSource &&
+        existingMembership?.status === "active" &&
+        existingWorkspacePreference?.workspace_id === workspaceId &&
+        existingAgent?.status === "active";
+      if (!identityAlreadyBootstrapped) {
+        await bootstrapAuthz(env, request, { userId, accountId, accountSource, workspaceId });
+        await createLocalExplicitAgentIfMissing(env, {
+          userId,
+          workspaceId,
+          agentId: explicitAgentId,
+        });
+        await upsertActiveWorkspacePreference(env, {
+          userId,
+          accountId,
+          workspaceId,
+          reason: "local-dev-bootstrap",
+        });
+        activeAgentPreference = await selectActiveAgentPreference(env, { userId, workspaceId });
+      }
       if (activeAgentPreference) {
         resolvedAgentId = activeAgentPreference.agent_id;
       } else {
@@ -560,8 +583,7 @@ export const resolveAgentIdentity = async (
     }
     if (
       !workspace ||
-      (workspace.status !== "active" &&
-        !(options.allowQuarantinedWorkspace && workspace.status === "quarantined")) ||
+      !workspaceStatusAllowed(workspace.status) ||
       (accountId && workspace.account_id !== accountId) ||
       (accountSource && workspace.account_source !== accountSource)
     ) {
@@ -674,8 +696,7 @@ export const resolveAgentIdentity = async (
   if (
     !workspace ||
     workspace.account_id !== accountId ||
-    (workspace.status !== "active" &&
-      !(options.allowQuarantinedWorkspace && workspace.status === "quarantined"))
+    !workspaceStatusAllowed(workspace.status)
   ) {
     return {
       ok: false,

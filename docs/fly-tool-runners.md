@@ -99,7 +99,9 @@ LangGraph workflows may need to read and write context. The initial implementati
 
 ## Deployment Modes
 
-- Current dev/staging mode: `assistant-mk1-langgraph-dev` runs a dedicated Fly gateway, the LangGraph runtime, and signed executor endpoints.
-- Target execution mode: one or more Fly services run tool runners and LangGraph workflow workers behind signed internal APIs.
+- Current hosted mode: distinct acceptance and production Fly apps each run the
+  gateway, LangGraph runtime, and signed executor endpoints.
+- Future execution mode: one or more target-scoped Fly services may split tool
+  runners and LangGraph workers behind the same signed boundary.
 
 Do not store important durable state on a Fly filesystem unless the storage strategy explicitly says so.

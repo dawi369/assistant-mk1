@@ -10,6 +10,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { toWorkbenchApiError } from "@/lib/workbench/api-errors";
 import { getWorkbenchIdentityHeaders } from "@/lib/workbench/agent-identity";
 import { signFacadeRequest } from "@/lib/workbench/control-plane-signing";
+import { isRetiredWorkbenchApiPath } from "@/lib/workbench/retired-api-paths";
 
 export const runtime = "nodejs";
 
@@ -56,10 +57,11 @@ const proxyHeaders = async (trace: {
   headers["x-assistant-mk1-vercel-started-at"] = String(trace.startedAtMs);
   headers["x-assistant-mk1-vercel-duration-ms"] = String(trace.durationMs);
 
-  if (process.env.CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN) {
-    headers.authorization = `Bearer ${requiredEnv("CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN")}`;
+  const devToken = process.env.CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN?.trim();
+  const signingSecret = process.env.CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET?.trim();
+  if (devToken || signingSecret) {
+    if (devToken) headers.authorization = `Bearer ${devToken}`;
     Object.assign(headers, await getWorkbenchIdentityHeaders());
-    const signingSecret = process.env.CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET?.trim();
     if (signingSecret) {
       Object.assign(
         headers,
@@ -86,6 +88,9 @@ async function handleRequest(req: NextRequest, method: string) {
   const requestOrigin = req.headers.get("origin");
   const proxyStartedAtMs = Date.now();
   const traceId = `trace-${crypto.randomUUID()}`;
+  if (isRetiredWorkbenchApiPath(req.nextUrl.pathname)) {
+    return NextResponse.json({ ok: false, error: "not found" }, { status: 404 });
+  }
   try {
     const apiUrl = requiredEnv("LANGGRAPH_API_URL").replace(/\/$/, "");
     const path = req.nextUrl.pathname.replace(/^\/?api\//, "");

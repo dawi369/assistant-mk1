@@ -29,8 +29,8 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const configPath = join(repoRoot, "cloudflare/control-plane/wrangler.jsonc");
 const migrationsPath = join(repoRoot, "cloudflare/control-plane/migrations");
 const resetSchemaPath = join(repoRoot, "cloudflare/control-plane/schema.sql");
-const database = "assistant_mk1_dev";
-const databaseId = "1b5ba1b2-e19e-4db4-825b-d911b1ddf9db";
+const database = "assistant_mk1_local";
+const databaseId = "00000000-0000-0000-0000-000000000000";
 
 function wrangler(args: string[]): string {
   return execFileSync("pnpm", ["exec", "wrangler", ...args], {
@@ -54,7 +54,9 @@ function executeJson<Row>(persistTo: string, command: string): Row[] {
     command,
     "--json",
   ]);
-  const parsed = JSON.parse(output) as D1Result<Row>;
+  const jsonStart = output.indexOf("[");
+  if (jsonStart < 0) throw new Error("Wrangler did not return JSON output.");
+  const parsed = JSON.parse(output.slice(jsonStart)) as D1Result<Row>;
   const result = parsed[0];
 
   if (!result?.success) {
@@ -176,6 +178,30 @@ function main(): void {
         `Applied migrations do not match cloudflare/control-plane/schema.sql:\n${differences.join("\n")}`,
       );
     }
+
+    executeJson(
+      migratedState,
+      `INSERT INTO users (id, status, created_at, updated_at) VALUES ('fence-user', 'active', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
+       INSERT INTO workspaces (id, account_id, account_source, name, status, created_by_user_id, created_at, updated_at) VALUES ('fence-workspace', 'fence-account', 'test', 'Fence workspace', 'active', 'fence-user', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
+       INSERT INTO control_workspace_write_fences (workspace_id, job_id, status, lease_owner, lease_expires_at, acquired_at, updated_at) VALUES ('fence-workspace', 'fence-job', 'active', 'migration-verifier', '2099-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z') RETURNING workspace_id`,
+    );
+    let fencedWriteRejected = false;
+    try {
+      executeJson(
+        migratedState,
+        `INSERT INTO agents (id, workspace_id, name, status, created_by_user_id, created_at, updated_at) VALUES ('fenced-agent', 'fence-workspace', 'Blocked', 'active', 'fence-user', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z') RETURNING id`,
+      );
+    } catch {
+      fencedWriteRejected = true;
+    }
+    if (!fencedWriteRejected) {
+      throw new Error("Workspace export fence did not reject a canonical tenant write.");
+    }
+    executeJson(
+      migratedState,
+      `DELETE FROM control_workspace_write_fences WHERE workspace_id = 'fence-workspace';
+       INSERT INTO agents (id, workspace_id, name, status, created_by_user_id, created_at, updated_at) VALUES ('fenced-agent', 'fence-workspace', 'Accepted', 'active', 'fence-user', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z') RETURNING id`,
+    );
 
     const markerId = "migration-verification-user";
     wrangler([

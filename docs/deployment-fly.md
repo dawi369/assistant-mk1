@@ -1,4 +1,4 @@
-# Fly.io Dev/Staging Deployment
+# Fly.io Acceptance And Production Deployment
 
 Fly is the hosted dev/staging execution runtime. Local development remains the
 primary coding loop. Vercel owns the hosted frontend; Fly owns LangGraph and
@@ -6,10 +6,11 @@ signed executor work.
 
 ## Shape
 
-Active runtime app:
+Each hosted target has its own app and public gateway, declared in
+`config/environments/<target>.json`. `fly.langgraph.toml` is local-only.
 
-- App: `assistant-mk1-langgraph-dev`
-- Public gateway: `https://assistant-mk1-langgraph-dev.fly.dev`
+- Acceptance app: `assistant-mk1-acceptance-runner`
+- Production app: `assistant-mk1-production-runner`
 - Gateway on `PORT`, default `3000`
 - LangGraph dev server on `LANGGRAPH_PORT`, default `2024`
 - Gateway proxies LangGraph traffic to `LANGGRAPH_UPSTREAM_URL`
@@ -27,10 +28,10 @@ Set secrets with `fly secrets set`; do not commit them.
 For the dedicated LangGraph runtime, set:
 
 ```bash
-fly secrets set OPENROUTER_API_KEY=...
-fly secrets set WORKBENCH_RUNNER_SIGNING_SECRET=...
-fly secrets set WORKBENCH_CALLBACK_SIGNING_SECRET=...
-fly secrets set LANGGRAPH_PROXY_TOKEN=...
+fly secrets set --app <target-app> OPENROUTER_API_KEY=...
+fly secrets set --app <target-app> WORKBENCH_RUNNER_SIGNING_SECRET=...
+fly secrets set --app <target-app> WORKBENCH_CALLBACK_SIGNING_SECRET=...
+fly secrets set --app <target-app> LANGGRAPH_PROXY_TOKEN=...
 ```
 
 Optional:
@@ -38,58 +39,39 @@ Optional:
 ```bash
 fly secrets set LANGSMITH_API_KEY=...
 fly secrets set LANGSMITH_TRACING=true
-fly secrets set LANGSMITH_PROJECT=assistant-mk1-langgraph-dev
+fly secrets set --app <target-app> LANGSMITH_PROJECT=assistant-mk1-<target>
 ```
 
 ## First Deploy
 
 ```bash
-fly apps create assistant-mk1-langgraph-dev --region fra
-pnpm deploy:fly:langgraph
+fly apps create assistant-mk1-acceptance-runner --region fra
+pnpm environment:check --target acceptance
+pnpm deploy:fly -- --target acceptance
 ```
 
-If the app name is taken, change `app` and `OPENROUTER_SITE_URL` in
-`fly.langgraph.toml`.
+If a planned app name is unavailable, change only the target manifest and
+re-run cross-target validation before provisioning.
 
 ## Smoke Checks
 
 Health:
 
 ```bash
-curl https://assistant-mk1-langgraph-dev.fly.dev/health
+curl <target-fly-origin>/health
 ```
 
 LangGraph gateway:
 
 ```bash
-LANGGRAPH_RUNTIME_BASE_URL=https://assistant-mk1-langgraph-dev.fly.dev \
+LANGGRAPH_RUNTIME_BASE_URL=<target-fly-origin> \
 LANGGRAPH_PROXY_TOKEN=<token> \
 pnpm smoke:langgraph-runtime
 ```
 
-Cloudflare facade to this gateway:
-
-```bash
-CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
-CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
-pnpm smoke:cloudflare-langgraph-facade
-```
-
-Cloudflare chat thread boundary:
-
-```bash
-CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
-CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
-pnpm smoke:cloudflare-chat-boundary
-```
-
-Cloudflare session boundary:
-
-```bash
-CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
-CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
-pnpm smoke:cloudflare-session-boundary
-```
+Cloudflare-to-Fly and chat/session boundaries are exercised with signed facade
+requests by `pnpm acceptance:hosted:level3`. Hosted dev-token smokes are
+rejected.
 
 Public hosted boundary agreement:
 
@@ -112,7 +94,7 @@ remote Cloudflare Worker -> remote D1
 Tool runner transport:
 
 ```bash
-LANGGRAPH_RUNTIME_BASE_URL=https://assistant-mk1-langgraph-dev.fly.dev \
+LANGGRAPH_RUNTIME_BASE_URL=<target-fly-origin> \
 WORKBENCH_RUNNER_SIGNING_SECRET=<runner-secret> \
 pnpm smoke:fly-tool-runner
 ```
@@ -122,8 +104,8 @@ receiver, also set `WORKBENCH_RUNNER_CALLBACK_URL`.
 
 Cloudflare uses this path only when the Worker is configured with
 `WORKBENCH_RUNNER_TRANSPORT=fly`, `WORKBENCH_RUNNER_URL`, and the matching
-`WORKBENCH_RUNNER_SIGNING_SECRET`. Without those settings, `url.inspect`
-continues to use the Cloudflare-inline runner.
+`WORKBENCH_RUNNER_SIGNING_SECRET`. Without those settings, Fly-only tools such
+as `url.inspect` are unavailable; they never fall back to Cloudflare egress.
 
 Fly machine health uses `GET /health/live`, a shallow gateway liveness check
 that does not call LangGraph. Use `GET /health` for deep manual or smoke checks
@@ -140,39 +122,24 @@ Hosted Vercel workbench routes require a signed-in WorkOS browser session.
 `pnpm conformance:level2` remains the deterministic local same-origin proof;
 the hosted workflow journey is recorded manually against a signed-in session.
 
-To prove scoped remote D1 reads and writes, run:
+Scoped remote D1 reads/writes and cross-tenant `404` behavior are covered by
+the signed hosted Level 3, data-lifecycle, and mutation gates.
+
+Cloudflare target deploy sequence:
 
 ```bash
-CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
-CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
-pnpm smoke:tenant-isolation
+pnpm environment:provision -- --target acceptance --provider cloudflare
+pnpm environment:check --target acceptance
+pnpm db:cloudflare:backup -- --target acceptance
+pnpm db:cloudflare:migrate -- --target acceptance
+pnpm deploy:cloudflare -- --target acceptance
+pnpm acceptance:hosted:level3:preflight
+pnpm acceptance:hosted:public
 ```
 
-That smoke calls the Worker with two trusted dev tenant identities and confirms
-cross-tenant run reads return `404`.
-
-Cloudflare remote deploy sequence:
-
-```bash
-pnpm wrangler d1 list
-pnpm wrangler d1 create assistant_mk1_dev --config cloudflare/control-plane/wrangler.jsonc
-pnpm db:cloudflare:migrate:remote
-pnpm deploy:cloudflare
-CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
-CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
-pnpm smoke:cloudflare-session-boundary
-CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
-CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
-pnpm smoke:cloudflare-chat-boundary
-CLOUDFLARE_CONTROL_PLANE_URL=<remote-worker-url> \
-CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN=<token> \
-CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET=<same-secret-as-worker> \
-pnpm smoke:cloudflare-deploy-readiness
-```
-
-Only run `d1 create` if the database is missing, and copy its returned
-`database_id` into `cloudflare/control-plane/wrangler.jsonc` before rebuilding
-the current schema. The rebuild command drops remote dev D1 tables by design.
+Only run `d1 create` during the separately approved provisioning phase. Store
+its returned ID in the target environment variable; never copy it into the
+local Wrangler config. Hosted reset/rebuild commands are intentionally absent.
 
 Frontend:
 

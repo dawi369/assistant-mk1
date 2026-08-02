@@ -1361,6 +1361,9 @@ export type CloudflareDataJobResponse = {
     kind: "export" | "purge";
     status: string;
     attemptCount?: number;
+    manualRetryCount?: number;
+    lastErrorCode?: string;
+    lastFailedAt?: string;
     sizeBytes?: number;
     contentSha256?: string;
     expiresAt?: string;
@@ -1380,6 +1383,14 @@ export type CloudflareWorkspaceDeletionResponse = {
     recoveredAt?: string;
     credentialsRecoverable?: boolean;
     credentialRevocation?: "completed" | "pending_retry";
+    purgeJobId?: string;
+    phase?: string;
+    attemptCount?: number;
+    manualRetryCount?: number;
+    lastErrorCode?: string;
+    lastFailedAt?: string;
+    canRetry?: boolean;
+    canRecover?: boolean;
     credentialsRestored?: boolean;
     triggersRestored?: boolean;
   };

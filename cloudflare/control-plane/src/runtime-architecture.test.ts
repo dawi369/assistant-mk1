@@ -46,10 +46,14 @@ describe("runtime extension architecture", () => {
       "lib/workbench/demo-tool.ts",
       "app/api/workbench/cloudflare-demo-runs/route.ts",
       "app/api/workbench/executors/demo-inspect/route.ts",
+      "app/api/workbench/data-export/route.ts",
     ];
     expect(obsolete.filter((path) => existsSync(join(root, path)))).toEqual([]);
     expect(read("cloudflare/control-plane/src/index.ts")).not.toContain(
       "/internal/workbench/run-callbacks",
+    );
+    expect(read("cloudflare/control-plane/src/index.ts")).not.toContain(
+      'url.pathname === "/workbench/data-export"',
     );
   });
 
@@ -105,5 +109,77 @@ describe("runtime extension architecture", () => {
     expect(
       read("cloudflare/control-plane/migrations/0010_nonidentifying_deletion_receipts.sql"),
     ).not.toMatch(/user_id|workspace_id|account_id|email|name/i);
+  });
+
+  it("enforces snapshot export fences at every exported durable table", () => {
+    const lifecycle = read("cloudflare/control-plane/src/workspace-data-lifecycle.ts");
+    const schema = read("cloudflare/control-plane/schema.sql");
+    const migration = read(
+      "cloudflare/control-plane/migrations/0012_consistent_workspace_exports.sql",
+    );
+    const exportedTables = [
+      ...lifecycle.matchAll(/tenantCollection\(\s*"([^"]+)"/g),
+      ...lifecycle.matchAll(/name:\s*"(users|workspaces|agents)"/g),
+    ].map((match) => match[1]);
+    expect(new Set(exportedTables).size).toBe(exportedTables.length);
+    const omissionBlock = lifecycle.match(
+      /workspaceExportOmittedTables\s*=\s*\[([\s\S]*?)\]\s*as const/,
+    )?.[1];
+    expect(omissionBlock).toBeDefined();
+    const omittedTables = [...(omissionBlock ?? "").matchAll(/"([^"]+)"/g)].map(
+      (match) => match[1],
+    );
+    const workspaceScopedTables = [
+      ...schema.matchAll(/CREATE TABLE ([a-z0-9_]+) \(([\s\S]*?)\n\);/g),
+    ]
+      .filter((match) => /\bworkspace_id\s+TEXT\b/.test(match[2] ?? ""))
+      .map((match) => match[1]);
+    const coveredTables = new Set([...exportedTables, ...omittedTables]);
+    expect(
+      workspaceScopedTables.filter((table) => !coveredTables.has(table)),
+      "new workspace-scoped tables require an export projection or explicit omission",
+    ).toEqual([]);
+    for (const table of exportedTables) {
+      const actions =
+        table === "users" || table === "workspaces"
+          ? ["update", "delete"]
+          : ["insert", "update", "delete"];
+      for (const action of actions) {
+        expect(migration, `${table} ${action}`).toContain(
+          `CREATE TRIGGER export_fence_${table}_${action}`,
+        );
+      }
+    }
+    expect(lifecycle).not.toMatch(/\bOFFSET\b/);
+    expect(lifecycle).toContain("ORDER BY collection_name ASC, row_key ASC");
+    for (const phase of [
+      "awaiting_quiescence",
+      "fenced",
+      "do_frozen",
+      "d1_materialized",
+      "r2_pinned",
+      "released",
+      "assembling",
+    ]) {
+      expect(lifecycle).toContain(`"${phase}"`);
+    }
+    expect(lifecycle).toContain("workspace_export_fence_recovery_failed");
+  });
+
+  it("keeps hosted targets out of local configs and requires signed callback origins", () => {
+    const packageJson = JSON.parse(read("package.json")) as { scripts?: Record<string, string> };
+    expect(packageJson.scripts?.["db:cloudflare:migrate:remote"]).toBeUndefined();
+    expect(packageJson.scripts?.["db:cloudflare:rebuild:remote"]).toBeUndefined();
+    expect(read("cloudflare/control-plane/wrangler.jsonc")).not.toMatch(
+      /acceptance|production|workers\.dev|fly\.dev|vercel\.app/,
+    );
+    expect(read("fly.langgraph.toml")).not.toMatch(/acceptance|production|workers\.dev|fly\.dev/);
+    const gateway = read("scripts/langgraph-runtime-gateway.ts");
+    expect(gateway).toContain("WORKBENCH_CALLBACK_ORIGIN");
+    expect(gateway).toContain("callbackUrl.origin !== allowedCallbackOrigin");
+    const client = read("lib/workbench/cloudflare-control-plane-client.ts");
+    expect(client).toContain("baseUrl && (token || signingSecret)");
+    const webhook = read("app/api/external-signals/[publicId]/route.ts");
+    expect(webhook).toContain("!baseUrl || !signingSecret");
   });
 });

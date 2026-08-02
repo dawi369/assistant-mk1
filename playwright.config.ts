@@ -10,7 +10,6 @@ const appOrigin = "http://localhost:3100";
 const redirectEnv = `NEXT_PUBLIC_WORKOS_REDIRECT_URI=${appOrigin}/auth/callback`;
 const syntheticAuthEnv =
   "WORKOS_API_KEY='' WORKOS_CLIENT_ID=client_e2e_synthetic NEXT_PUBLIC_WORKOS_CLIENT_ID=client_e2e_synthetic WORKOS_COOKIE_PASSWORD=e2e-cookie-password-000000000000001";
-
 const frontendCommand =
   releaseMode === "signed-out"
     ? `${redirectEnv} ${syntheticAuthEnv} WORKBENCH_ALLOW_LOCAL_DEV_IDENTITY=false pnpm exec tsx scripts/run-with-log.ts output/playwright/frontend-signed-out.log pnpm exec next dev --turbopack -p 3100`

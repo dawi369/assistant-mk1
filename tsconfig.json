@@ -19,9 +19,7 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"],
-      "@assistant-mk1/agent-sdk": ["./packages/agent-sdk/src/index.ts"],
-      "@assistant-mk1/agent-sdk/*": ["./packages/agent-sdk/src/*"]
+      "@/*": ["./*"]
     }
   },
   "include": [
@@ -31,5 +29,5 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "output"]
 }

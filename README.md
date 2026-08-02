@@ -26,7 +26,7 @@ Assistant-mk1 keeps chat immediate while moving serious agent work into durable,
 inspectable control-plane state. Runs, tools, approvals, artifacts, traces, and
 tenant scope are visible outside the model conversation.
 
-<!-- Add the primary workbench screenshot here before release. -->
+![Assistant-mk1 workbench with live runtime state](docs/assets/release/workbench.png)
 
 ### Workbench
 
@@ -35,7 +35,7 @@ tenant scope are visible outside the model conversation.
 - Searchable run history with cancellation, retry, reconnect, and approval recovery.
 - Server-enforced tool visibility, execution modes, policy, and audit.
 
-<!-- Add the History and recovery screenshot here before release. -->
+![Workbench History with recovery fixtures and a synthetic action ledger](docs/assets/release/history-and-action-ledger.png)
 
 ### Agent Operations
 
@@ -52,7 +52,11 @@ tenant scope are visible outside the model conversation.
   Fly/LangGraph execution.
 - Sentry and first-party runtime traces across Vercel, Cloudflare, and Fly.
 
-<!-- Add the Agent Packs and workspace policy screenshot here before release. -->
+![Built-in Agent Packs with executable and parked runtime boundaries](docs/assets/release/agent-packs.png)
+
+![Brokered connections and current-agent tools](docs/assets/release/tools-and-connections.png)
+
+![Workspace retention policy and asynchronous export controls](docs/assets/release/workspace-retention-and-export.png)
 
 ## Why Assistant-mk1
 
@@ -131,10 +135,10 @@ declarations; Runtime Module v1 supplies schema-checked Cloudflare, Fly, and web
 bindings without bypassing workspace policy or tenant authorization.
 
 The bundled API v2 examples are **Repository Analyst**, **Polymancer Research**, and
-**Swordfish Runtime**. Each includes an immediate pack-specific welcome and a
-bounded read-only workflow contract. Repository Analyst and Polymancer provide
-live examples; Swordfish is packaged but its reference backend is intentionally
-parked and may return `404`. Allowlisted
+**Swordfish Runtime**. Repository Analyst and Polymancer provide live, bounded,
+read-only workflows. Swordfish is packaged and chat-capable, but intentionally
+parked: it registers no executable tools, workflows, triggers, connections,
+managed state, or renderers. Allowlisted
 operators can reuse or instantiate the current pack version from Admin without
 mutating older agent snapshots.
 
@@ -199,6 +203,7 @@ changes should also run the affected Cloudflare or Fly smoke documented in
 
 Deploy Cloudflare and Fly before a Vercel release that depends on them:
 
+- [Environment separation and release evidence](docs/environment-separation.md)
 - [Vercel](docs/deployment-vercel.md)
 - [Cloudflare and local infrastructure](docs/dev-infrastructure-readiness.md)
 - [Fly](docs/deployment-fly.md)

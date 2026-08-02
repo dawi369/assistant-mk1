@@ -19,6 +19,14 @@ export type OperatorAlertWebhookPayload = {
   };
 };
 
+export const shouldInjectOperatorAlertReceiverOutage = (
+  payload: OperatorAlertWebhookPayload,
+  conformanceMode: boolean,
+) =>
+  conformanceMode &&
+  payload.alert.code === "conformance.receiver_outage" &&
+  payload.alert.deliveryAttempts === 0;
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 

@@ -459,6 +459,14 @@ function WorkbenchShellContent({
               </div>
             </>
           ) : null}
+          {sessionError ? (
+            <a
+              className="border-border bg-background/95 text-muted-foreground absolute right-3 bottom-3 z-30 rounded-md border px-3 py-2 text-xs shadow-sm"
+              href="/workspace-recovery"
+            >
+              Workspace unavailable? Check deletion recovery
+            </a>
+          ) : null}
           <Assistant initialSignedOutPresentation={initialSignedOutPresentation}>
             <WorkbenchAssistantEvents />
           </Assistant>

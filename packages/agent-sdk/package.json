@@ -4,7 +4,7 @@
   "description": "Build-time Agent Pack and Runtime Module contracts for Assistant-mk1.",
   "license": "PolyForm-Noncommercial-1.0.0",
   "files": [
-    "src",
+    "dist",
     "schemas",
     "README.md"
   ],
@@ -12,25 +12,36 @@
   "sideEffects": false,
   "exports": {
     ".": {
-      "types": "./src/index.ts",
-      "default": "./src/index.ts"
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
     },
     "./manifest": {
-      "types": "./src/manifest.ts",
-      "default": "./src/manifest.ts"
+      "types": "./dist/manifest.d.ts",
+      "default": "./dist/manifest.js"
     },
     "./control-plane": {
-      "types": "./src/control-plane.ts",
-      "default": "./src/control-plane.ts"
+      "types": "./dist/control-plane.d.ts",
+      "default": "./dist/control-plane.js"
     },
     "./runner": {
-      "types": "./src/runner.ts",
-      "default": "./src/runner.ts"
+      "types": "./dist/runner.d.ts",
+      "default": "./dist/runner.js"
     },
     "./web": {
-      "types": "./src/web.ts",
-      "default": "./src/web.ts"
+      "types": "./dist/web.d.ts",
+      "default": "./dist/web.js"
+    },
+    "./schemas/agent-pack-v2.json": {
+      "default": "./schemas/agent-pack-v2.schema.json"
+    },
+    "./schemas/runtime-module-v1.json": {
+      "default": "./schemas/runtime-module-v1.schema.json"
     }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist",
+    "prepack": "pnpm clean && pnpm build"
   },
   "peerDependencies": {
     "react": ">=19"

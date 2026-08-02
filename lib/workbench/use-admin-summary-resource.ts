@@ -30,6 +30,7 @@ export const useAdminSummaryResource = () => {
         source?: WorkbenchSummaryRefreshSource;
         force?: boolean;
         projection?: AdminSummaryProjection;
+        minimumGeneratedAt?: string;
       } = {},
     ) => refreshAdminSummary(input),
     [],

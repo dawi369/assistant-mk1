@@ -118,7 +118,7 @@ const getControlPlaneConfig = () => {
   const baseUrl = process.env.CLOUDFLARE_CONTROL_PLANE_URL?.replace(/\/$/, "");
   const token = process.env.CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN;
   const signingSecret = process.env.CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET;
-  return baseUrl && token ? { baseUrl, token, signingSecret } : null;
+  return baseUrl && (token || signingSecret) ? { baseUrl, token, signingSecret } : null;
 };
 
 const fetchWithTimeout = async (url: string, init: RequestInit) => {
@@ -144,18 +144,18 @@ const controlPlaneRequest = async (path: string, init?: RequestInit) => {
   const config = getControlPlaneConfig();
   if (!config) {
     throw new Error(
-      "CLOUDFLARE_CONTROL_PLANE_URL and CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN are required",
+      "CLOUDFLARE_CONTROL_PLANE_URL and signed-facade or local-dev authentication are required",
     );
   }
   const identityHeaders = await getWorkbenchIdentityHeaders();
   const method = init?.method ?? "GET";
   const body = typeof init?.body === "string" ? init.body : "";
   const headers: Record<string, string> = {
-    authorization: `Bearer ${config.token}`,
     "content-type": "application/json",
     ...identityHeaders,
     ...(init?.headers as Record<string, string> | undefined),
   };
+  if (config.token) headers.authorization = `Bearer ${config.token}`;
   if (config.signingSecret?.trim()) {
     Object.assign(
       headers,
@@ -292,9 +292,6 @@ export const createCloudflareArtifactBlob = (input: CreateArtifactBlobInput) =>
 export const getCloudflareArtifactContentResponse = (artifactId: Id) =>
   requestControlPlaneResponse(`/workbench/artifacts/${encodeURIComponent(artifactId)}/content`);
 
-export const getCloudflareWorkspaceDataExportResponse = () =>
-  requestControlPlaneResponse("/workbench/data-export");
-
 export const getCloudflareRetentionPolicy = () =>
   requestControlPlane<CloudflareRetentionPolicyResponse>("/workbench/retention-policy");
 
@@ -395,6 +392,28 @@ export const recoverCloudflareWorkspace = () =>
   requestControlPlane<CloudflareWorkspaceDeletionResponse>("/workbench/workspace-deletion", {
     method: "DELETE",
   });
+
+export const retryCloudflareWorkspaceDeletion = (input: {
+  workspaceName: string;
+  reauthenticatedAt: string;
+}) =>
+  requestControlPlane<CloudflareWorkspaceDeletionResponse>("/workbench/workspace-deletion/retry", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+
+export const retryCloudflareWorkspaceDeletionAsOperator = (
+  workspaceId: Id,
+  input: { workspaceName: string; reason: string },
+) =>
+  requestControlPlane<CloudflareWorkspaceDeletionResponse>(
+    `/admin/workspace-purges/${encodeURIComponent(workspaceId)}/retry`,
+    {
+      method: "POST",
+      headers: { "x-assistant-mk1-platform-operator": "true" },
+      body: JSON.stringify(input),
+    },
+  );
 
 export const getCloudflareKillSwitches = () =>
   requestControlPlane<CloudflareKillSwitchesResponse>("/workbench/kill-switches");

@@ -305,7 +305,7 @@ const callbackFailure = (
   toolName: string,
   message: string,
   input?: {
-    code?: "test_tool_failed" | "runner_callback_signing_not_configured";
+    code?: string;
     retryable?: boolean;
   },
 ): RunnerToolResult => ({
@@ -381,6 +381,40 @@ const postWorkflowCallback = async (
       ok: false,
       status: 400,
       result: callbackFailure(toolName, "Runner callback URL is invalid."),
+    };
+  }
+  const configuredCallbackOrigin = process.env.WORKBENCH_CALLBACK_ORIGIN?.trim();
+  if (!configuredCallbackOrigin) {
+    return {
+      ok: false,
+      status: 500,
+      result: callbackFailure(toolName, "Runner callback origin is not configured.", {
+        code: "runner_callback_origin_not_configured",
+        retryable: false,
+      }),
+    };
+  }
+  let allowedCallbackOrigin: string;
+  try {
+    allowedCallbackOrigin = new URL(configuredCallbackOrigin).origin;
+  } catch {
+    return {
+      ok: false,
+      status: 500,
+      result: callbackFailure(toolName, "Runner callback origin is invalid.", {
+        code: "runner_callback_origin_invalid",
+        retryable: false,
+      }),
+    };
+  }
+  if (callbackUrl.origin !== allowedCallbackOrigin) {
+    return {
+      ok: false,
+      status: 400,
+      result: callbackFailure(toolName, "Runner callback origin is not allowed.", {
+        code: "runner_callback_origin_not_allowed",
+        retryable: false,
+      }),
     };
   }
 
@@ -933,6 +967,7 @@ const server = createServer((request, response) => {
         ok: true,
         service: "assistant-mk1-langgraph-runtime",
         gatewayReady: true,
+        release: process.env.WORKBENCH_RELEASE_SHA ?? "development",
       });
       return;
     }
@@ -943,6 +978,7 @@ const server = createServer((request, response) => {
         ok: langGraphReady,
         service: "assistant-mk1-langgraph-runtime",
         langGraphReady,
+        release: process.env.WORKBENCH_RELEASE_SHA ?? "development",
       });
       return;
     }

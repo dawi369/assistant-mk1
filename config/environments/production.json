@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "target": "production",
+  "conformanceMode": false,
+  "vaultBackend": "workos",
+  "mutationDefaultEnabled": false,
+  "cloudflare": {
+    "workerName": "assistant-mk1-production-control-plane",
+    "d1DatabaseName": "assistant_mk1_production",
+    "d1DatabaseId": "${WORKBENCH_PRODUCTION_D1_DATABASE_ID}",
+    "r2BucketName": "assistant-mk1-production-artifacts",
+    "origin": "${WORKBENCH_PRODUCTION_CLOUDFLARE_ORIGIN}"
+  },
+  "fly": {
+    "appName": "assistant-mk1-production-runner",
+    "origin": "${WORKBENCH_PRODUCTION_FLY_ORIGIN}"
+  },
+  "vercel": {
+    "projectName": "assistant-mk1-production",
+    "organizationId": "${WORKBENCH_PRODUCTION_VERCEL_ORG_ID}",
+    "projectId": "${WORKBENCH_PRODUCTION_VERCEL_PROJECT_ID}",
+    "origin": "${WORKBENCH_PRODUCTION_VERCEL_ORIGIN}"
+  },
+  "workos": {
+    "applicationName": "assistant-mk1-production",
+    "applicationId": "${WORKBENCH_PRODUCTION_WORKOS_APPLICATION_ID}",
+    "acceptanceWorkspaceId": "${WORKBENCH_PRODUCTION_ACCEPTANCE_WORKSPACE_ID}"
+  },
+  "secretEnvironmentVariables": {
+    "facadeSigning": "WORKBENCH_PRODUCTION_FACADE_SIGNING_SECRET",
+    "runnerSigning": "WORKBENCH_PRODUCTION_RUNNER_SIGNING_SECRET",
+    "callbackSigning": "WORKBENCH_PRODUCTION_CALLBACK_SIGNING_SECRET",
+    "agentConnection": "WORKBENCH_PRODUCTION_AGENT_CONNECTION_SECRET",
+    "operatorAlertSigning": "WORKBENCH_PRODUCTION_OPERATOR_ALERT_SIGNING_SECRET",
+    "workosCookie": "WORKBENCH_PRODUCTION_WORKOS_COOKIE_PASSWORD",
+    "langgraphProxy": "WORKBENCH_PRODUCTION_LANGGRAPH_PROXY_TOKEN",
+    "vault": "WORKBENCH_PRODUCTION_VAULT_SECRET",
+    "openrouter": "WORKBENCH_PRODUCTION_OPENROUTER_API_KEY"
+  }
+}

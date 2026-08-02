@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { hmacSha256Base64Url } from "./control-plane-signing";
-import { verifyOperatorAlertWebhook } from "./operator-alert-receiver";
+import {
+  shouldInjectOperatorAlertReceiverOutage,
+  type OperatorAlertWebhookPayload,
+  verifyOperatorAlertWebhook,
+} from "./operator-alert-receiver";
 
 const secret = "operator-alert-signing-secret-0001";
 const payload = {
@@ -18,7 +22,7 @@ const payload = {
     deliveryStatus: "pending",
     deliveryAttempts: 0,
   },
-};
+} satisfies OperatorAlertWebhookPayload;
 
 describe("operator alert receiver", () => {
   it("accepts a fresh signed redacted alert payload", async () => {
@@ -64,5 +68,20 @@ describe("operator alert receiver", () => {
         now: new Date("2026-07-12T12:01:00.000Z"),
       }),
     ).resolves.toEqual({ ok: false, code: "payload_invalid" });
+  });
+
+  it("injects exactly one acceptance-only receiver failure", () => {
+    const conformancePayload = {
+      ...payload,
+      alert: { ...payload.alert, code: "conformance.receiver_outage" },
+    } satisfies OperatorAlertWebhookPayload;
+    expect(shouldInjectOperatorAlertReceiverOutage(conformancePayload, true)).toBe(true);
+    expect(
+      shouldInjectOperatorAlertReceiverOutage(
+        { ...conformancePayload, alert: { ...conformancePayload.alert, deliveryAttempts: 1 } },
+        true,
+      ),
+    ).toBe(false);
+    expect(shouldInjectOperatorAlertReceiverOutage(conformancePayload, false)).toBe(false);
   });
 });

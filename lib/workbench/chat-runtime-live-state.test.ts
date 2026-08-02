@@ -103,4 +103,47 @@ describe("chat runtime live state", () => {
       ),
     ).toBe(true);
   });
+
+  it("reports a connected stale non-run event as syncing instead of loading", () => {
+    const state = deriveRuntimeState({
+      session: null,
+      connection: { workspaceId: "workspace-a" },
+      error: null,
+      isSessionStreamConnected: true,
+      latestSessionEvent: event("trace.updated", "2026-06-17T12:00:10.000Z"),
+      pending: null,
+      isInitialLoading: false,
+      summary: summary("completed", "2026-06-17T12:00:09.000Z"),
+    });
+
+    expect(state.chatLabel).toBe("Syncing");
+    expect(state.chatTone).toBe("running");
+    expect(state.cloudflareStatus).toBe("Live");
+    expect(state.summaryIsStale).toBe(true);
+  });
+
+  it("does not present a historical workflow failure as a live chat failure", () => {
+    const historicalFailure = summary("thread_ready");
+    historicalFailure.lastError = {
+      source: "execution",
+      message: "A prior workflow failed.",
+      status: "failed",
+      targetId: "run-old",
+      createdAt: "2026-06-16T12:00:00.000Z",
+    };
+
+    const state = deriveRuntimeState({
+      session: null,
+      connection: { workspaceId: "workspace-a" },
+      error: null,
+      isSessionStreamConnected: true,
+      latestSessionEvent: null,
+      pending: null,
+      isInitialLoading: false,
+      summary: historicalFailure,
+    });
+
+    expect(state.errorMessage).toBeUndefined();
+    expect(state.cloudflareStatus).toBe("Live");
+  });
 });

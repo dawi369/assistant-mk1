@@ -220,17 +220,17 @@ Set the Worker webhook URL to this route and configure the same
 
 ## Data Portability
 
-`GET /workbench/data-export` gives workspace owners/admins a bounded scoped D1
-and R2 export and records the action in audit history.
-`GET /workbench/data-deletion-plan` inventories the same data without deleting
-it. The plan remains explicitly non-executable until Durable Object chat state
-and resumable two-phase deletion are covered; see
+`POST /workbench/data-exports` creates the complete asynchronous D1/R2/Durable
+Object export; the scoped status and private download routes expose it only
+after checksum-backed publication. `GET /workbench/data-deletion-plan`
+inventories retained data without deleting it. Workspace deletion is a separate
+fresh-authenticated quarantine, recovery, and resumable purge contract; see
 `docs/migrations-and-retention.md`.
 
 Level 3 service-boundary conformance creates a real local R2 blob through the
 Vercel facade, reads it back, verifies History metadata and a checksum-backed
-workspace export, shortens the retention policy, advances the scheduled Worker,
-and proves the expired content is no longer readable.
+asynchronous workspace export, shortens the retention policy, advances the
+scheduled Worker, and proves the expired content is no longer readable.
 
 ## Tools And Policy
 

@@ -4,10 +4,10 @@ export {
   type RunnerRuntimeModule,
   type RuntimeResult,
   type RuntimeToolBinding,
-} from "./runtime";
+} from "./runtime.js";
 export {
   assertSchemaDefinition,
   assertSchemaValue,
   validateSchemaDefinition,
   validateSchemaValue,
-} from "./schema";
+} from "./schema.js";

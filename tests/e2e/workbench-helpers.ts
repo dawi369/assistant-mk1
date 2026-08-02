@@ -8,7 +8,9 @@ export const activateRepositoryAnalyst = async (page: Page) => {
     })
     .toBe(true);
 
-  await page.getByRole("button", { name: "Details" }).click();
+  const composer = page.getByRole("textbox", { name: /Message input|Draft message/ });
+  await composer.fill("/admin");
+  await composer.press("Enter");
   await expect(page.getByRole("dialog", { name: "Admin" })).toBeVisible();
   await page.getByRole("tab", { name: "Agents & Packs" }).click();
 

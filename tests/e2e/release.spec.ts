@@ -43,9 +43,15 @@ test("trusted local session is immediately usable and exposes release controls",
 }) => {
   test.skip(releaseMode !== "local-session");
 
+  let adminSummaryRequests = 0;
+  page.on("request", (request) => {
+    if (request.url().includes("/api/workbench/admin-summary")) adminSummaryRequests += 1;
+  });
+
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Hello there!" })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Message input" })).toBeEditable();
+  await expect.poll(() => adminSummaryRequests).toBeGreaterThan(0);
 
   await page.route("**/api/workbench/chat-session/stage-thread**", async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 800));
@@ -123,6 +129,53 @@ test("trusted local session is immediately usable and exposes release controls",
     .getByRole("button", { name: "Inspect" })
     .click();
   await expect(page.getByRole("button", { name: "Retry run" })).toBeVisible();
+
+  await page
+    .getByRole("dialog", { name: "Workbench History" })
+    .getByRole("button", {
+      name: "Close",
+    })
+    .click();
+  const requestsBeforeBurst = adminSummaryRequests;
+  const minimumGeneratedAt = new Date(Date.now() + 60_000).toISOString();
+  let convergenceRequests = 0;
+  await page.route("**/api/workbench/admin-summary**", async (route) => {
+    convergenceRequests += 1;
+    const response = await route.fetch();
+    const body = (await response.json()) as {
+      summary?: { generatedAt?: string };
+    };
+    if (body.summary) {
+      body.summary.generatedAt =
+        convergenceRequests < 3
+          ? new Date(Date.parse(minimumGeneratedAt) - 1_000).toISOString()
+          : minimumGeneratedAt;
+    }
+    await route.fulfill({ response, json: body });
+  });
+  await page.evaluate((requiredGeneratedAt) => {
+    for (const source of ["event", "fallback-poll"]) {
+      window.dispatchEvent(
+        new CustomEvent("assistant-mk1:workbench-summary-refresh", {
+          detail: { source, minimumGeneratedAt: requiredGeneratedAt },
+        }),
+      );
+    }
+  }, minimumGeneratedAt);
+  await expect.poll(() => convergenceRequests, { timeout: 6_000 }).toBeGreaterThanOrEqual(3);
+  expect(adminSummaryRequests).toBeGreaterThanOrEqual(requestsBeforeBurst + 3);
+  await expect(page.getByText("Loading", { exact: true })).toHaveCount(0);
+  await expect(page.locator("[data-summary-sync-status]")).toHaveAttribute(
+    "data-summary-sync-status",
+    "idle",
+  );
+  await page.unroute("**/api/workbench/admin-summary**");
+
+  const recoveredComposer = page.getByRole("textbox", { name: /Message input|Draft message/ });
+  await expect(recoveredComposer).toBeEditable();
+  await recoveredComposer.fill("/admin");
+  await recoveredComposer.press("Enter");
+  await expect(page.getByRole("dialog", { name: "Admin" })).toBeVisible();
 
   expect(hydrationErrors).toEqual([]);
 });

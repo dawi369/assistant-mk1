@@ -21,6 +21,7 @@ function collectMarkdownFiles(path: string): string[] {
 }
 
 const failures: string[] = [];
+const readRepositoryFile = (path: string) => readFileSync(join(repositoryRoot, path), "utf8");
 
 for (const markdownFile of markdownRoots.flatMap(collectMarkdownFiles)) {
   const content = readFileSync(markdownFile, "utf8");
@@ -36,6 +37,33 @@ for (const markdownFile of markdownRoots.flatMap(collectMarkdownFiles)) {
       failures.push(`${markdownFile.slice(repositoryRoot.length + 1)} -> ${destination}`);
     }
   }
+}
+
+const readme = readRepositoryFile("README.md");
+if (/<!--\s*Add the .* screenshot/i.test(readme)) {
+  failures.push("README.md still contains a release screenshot placeholder");
+}
+
+const migrationDirectory = join(repositoryRoot, "cloudflare/control-plane/migrations");
+const migrations = readdirSync(migrationDirectory)
+  .filter((name) => /^\d{4}_.+\.sql$/.test(name))
+  .sort();
+const migrationDoc = readRepositoryFile("docs/migrations-and-retention.md");
+const releaseReadiness = readRepositoryFile("docs/release-readiness.md");
+const latestMigration = migrations.at(-1)?.slice(0, 4);
+
+if (!migrationDoc.includes(`contains ${migrations.length} migrations`)) {
+  failures.push(
+    `docs/migrations-and-retention.md must state the current ${migrations.length}-migration count`,
+  );
+}
+for (const migration of migrations) {
+  if (!migrationDoc.includes(`\`${migration}\``)) {
+    failures.push(`docs/migrations-and-retention.md does not account for ${migration}`);
+  }
+}
+if (latestMigration && !releaseReadiness.includes(`\`${latestMigration}\``)) {
+  failures.push(`docs/release-readiness.md does not name latest migration ${latestMigration}`);
 }
 
 if (failures.length > 0) {

@@ -41,6 +41,10 @@ test.describe.serial("Level 3 executable conformance", () => {
   }) => {
     await page.goto("/");
     await expect(page.getByRole("heading", { name: "Hello there!" })).toBeVisible();
+    const quiesceSeededApproval = await page.request.post(
+      "/api/workbench/tools/approvals/e2e-approval/deny",
+    );
+    expect(quiesceSeededApproval.ok(), await quiesceSeededApproval.text()).toBe(true);
     await activateRepositoryAnalyst(page);
     await expect
       .poll(async () => {
@@ -271,17 +275,34 @@ test.describe.serial("Level 3 executable conformance", () => {
       ]),
     });
 
-    const workspaceExport = await page.request.get("/api/workbench/data-export");
+    const exportCreated = await page.request.post("/api/workbench/data-exports");
+    expect(exportCreated.status(), await exportCreated.text()).toBe(202);
+    const exportCreatedBody = (await exportCreated.json()) as { job: { id: string } };
+    await expect
+      .poll(
+        async () => {
+          const exportTick = await request.get(
+            `${workerOrigin}/cdn-cgi/handler/scheduled?cron=*+*+*+*+*&time=${Date.now()}&format=json`,
+          );
+          if (!exportTick.ok()) return `cron:${exportTick.status()}`;
+          const status = await page.request.get(
+            `/api/workbench/data-exports/${encodeURIComponent(exportCreatedBody.job.id)}`,
+          );
+          if (!status.ok()) return `http:${status.status()}`;
+          const body = (await status.json()) as { job?: { status?: string } };
+          return body.job?.status;
+        },
+        { timeout: 15_000 },
+      )
+      .toBe("completed");
+    const workspaceExport = await page.request.get(
+      `/api/workbench/data-exports/${encodeURIComponent(exportCreatedBody.job.id)}/download`,
+    );
     expect(workspaceExport.ok()).toBe(true);
-    expect(await workspaceExport.json()).toMatchObject({
-      artifactBlobs: expect.arrayContaining([
-        expect.objectContaining({
-          artifactId,
-          contentSha256: createdArtifact.artifact!.contentSha256,
-          contentBase64: Buffer.from(artifactContent).toString("base64"),
-        }),
-      ]),
-    });
+    expect(workspaceExport.headers()["cache-control"]).toBe("private, no-store");
+    const workspaceExportBytes = await workspaceExport.body();
+    expect(workspaceExportBytes.subarray(0, 4).toString("hex")).toBe("504b0304");
+    expect(workspaceExportBytes.includes(Buffer.from(artifactId))).toBe(true);
 
     const retentionPolicy = await page.request.patch("/api/workbench/retention-policy", {
       data: {

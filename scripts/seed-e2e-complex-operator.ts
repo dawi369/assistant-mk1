@@ -83,7 +83,7 @@ const result = spawnSync(
     "wrangler",
     "d1",
     "execute",
-    "assistant_mk1_dev",
+    "assistant_mk1_local",
     "--local",
     "--persist-to",
     "output/playwright/state",

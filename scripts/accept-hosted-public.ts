@@ -16,7 +16,11 @@ const readHealth = async (origin: string, path: string, expectedService: string)
   }
   const leakedKey = Object.keys(body).find((key) => forbiddenKeys.test(key));
   if (leakedKey) throw new Error(`${expectedService} ${path} exposed forbidden key ${leakedKey}`);
-  return { path, status: response.status, service: body.service };
+  const expectedCommit = process.env.GITHUB_SHA?.trim();
+  if (expectedCommit && body.release !== expectedCommit) {
+    throw new Error(`${expectedService} ${path} reports a different release`);
+  }
+  return { path, status: response.status, service: body.service, release: body.release };
 };
 
 const main = async () => {
@@ -30,12 +34,33 @@ const main = async () => {
     await readHealth(fly, "/health/live", "assistant-mk1-langgraph-runtime"),
     await readHealth(fly, "/health", "assistant-mk1-langgraph-runtime"),
   ];
-  console.log(
-    JSON.stringify({ ok: true, commit: process.env.GITHUB_SHA ?? null, checks }, null, 2),
-  );
+  const commit = process.env.GITHUB_SHA?.trim() ?? "";
+  const report = {
+    schemaVersion: 1,
+    target: process.env.WORKBENCH_ENVIRONMENT?.trim() ?? "unknown",
+    commit,
+    generatedAt: new Date().toISOString(),
+    ok: true,
+    checks,
+    serviceVersions: Object.fromEntries(
+      checks.map((check) => [String(check.service), String(check.release)]),
+    ),
+  };
+  if (/^[a-f0-9]{40}$/.test(commit)) {
+    const directory = resolve(process.cwd(), "output/release", commit);
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(
+      resolve(directory, "hosted-public-health.json"),
+      `${JSON.stringify(report, null, 2)}\n`,
+      { mode: 0o600 },
+    );
+  }
+  console.log(JSON.stringify(report, null, 2));
 };
 
 void main().catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : error);
   process.exitCode = 1;
 });
+import { mkdirSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";

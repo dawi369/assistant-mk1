@@ -91,6 +91,8 @@ export type Env = {
   WORKBENCH_OPERATOR_ALERT_WEBHOOK_URL?: string;
   WORKBENCH_OPERATOR_ALERT_SIGNING_SECRET?: string;
   WORKBENCH_E2E_MODE?: string;
+  WORKBENCH_E2E_EXPORT_PAUSE_MS?: string;
+  WORKBENCH_RELEASE_SHA?: string;
   WORKBENCH_CONFORMANCE_MODE?: string;
   WORKBENCH_RETAINED_DATA_ENABLED?: string;
   WORKBENCH_CONNECTIONS_ENABLED?: string;
@@ -347,6 +349,9 @@ export type ControlDataJobRow = {
   content_sha256: string | null;
   size_bytes: number | null;
   attempt_count: number;
+  last_error_code: string | null;
+  last_failed_at: string | null;
+  manual_retry_count: number;
   lease_owner: string | null;
   lease_expires_at: string | null;
   expires_at: string | null;

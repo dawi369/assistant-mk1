@@ -1,3 +1,17 @@
+FROM node:22-bookworm-slim AS sdk-builder
+
+WORKDIR /app
+RUN corepack enable
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/agent-sdk/package.json packages/agent-sdk/package.json
+COPY agent-packs/repo-analyst/package.json agent-packs/repo-analyst/package.json
+COPY agent-packs/baby-polymancer/package.json agent-packs/baby-polymancer/package.json
+COPY agent-packs/baby-swordfish/package.json agent-packs/baby-swordfish/package.json
+COPY examples/complex-operator/package.json examples/complex-operator/package.json
+RUN pnpm install --frozen-lockfile --ignore-scripts
+COPY packages/agent-sdk packages/agent-sdk
+RUN pnpm agent-sdk:build
+
 FROM node:22-bookworm-slim AS runtime
 
 WORKDIR /app
@@ -18,9 +32,10 @@ COPY agent-packs/repo-analyst/package.json agent-packs/repo-analyst/package.json
 COPY agent-packs/baby-polymancer/package.json agent-packs/baby-polymancer/package.json
 COPY agent-packs/baby-swordfish/package.json agent-packs/baby-swordfish/package.json
 COPY examples/complex-operator/package.json examples/complex-operator/package.json
-RUN pnpm install --prod --frozen-lockfile
+RUN pnpm install --prod --frozen-lockfile --ignore-scripts
 
 COPY --chown=node:node . .
+COPY --from=sdk-builder --chown=node:node /app/packages/agent-sdk/dist /app/packages/agent-sdk/dist
 
 USER node
 

@@ -71,6 +71,17 @@ test.describe.serial("Production customer-data lifecycle", () => {
       "x-assistant-mk1-agent-id": instantiatedBody.agent.id,
     };
 
+    const threadResponse = await request.post(`${workerOrigin}/chat/session/threads`, {
+      headers: activeHeaders,
+      data: { title: "Export fence fixture" },
+    });
+    expect(threadResponse.status(), await threadResponse.text()).toBe(200);
+    const thread = (await threadResponse.json()) as {
+      connection?: { token?: string; instanceName?: string; threadId?: string; sessionId?: string };
+    };
+    expect(thread.connection?.token).toBeTruthy();
+    expect(thread.connection?.instanceName).toBeTruthy();
+
     const retention = await request.patch(`${workerOrigin}/workbench/retention-policy`, {
       headers,
       data: {
@@ -105,6 +116,59 @@ test.describe.serial("Production customer-data lifecycle", () => {
     });
     expect(created.status(), await created.text()).toBe(202);
     const createdBody = (await created.json()) as { job: { id: string } };
+    let acceptedRetentionDays = 45;
+    let rejectedRetentionDays: number | undefined;
+    for (let candidate = 46; candidate < 60; candidate += 1) {
+      const concurrentWrite = await request.patch(`${workerOrigin}/workbench/retention-policy`, {
+        headers: activeHeaders,
+        data: {
+          chatMessageRetentionDays: candidate,
+          runPayloadRetentionDays: 60,
+          artifactRetentionDays: 75,
+          operationalEventRetentionDays: 20,
+          runtimeTraceRetentionDays: 10,
+          auditActionRetentionDays: 365,
+          confirm: true,
+        },
+      });
+      if (concurrentWrite.status() === 423) {
+        expect(await concurrentWrite.json()).toMatchObject({
+          code: "workspace_export_in_progress",
+        });
+        rejectedRetentionDays = candidate;
+        break;
+      }
+      expect(concurrentWrite.status(), await concurrentWrite.text()).toBe(200);
+      acceptedRetentionDays = candidate;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(rejectedRetentionDays).toBeDefined();
+
+    const durableObjectPath = `${workerOrigin}/agents/workbench-thread-chat-agent/${encodeURIComponent(thread.connection!.instanceName!)}`;
+    let blockedDurableWriteStatus = 0;
+    for (let attempt = 0; attempt < 50 && blockedDurableWriteStatus !== 423; attempt += 1) {
+      const blockedDurableWrite = await request.post(
+        `${durableObjectPath}/internal/programmatic-submit`,
+        {
+          data: {
+            token: thread.connection!.token,
+            threadId: thread.connection!.threadId,
+            sessionId: thread.connection!.sessionId,
+            message: "This message must not cross the export fence.",
+          },
+        },
+      );
+      blockedDurableWriteStatus = blockedDurableWrite.status();
+      if (blockedDurableWriteStatus !== 423) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+    }
+    expect(blockedDurableWriteStatus).toBe(423);
+    const readableWhileFrozen = await request.get(
+      `${durableObjectPath}/get-messages?token=${encodeURIComponent(thread.connection!.token!)}`,
+    );
+    expect(readableWhileFrozen.status(), await readableWhileFrozen.text()).toBe(200);
+
     const completed = await pollDataJob(request, activeHeaders, createdBody.job.id);
     expect(completed.contentSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(completed.sizeBytes).toBeGreaterThan(0);
@@ -118,8 +182,31 @@ test.describe.serial("Production customer-data lifecycle", () => {
     expect(download.headers()["cache-control"]).toBe("private, no-store");
     const archive = await download.body();
     expect(archive.subarray(0, 4).toString("hex")).toBe("504b0304");
+    expect(archive.includes(Buffer.from('"version": 3'))).toBe(true);
+    expect(archive.includes(Buffer.from('"snapshotAt":'))).toBe(true);
+    expect(archive.includes(Buffer.from('"fenceDurationMs":'))).toBe(true);
+    expect(
+      archive.includes(Buffer.from(`"chat_message_retention_days":${acceptedRetentionDays}`)),
+    ).toBe(true);
+    expect(
+      archive.includes(Buffer.from(`"chat_message_retention_days":${rejectedRetentionDays!}`)),
+    ).toBe(false);
     expect(archive.includes(Buffer.from(memberUserId))).toBe(true);
     expect(archive.includes(Buffer.from(secret))).toBe(false);
+
+    const writableAgain = await request.patch(`${workerOrigin}/workbench/retention-policy`, {
+      headers: activeHeaders,
+      data: {
+        chatMessageRetentionDays: rejectedRetentionDays,
+        runPayloadRetentionDays: 60,
+        artifactRetentionDays: 75,
+        operationalEventRetentionDays: 20,
+        runtimeTraceRetentionDays: 10,
+        auditActionRetentionDays: 365,
+        confirm: true,
+      },
+    });
+    expect(writableAgain.status(), await writableAgain.text()).toBe(200);
 
     const otherHeaders = {
       ...headers,
@@ -189,5 +276,146 @@ test.describe.serial("Production customer-data lifecycle", () => {
         expect.objectContaining({ id: "operator.external-account", status: "revoked" }),
       ]),
     });
+  });
+
+  test("resumes every persisted export phase after an interrupted invocation", async ({
+    request,
+  }) => {
+    for (const failurePhase of ["after_d1_materialized", "after_r2_pinned", "assembling"]) {
+      const suffix = `${failurePhase}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const headers = {
+        authorization: "Bearer e2e-control-plane-token",
+        "x-assistant-mk1-user-id": `export-resume-owner-${suffix}`,
+        "x-assistant-mk1-workspace-id": `export-resume-workspace-${suffix}`,
+        "x-assistant-mk1-agent-id": `export-resume-agent-${suffix}`,
+        "x-assistant-mk1-account-id": `local-dev:export-resume-workspace-${suffix}`,
+        "x-assistant-mk1-account-source": "local-dev",
+        "x-assistant-mk1-workspace-name": `Export resume ${suffix}`,
+      };
+      const bootstrap = await request.get(`${workerOrigin}/admin/workspace-summary`, { headers });
+      expect(bootstrap.status(), await bootstrap.text()).toBe(200);
+
+      const created = await request.post(
+        `${workerOrigin}/workbench/data-exports?e2eFailPhase=${encodeURIComponent(failurePhase)}`,
+        { headers },
+      );
+      expect(created.status(), await created.text()).toBe(202);
+      const createdBody = (await created.json()) as {
+        job: { id: string; injectedFailurePhase?: string };
+      };
+      expect(createdBody.job.injectedFailurePhase).toBe(failurePhase);
+
+      await expect
+        .poll(
+          async () => {
+            const response = await request.get(
+              `${workerOrigin}/workbench/data-exports/${encodeURIComponent(createdBody.job.id)}`,
+              { headers },
+            );
+            if (!response.ok()) return "not_ready";
+            const body = (await response.json()) as {
+              job: { status: string; attemptCount: number; lastErrorCode?: string };
+            };
+            return `${body.job.status}:${body.job.attemptCount}:${body.job.lastErrorCode ?? ""}`;
+          },
+          { timeout: 10_000 },
+        )
+        .toBe(`queued:1:e2e_export_${failurePhase}_failure`);
+
+      const resumed = await request.get(`${workerOrigin}/cdn-cgi/handler/scheduled`);
+      expect(resumed.status(), await resumed.text()).toBe(200);
+      const completed = await pollDataJob(request, headers, createdBody.job.id);
+      expect(completed.contentSha256).toMatch(/^[a-f0-9]{64}$/);
+      const finalStatus = await request.get(
+        `${workerOrigin}/workbench/data-exports/${encodeURIComponent(createdBody.job.id)}`,
+        { headers },
+      );
+      expect(await finalStatus.json()).toMatchObject({
+        job: { status: "completed", attemptCount: 2 },
+      });
+    }
+  });
+
+  test("resumes a phase-checkpointed purge after terminal failure", async ({ request }) => {
+    const failures = [
+      ["credential_revocation", undefined],
+      ["durable_object_purge", "credentials_revoked"],
+      ["r2_deletion", "durable_objects_purged"],
+      ["d1_rows", "objects_deleted"],
+      ["receipt_creation", "objects_deleted"],
+    ] as const;
+    for (const [failurePhase, expectedCheckpoint] of failures) {
+      const suffix = `${failurePhase}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const workspaceName = `Purge retry ${suffix}`;
+      const headers = {
+        authorization: "Bearer e2e-control-plane-token",
+        "x-assistant-mk1-user-id": `purge-owner-${suffix}`,
+        "x-assistant-mk1-workspace-id": `purge-workspace-${suffix}`,
+        "x-assistant-mk1-agent-id": `purge-agent-${suffix}`,
+        "x-assistant-mk1-account-id": `local-dev:purge-workspace-${suffix}`,
+        "x-assistant-mk1-account-source": "local-dev",
+        "x-assistant-mk1-workspace-name": workspaceName,
+      };
+      const bootstrap = await request.get(`${workerOrigin}/admin/workspace-summary`, { headers });
+      expect(bootstrap.status(), await bootstrap.text()).toBe(200);
+
+      const deletion = await request.post(`${workerOrigin}/workbench/workspace-deletion`, {
+        headers,
+        data: {
+          workspaceName,
+          reauthenticatedAt: new Date().toISOString(),
+          e2eFailPhase: failurePhase,
+        },
+      });
+      expect(deletion.status(), await deletion.text()).toBe(202);
+
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const scheduled = await request.get(`${workerOrigin}/cdn-cgi/handler/scheduled`);
+        expect(scheduled.status(), await scheduled.text()).toBe(200);
+      }
+      const failed = await request.get(`${workerOrigin}/workbench/workspace-deletion`, { headers });
+      expect(failed.status(), await failed.text()).toBe(200);
+      const failedBody = await failed.json();
+      expect(failedBody).toMatchObject({
+        deletion: {
+          status: "failed",
+          attemptCount: 3,
+          manualRetryCount: 0,
+          lastErrorCode: `e2e_purge_${failurePhase}_failure`,
+          canRetry: true,
+          canRecover: false,
+        },
+      });
+      expect(failedBody.deletion.phase).toBe(expectedCheckpoint);
+
+      const stale = await request.post(`${workerOrigin}/workbench/workspace-deletion/retry`, {
+        headers,
+        data: { workspaceName, reauthenticatedAt: "2026-01-01T00:00:00.000Z" },
+      });
+      expect(stale.status()).toBe(403);
+
+      const retry = await request.post(`${workerOrigin}/workbench/workspace-deletion/retry`, {
+        headers,
+        data: { workspaceName, reauthenticatedAt: new Date().toISOString() },
+      });
+      expect(retry.status(), await retry.text()).toBe(202);
+      expect(await retry.json()).toMatchObject({
+        deletion: { status: "purging", canRetry: false },
+      });
+
+      const concurrentRetry = await request.post(
+        `${workerOrigin}/workbench/workspace-deletion/retry`,
+        {
+          headers,
+          data: { workspaceName, reauthenticatedAt: new Date().toISOString() },
+        },
+      );
+      expect(concurrentRetry.status()).toBe(404);
+
+      const completed = await request.get(`${workerOrigin}/cdn-cgi/handler/scheduled`);
+      expect(completed.status(), await completed.text()).toBe(200);
+      const purged = await request.get(`${workerOrigin}/workbench/workspace-deletion`, { headers });
+      expect(purged.status()).toBe(404);
+    }
   });
 });

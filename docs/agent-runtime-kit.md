@@ -39,9 +39,11 @@ import { defineWebModule } from "@assistant-mk1/agent-sdk/web";
 ```
 
 Its JSON contracts are `schemas/agent-pack-v2.schema.json` and
-`schemas/runtime-module-v1.schema.json`. `pnpm agent-sdk:verify` packs the SDK
-into ignored output and typechecks an isolated consumer. The SDK is not
-published by this repository.
+`schemas/runtime-module-v1.schema.json`. `pnpm agent-sdk:verify` builds and packs
+the SDK, installs the tarball into an ignored zero-context consumer, executes
+every runtime export under Node 22, resolves declarations without TypeScript
+path aliases, and compiles a separately packed Agent Module using only its
+package name. The SDK is not published by this repository.
 
 ## Execution Boundary
 
@@ -134,6 +136,9 @@ pnpm conformance:agent-system
 
 Generated registries are tracked. CI runs `agent-packs:compile --check`, so
 configuration or package changes cannot land with stale environment registries.
+The package-only compiler path resolves exports relative to the consumer
+workbench, not this monorepo. `tests/fixtures/external-agent-package` locks that
+boundary without granting remote-install authority.
 
 For mutation-capable packages, the golden path is:
 

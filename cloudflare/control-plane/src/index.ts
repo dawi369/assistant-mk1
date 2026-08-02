@@ -55,10 +55,11 @@ import {
   expireDataExports,
   handleCreateWorkspaceExport,
   handleDownloadWorkspaceExport,
-  handleExportWorkspaceData,
   handleGetWorkspaceDataJob,
   handleGetWorkspaceDeletion,
+  handleOperatorRetryWorkspaceDeletion,
   handleRecoverWorkspace,
+  handleRetryWorkspaceDeletion,
   handleRequestWorkspaceDeletion,
   handleWorkspaceDeletionPlan,
   processDataLifecycleJobs,
@@ -146,6 +147,7 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
     return json({
       ok: true,
       service: "assistant-mk1-control-plane",
+      release: env.WORKBENCH_RELEASE_SHA ?? "development",
     });
   }
 
@@ -180,7 +182,12 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
       if (runtimeChecks.some((check) => !check.ok)) {
         return json({ ok: false, service: "assistant-mk1-control-plane" }, { status: 503 });
       }
-      return json({ ok: true, service: "assistant-mk1-control-plane", storage: "d1" });
+      return json({
+        ok: true,
+        service: "assistant-mk1-control-plane",
+        storage: "d1",
+        release: env.WORKBENCH_RELEASE_SHA ?? "development",
+      });
     } catch {
       return json({ ok: false, service: "assistant-mk1-control-plane" }, { status: 503 });
     }
@@ -224,10 +231,13 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
 
   const authzStartedAtMs = Date.now();
   const deletionRecoveryRoute =
-    url.pathname === "/workbench/workspace-deletion" &&
-    (request.method === "GET" || request.method === "DELETE");
+    (url.pathname === "/workbench/workspace-deletion" &&
+      (request.method === "GET" || request.method === "DELETE")) ||
+    (url.pathname === "/workbench/workspace-deletion/retry" && request.method === "POST");
   const identityResult = await resolveAgentIdentity(request, env, authResult.context, {
-    allowQuarantinedWorkspace: deletionRecoveryRoute,
+    allowedInactiveWorkspaceStatuses: deletionRecoveryRoute
+      ? ["quarantined", "purging", "failed"]
+      : undefined,
   });
   const authzEndedAtMs = Date.now();
   if (!identityResult.ok) return identityResult.response;
@@ -254,8 +264,15 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
     return handleListOperatorAlerts(env, identity, url);
   }
 
-  if (request.method === "GET" && url.pathname === "/workbench/data-export") {
-    return handleExportWorkspaceData(env, identity);
+  const operatorPurgeRetryMatch = url.pathname.match(/^\/admin\/workspace-purges\/([^/]+)\/retry$/);
+  if (request.method === "POST" && operatorPurgeRetryMatch?.[1]) {
+    return handleOperatorRetryWorkspaceDeletion(
+      request,
+      env,
+      identity,
+      decodeURIComponent(operatorPurgeRetryMatch[1]),
+      authResult.context.mode === "facade_signature",
+    );
   }
 
   if (request.method === "GET" && url.pathname === "/workbench/data-deletion-plan") {
@@ -263,7 +280,7 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
   }
 
   if (request.method === "POST" && url.pathname === "/workbench/data-exports") {
-    return handleCreateWorkspaceExport(env, identity, (promise) => ctx.waitUntil(promise));
+    return handleCreateWorkspaceExport(request, env, identity, (promise) => ctx.waitUntil(promise));
   }
 
   const dataExportDownloadMatch = url.pathname.match(
@@ -286,6 +303,9 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
     if (request.method === "POST") return handleRequestWorkspaceDeletion(request, env, identity);
     if (request.method === "GET") return handleGetWorkspaceDeletion(env, identity);
     if (request.method === "DELETE") return handleRecoverWorkspace(env, identity);
+  }
+  if (request.method === "POST" && url.pathname === "/workbench/workspace-deletion/retry") {
+    return handleRetryWorkspaceDeletion(request, env, identity);
   }
 
   if (request.method === "GET" && url.pathname === "/workbench/connections") {
@@ -723,6 +743,16 @@ export default Sentry.withSentry<Env>(
       try {
         return await handleRequest(request, env, ctx);
       } catch (error) {
+        if (error instanceof Error && error.message.includes("workspace_export_in_progress")) {
+          return json(
+            {
+              ok: false,
+              code: "workspace_export_in_progress",
+              error: "Workspace writes are briefly paused while an export snapshot is captured.",
+            },
+            { status: 423 },
+          );
+        }
         Sentry.captureException(error);
         return internalErrorResponse("Unhandled control-plane error", error);
       }

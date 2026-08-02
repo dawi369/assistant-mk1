@@ -59,6 +59,11 @@ const jsonResponse = (body: unknown, status = 200) =>
     headers: { "content-type": "application/json; charset=utf-8" },
   });
 
+const sha256Text = async (value: string) => {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+};
+
 const normalizeProgrammaticMessage = (message: unknown) => {
   if (typeof message !== "string") return null;
   const normalized = message.replace(/\r\n/g, "\n").trim();
@@ -124,6 +129,19 @@ export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
   }
   private waitUntil(promise: Promise<unknown>) {
     (this as unknown as { ctx: WorkerExecutionContext }).ctx.waitUntil(promise);
+  }
+  private ensureLifecycleFenceTable() {
+    void this.sql`CREATE TABLE IF NOT EXISTS workbench_lifecycle_fence (
+      singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+      job_id TEXT NOT NULL,
+      frozen_at TEXT NOT NULL
+    )`;
+  }
+  private lifecycleFence() {
+    this.ensureLifecycleFenceTable();
+    return this.sql<{ job_id: string; frozen_at: string }>`
+      SELECT job_id, frozen_at FROM workbench_lifecycle_fence WHERE singleton = 1 LIMIT 1
+    `[0];
   }
   messageConcurrency = "drop" as const;
 
@@ -235,7 +253,9 @@ export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
     if (
       request.method === "POST" &&
       (url.pathname === "/internal/lifecycle-export" ||
-        url.pathname === "/internal/lifecycle-purge")
+        url.pathname === "/internal/lifecycle-purge" ||
+        url.pathname === "/internal/lifecycle-freeze" ||
+        url.pathname === "/internal/lifecycle-unfreeze")
     ) {
       const provided = request.headers.get("x-workbench-lifecycle-secret")?.trim();
       if (!provided || provided !== getRequiredSecret(this.getEnv())) {
@@ -244,9 +264,55 @@ export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
       if (url.pathname === "/internal/lifecycle-export") {
         return jsonResponse({ ok: true, messages: this.messages });
       }
+      if (url.pathname === "/internal/lifecycle-freeze") {
+        const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+        const jobId = typeof body.jobId === "string" ? body.jobId.trim() : "";
+        if (!jobId) return jsonResponse({ ok: false, error: "Lifecycle job id is required" }, 400);
+        const existing = this.lifecycleFence();
+        if (existing && existing.job_id !== jobId) {
+          return jsonResponse({ ok: false, error: "Thread is frozen by another export" }, 409);
+        }
+        const snapshotAt = existing?.frozen_at ?? new Date().toISOString();
+        if (!existing) {
+          void this.sql`
+            INSERT INTO workbench_lifecycle_fence (singleton, job_id, frozen_at)
+            VALUES (1, ${jobId}, ${snapshotAt})
+          `;
+        }
+        const serializedMessages = JSON.stringify(this.messages);
+        return jsonResponse({
+          ok: true,
+          jobId,
+          snapshotAt,
+          messageCount: this.messages.length,
+          contentSha256: await sha256Text(serializedMessages),
+          messages: this.messages,
+        });
+      }
+      if (url.pathname === "/internal/lifecycle-unfreeze") {
+        const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+        const jobId = typeof body.jobId === "string" ? body.jobId.trim() : "";
+        if (!jobId) return jsonResponse({ ok: false, error: "Lifecycle job id is required" }, 400);
+        this.ensureLifecycleFenceTable();
+        void this
+          .sql`DELETE FROM workbench_lifecycle_fence WHERE singleton = 1 AND job_id = ${jobId}`;
+        return jsonResponse({ ok: true, jobId, frozen: false });
+      }
       await this.saveMessages(() => []);
+      this.ensureLifecycleFenceTable();
+      void this.sql`DELETE FROM workbench_lifecycle_fence WHERE singleton = 1`;
       this.agentConfigCache = null;
       return jsonResponse({ ok: true, purged: true });
+    }
+    if (this.lifecycleFence() && request.method !== "GET") {
+      return jsonResponse(
+        {
+          ok: false,
+          code: "workspace_export_in_progress",
+          error: "Workspace writes are briefly paused while an export snapshot is captured.",
+        },
+        423,
+      );
     }
     if (request.method === "POST" && url.pathname === "/internal/programmatic-submit") {
       return this.handleProgrammaticSubmit(request);
@@ -262,6 +328,10 @@ export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
 
   async onConnect(connection: Connection, context: ConnectionContext) {
     try {
+      if (this.lifecycleFence()) {
+        connection.close(1013, "Workspace export snapshot in progress");
+        return;
+      }
       const claims = await this.verifyScopedClaims(getTokenFromRequest(context.request));
       await this.resolveChatConfig(claims);
       await super.onConnect(connection, context);
@@ -277,6 +347,11 @@ export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
     onFinish: StreamTextOnFinishCallback<ToolSet>,
     options?: Parameters<AIChatAgent<Env>["onChatMessage"]>[1],
   ) {
+    if (this.lifecycleFence()) {
+      throw Object.assign(new Error("Workspace export snapshot in progress"), {
+        code: "workspace_export_in_progress",
+      });
+    }
     const requestBody = (options?.body ?? this.programmaticSubmitBody?.body) as
       | Record<string, unknown>
       | undefined;

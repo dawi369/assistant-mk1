@@ -15,11 +15,11 @@ export {
   type RuntimeResult,
   type RuntimeToolBinding,
   type RuntimeWorkflowBinding,
-} from "./runtime";
-export type { AgentPackConnectionDescriptor } from "./manifest";
+} from "./runtime.js";
+export type { AgentPackConnectionDescriptor } from "./manifest.js";
 export {
   assertSchemaDefinition,
   assertSchemaValue,
   validateSchemaDefinition,
   validateSchemaValue,
-} from "./schema";
+} from "./schema.js";

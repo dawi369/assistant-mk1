@@ -3,4 +3,4 @@ export {
   type ArtifactRendererProps,
   type ManagedStateRendererProps,
   type WebRuntimeModule,
-} from "./runtime";
+} from "./runtime.js";

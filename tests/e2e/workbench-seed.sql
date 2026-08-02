@@ -93,3 +93,35 @@ VALUES (
   '2026-07-09T20:07:00.000Z', '{"fixture":true}',
   '2026-07-09T20:07:00.000Z', '2026-07-09T20:07:00.000Z'
 );
+
+INSERT INTO control_action_proposals (
+  id, user_id, workspace_id, agent_id, workflow_intent_id, run_id, pack_id,
+  pack_version, runtime_version, binding_version, tool_id, action_type, status,
+  summary, idempotency_key, input_sha256, proposal_json, external_reference,
+  result_json, created_at, updated_at, terminal_at
+)
+VALUES (
+  'e2e-action-proposal', 'e2e-owner', 'e2e-workspace', 'e2e-agent',
+  'e2e-retry-intent', 'e2e-retry-run', 'complex-operator', '1.1.0', '1.1.0', 1,
+  'operator.action.execute', 'synthetic.external_action', 'executed',
+  'Synthetic release action completed after approval.', 'e2e-release-action',
+  'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  '{"operation":"synthetic-release-check","dryRun":true}', 'synthetic-action-001',
+  '{"ok":true,"synthetic":true}', '2026-07-09T20:08:00.000Z',
+  '2026-07-09T20:08:02.000Z', '2026-07-09T20:08:02.000Z'
+);
+
+INSERT INTO control_action_ledger (
+  id, user_id, workspace_id, agent_id, proposal_id, sequence, status, summary,
+  request_sha256, response_sha256, external_reference, data_json, created_at
+)
+VALUES
+  ('e2e-action-ledger-1', 'e2e-owner', 'e2e-workspace', 'e2e-agent',
+   'e2e-action-proposal', 1, 'proposed', 'Synthetic action proposed.',
+   'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', NULL, NULL,
+   '{"fixture":true}', '2026-07-09T20:08:00.000Z'),
+  ('e2e-action-ledger-2', 'e2e-owner', 'e2e-workspace', 'e2e-agent',
+   'e2e-action-proposal', 2, 'executed', 'Synthetic provider accepted the action once.',
+   'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+   'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+   'synthetic-action-001', '{"fixture":true}', '2026-07-09T20:08:02.000Z');
