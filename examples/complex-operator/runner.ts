@@ -4,7 +4,7 @@ import { operatorActionTool, operatorSnapshotTool } from "./control-plane";
 
 export const runner = defineRunnerModule({
   packId: "complex-operator",
-  runtimeVersion: "1.2.2",
+  runtimeVersion: "1.2.3",
   compatiblePackVersions: "^1.1.0",
   tools: [
     {
@@ -44,6 +44,11 @@ export const runner = defineRunnerModule({
             summary: "The synthetic action connection is unavailable.",
           };
         }
+        const delayMs =
+          typeof preview.delayMs === "number"
+            ? Math.max(0, Math.min(10_000, Math.trunc(preview.delayMs)))
+            : 0;
+        if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
         const providerResponse = await connection.request({
           url: "broker://configured",
           method: "POST",
@@ -51,7 +56,6 @@ export const runner = defineRunnerModule({
           body: JSON.stringify({
             idempotencyKey,
             outcome: preview.outcome,
-            delayMs: preview.delayMs,
           }),
         });
         const providerBody = JSON.parse(providerResponse.body) as {

@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { controlPlane as complexOperatorRuntime } from "../../examples/complex-operator/control-plane";
+
 const releaseMode = process.env.E2E_RELEASE_MODE;
 const workerOrigin = "http://127.0.0.1:8788";
 const headers = {
@@ -91,7 +93,10 @@ test.describe.serial("Agent-system executable conformance", () => {
         proposal?: { status?: string };
       };
     };
-    expect(receipt.run).toMatchObject({ runtimeVersion: "1.2.0", engine: "cloudflare" });
+    expect(receipt.run).toMatchObject({
+      runtimeVersion: complexOperatorRuntime.runtimeVersion,
+      engine: "cloudflare",
+    });
     expect(receipt.artifact).toMatchObject({ kind: "complex_operator_report" });
     expect(receipt.report).toMatchObject({
       signal: { signal: "nominal" },
@@ -117,7 +122,7 @@ test.describe.serial("Agent-system executable conformance", () => {
       data: {
         packId: "complex-operator",
         packVersion: "1.1.0",
-        runtimeVersion: "1.2.0",
+        runtimeVersion: complexOperatorRuntime.runtimeVersion,
         workflowType: "complex-operator.observe",
       },
     });

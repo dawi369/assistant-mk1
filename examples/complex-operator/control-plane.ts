@@ -67,7 +67,7 @@ export const operatorSnapshotTool = {
 
 export const controlPlane = defineControlPlaneModule({
   packId: "complex-operator",
-  runtimeVersion: "1.2.2",
+  runtimeVersion: "1.2.3",
   compatiblePackVersions: "^1.1.0",
   tools: [
     {

@@ -625,11 +625,13 @@ export const executeActionProposal = async (
         ),
       ),
     ]);
-    assertSchemaValue(
-      binding.action!.resultSchema,
-      result.output ?? {},
-      `${row.tool_id} action result`,
-    );
+    if (result.status !== "failed") {
+      assertSchemaValue(
+        binding.action!.resultSchema,
+        result.output ?? {},
+        `${row.tool_id} action result`,
+      );
+    }
   } catch (error) {
     result = {
       proposalId: row.id,
