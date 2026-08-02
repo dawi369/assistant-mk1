@@ -15,7 +15,13 @@ import {
   validateEnvironmentSet,
 } from "./workbench-environment";
 
-const phases = ["migrate-cloudflare", "deploy-cloudflare", "deploy-fly", "deploy-vercel"] as const;
+const phases = [
+  "migrate-cloudflare",
+  "bootstrap-cloudflare",
+  "deploy-cloudflare",
+  "deploy-fly",
+  "deploy-vercel",
+] as const;
 type Phase = (typeof phases)[number];
 const isPhase = (value: string): value is Phase => phases.includes(value as Phase);
 const valueAfter = (name: string) => {
@@ -61,7 +67,11 @@ if (failures.length) throw new Error(failures.join("; "));
 
 const sha = git("rev-parse", "HEAD");
 const confirmation = `${target}:${phase}:${featureStage}:${sha}`;
-const rendered = renderEnvironmentConfig(target, { featureStage, releaseSha: sha });
+const rendered = renderEnvironmentConfig(target, {
+  bootstrap: phase === "bootstrap-cloudflare",
+  featureStage,
+  releaseSha: sha,
+});
 const commands: Record<Phase, { command: string; args: string[]; env?: NodeJS.ProcessEnv }> = {
   "migrate-cloudflare": {
     command: "pnpm",
@@ -76,6 +86,10 @@ const commands: Record<Phase, { command: string; args: string[]; env?: NodeJS.Pr
       "--config",
       rendered.wranglerPath,
     ],
+  },
+  "bootstrap-cloudflare": {
+    command: "pnpm",
+    args: ["exec", "wrangler", "deploy", "--config", rendered.wranglerPath],
   },
   "deploy-cloudflare": {
     command: "pnpm",
@@ -135,6 +149,29 @@ if (phase === "migrate-cloudflare") {
     throw new Error("backup evidence must match target and commit and include a checksum");
   }
 }
+if (["deploy-cloudflare", "deploy-fly", "deploy-vercel"].includes(phase)) {
+  const secretEvidencePath = resolve(
+    process.cwd(),
+    "output/release",
+    sha,
+    `secret-configuration-${target}.json`,
+  );
+  if (!existsSync(secretEvidencePath)) {
+    throw new Error(`${phase} requires same-commit provider secret configuration evidence`);
+  }
+  const secretEvidence = JSON.parse(readFileSync(secretEvidencePath, "utf8")) as {
+    target?: unknown;
+    commit?: unknown;
+    status?: unknown;
+  };
+  if (
+    secretEvidence.target !== target ||
+    secretEvidence.commit !== sha ||
+    secretEvidence.status !== "configured"
+  ) {
+    throw new Error(`provider secret configuration evidence for ${target} is invalid`);
+  }
+}
 if (phase === "deploy-cloudflare" && featureStage !== "disabled") {
   const stageOrder: FeatureStage[] = ["disabled", "retained-data", "connections", "mutations"];
   const previousStage = stageOrder[stageOrder.indexOf(featureStage) - 1];
@@ -179,7 +216,8 @@ writeFileSync(
       commit: sha,
       phase,
       featureStage,
-      status: "deployed",
+      status: phase === "bootstrap-cloudflare" ? "bootstrapped" : "deployed",
+      ...(phase === "bootstrap-cloudflare" ? { publicIngress: false } : {}),
       completedAt: new Date().toISOString(),
       operator: process.env.WORKBENCH_RELEASE_OPERATOR?.trim() || process.env.USER || "unknown",
     },

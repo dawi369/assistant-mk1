@@ -77,6 +77,9 @@ browser observation.
 - [ ] Local, acceptance, and production Worker/D1/R2/DO, Fly, Vercel, WorkOS,
       origin, and signing-secret references are distinct; production rejects
       conformance, memory Vault, dev tokens, and global mutation enablement.
+- [ ] New Workers are bootstrapped with public ingress and cron triggers disabled;
+      final Cloudflare, Fly, and Vercel deploys require same-commit provider-secret
+      evidence.
 - [ ] Fresh and prior-baseline databases apply migrations `0006`–`0013`; backup
       restore and forward-fix rehearsal meet recorded RPO/RTO.
 - [ ] D1/R2/DO export manifest checksums pass; quarantine recovery and

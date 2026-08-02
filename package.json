@@ -87,6 +87,7 @@
     "db:cloudflare:backup": "tsx scripts/backup-environment.ts",
     "db:cloudflare:migrations:verify": "tsx scripts/verify-d1-migrations.ts",
     "db:cloudflare:backup:verify": "tsx scripts/verify-d1-backup-restore.ts",
+    "deploy:cloudflare:bootstrap": "tsx scripts/environment-command.ts --phase bootstrap-cloudflare",
     "deploy:cloudflare": "tsx scripts/environment-command.ts --phase deploy-cloudflare",
     "dev:cloudflare": "wrangler dev --config cloudflare/control-plane/wrangler.jsonc --local --port 8787",
     "deploy:fly": "tsx scripts/environment-command.ts --phase deploy-fly",

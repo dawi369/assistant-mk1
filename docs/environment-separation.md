@@ -48,6 +48,7 @@ pnpm verify:environment-config
 pnpm environment:check --target acceptance
 pnpm environment:render --target acceptance
 pnpm environment:provision -- --target acceptance --provider cloudflare
+pnpm deploy:cloudflare:bootstrap -- --target acceptance
 pnpm environment:configure-secrets -- --target acceptance
 pnpm deploy:cloudflare -- --target acceptance
 pnpm deploy:fly -- --target acceptance
@@ -71,6 +72,12 @@ remains a dashboard action and must be recorded with
 `pnpm release:evidence:record`; the CLI does not pretend that a Vault object is
 an AuthKit application.
 
+For a new Worker, run the guarded Cloudflare bootstrap before configuring
+secrets. It deploys the disabled feature stage with `workers_dev=false` and no
+cron triggers, creating the secret attachment point without public ingress.
+The final Cloudflare, Fly, and Vercel deploy phases require same-commit secret
+configuration evidence.
+
 Remote migration is a separate approval phase and requires a same-commit,
 AES-256-GCM encrypted D1 export. The 32-byte base64 encryption key stays in the
 operator secret store:
@@ -91,14 +98,15 @@ Never use the reset snapshot against acceptance or production.
 Record operator approval independently for each external-state phase:
 
 1. create distinct acceptance Worker/D1/R2/DO, Fly, Vercel, and WorkOS resources;
-2. configure provider secrets and verify target-specific secret fingerprints;
-3. back up and apply forward D1 migrations;
-4. deploy acceptance Cloudflare, Fly, then Vercel from one immutable SHA;
-5. promote Cloudflare through `disabled`, `retained-data`, `connections`, and
+2. bootstrap the acceptance Worker without public ingress or cron triggers;
+3. configure provider secrets and verify target-specific secret fingerprints;
+4. back up and apply forward D1 migrations;
+5. deploy acceptance Cloudflare, Fly, then Vercel from one immutable SHA;
+6. promote Cloudflare through `disabled`, `retained-data`, `connections`, and
    `mutations`; each stage requires the preceding stage's same-SHA deployment
    record;
-6. collect all acceptance evidence and complete the 24-hour soak;
-7. deploy the accepted SHA to production with global mutation still off.
+7. collect all acceptance evidence and complete the 24-hour soak;
+8. deploy the accepted SHA to production with global mutation still off.
 
 Do not proceed if any resource, WorkOS application, secret value, or public
 origin is shared across acceptance and production. Vercel production points

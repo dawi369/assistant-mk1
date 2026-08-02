@@ -34,6 +34,18 @@ const runWithInput = (
   });
   if (result.status !== 0) throw new Error(`${command} exited with ${result.status ?? "signal"}`);
 };
+const verifyWorkerExists = (wranglerPath: string) => {
+  const result = spawnSync(
+    "pnpm",
+    ["exec", "wrangler", "deployments", "list", "--config", wranglerPath, "--json"],
+    { cwd: process.cwd(), encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+  );
+  if (result.status !== 0) {
+    throw new Error(
+      "Cloudflare Worker does not exist; run the guarded non-public bootstrap deployment before configuring secrets",
+    );
+  }
+};
 
 const target = valueAfter("--target") ?? "";
 if (!isEnvironmentTarget(target) || target === "local") {
@@ -62,6 +74,7 @@ const secretFailures = validateEnvironmentSecretValues([manifest]);
 if (secretFailures.length) throw new Error(secretFailures.join("; "));
 
 const rendered = renderEnvironmentConfig(target);
+verifyWorkerExists(rendered.wranglerPath);
 const workerSecrets = {
   CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET: roleValues.facadeSigning,
   WORKBENCH_RUNNER_SIGNING_SECRET: roleValues.runnerSigning,

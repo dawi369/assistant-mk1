@@ -61,3 +61,5 @@ cloudflare/control-plane/.wrangler/
 /output/release/
 /output/backups/
 /output/environments/
+/output/provider-links/
+/output/*.png

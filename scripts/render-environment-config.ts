@@ -20,9 +20,13 @@ const featureFlags = (stage: FeatureStage) => ({
 
 export const renderEnvironmentConfig = (
   target: EnvironmentTarget,
-  options: { featureStage?: FeatureStage; releaseSha?: string } = {},
+  options: { bootstrap?: boolean; featureStage?: FeatureStage; releaseSha?: string } = {},
 ) => {
+  const bootstrap = options.bootstrap ?? false;
   const featureStage = options.featureStage ?? "disabled";
+  if (bootstrap && featureStage !== "disabled") {
+    throw new Error("Cloudflare bootstrap requires feature stage disabled");
+  }
   if (target === "production" && featureStage === "mutations") {
     throw new Error("production deployment cannot globally enable mutations");
   }
@@ -46,6 +50,7 @@ export const renderEnvironmentConfig = (
     main: "../../../cloudflare/control-plane/src/index.ts",
     compatibility_date: "2026-06-01",
     compatibility_flags: ["nodejs_compat", "nodejs_als"],
+    workers_dev: !bootstrap,
     vars: {
       LANGGRAPH_UPSTREAM_URL: manifest.fly.origin,
       LANGGRAPH_ASSISTANT_ID: "agent",
@@ -65,7 +70,7 @@ export const renderEnvironmentConfig = (
       SENTRY_ENVIRONMENT: target,
       SENTRY_TRACES_SAMPLE_RATE: "0.02",
     },
-    triggers: { crons: ["* * * * *"] },
+    ...(bootstrap ? {} : { triggers: { crons: ["* * * * *"] } }),
     d1_databases: [
       {
         binding: "DB",
@@ -140,6 +145,7 @@ memory = "1gb"
       {
         schemaVersion: 1,
         target,
+        bootstrap,
         featureStage,
         vercel: manifest.vercel,
         workos: manifest.workos,
@@ -157,13 +163,17 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const args = process.argv.slice(2);
   const target = args[args.indexOf("--target") + 1];
   const featureStage = args[args.indexOf("--feature-stage") + 1] ?? "disabled";
+  const bootstrap = args.includes("--bootstrap");
   if (!target || !isEnvironmentTarget(target)) {
     throw new Error(`--target must be one of ${environmentTargets.join("|")}`);
   }
   if (!featureStages.includes(featureStage as FeatureStage)) {
     throw new Error(`--feature-stage must be one of ${featureStages.join("|")}`);
   }
-  const rendered = renderEnvironmentConfig(target, { featureStage: featureStage as FeatureStage });
+  const rendered = renderEnvironmentConfig(target, {
+    bootstrap,
+    featureStage: featureStage as FeatureStage,
+  });
   console.log(
     `Rendered secret-free ${target} deployment configuration under ${rendered.directory}.`,
   );

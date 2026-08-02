@@ -73,7 +73,25 @@ describe("workbench environment manifests", () => {
       );
       const worker = readFileSync(rendered.wranglerPath, "utf8");
       expect(worker).toContain("assistant-mk1-acceptance-control-plane");
+      expect(worker).toContain('"workers_dev": true');
+      expect(worker).toContain('"triggers"');
       expect(worker).not.toContain("WORKBENCH_ACCEPTANCE_RUNNER_SIGNING_SECRET");
+
+      const bootstrap = readFileSync(
+        renderEnvironmentConfig("acceptance", { bootstrap: true }).wranglerPath,
+        "utf8",
+      );
+      expect(bootstrap).toContain('"workers_dev": false');
+      expect(bootstrap).not.toContain('"triggers"');
+      expect(bootstrap).toContain('"WORKBENCH_RETAINED_DATA_ENABLED": "false"');
+      expect(bootstrap).toContain('"WORKBENCH_CONNECTIONS_ENABLED": "false"');
+      expect(bootstrap).toContain('"WORKBENCH_MUTATIONS_ENABLED": "false"');
+      expect(() =>
+        renderEnvironmentConfig("acceptance", {
+          bootstrap: true,
+          featureStage: "retained-data",
+        }),
+      ).toThrow("Cloudflare bootstrap requires feature stage disabled");
     } finally {
       for (const [key, value] of Object.entries(previous)) {
         if (value === undefined) delete process.env[key];
