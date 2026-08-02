@@ -61,6 +61,15 @@ const main = async () => {
       "run",
       "--rm",
       "--entrypoint",
+      "sh",
+      imageTag,
+      "-c",
+      "test -d /app/.langgraph_api && test -w /app/.langgraph_api",
+    ]);
+    await run("docker", [
+      "run",
+      "--rm",
+      "--entrypoint",
       "pnpm",
       imageTag,
       "exec",

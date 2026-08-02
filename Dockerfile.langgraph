@@ -36,6 +36,7 @@ RUN pnpm install --prod --frozen-lockfile --ignore-scripts
 
 COPY --chown=node:node . .
 COPY --from=sdk-builder --chown=node:node /app/packages/agent-sdk/dist /app/packages/agent-sdk/dist
+RUN mkdir -p /app/.langgraph_api && chown node:node /app/.langgraph_api
 
 USER node
 

@@ -72,6 +72,9 @@ describe("workbench environment manifests", () => {
       expect(readFileSync(rendered.flyPath, "utf8")).toContain(
         'dockerfile = "../../../Dockerfile.langgraph"',
       );
+      expect(readFileSync(rendered.flyPath, "utf8")).toContain(
+        'OPENROUTER_MODEL = "deepseek/deepseek-v4-flash"',
+      );
       const worker = readFileSync(rendered.wranglerPath, "utf8");
       expect(worker).toContain("assistant-mk1-acceptance-control-plane");
       expect(worker).toContain('"workers_dev": true');
