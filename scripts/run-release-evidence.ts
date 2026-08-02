@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 
 import { isEnvironmentTarget } from "./workbench-environment";
+import { releaseEvidenceCommand } from "./release-evidence-args";
 
 const valueAfter = (name: string) => {
   const index = process.argv.indexOf(name);
@@ -15,8 +16,7 @@ const git = (...args: string[]) => {
 };
 const target = valueAfter("--target") ?? "";
 const kind = valueAfter("--kind")?.trim() ?? "";
-const separator = process.argv.indexOf("--");
-const command = separator >= 0 ? process.argv.slice(separator + 1) : [];
+const command = releaseEvidenceCommand(process.argv);
 if (!isEnvironmentTarget(target)) throw new Error("--target is required");
 if (!/^[a-z0-9][a-z0-9.-]{1,80}$/.test(kind)) throw new Error("--kind is invalid");
 if (!command.length) throw new Error("a command is required after --");
