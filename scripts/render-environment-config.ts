@@ -36,6 +36,20 @@ export const renderEnvironmentConfig = (
   }
   const manifest = resolved.manifest;
   const features = featureFlags(featureStage);
+  const flyHost = new URL(manifest.fly.origin).hostname;
+  const conformanceProviders = manifest.conformanceMode
+    ? JSON.stringify([
+        {
+          id: "synthetic-broker",
+          authorizationUrl: `${manifest.fly.origin}/e2e/oauth/authorize`,
+          tokenUrl: `${manifest.fly.origin}/e2e/oauth/token`,
+          actionUrl: `${manifest.fly.origin}/e2e/actions`,
+          clientId: "assistant-mk1-acceptance",
+          permittedHosts: [flyHost],
+          credentialPlacement: "bearer",
+        },
+      ])
+    : undefined;
   const releaseSha = options.releaseSha ?? process.env.GITHUB_SHA?.trim() ?? "development";
   if (releaseSha !== "development" && !/^[a-f0-9]{40}$/.test(releaseSha)) {
     throw new Error("release SHA must be a full lowercase Git commit");
@@ -66,6 +80,7 @@ export const renderEnvironmentConfig = (
       WORKBENCH_CONNECTIONS_ENABLED: String(features.connections),
       WORKBENCH_MUTATIONS_ENABLED: String(features.mutations),
       WORKBENCH_VAULT_BACKEND: manifest.vaultBackend,
+      ...(conformanceProviders ? { WORKBENCH_OAUTH_PROVIDERS_JSON: conformanceProviders } : {}),
       WORKBENCH_RELEASE_SHA: releaseSha,
       SENTRY_ENVIRONMENT: target,
       SENTRY_TRACES_SAMPLE_RATE: "0.02",

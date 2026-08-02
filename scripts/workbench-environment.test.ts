@@ -127,6 +127,14 @@ describe("workbench environment manifests", () => {
       expect(connections).toContain('"WORKBENCH_RETAINED_DATA_ENABLED": "true"');
       expect(connections).toContain('"WORKBENCH_CONNECTIONS_ENABLED": "true"');
       expect(connections).toContain('"WORKBENCH_MUTATIONS_ENABLED": "false"');
+      const providerRegistry = JSON.parse(connections).vars.WORKBENCH_OAUTH_PROVIDERS_JSON;
+      expect(JSON.parse(providerRegistry)).toEqual([
+        expect.objectContaining({
+          id: "synthetic-broker",
+          actionUrl: "https://runner.acceptance.example.test/e2e/actions",
+          permittedHosts: ["runner.acceptance.example.test"],
+        }),
+      ]);
       expect(() => renderEnvironmentConfig("production", { featureStage: "mutations" })).toThrow(
         "production deployment cannot globally enable mutations",
       );
