@@ -234,10 +234,14 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
     (url.pathname === "/workbench/workspace-deletion" &&
       (request.method === "GET" || request.method === "DELETE")) ||
     (url.pathname === "/workbench/workspace-deletion/retry" && request.method === "POST");
+  const exportObservationRoute =
+    request.method === "GET" &&
+    /^\/workbench\/data-exports\/[^/]+(?:\/download)?$/.test(url.pathname);
   const identityResult = await resolveAgentIdentity(request, env, authResult.context, {
     allowedInactiveWorkspaceStatuses: deletionRecoveryRoute
       ? ["quarantined", "purging", "failed"]
       : undefined,
+    skipBootstrapWrites: exportObservationRoute,
   });
   const authzEndedAtMs = Date.now();
   if (!identityResult.ok) return identityResult.response;

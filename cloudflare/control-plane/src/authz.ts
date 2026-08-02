@@ -428,7 +428,11 @@ const selectActiveWorkspaceId = async (
   return input.defaultWorkspaceId;
 };
 
-const selectActiveAgent = async (env: Env, input: { userId: string; workspaceId: string }) => {
+const selectActiveAgent = async (
+  env: Env,
+  input: { userId: string; workspaceId: string },
+  options: { allowPreferenceBootstrap?: boolean } = {},
+) => {
   const preference = await selectActiveAgentPreference(env, input);
 
   if (preference) {
@@ -443,6 +447,13 @@ const selectActiveAgent = async (env: Env, input: { userId: string; workspaceId:
       };
     }
     return { ok: true as const, agent: preferredAgent };
+  }
+
+  if (options.allowPreferenceBootstrap === false) {
+    return {
+      ok: false as const,
+      response: json({ ok: false, error: "Active agent preference not found" }, { status: 403 }),
+    };
   }
 
   const defaultAgent = await selectDefaultAgent(env, input.workspaceId);
@@ -466,7 +477,10 @@ export const resolveAgentIdentity = async (
   request: Request,
   env: Env,
   auth: ControlPlaneAuthContext,
-  options: { allowedInactiveWorkspaceStatuses?: readonly string[] } = {},
+  options: {
+    allowedInactiveWorkspaceStatuses?: readonly string[];
+    skipBootstrapWrites?: boolean;
+  } = {},
 ): Promise<ResolveResult> => {
   const workspaceStatusAllowed = (status: string) =>
     status === "active" || options.allowedInactiveWorkspaceStatuses?.includes(status) === true;
@@ -644,21 +658,23 @@ export const resolveAgentIdentity = async (
     };
   }
 
-  await withAuthzSpan(
-    authzSpans,
-    {
-      name: "User/workspace bootstrap",
-      layer: "d1",
-      data: { accountSource, defaultWorkspaceId: expectedWorkspaceId },
-    },
-    () =>
-      bootstrapAuthz(env, request, {
-        userId,
-        accountId,
-        accountSource,
-        workspaceId: expectedWorkspaceId,
-      }),
-  );
+  if (!options.skipBootstrapWrites) {
+    await withAuthzSpan(
+      authzSpans,
+      {
+        name: "User/workspace bootstrap",
+        layer: "d1",
+        data: { accountSource, defaultWorkspaceId: expectedWorkspaceId },
+      },
+      () =>
+        bootstrapAuthz(env, request, {
+          userId,
+          accountId,
+          accountSource,
+          workspaceId: expectedWorkspaceId,
+        }),
+    );
+  }
   const activeWorkspaceId = await withAuthzSpan(
     authzSpans,
     {
@@ -666,13 +682,27 @@ export const resolveAgentIdentity = async (
       layer: "d1",
       data: { defaultWorkspaceId: expectedWorkspaceId },
     },
-    () =>
-      selectActiveWorkspaceId(env, {
-        userId,
-        accountId,
-        defaultWorkspaceId: expectedWorkspaceId,
-      }),
+    async () => {
+      if (!options.skipBootstrapWrites) {
+        return selectActiveWorkspaceId(env, {
+          userId,
+          accountId,
+          defaultWorkspaceId: expectedWorkspaceId,
+        });
+      }
+      const preference = await selectActiveWorkspacePreference(env, { userId, accountId });
+      return preference?.workspace_id ?? null;
+    },
   );
+  if (!activeWorkspaceId) {
+    return {
+      ok: false,
+      response: json(
+        { ok: false, error: "Active workspace preference not found" },
+        { status: 403 },
+      ),
+    };
+  }
 
   const user = await withAuthzSpan(authzSpans, { name: "User status resolve", layer: "d1" }, () =>
     selectUser(env, userId),
@@ -739,7 +769,12 @@ export const resolveAgentIdentity = async (
       layer: "d1",
       data: { activeWorkspaceId },
     },
-    () => selectActiveAgent(env, { userId, workspaceId: activeWorkspaceId }),
+    () =>
+      selectActiveAgent(
+        env,
+        { userId, workspaceId: activeWorkspaceId },
+        { allowPreferenceBootstrap: !options.skipBootstrapWrites },
+      ),
   );
   if (!agentResult.ok) {
     return {
