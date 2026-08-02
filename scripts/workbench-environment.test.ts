@@ -70,7 +70,7 @@ describe("workbench environment manifests", () => {
     try {
       const rendered = renderEnvironmentConfig("acceptance");
       expect(readFileSync(rendered.flyPath, "utf8")).toContain(
-        'dockerfile = "Dockerfile.langgraph"',
+        'dockerfile = "../../../Dockerfile.langgraph"',
       );
       const worker = readFileSync(rendered.wranglerPath, "utf8");
       expect(worker).toContain("assistant-mk1-acceptance-control-plane");

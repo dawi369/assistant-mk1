@@ -105,7 +105,7 @@ export const renderEnvironmentConfig = (
 primary_region = "fra"
 
 [build]
-dockerfile = "Dockerfile.langgraph"
+dockerfile = "../../../Dockerfile.langgraph"
 
 [env]
 LANGGRAPH_PORT = "2024"
