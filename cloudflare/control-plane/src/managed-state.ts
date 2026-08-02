@@ -8,7 +8,6 @@ const defaultLimit = 50;
 const maximumLimit = 100;
 
 export type ManagedStateWrite = {
-  id: string;
   namespace: string;
   stateType: string;
   stateKey: string;
@@ -17,6 +16,24 @@ export type ManagedStateWrite = {
   artifactRefs?: string[];
   data?: Record<string, unknown>;
   expectedVersion?: number;
+};
+
+const managedStateRecordId = async (
+  identity: AgentIdentity,
+  input: Pick<ManagedStateWrite, "namespace" | "stateType" | "stateKey">,
+) => {
+  const canonical = [
+    identity.scope.userId,
+    identity.scope.workspaceId,
+    identity.agentId,
+    input.namespace,
+    input.stateType,
+    input.stateKey,
+  ].join("\u001f");
+  const digest = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical)),
+  );
+  return `managed-${Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
 };
 
 export const readManagedStateVersion = async (
@@ -86,7 +103,6 @@ export const upsertManagedState = async (
   validateIdentifier("stateType", input.stateType);
   validateIdentifier("stateKey", input.stateKey);
   validateIdentifier("status", input.status);
-  if (!input.id.trim() || input.id.length > 160) throw new Error("id is invalid");
   if (input.summary && input.summary.length > 500) throw new Error("summary is too long");
   if (input.artifactRefs && input.artifactRefs.some((ref) => !ref || ref.length > 160)) {
     throw new Error("artifactRefs are invalid");
@@ -94,6 +110,7 @@ export const upsertManagedState = async (
 
   const now = new Date().toISOString();
   const expectedVersion = input.expectedVersion ?? 0;
+  const id = await managedStateRecordId(identity, input);
   const result = await env.DB.prepare(
     `INSERT INTO control_managed_state (
        id, user_id, workspace_id, agent_id, namespace, state_type, state_key,
@@ -110,7 +127,7 @@ export const upsertManagedState = async (
      WHERE control_managed_state.version = ?`,
   )
     .bind(
-      input.id,
+      id,
       identity.scope.userId,
       identity.scope.workspaceId,
       identity.agentId,

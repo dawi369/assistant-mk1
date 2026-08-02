@@ -221,7 +221,6 @@ const buildRuntimeModelTool = (input: {
                 stateKey: state.stateKey,
               }));
             const result = await upsertManagedState(input.env, input.identity, {
-              id: `${input.identity.agentId}-${state.namespace}-${state.stateType}-${state.stateKey}`,
               ...state,
               expectedVersion,
             });

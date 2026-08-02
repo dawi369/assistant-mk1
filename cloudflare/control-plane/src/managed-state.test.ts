@@ -115,7 +115,6 @@ describe("managed state", () => {
   it("uses optimistic version checks for workflow writes", async () => {
     const { env, calls } = makeEnv();
     const result = await upsertManagedState(env, identity, {
-      id: "state-1",
       namespace: "reference-monitor",
       stateType: "endpoint",
       stateKey: "primary",
@@ -132,7 +131,6 @@ describe("managed state", () => {
   it("rejects stale writes without reading or promoting state", async () => {
     const { env, calls } = makeEnv({ writeChanges: 0 });
     const result = await upsertManagedState(env, identity, {
-      id: "state-1",
       namespace: "reference-monitor",
       stateType: "endpoint",
       stateKey: "primary",
@@ -142,5 +140,36 @@ describe("managed state", () => {
 
     expect(result).toEqual({ ok: false, reason: "version_conflict" });
     expect(calls).toHaveLength(1);
+  });
+
+  it("derives globally unique record ids from the full tenant scope", async () => {
+    const first = makeEnv();
+    const second = makeEnv();
+
+    await upsertManagedState(first.env, identity, {
+      namespace: "reference-monitor",
+      stateType: "endpoint",
+      stateKey: "primary",
+      status: "healthy",
+    });
+    await upsertManagedState(
+      second.env,
+      {
+        ...identity,
+        scope: { ...identity.scope, userId: "user-2" },
+      },
+      {
+        namespace: "reference-monitor",
+        stateType: "endpoint",
+        stateKey: "primary",
+        status: "healthy",
+      },
+    );
+
+    const firstId = first.calls[0]?.values[0];
+    const secondId = second.calls[0]?.values[0];
+    expect(firstId).toMatch(/^managed-[a-f0-9]{64}$/);
+    expect(secondId).toMatch(/^managed-[a-f0-9]{64}$/);
+    expect(secondId).not.toBe(firstId);
   });
 });

@@ -256,7 +256,6 @@ export const executeRuntimeWorkflowRequest = async (
             stateKey: state.stateKey,
           }));
         const result = await upsertManagedState(env, identity, {
-          id: `${identity.agentId}-${state.namespace}-${state.stateType}-${state.stateKey}`,
           ...state,
           expectedVersion,
         });
