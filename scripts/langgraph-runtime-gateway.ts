@@ -948,7 +948,7 @@ const server = createServer((request, response) => {
         return;
       }
       if (typeof body?.delayMs === "number" && body.delayMs > 0) {
-        await delay(Math.min(2_000, Math.trunc(body.delayMs)));
+        await delay(Math.min(5_000, Math.trunc(body.delayMs)));
       }
       const existing = e2eSyntheticActions.get(idempotencyKey);
       const externalReference = existing?.externalReference ?? `synthetic:${idempotencyKey}`;
