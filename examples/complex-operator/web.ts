@@ -1,6 +1,10 @@
 import { createElement } from "react";
 
-import { defineWebModule, type ArtifactRendererProps } from "@assistant-mk1/agent-sdk/web";
+import {
+  defineWebModule,
+  type ArtifactRendererProps,
+  type WebRuntimeModule,
+} from "@assistant-mk1/agent-sdk/web";
 
 export const ComplexOperatorArtifact = ({ artifact }: ArtifactRendererProps) =>
   createElement(
@@ -10,7 +14,7 @@ export const ComplexOperatorArtifact = ({ artifact }: ArtifactRendererProps) =>
     createElement("pre", null, JSON.stringify(artifact.data ?? artifact.content ?? {}, null, 2)),
   );
 
-export const web = defineWebModule({
+export const web: WebRuntimeModule = defineWebModule({
   packId: "complex-operator",
   runtimeVersion: "1.2.3",
   compatiblePackVersions: "^1.1.0",

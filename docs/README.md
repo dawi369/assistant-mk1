@@ -30,6 +30,8 @@ These files should stay aligned with code changes:
 - `agent-packs.md`: code-first local agent pack contract and current example.
 - `agent-runtime-kit.md`: executable Runtime Module v1 package, compiler,
   scoped execution, renderer, compatibility, and conformance contract.
+- `forking.md`: immutable fork-base tags, reviewed upstream updates, rollback,
+  and downstream compatibility evidence.
 - `complex-agent-golden-path.md`: founder path from clean clone to a complete
   Polymancer-shaped Runtime Module without core registration edits.
 - `implementation-roadmap.md`: current baseline, active next targets,

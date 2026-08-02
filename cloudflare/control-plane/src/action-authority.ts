@@ -187,7 +187,12 @@ const actionEvidenceStatements = (
 
 const resolveBinding = (row: ControlActionProposalRow) => {
   const runtime = resolvePackRuntime(row.pack_id, row.pack_version);
-  if (!runtime.runnable || runtime.runtimeVersion !== row.runtime_version) {
+  if (!runtime.runnable) {
+    throw Object.assign(new Error("The proposal runtime is no longer compatible."), {
+      code: runtime.reason,
+    });
+  }
+  if (runtime.runtimeVersion !== row.runtime_version) {
     throw Object.assign(new Error("The proposal runtime is no longer compatible."), {
       code: "runtime_incompatible",
     });
@@ -449,7 +454,12 @@ export const createDurableActionPort = (
       });
     }
     const runtime = resolvePackRuntime(runtimeIdentity.packId, runtimeIdentity.packVersion);
-    if (!runtime.runnable || runtime.runtimeVersion !== runtimeIdentity.runtimeVersion) {
+    if (!runtime.runnable) {
+      throw Object.assign(new Error("Action runtime is incompatible."), {
+        code: runtime.reason,
+      });
+    }
+    if (runtime.runtimeVersion !== runtimeIdentity.runtimeVersion) {
       throw Object.assign(new Error("Action runtime is incompatible."), {
         code: "runtime_incompatible",
       });

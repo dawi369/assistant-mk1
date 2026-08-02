@@ -80,7 +80,7 @@ export const executeRuntimeWorkflowRequest = async (
   const runtime = resolvePackRuntime(pack.id, pack.version);
   if (!runtime.runnable) {
     return runtimeError(
-      "runtime_incompatible",
+      runtime.reason,
       "This agent snapshot can chat, but its workflows require a compatible runtime upgrade.",
       409,
     );

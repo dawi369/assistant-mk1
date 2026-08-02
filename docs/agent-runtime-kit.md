@@ -27,7 +27,10 @@ Every package exports:
 Each runtime entry declares `packId`, one `runtimeVersion`, and
 `compatiblePackVersions`. The compiler rejects inconsistent runtime versions,
 missing tool/workflow/health/eval/renderer providers, collisions, invalid
-schemas, engine mismatches, and incompatible current manifests.
+schemas, engine mismatches, and incompatible current manifests. The root
+`workbench.config.ts` also declares the exact workbench version. Every manifest's
+minimum and optional maximum workbench version is checked both while compiling
+and again during runtime resolution.
 
 The publish-ready SDK is in `packages/agent-sdk`:
 
@@ -44,6 +47,12 @@ the SDK, installs the tarball into an ignored zero-context consumer, executes
 every runtime export under Node 24, resolves declarations without TypeScript
 path aliases, and compiles a separately packed Agent Module using only its
 package name. The SDK is not published by this repository.
+
+`pnpm agent-sdk:contract --check` compares normalized public declaration and
+JSON Schema hashes with `packages/agent-sdk/contract-manifest.json`. An
+intentional public change requires review, a changelog entry, and
+`pnpm agent-sdk:contract --accept`. Additive Runtime Module v1 changes are
+permitted; a source- or serialized-contract break requires a new API major.
 
 ## Execution Boundary
 
@@ -123,6 +132,13 @@ persisted runtime metadata, three tool calls, structured artifact, and managed
 state. Static package tests remain separate so a registry declaration alone
 cannot satisfy the extension gate.
 
+`pnpm conformance:extension-contract` first packs the SDK and Complex Operator,
+installs both into an ignored zero-context consumer, compiles package-only
+registries, typechecks declarations, inspects archive hygiene, and executes
+every workflow, tool contract, renderer, connection posture, health check, and
+eval. This installed-package proof complements the deployed-shape
+Cloudflare/Fly service-boundary journey.
+
 To add a comparable package:
 
 ```bash
@@ -167,9 +183,11 @@ claimed by Runtime Module v1 today.
 
 ## Compatibility And Limits
 
-An incompatible historical Agent snapshot remains available for chat but its
-workflows return `runtime_incompatible` until an explicit agent upgrade creates
-a compatible snapshot. A runtime package deploys one version at a time.
+An incompatible historical Agent snapshot remains available for chat. Pack and
+runtime range drift returns `runtime_incompatible`; workbench range drift
+returns `workbench_incompatible`. Both block tools, workflows, triggers,
+retries, and actions until an explicit agent upgrade creates a compatible
+snapshot. A runtime package deploys one version at a time.
 
 Not implemented: remote package installation, arbitrary executable uploads,
 package-owned D1 access, pack-supplied migration hooks, trading adapters, or

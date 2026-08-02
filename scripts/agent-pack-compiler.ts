@@ -11,7 +11,14 @@ import type {
   WebRuntimeModule,
   WorkbenchConfig,
 } from "@assistant-mk1/agent-sdk";
-import { assertSchemaDefinition, isPackVersionCompatible } from "@assistant-mk1/agent-sdk";
+import {
+  assertSchemaDefinition,
+  assertSchemaValue,
+  compareSemanticVersions,
+  isPackVersionCompatible,
+  isWorkbenchVersionCompatible,
+  parseSemanticVersion,
+} from "@assistant-mk1/agent-sdk";
 import { format } from "oxfmt";
 import ts from "typescript";
 
@@ -141,7 +148,12 @@ const loadExport = async <T>(
 export const loadWorkbenchConfig = async (root: string): Promise<WorkbenchConfig> => {
   const target = `${pathToFileURL(resolve(root, "workbench.config.ts")).href}?t=${Date.now()}`;
   const loaded = (await import(target)) as { default?: WorkbenchConfig };
-  if (loaded.default?.runtimeApiVersion !== 1 || !Array.isArray(loaded.default.modules)) {
+  if (
+    loaded.default?.runtimeApiVersion !== 1 ||
+    typeof loaded.default.workbenchVersion !== "string" ||
+    !parseSemanticVersion(loaded.default.workbenchVersion) ||
+    !Array.isArray(loaded.default.modules)
+  ) {
     throw new Error("workbench.config.ts must export a Runtime Module v1 configuration.");
   }
   return loaded.default;
@@ -153,7 +165,14 @@ const requireUnique = (seen: Map<string, string>, kind: string, id: string, pack
   seen.set(id, packId);
 };
 
-export const validateLoadedModules = (modules: readonly LoadedAgentModule[]) => {
+export const validateLoadedModules = (
+  modules: readonly LoadedAgentModule[],
+  workbenchVersion: string,
+) => {
+  const parsedWorkbenchVersion = parseSemanticVersion(workbenchVersion);
+  if (!parsedWorkbenchVersion) {
+    throw new Error(`Workbench version ${workbenchVersion} is not valid semantic versioning.`);
+  }
   const packIds = new Map<string, string>();
   const toolIds = new Map<string, string>();
   const workflowTypes = new Map<string, string>();
@@ -162,6 +181,33 @@ export const validateLoadedModules = (modules: readonly LoadedAgentModule[]) => 
     const { manifest, controlPlane, runner, web, entry } = item;
     if (manifest.apiVersion !== 2 || manifest.kind !== "agent_pack") {
       throw new Error(`${entry.package} must export a Pack API v2 manifest.`);
+    }
+    const minimumWorkbenchVersion = parseSemanticVersion(
+      manifest.compatibility.minimumWorkbenchVersion,
+    );
+    const maximumWorkbenchVersion = manifest.compatibility.maximumWorkbenchVersion
+      ? parseSemanticVersion(manifest.compatibility.maximumWorkbenchVersion)
+      : undefined;
+    if (!minimumWorkbenchVersion) {
+      throw new Error(`${entry.package} declares a malformed minimum workbench version.`);
+    }
+    if (manifest.compatibility.maximumWorkbenchVersion && !maximumWorkbenchVersion) {
+      throw new Error(`${entry.package} declares a malformed maximum workbench version.`);
+    }
+    if (
+      maximumWorkbenchVersion &&
+      compareSemanticVersions(minimumWorkbenchVersion, maximumWorkbenchVersion) > 0
+    ) {
+      throw new Error(`${entry.package} declares an inverted workbench compatibility range.`);
+    }
+    if (
+      !isWorkbenchVersionCompatible(
+        workbenchVersion,
+        manifest.compatibility.minimumWorkbenchVersion,
+        manifest.compatibility.maximumWorkbenchVersion,
+      )
+    ) {
+      throw new Error(`${entry.package} is incompatible with workbench ${workbenchVersion}.`);
     }
     if (item.packageMetadata.name !== entry.package) {
       throw new Error(
@@ -322,6 +368,37 @@ export const validateLoadedModules = (modules: readonly LoadedAgentModule[]) => 
         binding.outputSchema,
         `${entry.package} workflow ${declared.type} output`,
       );
+      const properties =
+        binding.inputSchema.properties && typeof binding.inputSchema.properties === "object"
+          ? (binding.inputSchema.properties as Record<string, Record<string, unknown>>)
+          : {};
+      const required = Array.isArray(binding.inputSchema.required)
+        ? binding.inputSchema.required.filter((name): name is string => typeof name === "string")
+        : [];
+      for (const name of required) {
+        if (
+          properties[name]?.default === undefined &&
+          !Object.prototype.hasOwnProperty.call(binding.conformanceInput ?? {}, name)
+        ) {
+          throw new Error(
+            `${entry.package} workflow ${declared.type} requires conformanceInput.${name}.`,
+          );
+        }
+      }
+      const conformanceDefaults = Object.fromEntries(
+        Object.entries(properties)
+          .filter(([, schema]) => schema.default !== undefined)
+          .map(([name, schema]) => [name, schema.default]),
+      );
+      const conformanceInput = {
+        ...conformanceDefaults,
+        ...binding.conformanceInput,
+      };
+      assertSchemaValue(
+        binding.inputSchema,
+        binding.normalizeInput ? binding.normalizeInput(conformanceInput) : conformanceInput,
+        `${entry.package} workflow ${declared.type} conformance input`,
+      );
       requireUnique(workflowTypes, "Workflow", declared.type, manifest.id);
       for (const toolId of binding.toolIds) {
         if (!controlPlaneTools.has(toolId)) {
@@ -340,14 +417,14 @@ export const validateLoadedModules = (modules: readonly LoadedAgentModule[]) => 
     }
     const healthIds = new Set(controlPlane.health.map((binding) => binding.id));
     for (const check of manifest.healthChecks) {
-      if (check.required && !healthIds.has(check.id)) {
-        throw new Error(`${entry.package} is missing required health binding ${check.id}.`);
+      if (!healthIds.has(check.id)) {
+        throw new Error(`${entry.package} is missing health binding ${check.id}.`);
       }
     }
     const evalIds = new Set(controlPlane.evals.map((binding) => binding.id));
     for (const evaluation of manifest.evals) {
-      if (evaluation.required && !evalIds.has(evaluation.id)) {
-        throw new Error(`${entry.package} is missing required eval binding ${evaluation.id}.`);
+      if (!evalIds.has(evaluation.id)) {
+        throw new Error(`${entry.package} is missing eval binding ${evaluation.id}.`);
       }
     }
   }
@@ -375,7 +452,7 @@ export const loadAgentModules = async (root: string): Promise<LoadedAgentModule[
       };
     }),
   );
-  return [...validateLoadedModules(modules)];
+  return [...validateLoadedModules(modules, config.workbenchVersion)];
 };
 
 const sourceSpecifier = (
@@ -451,10 +528,14 @@ const renderConformance = (modules: readonly LoadedAgentModule[]) => {
   return `${header}export const agentConformanceRegistry = ${JSON.stringify(rows, null, 2)} as const;\n`;
 };
 
+const renderPlatform = (workbenchVersion: string) =>
+  `${header}export const compiledWorkbenchVersion = ${JSON.stringify(workbenchVersion)} as const;\n`;
+
 export const compileAgentPacks = async (
   root: string,
   options: { check: boolean },
 ): Promise<{ modules: LoadedAgentModule[]; files: string[] }> => {
+  const config = await loadWorkbenchConfig(root);
   const modules = await loadAgentModules(root);
   const outputDirectory = resolve(root, "generated/agent-runtime");
   const outputs = [
@@ -496,5 +577,18 @@ export const compileAgentPacks = async (
     writeFileSync(conformanceFile, conformanceSource);
   }
   files.push(conformanceFile);
+  const platformFile = resolve(outputDirectory, "platform.ts");
+  const platformSource = await formatGeneratedSource(
+    platformFile,
+    renderPlatform(config.workbenchVersion),
+  );
+  if (options.check) {
+    if (!existsSync(platformFile) || readFileSync(platformFile, "utf8") !== platformSource) {
+      throw new Error(`${relative(root, platformFile)} is stale; run pnpm agent-packs:compile.`);
+    }
+  } else {
+    writeFileSync(platformFile, platformSource);
+  }
+  files.push(platformFile);
   return { modules, files };
 };

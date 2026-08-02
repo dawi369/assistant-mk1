@@ -183,6 +183,7 @@ pnpm test:e2e      # signed-out and trusted-local browser journeys
 pnpm conformance:level2       # executable Level 0-2 evidence report
 pnpm conformance:level3       # executable local Level 3 evidence report
 pnpm conformance:agent-system # executable package and extension-system report
+pnpm conformance:extension-contract # installed external-package contract proof
 pnpm conformance:data-lifecycle # retention, export, recovery, and purge
 pnpm conformance:connections    # Vault and OAuth/API-key brokerage
 pnpm conformance:actions        # policy-controlled synthetic mutation
@@ -193,6 +194,7 @@ pnpm acceptance:hosted:level3 # guarded non-customer hosted failure drills
 pnpm acceptance:hosted:vault  # guarded WorkOS Vault lifecycle evidence
 pnpm acceptance:hosted:mutation # guarded isolated synthetic mutation evidence
 pnpm release:check            # repository, Docker, and Level 2-3 local gates
+pnpm fork:check               # complete downstream update acceptance gate
 ```
 
 The browser suite uses isolated D1 state under `output/playwright/`. Runtime

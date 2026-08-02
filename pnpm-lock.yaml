@@ -188,10 +188,10 @@ importers:
   examples/complex-operator:
     dependencies:
       '@assistant-mk1/agent-sdk':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../packages/agent-sdk
       react:
-        specifier: ^19.2.6
+        specifier: 19.2.6
         version: 19.2.6
 
   packages/agent-sdk:

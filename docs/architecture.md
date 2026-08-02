@@ -106,7 +106,7 @@ observe -> analyze -> propose -> execute -> review
   Runtime packages.
 - `packages/agent-sdk/*`: Pack API v2 and Runtime Module v1 public contracts.
 - `generated/agent-runtime/*`: deterministic manifest, Cloudflare, runner, web,
-  and conformance registries.
+  conformance, and compiled-workbench-version registries.
 - `cloudflare/control-plane/src/runtime-workflows.ts`: the sole package workflow
   kernel for schema/resource checks, scoped execution, CAS state, and response
   formatting.

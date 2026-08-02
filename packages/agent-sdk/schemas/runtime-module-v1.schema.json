@@ -25,7 +25,15 @@
           "properties": {
             "kind": { "const": "agent_control_plane_module" },
             "tools": { "type": "array" },
-            "workflows": { "type": "array" },
+            "workflows": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "conformanceInput": { "type": "object" }
+                }
+              }
+            },
             "health": { "type": "array" },
             "evals": { "type": "array" }
           },

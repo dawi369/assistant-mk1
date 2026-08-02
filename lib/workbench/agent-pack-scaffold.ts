@@ -132,7 +132,7 @@ export const ${exportName} = defineAgentPack({
       required: true,
     },
   ],
-  compatibility: { packApi: 2, minimumWorkbenchVersion: "1.0.0-preview.1" },
+  compatibility: { packApi: 2, minimumWorkbenchVersion: "1.0.0" },
   resourceLimits: {
     maxRunSeconds: 30,
     maxToolCallsPerRun: 4,
