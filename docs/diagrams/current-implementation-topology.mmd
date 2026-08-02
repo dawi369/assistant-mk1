@@ -49,7 +49,7 @@ flowchart LR
     d1Chat["D1 chat state"]
     d1Control["D1 runs/tools/artifacts/audit"]
     durableObject["DO SQLite hot messages"]
-    r2["R2 artifacts planned"]
+    r2["R2 artifacts + exports"]
     migrations["D1 forward migrations"]
     workflowState["workflow checkpoints planned"]
   end
@@ -104,7 +104,7 @@ flowchart LR
   langgraph -- "loads graph" --> agentGraph
   agentGraph -- "model call" --> openrouter
 
-  worker -. "planned storage" .-> r2
+  worker -- "artifact/export blobs" --> r2
   worker -- "migration apply" --> migrations
   langgraph -. "planned checkpoints" .-> workflowState
 
@@ -112,5 +112,6 @@ flowchart LR
   class worker,scopeResolver,authz,sessionAgent,threadAgent,workbenchControl,packWorkflows,toolPolicy,historyApi,sessionEvents,callback cloudflare
   class gateway,langgraph,agentGraph,runner fly
   class d1Identity,d1Chat,d1Control,durableObject,migrations data
-  class r2,workflowState planned
+  class r2 data
+  class workflowState planned
   class externalTriggers,readonlySources,openrouter sidecar

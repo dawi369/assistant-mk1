@@ -132,7 +132,7 @@ export const ${exportName} = defineAgentPack({
       required: true,
     },
   ],
-  compatibility: { packApi: 2, minimumWorkbenchVersion: "1.0.0-preview.1" },
+  compatibility: { packApi: 2, minimumWorkbenchVersion: "1.0.0" },
   resourceLimits: {
     maxRunSeconds: 30,
     maxToolCallsPerRun: 4,
@@ -253,6 +253,77 @@ export const web = defineWebModule({
   managedStateRenderers: {},
 });
 `;
+
+export const renderAgentPackReadme = (input: { id: string; name: string }) => {
+  const { id, name } = validateAgentPackScaffoldInput(input);
+  return `# ${name}
+
+Trusted build-time Agent Pack for Assistant-mk1. This package starts as a bounded,
+read-only Runtime Module v1 example; replace the starter inspection with domain behavior.
+
+## Development loop
+
+\`\`\`bash
+pnpm workbench pack inspect --pack ${id}
+pnpm workbench pack check --pack ${id}
+pnpm workbench dev
+\`\`\`
+
+Use the ordinary workbench UI to activate the pack, run its workflow, and inspect
+the resulting History artifact. Package behavior belongs in this directory; do not
+add pack-specific Vercel or Worker routes.
+
+## Package boundaries
+
+| File | Responsibility |
+| --- | --- |
+| \`index.ts\` | JSON-safe Pack API v2 manifest and prompt snapshot |
+| \`control-plane.ts\` | Cloudflare-safe tools, workflows, health, and evals |
+| \`runner.ts\` | Signed Node/Fly adapters for bounded heavy execution |
+| \`web.ts\` | Trusted artifact and managed-state renderers |
+| \`control-plane.test.ts\` | Package-local characterization coverage |
+
+## Before enabling authority
+
+- Replace the placeholder description, prompt copy, tool schemas, and workflow result.
+- Keep resource ceilings and deterministic health/evals explicit.
+- Add managed state and triggers only through manifest descriptors.
+- Declare provider connections before adding provider-backed tools.
+- Add durable proposals, idempotency, reconciliation, and approval before execute mode.
+- Keep credentials, raw D1/R2/Env access, and package-specific HTTP routes out of the pack.
+`;
+};
+
+export const renderAgentPackTest = (input: { id: string; name: string }) => {
+  const { id, name } = validateAgentPackScaffoldInput(input);
+  return `import { describe, expect, it } from "vitest";
+
+import { controlPlane } from "./control-plane";
+import { manifest } from "./manifest";
+import { runner } from "./runner";
+import { web } from "./web";
+
+describe(${JSON.stringify(`${name} runtime package`)}, () => {
+  it("keeps every runtime export bound to the manifest identity", () => {
+    expect(manifest.id).toBe(${JSON.stringify(id)});
+    expect(controlPlane.packId).toBe(manifest.id);
+    expect(runner.packId).toBe(manifest.id);
+    expect(web.packId).toBe(manifest.id);
+    expect(runner.runtimeVersion).toBe(controlPlane.runtimeVersion);
+    expect(web.runtimeVersion).toBe(controlPlane.runtimeVersion);
+  });
+
+  it("passes required deterministic package health and eval bindings", async () => {
+    for (const health of controlPlane.health.filter((item) => item.required)) {
+      await expect(health.check()).resolves.toMatchObject({ ok: true });
+    }
+    for (const evaluation of controlPlane.evals.filter((item) => item.required)) {
+      await expect(evaluation.run()).resolves.toMatchObject({ ok: true });
+    }
+  });
+});
+`;
+};
 
 export const registerWorkbenchModuleSource = (source: string, id: string) => {
   if (!agentPackIdPattern.test(id)) throw new Error("Agent Pack id is invalid.");

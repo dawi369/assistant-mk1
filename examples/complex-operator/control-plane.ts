@@ -1,5 +1,6 @@
 import {
   defineControlPlaneModule,
+  type ControlPlaneRuntimeModule,
   type RuntimeRecord,
 } from "@assistant-mk1/agent-sdk/control-plane";
 
@@ -65,7 +66,7 @@ export const operatorSnapshotTool = {
   },
 } as const;
 
-export const controlPlane = defineControlPlaneModule({
+const controlPlaneDefinition: Omit<ControlPlaneRuntimeModule, "apiVersion" | "kind"> = {
   packId: "complex-operator",
   runtimeVersion: "1.2.3",
   compatiblePackVersions: "^1.1.0",
@@ -328,6 +329,48 @@ export const controlPlane = defineControlPlaneModule({
         };
       },
     },
+    {
+      type: "complex-operator.status",
+      engine: "cloudflare",
+      label: "Check operator status",
+      description: "Exercise a second isolated workflow with explicit conformance input.",
+      inputSchema: {
+        type: "object",
+        required: ["scope"],
+        additionalProperties: false,
+        properties: { scope: { type: "string", minLength: 1, maxLength: 80 } },
+      },
+      outputSchema: {
+        type: "object",
+        required: ["scope", "signal"],
+        additionalProperties: false,
+        properties: {
+          scope: { type: "string" },
+          signal: { type: "object" },
+        },
+      },
+      conformanceInput: { scope: "installed-package" },
+      form: [
+        {
+          name: "scope",
+          label: "Scope",
+          description: "Deterministic status scope.",
+          kind: "text",
+          placeholder: "installed-package",
+        },
+      ],
+      toolIds: ["operator.signal.read"],
+      cancellation: { adapter: "none", physicalAbort: "unsupported" },
+      async execute(input, context) {
+        const signal = await context.tools.invoke("operator.signal.read", {});
+        if (!signal.ok) return signal;
+        return {
+          ok: true,
+          output: { scope: String(input.scope), signal: signal.output },
+          summary: "Complex operator status checked.",
+        };
+      },
+    },
   ],
   health: [
     {
@@ -358,7 +401,9 @@ export const controlPlane = defineControlPlaneModule({
       run: () => ({ ok: true, summary: "Runtime execution is covered by conformance." }),
     },
   ],
-});
+};
+
+export const controlPlane = defineControlPlaneModule(controlPlaneDefinition);
 
 export const operatorActionTool = controlPlane.tools.find(
   (tool) => tool.id === "operator.action.execute",

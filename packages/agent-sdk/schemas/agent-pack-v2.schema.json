@@ -48,7 +48,22 @@
     "artifactRenderers": { "type": "array", "items": { "type": "object" } },
     "healthChecks": { "type": "array", "items": { "type": "object" } },
     "evals": { "type": "array", "items": { "type": "object" } },
-    "compatibility": { "type": "object" },
+    "compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["packApi", "minimumWorkbenchVersion"],
+      "properties": {
+        "packApi": { "const": 2 },
+        "minimumWorkbenchVersion": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?$"
+        },
+        "maximumWorkbenchVersion": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?$"
+        }
+      }
+    },
     "resourceLimits": { "type": "object" },
     "smokeScenarios": { "type": "array", "items": { "type": "object" } },
     "prompt": { "type": "string", "minLength": 1 }

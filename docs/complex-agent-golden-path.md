@@ -12,16 +12,21 @@ policy and lifecycle services.
 
 ```bash
 pnpm install --frozen-lockfile
-pnpm workbench:init
+pnpm workbench init
 # Set OPENROUTER_API_KEY in .env.local and cloudflare/control-plane/.dev.vars.
-pnpm workbench:doctor --offline
-pnpm dev:workbench
+pnpm workbench doctor --offline
+pnpm workbench dev
 ```
 
-`workbench:init` creates only missing local files, fills documented blank or
+`workbench init` creates only missing local files, fills documented blank or
 placeholder local values, generates matching transport secrets, enables the
 local Admin identity, and applies forward D1 migrations. It never overwrites a
-configured value.
+configured credential or custom endpoint; it does upgrade the retired inline
+local-runner default to the complete signed path.
+
+The normal developer command starts the signed local runner as well as Next.js,
+LangGraph, and Cloudflare. Repository Analyst is therefore the first end-to-end
+sanity check: it must complete its Fly-bound snapshot through the ordinary UI.
 
 ## 2. Scaffold A Package
 
@@ -30,25 +35,27 @@ product package separately:
 
 ```bash
 pnpm agent-packs:create --id polymancer --name "Polymancer"
-pnpm agent-packs:compile
-pnpm agent-packs:inspect --pack polymancer
-pnpm agent-packs:test --pack polymancer
+pnpm workbench pack check --pack polymancer
 ```
 
 The scaffold creates and registers:
 
-| File               | Responsibility                                                         |
-| ------------------ | ---------------------------------------------------------------------- |
-| `prompt.xml`       | Model identity, behavior, refusal, and output contract                 |
-| `manifest.ts`      | JSON-safe Pack API v2 export                                           |
-| `index.ts`         | Identity, tools, workflows, risk, connections, state, triggers, UI     |
-| `control-plane.ts` | Cloudflare-safe tools, workflows, proposals, managed state, evals      |
-| `runner.ts`        | Signed Node/Fly executors; no tenant selection or raw credential input |
-| `web.ts`           | Trusted artifact and managed-state renderers                           |
-| `package.json`     | Runtime Module v1 subpath exports                                      |
+| File                    | Responsibility                                                         |
+| ----------------------- | ---------------------------------------------------------------------- |
+| `prompt.xml`            | Model identity, behavior, refusal, and output contract                 |
+| `manifest.ts`           | JSON-safe Pack API v2 export                                           |
+| `index.ts`              | Identity, tools, workflows, risk, connections, state, triggers, UI     |
+| `control-plane.ts`      | Cloudflare-safe tools, workflows, proposals, managed state, evals      |
+| `runner.ts`             | Signed Node/Fly executors; no tenant selection or raw credential input |
+| `web.ts`                | Trusted artifact and managed-state renderers                           |
+| `control-plane.test.ts` | Package-local identity, health, and eval characterization              |
+| `README.md`             | Package-local development loop and authority checklist                 |
+| `package.json`          | Runtime Module v1 subpath exports                                      |
 
 The compiler adds only the package entry to `workbench.config.ts` and generates
-the environment registries. Generated files are tracked and checked in CI.
+the environment registries. Generated files are tracked and checked in CI. The
+focused `pack check` command compiles, validates, inspects, and executes the
+package health, eval, and deterministic workflow contract.
 
 ## 3. Start Read-Only
 
@@ -160,6 +167,7 @@ pnpm agent-packs:compile --check
 pnpm agent-packs:validate
 pnpm agent-packs:inspect --pack polymancer
 pnpm agent-packs:test --pack polymancer
+pnpm workbench pack check --pack polymancer
 pnpm conformance:agent-system
 pnpm conformance:level2
 pnpm conformance:level3

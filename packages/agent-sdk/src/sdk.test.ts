@@ -6,6 +6,7 @@ import {
   defaultActionPort,
   defaultConnectionPort,
   isPackVersionCompatible,
+  isWorkbenchVersionCompatible,
   validateSchemaValue,
 } from "./index.js";
 
@@ -15,6 +16,15 @@ describe("Agent Runtime SDK", () => {
     expect(isPackVersionCompatible("2.0.0", "^1.2.0")).toBe(false);
     expect(isPackVersionCompatible("1.4.0", ">=1.2.0 <2.0.0")).toBe(true);
     expect(isPackVersionCompatible("invalid", "*")).toBe(false);
+  });
+
+  it("resolves exact, minimum-only, and bounded workbench versions", () => {
+    expect(isWorkbenchVersionCompatible("1.0.0", "1.0.0")).toBe(true);
+    expect(isWorkbenchVersionCompatible("1.0.0", "0.9.0")).toBe(true);
+    expect(isWorkbenchVersionCompatible("1.0.0", "0.9.0", "1.0.0")).toBe(true);
+    expect(isWorkbenchVersionCompatible("1.0.0", "1.1.0")).toBe(false);
+    expect(isWorkbenchVersionCompatible("1.0.0", "0.9.0", "0.9.9")).toBe(false);
+    expect(isWorkbenchVersionCompatible("1.0.0", "invalid")).toBe(false);
   });
 
   it("validates bounded object schemas", () => {

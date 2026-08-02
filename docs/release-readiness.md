@@ -70,7 +70,7 @@ browser observation.
 ## Final checklist
 
 - [ ] Clean clone installs with `pnpm install --frozen-lockfile`, applies local
-      migrations, passes `pnpm workbench:doctor`, and reaches usable chat from
+      migrations, passes `pnpm workbench doctor`, and reaches usable chat from
       README instructions only.
 - [ ] All repository, browser, conformance, Docker, build, formatting,
       dependency-audit, and generated-registry gates are green.

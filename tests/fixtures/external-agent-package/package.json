@@ -26,6 +26,6 @@
     }
   },
   "dependencies": {
-    "@assistant-mk1/agent-sdk": "^0.1.0"
+    "@assistant-mk1/agent-sdk": "^1.0.0"
   }
 }

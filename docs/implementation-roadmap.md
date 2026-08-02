@@ -171,6 +171,7 @@ tool and workbench work:
   owner/admin/member enforcement, and cross-account admission checks.
 - Product-facing run cancellation, supported workflow retry, approval resume,
   and reconnect recovery.
-- One-command local startup and verification, environment templates,
+- One-command complete local startup and verification, including the signed
+  runner path, environment templates,
   contribution/security guidance, an isolated browser release suite, and an
   explicit read-only release contract.

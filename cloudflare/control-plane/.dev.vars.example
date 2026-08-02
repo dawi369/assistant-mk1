@@ -6,10 +6,11 @@ LANGGRAPH_UPSTREAM_TOKEN=replace-with-the-local-langgraph-token
 WORKBENCH_AGENT_CONNECTION_SECRET=replace-with-a-long-random-secret
 WORKBENCH_CALLBACK_SIGNING_SECRET=replace-with-a-long-random-secret
 
-# Optional Fly runner path. Inline Cloudflare execution remains the default.
-WORKBENCH_RUNNER_TRANSPORT=inline
-WORKBENCH_RUNNER_URL=
-WORKBENCH_RUNNER_SIGNING_SECRET=
+# The normal local workbench starts a signed Fly-shaped runner gateway.
+WORKBENCH_RUNNER_TRANSPORT=fly
+WORKBENCH_RUNNER_URL=http://127.0.0.1:3101/workbench/tool-runners/invocations
+WORKBENCH_RUNNER_SIGNING_SECRET=replace-with-a-long-random-secret
+WORKBENCH_CALLBACK_URL=http://127.0.0.1:8787/workbench/run-callbacks
 
 # Optional signed operator alert delivery. Configure both or neither.
 WORKBENCH_OPERATOR_ALERT_WEBHOOK_URL=

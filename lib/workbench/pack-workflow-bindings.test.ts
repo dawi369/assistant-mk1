@@ -6,7 +6,9 @@ import {
   packWorkflowBindings,
   resolvePackWorkflowBinding,
 } from "./pack-workflow-bindings";
-import { resolvePackRuntime } from "../agent-runtime/registry";
+import { resolvePackRuntime, resolveRuntimeCompatibility } from "../agent-runtime/registry";
+import { agentControlPlaneRegistry } from "../../generated/agent-runtime/control-plane";
+import { agentManifestRegistry } from "../../generated/agent-runtime/manifests";
 
 describe("pack workflow bindings", () => {
   it("keeps incompatible historical snapshots chat-only", () => {
@@ -18,6 +20,23 @@ describe("pack workflow bindings", () => {
       runnable: false,
       reason: "runtime_incompatible",
     });
+  });
+  it("fails stale generated snapshots closed when the workbench is incompatible", () => {
+    const manifest = agentManifestRegistry["repo-analyst"].module;
+    const controlPlane = agentControlPlaneRegistry["repo-analyst"].module;
+    expect(
+      resolveRuntimeCompatibility({
+        workbenchVersion: "1.0.0",
+        packVersion: manifest.version,
+        manifest: {
+          compatibility: {
+            ...manifest.compatibility,
+            minimumWorkbenchVersion: "1.1.0",
+          },
+        },
+        controlPlane,
+      }),
+    ).toMatchObject({ runnable: false, reason: "workbench_incompatible" });
   });
   it("returns a runnable binding for Polymancer and keeps Swordfish parked", () => {
     expect(

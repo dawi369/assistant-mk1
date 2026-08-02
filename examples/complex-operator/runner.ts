@@ -1,8 +1,8 @@
-import { defineRunnerModule } from "@assistant-mk1/agent-sdk/runner";
+import { defineRunnerModule, type RunnerRuntimeModule } from "@assistant-mk1/agent-sdk/runner";
 
-import { operatorActionTool, operatorSnapshotTool } from "./control-plane";
+import { operatorActionTool, operatorSnapshotTool } from "./control-plane.js";
 
-export const runner = defineRunnerModule({
+const runnerDefinition: Omit<RunnerRuntimeModule, "apiVersion" | "kind"> = {
   packId: "complex-operator",
   runtimeVersion: "1.2.3",
   compatiblePackVersions: "^1.1.0",
@@ -83,4 +83,6 @@ export const runner = defineRunnerModule({
       },
     },
   ],
-});
+};
+
+export const runner = defineRunnerModule(runnerDefinition);

@@ -21,7 +21,7 @@
     "projectId": "${WORKBENCH_PRODUCTION_VERCEL_PROJECT_ID}",
     "origin": "${WORKBENCH_PRODUCTION_VERCEL_ORIGIN}",
     "framework": "nextjs",
-    "nodeVersion": "22.x"
+    "nodeVersion": "24.x"
   },
   "workos": {
     "applicationName": "assistant-mk1-production",

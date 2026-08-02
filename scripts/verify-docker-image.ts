@@ -64,7 +64,7 @@ const main = async () => {
       "sh",
       imageTag,
       "-c",
-      "test -d /app/.langgraph_api && test -w /app/.langgraph_api",
+      'test "$(node -p "process.versions.node.split(\'.\')[0]")" = 24 && test -d /app/.langgraph_api && test -w /app/.langgraph_api',
     ]);
     await run("docker", [
       "run",

@@ -2,16 +2,40 @@
   "name": "@assistant-mk1/pack-complex-operator",
   "version": "1.1.0",
   "private": true,
+  "files": [
+    "dist",
+    "prompt.xml"
+  ],
   "type": "module",
   "exports": {
-    ".": "./manifest.ts",
-    "./manifest": "./manifest.ts",
-    "./control-plane": "./control-plane.ts",
-    "./runner": "./runner.ts",
-    "./web": "./web.ts"
+    ".": {
+      "types": "./dist/manifest.d.ts",
+      "default": "./dist/manifest.js"
+    },
+    "./manifest": {
+      "types": "./dist/manifest.d.ts",
+      "default": "./dist/manifest.js"
+    },
+    "./control-plane": {
+      "types": "./dist/control-plane.d.ts",
+      "default": "./dist/control-plane.js"
+    },
+    "./runner": {
+      "types": "./dist/runner.d.ts",
+      "default": "./dist/runner.js"
+    },
+    "./web": {
+      "types": "./dist/web.d.ts",
+      "default": "./dist/web.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist",
+    "prepack": "pnpm clean && pnpm build"
   },
   "dependencies": {
-    "@assistant-mk1/agent-sdk": "workspace:*",
-    "react": "^19.2.6"
+    "@assistant-mk1/agent-sdk": "workspace:^",
+    "react": "19.2.6"
   }
 }

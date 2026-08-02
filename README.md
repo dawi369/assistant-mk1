@@ -88,23 +88,28 @@ See [Architecture](docs/architecture.md), [Tenancy](docs/tenancy.md), and the
 
 Requirements:
 
-- Node.js 22
+- Node.js 24 LTS for release parity; Node.js 26 is accepted for local development
 - pnpm 10.33.0
 - an OpenRouter API key
 
+CI, Docker, LangGraph, Fly, and hosted Vercel builds remain pinned to Node 24.
+Node 26 local development is a convenience compatibility path; reproduce any
+runtime-sensitive failure under Node 24 before release.
+
 ```bash
 pnpm install --frozen-lockfile
-pnpm workbench:init
+pnpm workbench init
 ```
 
-`workbench:init` creates missing local environment files, generates matching
+`workbench init` creates missing local environment files, generates matching
 local-only transport secrets, enables the local Admin user, applies forward D1
-migrations, and never overwrites configured values. Set `OPENROUTER_API_KEY` in
+migrations, and preserves configured credentials and custom endpoints. It
+upgrades the retired inline local-runner default to the complete signed path. Set `OPENROUTER_API_KEY` in
 both `.env.local` and `cloudflare/control-plane/.dev.vars`, then verify the
 configuration:
 
 ```bash
-pnpm workbench:doctor --offline
+pnpm workbench doctor --offline
 ```
 
 The migration command preserves existing development data. The separate
@@ -114,14 +119,15 @@ intentional reset.
 Start the complete workbench:
 
 ```bash
-pnpm dev:workbench
+pnpm workbench dev
 ```
 
-Then run `pnpm workbench:doctor` in another terminal to verify Worker reachability,
-the D1 binding, matching transport secrets, and the bootstrapped local identity.
+This starts Next.js, LangGraph, the Cloudflare Worker, and the signed local runner
+gateway. Then run `pnpm workbench doctor` in another terminal to verify provider
+configuration, Worker/D1 identity, LangGraph, and runner reachability.
 
 To inspect an existing checkout without creating files or applying migrations,
-run `pnpm workbench:init -- --check`.
+run `pnpm workbench init --check`.
 
 | Service           | Local URL               |
 | ----------------- | ----------------------- |
@@ -153,6 +159,7 @@ pnpm agent-packs:validate
 pnpm agent-packs:inspect --pack repo-analyst
 pnpm agent-packs:smoke --pack repo-analyst # static manifest/registry mapping smoke
 pnpm agent-packs:test --pack repo-analyst  # executable package health/eval gate
+pnpm workbench pack check --pack repo-analyst # focused authoring gate
 pnpm conformance:agent-system              # aggregate SDK/compiler/runtime gate
 pnpm test:service-boundaries               # live local Worker/Fly/browser workflow smoke
 ```
@@ -176,6 +183,7 @@ pnpm test:e2e      # signed-out and trusted-local browser journeys
 pnpm conformance:level2       # executable Level 0-2 evidence report
 pnpm conformance:level3       # executable local Level 3 evidence report
 pnpm conformance:agent-system # executable package and extension-system report
+pnpm conformance:extension-contract # installed external-package contract proof
 pnpm conformance:data-lifecycle # retention, export, recovery, and purge
 pnpm conformance:connections    # Vault and OAuth/API-key brokerage
 pnpm conformance:actions        # policy-controlled synthetic mutation
@@ -186,6 +194,7 @@ pnpm acceptance:hosted:level3 # guarded non-customer hosted failure drills
 pnpm acceptance:hosted:vault  # guarded WorkOS Vault lifecycle evidence
 pnpm acceptance:hosted:mutation # guarded isolated synthetic mutation evidence
 pnpm release:check            # repository, Docker, and Level 2-3 local gates
+pnpm fork:check               # complete downstream update acceptance gate
 ```
 
 The browser suite uses isolated D1 state under `output/playwright/`. Runtime

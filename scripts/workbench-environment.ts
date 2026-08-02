@@ -24,7 +24,7 @@ export type WorkbenchEnvironment = {
     projectId: string;
     origin: string;
     framework: "nextjs";
-    nodeVersion: "22.x";
+    nodeVersion: "24.x";
   };
   workos: { applicationName: string; applicationId: string; acceptanceWorkspaceId: string };
   secretEnvironmentVariables: {
@@ -101,7 +101,7 @@ export const parseWorkbenchEnvironment = (value: unknown): WorkbenchEnvironment 
       projectId: requireString(vercel.projectId, "vercel.projectId", failures),
       origin: requireString(vercel.origin, "vercel.origin", failures),
       framework: requireString(vercel.framework, "vercel.framework", failures) as "nextjs",
-      nodeVersion: requireString(vercel.nodeVersion, "vercel.nodeVersion", failures) as "22.x",
+      nodeVersion: requireString(vercel.nodeVersion, "vercel.nodeVersion", failures) as "24.x",
     },
     workos: {
       applicationName: requireString(workos.applicationName, "workos.applicationName", failures),
@@ -158,7 +158,7 @@ export const parseWorkbenchEnvironment = (value: unknown): WorkbenchEnvironment 
   } satisfies WorkbenchEnvironment;
 
   if (parsed.vercel.framework !== "nextjs") failures.push("vercel.framework must be nextjs");
-  if (parsed.vercel.nodeVersion !== "22.x") failures.push("vercel.nodeVersion must be 22.x");
+  if (parsed.vercel.nodeVersion !== "24.x") failures.push("vercel.nodeVersion must be 24.x");
 
   if (failures.length) throw new Error(failures.join("; "));
   return parsed;

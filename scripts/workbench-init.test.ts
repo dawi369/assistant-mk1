@@ -46,6 +46,13 @@ describe("workbench initializer", () => {
       value(worker, "WORKBENCH_CALLBACK_SIGNING_SECRET"),
     );
     expect(value(worker, "WORKBENCH_AGENT_CONNECTION_SECRET")?.length).toBeGreaterThan(32);
+    expect(value(frontend, "WORKBENCH_RUNNER_SIGNING_SECRET")).toBe(
+      value(worker, "WORKBENCH_RUNNER_SIGNING_SECRET"),
+    );
+    expect(value(worker, "WORKBENCH_RUNNER_TRANSPORT")).toBe("fly");
+    expect(value(worker, "WORKBENCH_CALLBACK_URL")).toBe(
+      "http://127.0.0.1:8787/workbench/run-callbacks",
+    );
     expect(value(frontend, "WORKBENCH_ADMIN_USER_IDS")).toBe("dev-user");
     expect(result.needsProviderKey).toBe(true);
   });
@@ -73,5 +80,32 @@ describe("workbench initializer", () => {
     const frontend = readFileSync(resolve(root, ".env.local"), "utf8");
     expect(value(frontend, "CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN")).toBe("existing-token");
     expect(value(frontend, "WORKBENCH_ADMIN_USER_IDS")).toBe("existing-admin");
+  });
+
+  it("upgrades only the retired inline local transport default", async () => {
+    const root = fixtureRoot();
+    writeFileSync(
+      resolve(root, "cloudflare/control-plane/.dev.vars"),
+      readFileSync(resolve(root, "cloudflare/control-plane/.dev.vars.example"), "utf8")
+        .replace("WORKBENCH_RUNNER_TRANSPORT=fly", "WORKBENCH_RUNNER_TRANSPORT=inline")
+        .replace(
+          "WORKBENCH_RUNNER_URL=http://127.0.0.1:3101/workbench/tool-runners/invocations",
+          "WORKBENCH_RUNNER_URL=",
+        )
+        .replace(
+          "WORKBENCH_CALLBACK_URL=http://127.0.0.1:8787/workbench/run-callbacks",
+          "WORKBENCH_CALLBACK_URL=",
+        ),
+    );
+
+    await initializeWorkbench({ root, runMigration: false });
+    const worker = readFileSync(resolve(root, "cloudflare/control-plane/.dev.vars"), "utf8");
+    expect(value(worker, "WORKBENCH_RUNNER_TRANSPORT")).toBe("fly");
+    expect(value(worker, "WORKBENCH_RUNNER_URL")).toBe(
+      "http://127.0.0.1:3101/workbench/tool-runners/invocations",
+    );
+    expect(value(worker, "WORKBENCH_CALLBACK_URL")).toBe(
+      "http://127.0.0.1:8787/workbench/run-callbacks",
+    );
   });
 });

@@ -1,6 +1,6 @@
-import { defineAgentPack } from "@assistant-mk1/agent-sdk/manifest";
+import { defineAgentPack, type LocalAgentPackManifest } from "@assistant-mk1/agent-sdk/manifest";
 
-export const manifest = defineAgentPack({
+export const manifest: LocalAgentPackManifest = defineAgentPack({
   id: "complex-operator",
   name: "Complex Operator",
   description: "Deterministic external-style package proving the complete extension contract.",
@@ -52,6 +52,13 @@ export const manifest = defineAgentPack({
       status: "declared",
       userInvocable: true,
       description: "Combine inline and signed-runner evidence into a structured operator report.",
+    },
+    {
+      type: "complex-operator.status",
+      engine: "cloudflare",
+      status: "declared",
+      userInvocable: true,
+      description: "Check deterministic operator status with explicit input.",
     },
   ],
   ui: {
@@ -186,7 +193,7 @@ export const manifest = defineAgentPack({
       required: true,
     },
   ],
-  compatibility: { packApi: 2, minimumWorkbenchVersion: "1.0.0-preview.1" },
+  compatibility: { packApi: 2, minimumWorkbenchVersion: "1.0.0" },
   resourceLimits: {
     maxRunSeconds: 15,
     maxToolCallsPerRun: 3,

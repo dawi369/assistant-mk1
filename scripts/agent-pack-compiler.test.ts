@@ -8,8 +8,13 @@ import {
   loadAgentModules,
   resolveAgentModuleImportTarget,
   validateInstalledPackageContract,
-  validateLoadedModules,
+  validateLoadedModules as validateLoadedModulesForWorkbench,
 } from "./agent-pack-compiler";
+
+const validateLoadedModules = (
+  modules: Parameters<typeof validateLoadedModulesForWorkbench>[0],
+  workbenchVersion = "1.0.0",
+) => validateLoadedModulesForWorkbench(modules, workbenchVersion);
 
 const temporaryRoots: string[] = [];
 const temporaryRoot = () => {
@@ -53,6 +58,103 @@ describe("agent pack compiler", () => {
       packageMetadata: { ...modules[0]!.packageMetadata, version: "9.9.9" },
     };
     expect(() => validateLoadedModules([mismatch])).toThrow("does not match manifest");
+  });
+
+  it("accepts exact, minimum-only, and bounded workbench compatibility", async () => {
+    const [source] = await loadAgentModules(process.cwd());
+    if (!source) throw new Error("At least one pack must be configured.");
+    const withCompatibility = (
+      minimumWorkbenchVersion: string,
+      maximumWorkbenchVersion?: string,
+    ) => [
+      {
+        ...source,
+        manifest: {
+          ...source.manifest,
+          compatibility: {
+            ...source.manifest.compatibility,
+            minimumWorkbenchVersion,
+            ...(maximumWorkbenchVersion ? { maximumWorkbenchVersion } : {}),
+          },
+        },
+      },
+    ];
+
+    expect(() => validateLoadedModules(withCompatibility("1.0.0"))).not.toThrow();
+    expect(() => validateLoadedModules(withCompatibility("0.9.0"))).not.toThrow();
+    expect(() => validateLoadedModules(withCompatibility("0.9.0", "1.0.0"))).not.toThrow();
+  });
+
+  it("rejects malformed and incompatible workbench declarations", async () => {
+    const [source] = await loadAgentModules(process.cwd());
+    if (!source) throw new Error("At least one pack must be configured.");
+    const changed = (minimumWorkbenchVersion: string, maximumWorkbenchVersion?: string) => [
+      {
+        ...source,
+        manifest: {
+          ...source.manifest,
+          compatibility: {
+            ...source.manifest.compatibility,
+            minimumWorkbenchVersion,
+            ...(maximumWorkbenchVersion ? { maximumWorkbenchVersion } : {}),
+          },
+        },
+      },
+    ];
+
+    expect(() => validateLoadedModules(changed("later"))).toThrow("malformed minimum");
+    expect(() => validateLoadedModules(changed("1.1.0"))).toThrow("incompatible with workbench");
+    expect(() => validateLoadedModules(changed("0.9.0", "0.9.9"))).toThrow(
+      "incompatible with workbench",
+    );
+    expect(() => validateLoadedModules(changed("1.1.0", "1.0.0"))).toThrow(
+      "inverted workbench compatibility range",
+    );
+  });
+
+  it("requires valid conformance input for workflows without defaults", async () => {
+    const modules = await loadAgentModules(process.cwd());
+    const source = modules.find((module) => module.controlPlane.workflows.length > 0);
+    if (!source) throw new Error("At least one workflow pack must be configured.");
+    const workflow = source.controlPlane.workflows[0]!;
+    const changed = {
+      ...source,
+      controlPlane: {
+        ...source.controlPlane,
+        workflows: [
+          {
+            ...workflow,
+            inputSchema: {
+              type: "object",
+              required: ["scope"],
+              additionalProperties: false,
+              properties: { scope: { type: "string", minLength: 1 } },
+            },
+            conformanceInput: undefined,
+            normalizeInput: undefined,
+          },
+        ],
+      },
+      manifest: {
+        ...source.manifest,
+        workflows: source.manifest.workflows.filter((declared) => declared.type === workflow.type),
+      },
+    };
+
+    expect(() => validateLoadedModules([changed])).toThrow("requires conformanceInput.scope");
+    expect(() =>
+      validateLoadedModules([
+        {
+          ...changed,
+          controlPlane: {
+            ...changed.controlPlane,
+            workflows: [
+              { ...changed.controlPlane.workflows[0]!, conformanceInput: { scope: "ci" } },
+            ],
+          },
+        },
+      ]),
+    ).not.toThrow();
   });
 
   it("rejects missing providers and incompatible runtimes", async () => {

@@ -21,7 +21,7 @@
     "projectId": "${WORKBENCH_ACCEPTANCE_VERCEL_PROJECT_ID}",
     "origin": "${WORKBENCH_ACCEPTANCE_VERCEL_ORIGIN}",
     "framework": "nextjs",
-    "nodeVersion": "22.x"
+    "nodeVersion": "24.x"
   },
   "workos": {
     "applicationName": "assistant-mk1-acceptance",

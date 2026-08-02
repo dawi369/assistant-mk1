@@ -17,7 +17,9 @@ Production candidate extending the workbench to Operational L3 and Authority A2.
 - Deterministic Complex Operator mutation evidence without financial actions or
   public provider traffic.
 - New lifecycle, connection, mutation, hosted Vault, and hosted mutation gates.
-- Deterministic synthetic release screenshots and strict Node 22/package
+- Stable unpublished `@assistant-mk1/agent-sdk` SDK 1.0.0 contract with explicit
+  workbench-version compatibility and normalized declaration/schema hashes.
+- Deterministic synthetic release screenshots and strict Node 24/package
   metadata validation.
 
 The tag remains blocked until the same-commit hosted checklist in

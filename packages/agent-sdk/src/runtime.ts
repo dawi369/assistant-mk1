@@ -180,6 +180,7 @@ export type RuntimeWorkflowBinding = {
   description: string;
   inputSchema: JsonSchema;
   outputSchema: JsonSchema;
+  conformanceInput?: RuntimeRecord;
   form: readonly WorkflowFormField[];
   toolIds: readonly string[];
   cancellation: {

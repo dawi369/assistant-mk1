@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 
 import { diagnoseWorkbench } from "./workbench-doctor-core";
+import { assessLocalNodeRuntime } from "./node-runtime";
 
 type InitOptions = {
   root: string;
@@ -25,14 +26,22 @@ const readValue = (source: string, key: string) => {
   return line?.slice(key.length + 1).trim();
 };
 
-const setPlaceholderValue = (source: string, key: string, value: string) => {
+const setPlaceholderValue = (
+  source: string,
+  key: string,
+  value: string,
+  replaceableValues: readonly string[] = [],
+) => {
   const lines = source.split(/\r?\n/);
   const index = lines.findIndex((line) => line.startsWith(`${key}=`));
   if (index < 0) {
     lines.push(`${key}=${value}`);
     return { source: lines.join("\n"), changed: true };
   }
-  if (!placeholder(lines[index]?.slice(key.length + 1))) return { source, changed: false };
+  const current = lines[index]?.slice(key.length + 1).trim();
+  if (!placeholder(current) && !replaceableValues.includes(current ?? "")) {
+    return { source, changed: false };
+  }
   lines[index] = `${key}=${value}`;
   return { source: lines.join("\n"), changed: true };
 };
@@ -41,11 +50,12 @@ const writeConfiguredFile = (
   absolute: string,
   source: string,
   values: Readonly<Record<string, string>>,
+  replaceableValues: Readonly<Record<string, readonly string[]>> = {},
 ) => {
   let next = source;
   const configured: string[] = [];
   for (const [key, value] of Object.entries(values)) {
-    const result = setPlaceholderValue(next, key, value);
+    const result = setPlaceholderValue(next, key, value, replaceableValues[key]);
     next = result.source;
     if (result.changed) configured.push(key);
   }
@@ -93,17 +103,35 @@ export const initializeWorkbench = async ({
     undefined,
     readValue(worker, "WORKBENCH_AGENT_CONNECTION_SECRET"),
   );
+  const runnerSigningSecret = sharedValue(
+    readValue(frontend, "WORKBENCH_RUNNER_SIGNING_SECRET"),
+    readValue(worker, "WORKBENCH_RUNNER_SIGNING_SECRET"),
+  );
+  const langGraphProxyToken = sharedValue(undefined, readValue(worker, "LANGGRAPH_UPSTREAM_TOKEN"));
   const configured = [
     ...writeConfiguredFile(frontendPath, frontend, {
       CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN: transportToken,
       WORKBENCH_CALLBACK_SIGNING_SECRET: callbackSecret,
+      WORKBENCH_RUNNER_SIGNING_SECRET: runnerSigningSecret,
       WORKBENCH_ADMIN_USER_IDS: readValue(frontend, "WORKBENCH_DEV_USER_ID") || "dev-user",
     }).map((key) => `.env.local:${key}`),
-    ...writeConfiguredFile(workerPath, worker, {
-      CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN: transportToken,
-      WORKBENCH_AGENT_CONNECTION_SECRET: agentConnectionSecret,
-      WORKBENCH_CALLBACK_SIGNING_SECRET: callbackSecret,
-    }).map((key) => `cloudflare/control-plane/.dev.vars:${key}`),
+    ...writeConfiguredFile(
+      workerPath,
+      worker,
+      {
+        CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN: transportToken,
+        WORKBENCH_AGENT_CONNECTION_SECRET: agentConnectionSecret,
+        WORKBENCH_CALLBACK_SIGNING_SECRET: callbackSecret,
+        WORKBENCH_RUNNER_SIGNING_SECRET: runnerSigningSecret,
+        LANGGRAPH_UPSTREAM_TOKEN: langGraphProxyToken,
+        WORKBENCH_RUNNER_TRANSPORT: "fly",
+        WORKBENCH_RUNNER_URL: "http://127.0.0.1:3101/workbench/tool-runners/invocations",
+        WORKBENCH_CALLBACK_URL: "http://127.0.0.1:8787/workbench/run-callbacks",
+      },
+      {
+        WORKBENCH_RUNNER_TRANSPORT: ["inline"],
+      },
+    ).map((key) => `cloudflare/control-plane/.dev.vars:${key}`),
   ];
 
   if (runMigration) {
@@ -115,9 +143,13 @@ export const initializeWorkbench = async ({
     if (migration.status !== 0) throw new Error("Local D1 migration failed");
   }
 
-  const result = await diagnoseWorkbench({ root, offline: true, environment: {} });
-  const relevantFailures = result.failures.filter((failure) => !failure.startsWith("Node.js 22.x"));
-  if (relevantFailures.length) throw new Error(relevantFailures.join("\n"));
+  const result = await diagnoseWorkbench({
+    root,
+    offline: true,
+    environment: {},
+    allowMissingProviderKey: true,
+  });
+  if (result.failures.length) throw new Error(result.failures.join("\n"));
 
   const initializedFrontend = readFileSync(frontendPath, "utf8");
   const initializedWorker = readFileSync(workerPath, "utf8");
@@ -139,9 +171,8 @@ const main = async () => {
     console.log("Workbench local setup is ready.");
     return;
   }
-  const nodeMajor = Number.parseInt(process.versions.node.split(".")[0] ?? "", 10);
-  if (nodeMajor !== 22)
-    throw new Error(`Node.js 22.x is required; current runtime is ${process.version}`);
+  const nodeRuntime = assessLocalNodeRuntime();
+  if (!nodeRuntime.supported) throw new Error(nodeRuntime.message);
   const result = await initializeWorkbench({
     root: process.cwd(),
     runMigration: !process.argv.includes("--no-migrate"),
@@ -153,8 +184,8 @@ const main = async () => {
       "next - set OPENROUTER_API_KEY in .env.local and cloudflare/control-plane/.dev.vars",
     );
   }
-  console.log("next - pnpm dev:workbench");
-  console.log("next - run pnpm workbench:doctor in another terminal");
+  console.log("next - pnpm workbench dev");
+  console.log("next - run pnpm workbench doctor in another terminal");
 };
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

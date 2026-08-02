@@ -1,12 +1,19 @@
 import type {
+  ControlPlaneRuntimeModule,
+  LocalAgentPackManifest,
   RuntimeRecord,
   RuntimeWorkflowBinding,
   WorkflowFormField,
 } from "@assistant-mk1/agent-sdk";
-import { assertSchemaValue, isPackVersionCompatible } from "@assistant-mk1/agent-sdk";
+import {
+  assertSchemaValue,
+  isPackVersionCompatible,
+  isWorkbenchVersionCompatible,
+} from "@assistant-mk1/agent-sdk";
 
 import { agentControlPlaneRegistry } from "../../generated/agent-runtime/control-plane";
 import { agentManifestRegistry } from "../../generated/agent-runtime/manifests";
+import { compiledWorkbenchVersion } from "../../generated/agent-runtime/platform";
 
 export type PackWorkflowRequest = {
   executionMode: "dry_run";
@@ -105,23 +112,51 @@ export const packWorkflowFieldDefinitions = Object.fromEntries(
   ),
 ) as Record<string, PackWorkflowFieldDefinition>;
 
-export const resolvePackRuntime = (packId: string, packVersion: string) => {
-  const controlPlane = agentControlPlaneRegistry[packId as keyof typeof agentControlPlaneRegistry];
-  if (!controlPlane) {
-    return { runnable: false as const, reason: "runtime_missing" as const };
+export const resolveRuntimeCompatibility = (input: {
+  workbenchVersion: string;
+  packVersion: string;
+  manifest: Pick<LocalAgentPackManifest, "compatibility">;
+  controlPlane: ControlPlaneRuntimeModule;
+}) => {
+  if (
+    !isWorkbenchVersionCompatible(
+      input.workbenchVersion,
+      input.manifest.compatibility.minimumWorkbenchVersion,
+      input.manifest.compatibility.maximumWorkbenchVersion,
+    )
+  ) {
+    return {
+      runnable: false as const,
+      reason: "workbench_incompatible" as const,
+      runtimeVersion: input.controlPlane.runtimeVersion,
+    };
   }
-  if (!isPackVersionCompatible(packVersion, controlPlane.module.compatiblePackVersions)) {
+  if (!isPackVersionCompatible(input.packVersion, input.controlPlane.compatiblePackVersions)) {
     return {
       runnable: false as const,
       reason: "runtime_incompatible" as const,
-      runtimeVersion: controlPlane.module.runtimeVersion,
+      runtimeVersion: input.controlPlane.runtimeVersion,
     };
   }
   return {
     runnable: true as const,
-    runtimeVersion: controlPlane.module.runtimeVersion,
-    controlPlane: controlPlane.module,
+    runtimeVersion: input.controlPlane.runtimeVersion,
+    controlPlane: input.controlPlane,
   };
+};
+
+export const resolvePackRuntime = (packId: string, packVersion: string) => {
+  const controlPlane = agentControlPlaneRegistry[packId as keyof typeof agentControlPlaneRegistry];
+  const manifest = agentManifestRegistry[packId as keyof typeof agentManifestRegistry];
+  if (!controlPlane || !manifest) {
+    return { runnable: false as const, reason: "runtime_missing" as const };
+  }
+  return resolveRuntimeCompatibility({
+    workbenchVersion: compiledWorkbenchVersion,
+    packVersion,
+    manifest: manifest.module,
+    controlPlane: controlPlane.module,
+  });
 };
 
 export const resolveRuntimeTool = (toolId: string) => {

@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "sdkVersion": "1.0.0",
+  "files": [
+    {
+      "path": "dist/compatibility.d.ts",
+      "sha256": "372d0c676ecbb20bd5ea24945285ee920a095998f47029a38d3b89dd475ffbb6"
+    },
+    {
+      "path": "dist/config.d.ts",
+      "sha256": "792cbb85418c94b167060389d14b24d2c124ddec781f3785bc0ab72d5dc6662f"
+    },
+    {
+      "path": "dist/control-plane.d.ts",
+      "sha256": "8eb200949865053db09d167a8b9fc9c2ad346b0d1e4492aa160de2c685aa290a"
+    },
+    {
+      "path": "dist/index.d.ts",
+      "sha256": "ab93a12970c5b7e41440d0def0fe7b7b83e32181442580adc4c872e2e4163881"
+    },
+    {
+      "path": "dist/manifest.d.ts",
+      "sha256": "51faa9ba93a6685534f27c9ad04dddcbef36ef51f2d37c161e3b5c431ff4006e"
+    },
+    {
+      "path": "dist/runner.d.ts",
+      "sha256": "5590123aa5f7bb8b4a2b025996c19cb0bce94f4b28a5fadcaa0394c7ce92110d"
+    },
+    {
+      "path": "dist/runtime.d.ts",
+      "sha256": "b66ceb0ed53d4cec74f3c97a9d509d60607b06cf44fa6625e48939b76050fe83"
+    },
+    {
+      "path": "dist/schema.d.ts",
+      "sha256": "bb65d208be440c55ef3a6f37231b781f37bff5ae51935fe35d0471a4afac16d8"
+    },
+    {
+      "path": "dist/web.d.ts",
+      "sha256": "29023b2b7eb8ec02358d113b2281bb83363cce63d794473878bd4feddca00fc8"
+    },
+    {
+      "path": "schemas/agent-pack-v2.schema.json",
+      "sha256": "6f584f85148fcb6433aa095ba4a5419861bee9ddd814ea189ffdcd2d3de4e325"
+    },
+    {
+      "path": "schemas/runtime-module-v1.schema.json",
+      "sha256": "a1b8f70afa52ea4edd4e64efd27131f825f2080712de1fce9d2409ab7243db0a"
+    }
+  ]
+}

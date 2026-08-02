@@ -3,6 +3,7 @@
 # dependencies
 /node_modules
 **/node_modules
+/.pnpm-store/
 /.pnp
 .pnp.*
 .yarn/*
@@ -57,7 +58,9 @@ cloudflare/control-plane/.wrangler/
 /output/playwright/
 /output/conformance/
 /output/sdk-consumer/
+/output/extension-contract/
 /packages/agent-sdk/dist/
+/examples/complex-operator/dist/
 /output/release/
 /output/backups/
 /output/environments/
