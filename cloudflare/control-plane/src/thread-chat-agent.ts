@@ -298,7 +298,10 @@ export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
           .sql`DELETE FROM workbench_lifecycle_fence WHERE singleton = 1 AND job_id = ${jobId}`;
         return jsonResponse({ ok: true, jobId, frozen: false });
       }
-      await this.saveMessages(() => []);
+      // Lifecycle purge is storage maintenance after workspace authority has
+      // already been revoked. Persist directly so clearing the transcript
+      // cannot start a model turn or require a now-invalid agent token.
+      await this.persistMessages([]);
       this.ensureLifecycleFenceTable();
       void this.sql`DELETE FROM workbench_lifecycle_fence WHERE singleton = 1`;
       this.agentConfigCache = null;

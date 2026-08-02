@@ -111,6 +111,16 @@ describe("runtime extension architecture", () => {
     ).not.toMatch(/user_id|workspace_id|account_id|email|name/i);
   });
 
+  it("purges Durable Object chat storage without starting a model turn", () => {
+    const threadAgent = read("cloudflare/control-plane/src/thread-chat-agent.ts");
+    const lifecycleRoute = threadAgent.match(
+      /if \(url\.pathname === "\/internal\/lifecycle-unfreeze"\)([\s\S]*?)if \(this\.lifecycleFence\(\)/,
+    )?.[1];
+    expect(lifecycleRoute).toBeDefined();
+    expect(lifecycleRoute).toContain("await this.persistMessages([])");
+    expect(lifecycleRoute).not.toContain("saveMessages");
+  });
+
   it("enforces snapshot export fences at every exported durable table", () => {
     const lifecycle = read("cloudflare/control-plane/src/workspace-data-lifecycle.ts");
     const schema = read("cloudflare/control-plane/schema.sql");
