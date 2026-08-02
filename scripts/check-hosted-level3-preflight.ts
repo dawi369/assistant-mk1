@@ -13,7 +13,11 @@ const requestedTarget = process.env.WORKBENCH_ENVIRONMENT?.trim() ?? "";
 if (!isEnvironmentTarget(requestedTarget) || requestedTarget === "local") {
   throw new Error("WORKBENCH_ENVIRONMENT must be acceptance|production");
 }
-const rendered = renderEnvironmentConfig(requestedTarget);
+const commit = execFileSync("git", ["rev-parse", "HEAD"], {
+  cwd: root,
+  encoding: "utf8",
+}).trim();
+const rendered = renderEnvironmentConfig(requestedTarget, { releaseSha: commit });
 const wranglerConfig = rendered.wranglerPath;
 const expectedBucket = rendered.manifest.cloudflare.r2BucketName;
 const requiredWorkerSecrets = [
@@ -59,9 +63,8 @@ const jsonFromFirstArray = <T>(output: string): T => {
 };
 
 const main = () => {
-  const commit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
   const dirty = run("git", ["status", "--porcelain"]).output.trim().length > 0;
-  const configSource = readFileSync(join(root, wranglerConfig), "utf8");
+  const configSource = readFileSync(wranglerConfig, "utf8");
   const bindingDeclared =
     configSource.includes('"binding": "ARTIFACTS"') &&
     configSource.includes(`"bucket_name": "${expectedBucket}"`);
