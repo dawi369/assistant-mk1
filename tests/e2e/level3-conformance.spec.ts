@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { activateRepositoryAnalyst } from "./workbench-helpers";
+import { activateRepositoryAnalyst, openAdminAgentsPanel } from "./workbench-helpers";
 
 const releaseMode = process.env.E2E_RELEASE_MODE;
 const workerOrigin = "http://127.0.0.1:8788";
@@ -201,10 +201,7 @@ test.describe.serial("Level 3 executable conformance", () => {
       )
       .toBe("completed");
 
-    const composer = page.getByRole("textbox", { name: /Message input|Draft message/ });
-    await composer.fill("/admin");
-    await composer.press("Enter");
-    await page.getByRole("tab", { name: "Agents & Packs" }).click();
+    await openAdminAgentsPanel(page);
     await expect(page.getByRole("heading", { name: "Automations" })).toBeVisible();
     await expect(page.getByText("scheduled-readiness", { exact: true })).toBeVisible();
     await expect(page.getByText("readiness-requested", { exact: true })).toBeVisible();
