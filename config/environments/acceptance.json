@@ -19,7 +19,9 @@
     "projectName": "assistant-mk1-acceptance",
     "organizationId": "${WORKBENCH_ACCEPTANCE_VERCEL_ORG_ID}",
     "projectId": "${WORKBENCH_ACCEPTANCE_VERCEL_PROJECT_ID}",
-    "origin": "${WORKBENCH_ACCEPTANCE_VERCEL_ORIGIN}"
+    "origin": "${WORKBENCH_ACCEPTANCE_VERCEL_ORIGIN}",
+    "framework": "nextjs",
+    "nodeVersion": "22.x"
   },
   "workos": {
     "applicationName": "assistant-mk1-acceptance",

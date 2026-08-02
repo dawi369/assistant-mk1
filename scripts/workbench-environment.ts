@@ -18,7 +18,14 @@ export type WorkbenchEnvironment = {
     origin: string;
   };
   fly: { appName: string; origin: string };
-  vercel: { projectName: string; organizationId: string; projectId: string; origin: string };
+  vercel: {
+    projectName: string;
+    organizationId: string;
+    projectId: string;
+    origin: string;
+    framework: "nextjs";
+    nodeVersion: "22.x";
+  };
   workos: { applicationName: string; applicationId: string; acceptanceWorkspaceId: string };
   secretEnvironmentVariables: {
     facadeSigning: string;
@@ -93,6 +100,8 @@ export const parseWorkbenchEnvironment = (value: unknown): WorkbenchEnvironment 
       organizationId: requireString(vercel.organizationId, "vercel.organizationId", failures),
       projectId: requireString(vercel.projectId, "vercel.projectId", failures),
       origin: requireString(vercel.origin, "vercel.origin", failures),
+      framework: requireString(vercel.framework, "vercel.framework", failures) as "nextjs",
+      nodeVersion: requireString(vercel.nodeVersion, "vercel.nodeVersion", failures) as "22.x",
     },
     workos: {
       applicationName: requireString(workos.applicationName, "workos.applicationName", failures),
@@ -147,6 +156,9 @@ export const parseWorkbenchEnvironment = (value: unknown): WorkbenchEnvironment 
       ),
     },
   } satisfies WorkbenchEnvironment;
+
+  if (parsed.vercel.framework !== "nextjs") failures.push("vercel.framework must be nextjs");
+  if (parsed.vercel.nodeVersion !== "22.x") failures.push("vercel.nodeVersion must be 22.x");
 
   if (failures.length) throw new Error(failures.join("; "));
   return parsed;

@@ -7,7 +7,12 @@ import {
   provisionResourceExists,
   type ProvisionResourceKind,
 } from "./provision-environment-core";
-import { isEnvironmentTarget, loadWorkbenchEnvironment } from "./workbench-environment";
+import {
+  isEnvironmentTarget,
+  loadWorkbenchEnvironment,
+  referencedEnvironmentVariable,
+  resolveEnvironmentReferences,
+} from "./workbench-environment";
 
 const providers = ["cloudflare", "fly", "vercel", "workos"] as const;
 type Provider = (typeof providers)[number];
@@ -41,7 +46,10 @@ const descriptions: Record<Provider, string[]> = {
     `Worker and Durable Object namespace ${manifest.cloudflare.workerName} (created on first deploy)`,
   ],
   fly: [`Fly application ${manifest.fly.appName}`],
-  vercel: [`Vercel project ${manifest.vercel.projectName}`],
+  vercel: [
+    `Vercel project ${manifest.vercel.projectName}`,
+    `Vercel runtime ${manifest.vercel.framework} on Node ${manifest.vercel.nodeVersion}`,
+  ],
   workos: [
     `AuthKit application ${manifest.workos.applicationName}`,
     `${target === "acceptance" ? "synthetic acceptance" : "isolated production acceptance"} organization/workspace`,
@@ -110,7 +118,10 @@ const commands: Record<Exclude<Provider, "workos">, ProvisionCommand[]> = {
     },
   ],
 };
-const commandEvidence: Array<{ command: string; status: "created" | "existing" }> = [];
+const commandEvidence: Array<{
+  command: string;
+  status: "configured" | "created" | "existing";
+}> = [];
 for (const resource of commands[provider]) {
   const [inspectCommand, inspectArgs] = resource.inspect;
   const inspected = spawnSync(inspectCommand, inspectArgs, {
@@ -159,6 +170,48 @@ for (const resource of commands[provider]) {
   commandEvidence.push({
     command: [createCommand, ...createArgs].join(" "),
     status: "created",
+  });
+}
+if (provider === "vercel") {
+  const resolved = resolveEnvironmentReferences(manifest);
+  const organizationVariable = referencedEnvironmentVariable(manifest.vercel.organizationId);
+  if (organizationVariable && resolved.unresolved.includes(organizationVariable)) {
+    throw new Error("Vercel provisioning requires the target organization ID variable");
+  }
+  const args = [
+    "api",
+    `/v9/projects/${manifest.vercel.projectName}`,
+    "--method",
+    "PATCH",
+    "--raw-field",
+    `framework=${manifest.vercel.framework}`,
+    "--raw-field",
+    `nodeVersion=${manifest.vercel.nodeVersion}`,
+    "--silent",
+  ];
+  const configured = spawnSync("vercel", args, {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      VERCEL_ORG_ID: resolved.manifest.vercel.organizationId,
+    },
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  if (configured.status !== 0) {
+    throw new Error(
+      describeProvisionCommandFailure({
+        command: "vercel",
+        args,
+        status: configured.status,
+        stdout: configured.stdout,
+        stderr: configured.stderr,
+      }),
+    );
+  }
+  commandEvidence.push({
+    command: "vercel api /v9/projects/<target> --method PATCH",
+    status: "configured",
   });
 }
 const directory = resolve(process.cwd(), "output/release", commit);

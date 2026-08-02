@@ -20,6 +20,7 @@ describe("workbench environment manifests", () => {
     expect(production.conformanceMode).toBe(false);
     expect(production.vaultBackend).toBe("workos");
     expect(production.mutationDefaultEnabled).toBe(false);
+    expect(production.vercel).toMatchObject({ framework: "nextjs", nodeVersion: "22.x" });
   });
 
   it("reports unresolved target metadata without exposing values", () => {

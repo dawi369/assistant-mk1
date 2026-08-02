@@ -72,6 +72,10 @@ remains a dashboard action and must be recorded with
 `pnpm release:evidence:record`; the CLI does not pretend that a Vault object is
 an AuthKit application.
 
+Vercel provisioning also converges the project to the repository contract:
+Next.js with Node 22. A project left on a provider default runtime is not ready
+for deployment.
+
 For a new Worker, run the guarded Cloudflare bootstrap before configuring
 secrets. It deploys the disabled feature stage with `workers_dev=false` and no
 cron triggers, creating the secret attachment point without public ingress.

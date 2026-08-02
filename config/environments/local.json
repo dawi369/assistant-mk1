@@ -19,7 +19,9 @@
     "projectName": "assistant-mk1-local",
     "organizationId": "local",
     "projectId": "local",
-    "origin": "http://localhost:3000"
+    "origin": "http://localhost:3000",
+    "framework": "nextjs",
+    "nodeVersion": "22.x"
   },
   "workos": {
     "applicationName": "assistant-mk1-local",
