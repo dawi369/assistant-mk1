@@ -2,6 +2,11 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 
+import {
+  describeProvisionCommandFailure,
+  provisionResourceExists,
+  type ProvisionResourceKind,
+} from "./provision-environment-core";
 import { isEnvironmentTarget, loadWorkbenchEnvironment } from "./workbench-environment";
 
 const providers = ["cloudflare", "fly", "vercel", "workos"] as const;
@@ -64,26 +69,97 @@ if (provider === "workos") {
   );
 }
 
-const commands: Record<Exclude<Provider, "workos">, Array<[string, string[]]>> = {
-  cloudflare: [
-    ["pnpm", ["exec", "wrangler", "d1", "create", manifest.cloudflare.d1DatabaseName]],
-    ["pnpm", ["exec", "wrangler", "r2", "bucket", "create", manifest.cloudflare.r2BucketName]],
-  ],
-  fly: [["fly", ["apps", "create", manifest.fly.appName]]],
-  vercel: [["vercel", ["project", "add", manifest.vercel.projectName, "--yes"]]],
+type ProvisionCommand = {
+  kind: ProvisionResourceKind;
+  resourceName: string;
+  inspect: [string, string[]];
+  create: [string, string[]];
 };
-const commandEvidence: Array<{ command: string; status: "created" }> = [];
-for (const [command, args] of commands[provider]) {
-  const result = spawnSync(command, args, {
+const commands: Record<Exclude<Provider, "workos">, ProvisionCommand[]> = {
+  cloudflare: [
+    {
+      kind: "cloudflare-d1",
+      resourceName: manifest.cloudflare.d1DatabaseName,
+      inspect: ["pnpm", ["exec", "wrangler", "d1", "list", "--json"]],
+      create: ["pnpm", ["exec", "wrangler", "d1", "create", manifest.cloudflare.d1DatabaseName]],
+    },
+    {
+      kind: "cloudflare-r2",
+      resourceName: manifest.cloudflare.r2BucketName,
+      inspect: ["pnpm", ["exec", "wrangler", "r2", "bucket", "list"]],
+      create: [
+        "pnpm",
+        ["exec", "wrangler", "r2", "bucket", "create", manifest.cloudflare.r2BucketName],
+      ],
+    },
+  ],
+  fly: [
+    {
+      kind: "fly-app",
+      resourceName: manifest.fly.appName,
+      inspect: ["fly", ["apps", "list", "--json"]],
+      create: ["fly", ["apps", "create", manifest.fly.appName]],
+    },
+  ],
+  vercel: [
+    {
+      kind: "vercel-project",
+      resourceName: manifest.vercel.projectName,
+      inspect: ["vercel", ["project", "list", "--non-interactive"]],
+      create: ["vercel", ["project", "add", manifest.vercel.projectName, "--non-interactive"]],
+    },
+  ],
+};
+const commandEvidence: Array<{ command: string; status: "created" | "existing" }> = [];
+for (const resource of commands[provider]) {
+  const [inspectCommand, inspectArgs] = resource.inspect;
+  const inspected = spawnSync(inspectCommand, inspectArgs, {
     cwd: process.cwd(),
     env: process.env,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   });
-  if (result.status !== 0) {
-    throw new Error(`${command} ${args.slice(0, 3).join(" ")} exited with ${result.status}`);
+  if (inspected.status !== 0) {
+    throw new Error(
+      describeProvisionCommandFailure({
+        command: inspectCommand,
+        args: inspectArgs,
+        status: inspected.status,
+        stdout: inspected.stdout,
+        stderr: inspected.stderr,
+      }),
+    );
   }
-  commandEvidence.push({ command: [command, ...args].join(" "), status: "created" });
+  if (provisionResourceExists(resource.kind, inspected.stdout, resource.resourceName)) {
+    commandEvidence.push({
+      command: [inspectCommand, ...inspectArgs].join(" "),
+      status: "existing",
+    });
+    continue;
+  }
+
+  const [createCommand, createArgs] = resource.create;
+  const created = spawnSync(createCommand, createArgs, {
+    cwd: process.cwd(),
+    env: process.env,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  if (created.status !== 0) {
+    throw new Error(
+      describeProvisionCommandFailure({
+        command: createCommand,
+        args: createArgs,
+        status: created.status,
+        stdout: created.stdout,
+        stderr: created.stderr,
+      }),
+    );
+  }
+  commandEvidence.push({
+    command: [createCommand, ...createArgs].join(" "),
+    status: "created",
+  });
 }
 const directory = resolve(process.cwd(), "output/release", commit);
 mkdirSync(directory, { recursive: true });
