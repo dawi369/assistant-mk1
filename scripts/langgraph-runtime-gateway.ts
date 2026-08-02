@@ -939,11 +939,17 @@ const server = createServer((request, response) => {
       }
       if (body?.reconcile === true) {
         const existing = e2eSyntheticActions.get(idempotencyKey);
+        // Reconciliation is an idempotent ensure operation, not a process-local lookup.
+        // This keeps the synthetic provider correct when Fly routes the original action
+        // and its reconciliation request to different machines.
+        const externalReference = existing?.externalReference ?? `synthetic:${idempotencyKey}`;
+        e2eSyntheticActions.set(idempotencyKey, { externalReference });
         json(response, 200, {
           ok: true,
-          found: Boolean(existing),
-          status: existing ? "executed" : "outcome_unknown",
-          externalReference: existing?.externalReference,
+          found: true,
+          status: "executed",
+          externalReference,
+          replayed: !existing,
         });
         return;
       }
