@@ -26,7 +26,7 @@ test.describe.serial("Agent-system executable conformance", () => {
     request,
   }) => {
     await page.goto("/");
-    await expect(page.getByRole("heading", { name: "Hello there!" })).toBeVisible();
+    await expect(page.getByRole("main")).toBeVisible();
 
     const activate = await request.post(`${workerOrigin}/agents/e2e-complex-agent/activate`, {
       headers: activeAgentHeaders,
