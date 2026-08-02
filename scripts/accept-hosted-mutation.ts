@@ -156,7 +156,7 @@ const main = async () => {
   if (timeoutResult.result?.status !== "outcome_unknown") {
     throw new Error("Timed-out mutation was not fenced as outcome_unknown");
   }
-  await new Promise((resolve) => setTimeout(resolve, 2_250));
+  await new Promise((resolve) => setTimeout(resolve, 3_000));
   const reconciliation = await readJson<{ result?: { status?: string } }>(
     `/workbench/actions/${encodeURIComponent(timeout.proposal.id)}/reconcile`,
     owner,

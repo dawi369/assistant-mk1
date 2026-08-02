@@ -90,6 +90,26 @@ describe("agent pack compiler", () => {
     expect(() => validateLoadedModules([mismatch])).toThrow("runner contract does not match");
   });
 
+  it("rejects action timeouts that exceed their runner publication budget", async () => {
+    const modules = await loadAgentModules(process.cwd());
+    const source = modules.find((module) => module.manifest.id === "complex-operator");
+    if (!source) throw new Error("Complex Operator must be configured.");
+    const actionIndex = source.controlPlane.tools.findIndex(
+      (tool) => tool.id === "operator.action.execute",
+    );
+    const actionTool = source.controlPlane.tools[actionIndex];
+    if (!actionTool?.action) throw new Error("Complex Operator must declare an action binding.");
+    const tools = [...source.controlPlane.tools];
+    tools[actionIndex] = {
+      ...actionTool,
+      action: { ...actionTool.action, timeoutMs: actionTool.timeoutMs + 1 },
+    };
+
+    expect(() =>
+      validateLoadedModules([{ ...source, controlPlane: { ...source.controlPlane, tools } }]),
+    ).toThrow("action timeout must fit within the tool timeout");
+  });
+
   it("rejects invalid schemas and unsupported execution modes", async () => {
     const modules = await loadAgentModules(process.cwd());
     const source = modules[3]!;

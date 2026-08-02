@@ -67,7 +67,7 @@ export const operatorSnapshotTool = {
 
 export const controlPlane = defineControlPlaneModule({
   packId: "complex-operator",
-  runtimeVersion: "1.2.1",
+  runtimeVersion: "1.2.2",
   compatiblePackVersions: "^1.1.0",
   tools: [
     {
@@ -145,7 +145,7 @@ export const controlPlane = defineControlPlaneModule({
       executionModes: ["dry_run", "execute"],
       transport: "fly",
       adapterVersion: "operator-action-v2",
-      timeoutMs: 6_000,
+      timeoutMs: 11_000,
       maxArtifactBytes: 8_192,
       sandbox: {
         lifecycle: {
@@ -163,7 +163,7 @@ export const controlPlane = defineControlPlaneModule({
           privateNetwork: "deny",
           enforcement: "control_plane_and_runner",
         },
-        limits: { maxRuntimeMs: 6_000, maxArtifactBytes: 8_192 },
+        limits: { maxRuntimeMs: 11_000, maxArtifactBytes: 8_192 },
       },
       policy: mutationPolicy,
       action: {
@@ -185,7 +185,7 @@ export const controlPlane = defineControlPlaneModule({
         },
         idempotency: "required",
         approval: "required",
-        timeoutMs: 3_000,
+        timeoutMs: 7_000,
         execute(proposal) {
           if (proposal.preview.outcome === "unknown") {
             return {
@@ -295,7 +295,7 @@ export const controlPlane = defineControlPlaneModule({
           summary: `Review ${subject}`,
           preview: {
             mutation: false,
-            ...(subject === "timeout" ? { delayMs: 4_500 } : {}),
+            ...(subject === "timeout" ? { delayMs: 9_000 } : {}),
           },
         });
         if (!proposal.ok) return proposal;

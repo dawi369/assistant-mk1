@@ -227,6 +227,15 @@ export const validateLoadedModules = (modules: readonly LoadedAgentModule[]) => 
         if (tool.action.idempotency !== "required") {
           throw new Error(`${entry.package} tool ${tool.id} action must require idempotency.`);
         }
+        if (
+          !Number.isInteger(tool.action.timeoutMs) ||
+          tool.action.timeoutMs < 1 ||
+          tool.action.timeoutMs > tool.timeoutMs
+        ) {
+          throw new Error(
+            `${entry.package} tool ${tool.id} action timeout must fit within the tool timeout.`,
+          );
+        }
         if (tool.action.approval === "required" && !tool.policy.requiresApproval) {
           throw new Error(
             `${entry.package} tool ${tool.id} action approval contract is inconsistent.`,

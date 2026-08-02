@@ -4,7 +4,7 @@ import { operatorActionTool, operatorSnapshotTool } from "./control-plane";
 
 export const runner = defineRunnerModule({
   packId: "complex-operator",
-  runtimeVersion: "1.2.1",
+  runtimeVersion: "1.2.2",
   compatiblePackVersions: "^1.1.0",
   tools: [
     {
