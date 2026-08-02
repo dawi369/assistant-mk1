@@ -4,6 +4,14 @@ import { activateRepositoryAnalyst } from "./workbench-helpers";
 
 const releaseMode = process.env.E2E_RELEASE_MODE;
 const workerOrigin = "http://127.0.0.1:8788";
+const ownerHeaders = {
+  authorization: "Bearer e2e-control-plane-token",
+  "x-assistant-mk1-user-id": "e2e-owner",
+  "x-assistant-mk1-workspace-id": "e2e-workspace",
+  "x-assistant-mk1-agent-id": "e2e-agent",
+  "x-assistant-mk1-account-id": "local-dev:e2e-workspace",
+  "x-assistant-mk1-account-source": "local-dev",
+};
 
 type HistoryRun = {
   id: string;
@@ -32,7 +40,17 @@ test.describe.serial("Level 2 executable conformance", () => {
     await page.getByRole("button", { name: "Workspace access" }).click();
     const workspaceDialog = page.getByRole("dialog", { name: "Workspace" });
     await expect(workspaceDialog.getByText("Default Workspace", { exact: true })).toBeVisible();
-    await expect(page.getByRole("combobox", { name: "Role for e2e-owner" })).toHaveValue("owner");
+    const ownerMembersResponse = await request.get(
+      `${workerOrigin}/workspaces/e2e-workspace/members`,
+      { headers: ownerHeaders },
+    );
+    expect(ownerMembersResponse.ok()).toBe(true);
+    const ownerMembers = (await ownerMembersResponse.json()) as {
+      members?: Array<{ userId?: string; role?: string; status?: string }>;
+    };
+    expect(ownerMembers.members).toContainEqual(
+      expect.objectContaining({ userId: "e2e-owner", role: "owner", status: "active" }),
+    );
     await page.getByRole("button", { name: "Close" }).click();
 
     await page.getByRole("button", { name: "History" }).click();
