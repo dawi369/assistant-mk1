@@ -3,6 +3,10 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import {
+  buildProviderSecretConfiguration,
+  type HostedSecretRoleValues,
+} from "./configure-environment-secrets-core";
 import { renderEnvironmentConfig } from "./render-environment-config";
 import {
   isEnvironmentTarget,
@@ -58,7 +62,7 @@ const confirmation = `${target}:configure-secrets:${sha}`;
 const roles = manifest.secretEnvironmentVariables;
 const roleValues = Object.fromEntries(
   Object.entries(roles).map(([role, variable]) => [role, process.env[variable]?.trim() ?? ""]),
-) as Record<keyof typeof roles, string>;
+) as HostedSecretRoleValues;
 
 if (!execute) {
   console.log(`Dry run only: configure ${target} provider secret roles at ${sha}.`);
@@ -75,16 +79,8 @@ if (secretFailures.length) throw new Error(secretFailures.join("; "));
 
 const rendered = renderEnvironmentConfig(target);
 verifyWorkerExists(rendered.wranglerPath);
-const workerSecrets = {
-  CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET: roleValues.facadeSigning,
-  WORKBENCH_RUNNER_SIGNING_SECRET: roleValues.runnerSigning,
-  WORKBENCH_CALLBACK_SIGNING_SECRET: roleValues.callbackSigning,
-  WORKBENCH_AGENT_CONNECTION_SECRET: roleValues.agentConnection,
-  WORKBENCH_OPERATOR_ALERT_SIGNING_SECRET: roleValues.operatorAlertSigning,
-  LANGGRAPH_UPSTREAM_TOKEN: roleValues.langgraphProxy,
-  WORKOS_API_KEY: roleValues.vault,
-  OPENROUTER_API_KEY: roleValues.openrouter,
-};
+const { workerSecrets, flySecrets, vercelSecrets, vercelVariables } =
+  buildProviderSecretConfiguration(rendered.manifest, roleValues);
 for (const [name, value] of Object.entries(workerSecrets)) {
   runWithInput(
     "pnpm",
@@ -95,27 +91,18 @@ for (const [name, value] of Object.entries(workerSecrets)) {
 
 runWithInput(
   "fly",
-  ["secrets", "import", "--stage", "--app", manifest.fly.appName],
-  [
-    `WORKBENCH_RUNNER_SIGNING_SECRET=${roleValues.runnerSigning}`,
-    `WORKBENCH_CALLBACK_SIGNING_SECRET=${roleValues.callbackSigning}`,
-    `LANGGRAPH_PROXY_TOKEN=${roleValues.langgraphProxy}`,
-    `OPENROUTER_API_KEY=${roleValues.openrouter}`,
-  ].join("\n") + "\n",
+  ["secrets", "import", "--stage", "--app", rendered.manifest.fly.appName],
+  Object.entries(flySecrets)
+    .map(([name, value]) => `${name}=${value}`)
+    .join("\n") + "\n",
 );
 
-const vercelEnvironment = {
-  CLOUDFLARE_CONTROL_PLANE_FACADE_SIGNING_SECRET: roleValues.facadeSigning,
-  WORKBENCH_OPERATOR_ALERT_SIGNING_SECRET: roleValues.operatorAlertSigning,
-  WORKOS_API_KEY: roleValues.vault,
-  WORKOS_COOKIE_PASSWORD: roleValues.workosCookie,
-};
 const vercelProcessEnv = {
   ...process.env,
-  VERCEL_ORG_ID: manifest.vercel.organizationId,
-  VERCEL_PROJECT_ID: manifest.vercel.projectId,
+  VERCEL_ORG_ID: rendered.manifest.vercel.organizationId,
+  VERCEL_PROJECT_ID: rendered.manifest.vercel.projectId,
 };
-for (const [name, value] of Object.entries(vercelEnvironment)) {
+for (const [name, value] of Object.entries(vercelSecrets)) {
   runWithInput(
     "vercel",
     ["env", "add", name, "production", "--force", "--yes", "--sensitive"],
@@ -123,16 +110,7 @@ for (const [name, value] of Object.entries(vercelEnvironment)) {
     vercelProcessEnv,
   );
 }
-for (const [name, value] of Object.entries({
-  WORKOS_CLIENT_ID: manifest.workos.applicationId,
-  NEXT_PUBLIC_WORKOS_CLIENT_ID: manifest.workos.applicationId,
-  NEXT_PUBLIC_WORKOS_REDIRECT_URI: `${manifest.vercel.origin}/auth/callback`,
-  CLOUDFLARE_CONTROL_PLANE_URL: manifest.cloudflare.origin,
-  LANGGRAPH_API_URL: manifest.fly.origin,
-  NEXT_PUBLIC_LANGGRAPH_ASSISTANT_ID: "agent",
-  WORKBENCH_ENVIRONMENT: target,
-  WORKBENCH_OPERATOR_ALERT_CONFORMANCE_MODE: String(target === "acceptance"),
-})) {
+for (const [name, value] of Object.entries(vercelVariables)) {
   runWithInput(
     "vercel",
     ["env", "add", name, "production", "--force", "--yes", "--no-sensitive"],
@@ -158,13 +136,8 @@ writeFileSync(
       ),
       providers: {
         cloudflare: Object.keys(workerSecrets),
-        fly: [
-          "WORKBENCH_RUNNER_SIGNING_SECRET",
-          "WORKBENCH_CALLBACK_SIGNING_SECRET",
-          "LANGGRAPH_PROXY_TOKEN",
-          "OPENROUTER_API_KEY",
-        ],
-        vercel: Object.keys(vercelEnvironment),
+        fly: Object.keys(flySecrets),
+        vercel: Object.keys(vercelSecrets),
       },
       completedAt: new Date().toISOString(),
       operator: process.env.WORKBENCH_RELEASE_OPERATOR?.trim() || process.env.USER || "unknown",
