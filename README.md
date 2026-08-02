@@ -94,15 +94,16 @@ Requirements:
 
 ```bash
 pnpm install --frozen-lockfile
-cp .env.example .env.local
-cp cloudflare/control-plane/.dev.vars.example cloudflare/control-plane/.dev.vars
+pnpm workbench:init
 ```
 
-Set `OPENROUTER_API_KEY` in both local environment files and make the local
-transport tokens match. Apply the local D1 migrations:
+`workbench:init` creates missing local environment files, generates matching
+local-only transport secrets, enables the local Admin user, applies forward D1
+migrations, and never overwrites configured values. Set `OPENROUTER_API_KEY` in
+both `.env.local` and `cloudflare/control-plane/.dev.vars`, then verify the
+configuration:
 
 ```bash
-pnpm db:cloudflare:migrate:local
 pnpm workbench:doctor --offline
 ```
 
@@ -118,6 +119,9 @@ pnpm dev:workbench
 
 Then run `pnpm workbench:doctor` in another terminal to verify Worker reachability,
 the D1 binding, matching transport secrets, and the bootstrapped local identity.
+
+To inspect an existing checkout without creating files or applying migrations,
+run `pnpm workbench:init -- --check`.
 
 | Service           | Local URL               |
 | ----------------- | ----------------------- |
@@ -158,6 +162,7 @@ deterministic compile. Packs can declare brokered connections and mutation
 bindings, but cannot grant themselves credentials or authority. Remote
 executable installation remains unsupported. See [Agent Packs](docs/agent-packs.md),
 the [Agent Runtime Kit](docs/agent-runtime-kit.md),
+the [Complex Agent Golden Path](docs/complex-agent-golden-path.md),
 the [Capability Model](docs/capability-model.md), and
 [Agent Profile Authoring](docs/agent-profile-authoring.md).
 

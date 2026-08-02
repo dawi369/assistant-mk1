@@ -140,6 +140,10 @@ The package-only compiler path resolves exports relative to the consumer
 workbench, not this monorepo. `tests/fixtures/external-agent-package` locks that
 boundary without granting remote-install authority.
 
+For the complete founder workflow—including managed state, triggers, proposals,
+renderers, verification, and Polymancer-specific stop conditions—follow
+`docs/complex-agent-golden-path.md`.
+
 For mutation-capable packages, the golden path is:
 
 1. Declare `risk.externalMutation`, provider connection, principal, scopes,
@@ -157,6 +161,11 @@ Installation grants no authority. A workspace owner must confirm retention,
 authorize the connection, explicitly enable mutation for the tool, and clear
 applicable kill switches; approval is mandatory unless an editable workspace
 policy explicitly permits autonomous execution.
+
+Provider-specific wallet or payload signing is not represented by ordinary
+bearer/API-key injection. Its target credential-isolated extension boundary is
+documented in `docs/provider-operation-contract.md`; no signing executor is
+claimed by Runtime Module v1 today.
 
 ## Compatibility And Limits
 

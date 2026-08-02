@@ -10,6 +10,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { toWorkbenchApiError } from "@/lib/workbench/api-errors";
 import { getWorkbenchIdentityHeaders } from "@/lib/workbench/agent-identity";
 import { signFacadeRequest } from "@/lib/workbench/control-plane-signing";
+import { resolveLegacyLangGraphApiKey } from "@/lib/workbench/langgraph-proxy-auth";
 import { isRetiredWorkbenchApiPath } from "@/lib/workbench/retired-api-paths";
 
 export const runtime = "nodejs";
@@ -77,9 +78,11 @@ const proxyHeaders = async (trace: {
     return headers;
   }
 
-  if (process.env.LANGCHAIN_API_KEY) {
-    headers["x-api-key"] = process.env.LANGCHAIN_API_KEY;
-  }
+  const legacyApiKey = resolveLegacyLangGraphApiKey({
+    apiKey: process.env.LANGCHAIN_API_KEY,
+    nodeEnv: process.env.NODE_ENV,
+  });
+  if (legacyApiKey) headers["x-api-key"] = legacyApiKey;
 
   return headers;
 };

@@ -4,8 +4,6 @@ OPENROUTER_API_KEY=
 LANGGRAPH_UPSTREAM_URL=http://127.0.0.1:2024
 LANGGRAPH_UPSTREAM_TOKEN=replace-with-the-local-langgraph-token
 WORKBENCH_AGENT_CONNECTION_SECRET=replace-with-a-long-random-secret
-WORKBENCH_EXECUTOR_URL=http://localhost:3000/api/workbench/executors/demo-inspect
-WORKBENCH_EXECUTOR_TOKEN=replace-with-the-local-executor-token
 WORKBENCH_CALLBACK_SIGNING_SECRET=replace-with-a-long-random-secret
 
 # Optional Fly runner path. Inline Cloudflare execution remains the default.

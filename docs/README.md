@@ -30,6 +30,8 @@ These files should stay aligned with code changes:
 - `agent-packs.md`: code-first local agent pack contract and current example.
 - `agent-runtime-kit.md`: executable Runtime Module v1 package, compiler,
   scoped execution, renderer, compatibility, and conformance contract.
+- `complex-agent-golden-path.md`: founder path from clean clone to a complete
+  Polymancer-shaped Runtime Module without core registration edits.
 - `implementation-roadmap.md`: current baseline, active next targets,
   production gates, and deferred work.
 - `migrations-and-retention.md`: current forward-only D1 migration path, reset
@@ -68,6 +70,7 @@ Cloudflare authorization boundary in `tenancy.md`.
 - `context-engineering.md`
 - `observability-and-audit.md`
 - `secrets-and-risk.md`
+- `provider-operation-contract.md`
 - `fly-tool-runners.md`
 - `diagrams/north-star-production-architecture.md`
 - `diagrams/north-star-implementation-topology.mmd`

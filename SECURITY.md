@@ -20,8 +20,12 @@ do not own.
 ## Supported Surface
 
 Security fixes target the current `main` branch and the hosted production
-workbench. The repository does not currently claim durable customer-data
-retention or support mutation-capable production tools.
+workbench. The current framework includes retained-data lifecycle, WorkOS Vault
+credential brokerage, and policy-controlled mutation authority behind
+default-off feature and workspace gates. Real provider adapters require their
+own threat model and acceptance evidence; the repository does not claim real
+trading, Swordfish execution, remote executable installation, or exactly-once
+external effects.
 
 ## Security Boundaries
 
@@ -34,5 +38,6 @@ retention or support mutation-capable production tools.
 - Cross-tenant reads return no resource details.
 
 The production gates for encrypted secret custody, non-destructive migrations,
-retention, and external mutation are tracked in
-`docs/implementation-roadmap.md` and `docs/migrations-and-retention.md`.
+retention, external mutation, and provider-specific execution are tracked in
+`docs/implementation-roadmap.md`, `docs/migrations-and-retention.md`, and
+`docs/release-readiness.md`.

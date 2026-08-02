@@ -16,16 +16,19 @@ Requirements:
 
 ```bash
 pnpm install --frozen-lockfile
-cp .env.example .env.local
-cp cloudflare/control-plane/.dev.vars.example cloudflare/control-plane/.dev.vars
+pnpm workbench:init
 ```
 
-The local D1 schema is currently reset-based. On first setup, or when you
-intentionally want to discard local Worker data:
+The initializer creates only missing local files, fills blank or documented
+placeholder development secrets, and applies forward D1 migrations. It never
+overwrites configured values. Set `OPENROUTER_API_KEY` in both local environment
+files, then verify setup:
 
 ```bash
-pnpm db:cloudflare:rebuild:local
+pnpm workbench:doctor --offline
 ```
+
+Use `pnpm db:cloudflare:rebuild:local` only for a deliberate destructive reset.
 
 Start the complete workbench:
 
@@ -61,8 +64,9 @@ part of `pnpm verify:fast`.
 - Fly/LangGraph receives scoped work only through signed server-side contracts.
 - `components/assistant-ui/*` remains reusable; product composition belongs in
   `components/workbench/*`.
-- Mutation-capable tools remain blocked until the production gates in
-  `docs/implementation-roadmap.md` are complete.
+- Mutation-capable tools remain default-off and require retention confirmation,
+  a healthy connection, explicit enablement, policy, approval when required,
+  and clear kill switches.
 
 ## Pull Request Checklist
 
