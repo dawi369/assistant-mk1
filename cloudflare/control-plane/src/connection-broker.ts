@@ -253,6 +253,7 @@ export const handleStoreConnectionCredential = async (
 
   const timestamp = new Date().toISOString();
   const existing = await selectConnection(env, identity, connectionId);
+  const recordId = existing?.id ?? createId("cf-connection");
   const credential: StoredCredential =
     descriptor.credentialClass === "api_key"
       ? { kind: "api_key", apiKey: secret, scopes: [...descriptor.scopes] }
@@ -268,13 +269,13 @@ export const handleStoreConnectionCredential = async (
       ? await vault.replace({ ...vaultReference(existing), value: JSON.stringify(credential) })
       : await vault.create({
           context: vaultContext(identity),
-          name: `connection:${identity.agentId}:${pack.id}:${connectionId}`,
+          name: `connection:${recordId}`,
           value: JSON.stringify(credential),
         });
-  const recordId = existing?.id ?? createId("cf-connection");
-  await env.DB.batch([
-    env.DB.prepare(
-      `INSERT INTO control_connections (
+  try {
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO control_connections (
          id, user_id, workspace_id, agent_id, pack_id, connection_id, provider_id, principal,
          credential_class, status, scopes_json, vault_object_id, vault_version, version,
          data_json, created_at, updated_at
@@ -284,41 +285,45 @@ export const handleStoreConnectionCredential = async (
          vault_object_id = excluded.vault_object_id, vault_version = excluded.vault_version,
          last_error_code = NULL, revoked_at = NULL, version = control_connections.version + 1,
          updated_at = excluded.updated_at`,
-    ).bind(
-      recordId,
-      identity.scope.userId,
-      identity.scope.workspaceId,
-      identity.agentId,
-      pack.id,
-      connectionId,
-      descriptor.provider,
-      descriptor.principal,
-      descriptor.credentialClass,
-      toJson(descriptor.scopes),
-      stored.id,
-      stored.version,
-      timestamp,
-      timestamp,
-    ),
-    env.DB.prepare(
-      `INSERT INTO control_audit_events (
+      ).bind(
+        recordId,
+        identity.scope.userId,
+        identity.scope.workspaceId,
+        identity.agentId,
+        pack.id,
+        connectionId,
+        descriptor.provider,
+        descriptor.principal,
+        descriptor.credentialClass,
+        toJson(descriptor.scopes),
+        stored.id,
+        stored.version,
+        timestamp,
+        timestamp,
+      ),
+      env.DB.prepare(
+        `INSERT INTO control_audit_events (
          id, user_id, workspace_id, action, summary, target_type, target_id, data_json, created_at
        ) VALUES (?, ?, ?, 'connection.authorized', 'External connection authorized.',
          'connection', ?, ?, ?)`,
-    ).bind(
-      createId("cf-audit"),
-      identity.scope.userId,
-      identity.scope.workspaceId,
-      recordId,
-      toJson({
-        packId: pack.id,
-        connectionId,
-        provider: descriptor.provider,
-        scopes: descriptor.scopes,
-      }),
-      timestamp,
-    ),
-  ]);
+      ).bind(
+        createId("cf-audit"),
+        identity.scope.userId,
+        identity.scope.workspaceId,
+        recordId,
+        toJson({
+          packId: pack.id,
+          connectionId,
+          provider: descriptor.provider,
+          scopes: descriptor.scopes,
+        }),
+        timestamp,
+      ),
+    ]);
+  } catch (error) {
+    if (!existing?.vault_object_id) await vault.delete(stored).catch(() => undefined);
+    throw error;
+  }
   return json(
     { ok: true, connection: { ...connectionSummary(null, descriptor), status: "authorized" } },
     { status: existing ? 200 : 201 },
@@ -537,7 +542,7 @@ export const handleCompleteConnectionAuthorization = async (
         ? await vault.replace({ ...vaultReference(connection), value: JSON.stringify(credential) })
         : await vault.create({
             context: vaultContext(identity),
-            name: `connection:${identity.agentId}:${connection.pack_id}:${connection.connection_id}`,
+            name: `connection:${connection.id}`,
             value: JSON.stringify(credential),
           });
     const timestamp = new Date().toISOString();

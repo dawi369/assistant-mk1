@@ -95,6 +95,16 @@ describe("runtime extension architecture", () => {
     ).not.toMatch(/credential|access_token|refresh_token/i);
   });
 
+  it("keys Vault objects by tenant-scoped connection records", () => {
+    const broker = read("cloudflare/control-plane/src/connection-broker.ts");
+    expect(broker).toContain("name: `connection:${recordId}`");
+    expect(broker).toContain("name: `connection:${connection.id}`");
+    expect(broker).not.toContain(
+      "name: `connection:${identity.agentId}:${pack.id}:${connectionId}`",
+    );
+    expect(broker).toContain("await vault.delete(stored).catch(() => undefined)");
+  });
+
   it("retains only a non-identifying receipt after final workspace purge", () => {
     const lifecycle = read("cloudflare/control-plane/src/workspace-data-lifecycle.ts");
     const broker = read("cloudflare/control-plane/src/connection-broker.ts");
