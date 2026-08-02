@@ -35,6 +35,11 @@ const requiredString = (value: unknown, name: string) => {
   return value;
 };
 
+const workspaceKeyContext = async (workspaceId: string) => {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(workspaceId));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+};
+
 const workosRequest = async (
   env: Env,
   path: string,
@@ -59,10 +64,14 @@ const workosRequest = async (
 
 export const createWorkOSCredentialVault = (env: Env): CredentialVault => ({
   async create(input) {
+    const workspaceContext = await workspaceKeyContext(input.context.workspaceId);
     const response = await workosRequest(env, "/vault/v1/kv", {
       method: "POST",
       body: JSON.stringify({
-        key_context: { workspace_id: input.context.workspaceId },
+        // Canonical workspace IDs contain separators WorkOS key-context
+        // values reject. A stable digest preserves per-workspace key isolation
+        // without exposing the tenant identifier in key metadata.
+        key_context: { workspace_id: workspaceContext },
         name: `${input.context.workspaceId}:${input.name}`,
         value: input.value,
       }),

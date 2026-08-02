@@ -50,11 +50,12 @@ describe("credential vault", () => {
     await vault.delete(rotated);
 
     const createBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
-    expect(createBody).toEqual({
-      key_context: { workspace_id: "workspace-1" },
+    expect(createBody).toMatchObject({
       name: "workspace-1:connection:test",
       value: "provider-secret",
     });
+    expect(createBody.key_context.workspace_id).toMatch(/^[a-f0-9]{64}$/);
+    expect(createBody.key_context.workspace_id).not.toContain("workspace-1");
     expect(fetchMock.mock.calls[2]?.[0]).toBe(
       "https://api.workos.com/vault/v1/kv/secret-1?version_check=v2",
     );
