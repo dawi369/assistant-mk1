@@ -26,12 +26,12 @@ describe("pack workflow bindings", () => {
     const controlPlane = agentControlPlaneRegistry["repo-analyst"].module;
     expect(
       resolveRuntimeCompatibility({
-        workbenchVersion: "1.0.0",
+        workbenchVersion: "0.5.0",
         packVersion: manifest.version,
         manifest: {
           compatibility: {
             ...manifest.compatibility,
-            minimumWorkbenchVersion: "1.1.0",
+            minimumWorkbenchVersion: "0.6.0",
           },
         },
         controlPlane,

@@ -1,8 +1,9 @@
-# 1.0.0 Production Readiness
+# Future 1.0.0 Production Readiness
 
-Document status: release-candidate contract. Assistant-mk1 targets Operational
-L3 plus Authority A2. Local conformance is necessary but does not replace the
-same-commit hosted gates below.
+Document status: future public-release contract. Assistant-mk1 0.5 implements
+the local Operational L3 plus Authority A2 boundaries, but makes no production
+SLO or public 1.0 claim. Local conformance does not replace the same-commit
+hosted gates below.
 
 ## Included
 

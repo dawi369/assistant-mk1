@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "sdkVersion": "1.0.0",
+  "sdkVersion": "1.0.1",
   "files": [
     {
       "path": "dist/compatibility.d.ts",
-      "sha256": "372d0c676ecbb20bd5ea24945285ee920a095998f47029a38d3b89dd475ffbb6"
+      "sha256": "77b021afceb838c8b9c227526b2b2106892fb303c6d7e0d5e0f52e6e2c2b57f5"
     },
     {
       "path": "dist/config.d.ts",

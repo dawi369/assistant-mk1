@@ -3,7 +3,7 @@
 A code-first agent workbench for durable runs, approvals, tool policy, artifacts,
 audit, and tenant-safe operations.
 
-[![Version](https://img.shields.io/badge/version-1.0.0-111827)](#release-status)
+[![Version](https://img.shields.io/badge/version-0.5.0-111827)](#release-status)
 [![Verify](https://github.com/dawi369/assistant-mk1/actions/workflows/verify.yml/badge.svg)](https://github.com/dawi369/assistant-mk1/actions/workflows/verify.yml)
 [![License](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-2563eb)](LICENSE)
 
@@ -13,12 +13,12 @@ audit, and tenant-safe operations.
 
 ## Release Status
 
-Assistant-mk1 is preparing the `1.0.0` production candidate: an authenticated,
-tenant-scoped workbench targeting Operational L3 plus Authority A2. The code now
-includes forward-only retained-data migrations, full workspace export and
-deletion lifecycle, WorkOS Vault credential custody, OAuth/API-key brokerage,
-and policy-controlled durable mutation. The release remains blocked until all
-same-commit hosted gates in [Release Readiness](docs/release-readiness.md) pass.
+Assistant-mk1 `0.5.0` is the internal pre-1.0 foundation: an authenticated,
+tenant-scoped workbench implementing the local Operational L3 plus Authority A2
+contracts. It includes forward-only retained-data migrations, workspace export
+and deletion lifecycle, WorkOS Vault custody, OAuth/API-key brokerage, and
+policy-controlled durable mutation. The public `1.0.0` claim remains blocked on
+the hosted and operational evidence in [Release Readiness](docs/release-readiness.md).
 
 ## Product Tour
 

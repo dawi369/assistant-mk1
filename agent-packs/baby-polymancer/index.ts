@@ -39,7 +39,7 @@ export const babyPolymancerPack = defineAgentPack({
   name: "Polymancer Research",
   description: "Read-only Polymarket discovery, pricing, liquidity, and order-book research.",
   profile: "analyst",
-  version: "1.1.0",
+  version: "1.1.1",
   capabilityLevel: "single_agent_app",
   format: "xml",
   folderPath: "agent-packs/baby-polymancer",
@@ -197,7 +197,7 @@ export const babyPolymancerPack = defineAgentPack({
       required: true,
     },
   ],
-  compatibility: { packApi: 2, minimumWorkbenchVersion: "1.0.0-preview.1" },
+  compatibility: { packApi: 2, minimumWorkbenchVersion: "0.5.0" },
   resourceLimits: {
     maxRunSeconds: 30,
     maxToolCallsPerRun: 6,

@@ -1,6 +1,6 @@
 # Production 1.0 Conformance
 
-Document status: current Operational L3 plus Authority A2 release evidence contract.
+Document status: future public 1.0 Operational L3 plus Authority A2 evidence contract.
 
 The `1.0.0` tag is permitted only when repository gates and guarded hosted
 acceptance are green for the same commit. Local conformance proves deterministic

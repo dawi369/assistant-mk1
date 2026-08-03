@@ -134,7 +134,7 @@ void [defineWorkbenchConfig, defineAgentPack, defineControlPlaneModule, defineRu
 
 export default defineWorkbenchConfig({
   runtimeApiVersion: 1,
-  workbenchVersion: "1.0.0",
+  workbenchVersion: "0.5.0",
   modules: [{ package: "@assistant-mk1/external-agent-fixture" }],
 });
 `,

@@ -5,7 +5,7 @@ export const manifest: LocalAgentPackManifest = defineAgentPack({
   name: "Complex Operator",
   description: "Deterministic external-style package proving the complete extension contract.",
   profile: "operator",
-  version: "1.1.0",
+  version: "1.1.1",
   capabilityLevel: "single_agent_app",
   format: "xml",
   folderPath: "examples/complex-operator",
@@ -193,7 +193,7 @@ export const manifest: LocalAgentPackManifest = defineAgentPack({
       required: true,
     },
   ],
-  compatibility: { packApi: 2, minimumWorkbenchVersion: "1.0.0" },
+  compatibility: { packApi: 2, minimumWorkbenchVersion: "0.5.0" },
   resourceLimits: {
     maxRunSeconds: 15,
     maxToolCallsPerRun: 3,

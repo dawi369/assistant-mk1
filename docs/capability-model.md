@@ -5,9 +5,10 @@ authority. A pack cannot acquire either by prompt wording or manifest metadata:
 the compiled runtime, workspace policy, platform gates, and executable evidence
 must all agree.
 
-Document status: current 1.0 contract. The release target is Operational L3 and
-Authority A2. Delegation is deferred; it is not a prerequisite for direct
-mutation safety.
+Document status: current 0.5 implementation and future 1.0 contract. The local
+implementation targets Operational L3 and Authority A2; the public 1.0 claim
+still requires the hosted evidence below. Delegation is deferred and is not a
+prerequisite for direct mutation safety.
 
 ## Operational axis
 

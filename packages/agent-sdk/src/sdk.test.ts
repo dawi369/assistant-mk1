@@ -7,6 +7,7 @@ import {
   defaultConnectionPort,
   isPackVersionCompatible,
   isWorkbenchVersionCompatible,
+  parseSemanticVersion,
   validateSchemaValue,
 } from "./index.js";
 
@@ -25,6 +26,27 @@ describe("Agent Runtime SDK", () => {
     expect(isWorkbenchVersionCompatible("1.0.0", "1.1.0")).toBe(false);
     expect(isWorkbenchVersionCompatible("1.0.0", "0.9.0", "0.9.9")).toBe(false);
     expect(isWorkbenchVersionCompatible("1.0.0", "invalid")).toBe(false);
+  });
+
+  it("implements semantic-version prerelease precedence and ignores build metadata", () => {
+    expect(isWorkbenchVersionCompatible("1.0.0-preview.1", "1.0.0")).toBe(false);
+    expect(isWorkbenchVersionCompatible("1.0.0", "1.0.0-preview.1")).toBe(true);
+    expect(isWorkbenchVersionCompatible("1.0.0-preview.2", "1.0.0-preview.10")).toBe(false);
+    expect(isWorkbenchVersionCompatible("1.0.0-preview.10", "1.0.0-preview.2")).toBe(true);
+    expect(isWorkbenchVersionCompatible("1.0.0-1", "1.0.0-alpha")).toBe(false);
+    expect(isWorkbenchVersionCompatible("1.0.0-alpha.1", "1.0.0-alpha")).toBe(true);
+    expect(isWorkbenchVersionCompatible("1.0.0+build.2", "1.0.0+build.1", "1.0.0")).toBe(
+      true,
+    );
+  });
+
+  it("rejects malformed semantic versions", () => {
+    expect(parseSemanticVersion("01.0.0")).toBeNull();
+    expect(parseSemanticVersion("1.01.0")).toBeNull();
+    expect(parseSemanticVersion("1.0.01")).toBeNull();
+    expect(parseSemanticVersion("1.0.0-preview.01")).toBeNull();
+    expect(parseSemanticVersion("1.0.0-preview..1")).toBeNull();
+    expect(parseSemanticVersion("1.0.0+")).toBeNull();
   });
 
   it("validates bounded object schemas", () => {
