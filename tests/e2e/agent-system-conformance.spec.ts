@@ -121,7 +121,7 @@ test.describe.serial("Agent-system executable conformance", () => {
       engine: "cloudflare",
       data: {
         packId: "complex-operator",
-        packVersion: "1.1.0",
+        packVersion: "1.1.1",
         runtimeVersion: complexOperatorRuntime.runtimeVersion,
         workflowType: "complex-operator.observe",
       },

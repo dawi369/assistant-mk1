@@ -45,8 +45,7 @@ const comparePrereleaseIdentifiers = (left: string, right: string) => {
 };
 
 export const compareSemanticVersions = (left: SemanticVersion, right: SemanticVersion) => {
-  const core =
-    left.major - right.major || left.minor - right.minor || left.patch - right.patch;
+  const core = left.major - right.major || left.minor - right.minor || left.patch - right.patch;
   if (core) return core;
   const leftPrerelease = left.prerelease ?? [];
   const rightPrerelease = right.prerelease ?? [];

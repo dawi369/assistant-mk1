@@ -35,9 +35,7 @@ describe("Agent Runtime SDK", () => {
     expect(isWorkbenchVersionCompatible("1.0.0-preview.10", "1.0.0-preview.2")).toBe(true);
     expect(isWorkbenchVersionCompatible("1.0.0-1", "1.0.0-alpha")).toBe(false);
     expect(isWorkbenchVersionCompatible("1.0.0-alpha.1", "1.0.0-alpha")).toBe(true);
-    expect(isWorkbenchVersionCompatible("1.0.0+build.2", "1.0.0+build.1", "1.0.0")).toBe(
-      true,
-    );
+    expect(isWorkbenchVersionCompatible("1.0.0+build.2", "1.0.0+build.1", "1.0.0")).toBe(true);
   });
 
   it("rejects malformed semantic versions", () => {

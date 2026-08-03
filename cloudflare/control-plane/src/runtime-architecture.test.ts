@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { dirname, join, normalize, relative } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -10,6 +10,12 @@ const walk = (directory: string): string[] =>
     const path = join(directory, name);
     return statSync(join(root, path)).isDirectory() ? walk(path) : [path];
   });
+const readMatching = (directory: string, pattern: RegExp) =>
+  walk(directory)
+    .filter((path) => pattern.test(path))
+    .sort()
+    .map(read)
+    .join("\n");
 
 describe("runtime extension architecture", () => {
   it("keeps executable runner registries outside the Worker graph", () => {
@@ -71,6 +77,64 @@ describe("runtime extension architecture", () => {
     }
   });
 
+  it("keeps decomposed runtime modules and compatibility facades bounded", () => {
+    const productionModules = [
+      ...walk("cloudflare/control-plane/src").filter((path) =>
+        /(?:workspace-data|action-authority|session-agent).*\.ts$/.test(path),
+      ),
+      ...walk("lib/workbench/contracts").filter((path) => path.endsWith(".ts")),
+      ...walk("lib/workbench/control-plane-client").filter((path) => path.endsWith(".ts")),
+      ...walk("lib/workbench/agent-connection").filter((path) => /\.tsx?$/.test(path)),
+    ].filter((path) => !path.endsWith(".test.ts"));
+    for (const path of productionModules) {
+      expect(read(path).split("\n").length, path).toBeLessThanOrEqual(800);
+    }
+    for (const path of [
+      "cloudflare/control-plane/src/workspace-data-lifecycle.ts",
+      "cloudflare/control-plane/src/action-authority.ts",
+      "cloudflare/control-plane/src/session-agent.ts",
+      "lib/workbench/workbench-types.ts",
+      "lib/workbench/cloudflare-control-plane-client.ts",
+      "lib/workbench/use-agent-connection.tsx",
+    ]) {
+      expect(read(path).split("\n").length, path).toBeLessThanOrEqual(300);
+    }
+  });
+
+  it("keeps decomposed runtime value imports acyclic", () => {
+    const modules = [
+      ...walk("cloudflare/control-plane/src").filter((path) =>
+        /(?:workspace-data|action-authority|session-agent).*\.ts$/.test(path),
+      ),
+      ...walk("lib/workbench/contracts").filter((path) => path.endsWith(".ts")),
+      ...walk("lib/workbench/control-plane-client").filter((path) => path.endsWith(".ts")),
+      ...walk("lib/workbench/agent-connection").filter((path) => /\.tsx?$/.test(path)),
+    ].filter((path) => !path.endsWith(".test.ts"));
+    const moduleSet = new Set(modules);
+    const graph = new Map(
+      modules.map((path) => {
+        const dependencies = [
+          ...read(path).matchAll(/import\s+(?!type\b)[\s\S]*?\sfrom\s+"(\.[^"]+)";/g),
+        ]
+          .map((match) => normalize(join(dirname(path), match[1] ?? "")))
+          .flatMap((target) => [target, `${target}.ts`, `${target}.tsx`])
+          .filter((target) => moduleSet.has(target));
+        return [path, dependencies] as const;
+      }),
+    );
+    const visiting = new Set<string>();
+    const visited = new Set<string>();
+    const visit = (path: string) => {
+      if (visiting.has(path)) throw new Error(`runtime import cycle includes ${path}`);
+      if (visited.has(path)) return;
+      visiting.add(path);
+      for (const dependency of graph.get(path) ?? []) visit(dependency);
+      visiting.delete(path);
+      visited.add(path);
+    };
+    for (const path of modules) visit(path);
+  });
+
   it("keeps credential values out of durable schemas and Fly envelopes", () => {
     for (const path of [
       "cloudflare/control-plane/schema.sql",
@@ -106,7 +170,10 @@ describe("runtime extension architecture", () => {
   });
 
   it("retains only a non-identifying receipt after final workspace purge", () => {
-    const lifecycle = read("cloudflare/control-plane/src/workspace-data-lifecycle.ts");
+    const lifecycle = readMatching(
+      "cloudflare/control-plane/src",
+      /workspace-data-(?!lifecycle\.test).*\.ts$/,
+    );
     const broker = read("cloudflare/control-plane/src/connection-broker.ts");
     expect(lifecycle).toContain("INSERT INTO control_deletion_receipts");
     expect(lifecycle).toContain("DELETE FROM workspaces WHERE id = ? AND status = 'purging'");
@@ -132,7 +199,10 @@ describe("runtime extension architecture", () => {
   });
 
   it("enforces snapshot export fences at every exported durable table", () => {
-    const lifecycle = read("cloudflare/control-plane/src/workspace-data-lifecycle.ts");
+    const lifecycle = readMatching(
+      "cloudflare/control-plane/src",
+      /workspace-data-(?!lifecycle\.test).*\.ts$/,
+    );
     const schema = read("cloudflare/control-plane/schema.sql");
     const migration = read(
       "cloudflare/control-plane/migrations/0012_consistent_workspace_exports.sql",
@@ -197,7 +267,7 @@ describe("runtime extension architecture", () => {
     const gateway = read("scripts/langgraph-runtime-gateway.ts");
     expect(gateway).toContain("WORKBENCH_CALLBACK_ORIGIN");
     expect(gateway).toContain("callbackUrl.origin !== allowedCallbackOrigin");
-    const client = read("lib/workbench/cloudflare-control-plane-client.ts");
+    const client = readMatching("lib/workbench/control-plane-client", /\.ts$/);
     expect(client).toContain("baseUrl && (token || signingSecret)");
     const webhook = read("app/api/external-signals/[publicId]/route.ts");
     expect(webhook).toContain("!baseUrl || !signingSecret");
