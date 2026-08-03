@@ -1,6 +1,6 @@
 {
   "name": "@assistant-mk1/agent-sdk",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Build-time Agent Pack and Runtime Module contracts for Assistant-mk1.",
   "license": "PolyForm-Noncommercial-1.0.0",
   "files": [

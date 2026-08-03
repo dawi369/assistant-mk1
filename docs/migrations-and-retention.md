@@ -1,6 +1,6 @@
 # Migrations, Retention, Export, And Deletion
 
-Document status: current 1.0 implementation and operator runbook.
+Document status: current 0.5 implementation and future 1.0 operator contract.
 
 ## Migration contract
 

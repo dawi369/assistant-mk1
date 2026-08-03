@@ -26,9 +26,9 @@ export const statusTone = (status?: string) => {
       return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300";
     case "failed":
     case "cancelled":
-      return "border-destructive/30 bg-destructive/10 text-destructive";
+      return "border-red-300 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300";
     default:
-      return "border-border bg-muted text-muted-foreground";
+      return "border-border bg-muted text-foreground";
   }
 };
 

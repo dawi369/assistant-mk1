@@ -2,7 +2,7 @@ import { defineWorkbenchConfig } from "@assistant-mk1/agent-sdk";
 
 export default defineWorkbenchConfig({
   runtimeApiVersion: 1,
-  workbenchVersion: "1.0.0",
+  workbenchVersion: "0.5.0",
   modules: [
     {
       package: "@assistant-mk1/pack-repo-analyst",

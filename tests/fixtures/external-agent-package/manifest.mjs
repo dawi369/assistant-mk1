@@ -32,7 +32,7 @@ export const manifest = defineAgentPack({
   artifactRenderers: [],
   healthChecks: [],
   evals: [],
-  compatibility: { runtimeApiVersion: 1, minimumWorkbenchVersion: "1.0.0" },
+  compatibility: { runtimeApiVersion: 1, minimumWorkbenchVersion: "0.5.0" },
   resourceLimits: {
     maxDurationMs: 5_000,
     maxToolCalls: 1,

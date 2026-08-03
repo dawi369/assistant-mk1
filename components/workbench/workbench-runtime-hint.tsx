@@ -94,7 +94,7 @@ export function WorkbenchRuntimeHint({
       case "failed":
         return "border-destructive/30 bg-destructive/10 text-destructive";
       default:
-        return "border-border bg-muted text-muted-foreground";
+        return "border-border bg-muted text-foreground";
     }
   }, [liveRuntime.chatTone]);
 
@@ -167,11 +167,11 @@ export function WorkbenchRuntimeHint({
       />
       <RuntimeHintRow icon={ActivityIcon} label="Source" value={liveRuntime.sourceLabel} />
       {session?.isStale ? (
-        <div className="text-muted-foreground/80 text-[11px]">
+        <div className="text-muted-foreground text-[11px]">
           Cached shell is visible; chat actions unlock after Cloudflare returns a live token.
         </div>
       ) : liveRuntime.summaryIsStale ? (
-        <div className="text-muted-foreground/80 flex items-center justify-between gap-2 text-[11px]">
+        <div className="text-muted-foreground flex items-center justify-between gap-2 text-[11px]">
           <span>
             {summarySyncStatus === "exhausted"
               ? "Live updates are connected; details refresh is delayed."
@@ -195,9 +195,9 @@ export function WorkbenchRuntimeHint({
           ) : null}
         </div>
       ) : isSessionStreamConnected ? (
-        <div className="text-muted-foreground/80 text-[11px]">Live session updates connected.</div>
+        <div className="text-muted-foreground text-[11px]">Live session updates connected.</div>
       ) : connection ? (
-        <div className="text-muted-foreground/80 text-[11px]">
+        <div className="text-muted-foreground text-[11px]">
           Agent token is ready; opening the session event stream.
         </div>
       ) : liveRuntime.errorMessage ? (
@@ -228,7 +228,7 @@ function RuntimeHintRow({
           tone === "failed" && "text-destructive",
         )}
       />
-      <span className="text-muted-foreground/80 shrink-0">{label}</span>
+      <span className="text-muted-foreground shrink-0">{label}</span>
       <span className="min-w-0 flex-1 truncate text-right">{value}</span>
     </div>
   );

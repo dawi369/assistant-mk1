@@ -52,6 +52,12 @@ test("trusted local session is immediately usable and exposes release controls",
   await expect(page.getByRole("heading", { name: "Hello there!" })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Message input" })).toBeEditable();
   await expect.poll(() => adminSummaryRequests).toBeGreaterThan(0);
+  await expect
+    .poll(async () => {
+      const response = await page.request.get("/api/workbench/admin-access");
+      return response.ok() && ((await response.json()) as { isAdmin?: boolean }).isAdmin;
+    })
+    .toBe(true);
 
   await page.route("**/api/workbench/chat-session/stage-thread**", async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 800));
@@ -74,7 +80,7 @@ test("trusted local session is immediately usable and exposes release controls",
 
   const composer = page.getByRole("textbox", { name: /Message input|Draft message/ });
   await composer.fill("/admin");
-  await composer.press("Enter");
+  await page.getByText("Open workspace, agent, and runtime controls.", { exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Admin" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "Overview" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "Agents & Packs" })).toBeVisible();
@@ -83,7 +89,7 @@ test("trusted local session is immediately usable and exposes release controls",
 
   await page.getByRole("tab", { name: "Agents & Packs" }).click();
   const repositoryPack = page.locator("article").filter({ hasText: "Repository Analyst" });
-  await expect(repositoryPack).toContainText("Version 1.2.0");
+  await expect(repositoryPack).toContainText("Version 1.2.1");
   await expect(page.getByText("Polymancer Research", { exact: true })).toBeVisible();
   await expect(page.getByText("Swordfish Runtime", { exact: true })).toBeVisible();
   await repositoryPack.getByRole("button", { name: "Use pack" }).click();
@@ -174,7 +180,7 @@ test("trusted local session is immediately usable and exposes release controls",
   const recoveredComposer = page.getByRole("textbox", { name: /Message input|Draft message/ });
   await expect(recoveredComposer).toBeEditable();
   await recoveredComposer.fill("/admin");
-  await recoveredComposer.press("Enter");
+  await page.getByText("Open workspace, agent, and runtime controls.", { exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Admin" })).toBeVisible();
 
   expect(hydrationErrors).toEqual([]);

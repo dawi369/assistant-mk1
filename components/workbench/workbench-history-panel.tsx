@@ -428,7 +428,7 @@ export function WorkbenchHistoryPanel({
                         <span className="text-muted-foreground block text-xs">
                           {summaryDetail(run)}
                         </span>
-                        <span className="text-muted-foreground/80 block text-xs">
+                        <span className="text-muted-foreground block text-xs">
                           {formatAge(run.updatedAt ?? run.createdAt)}
                         </span>
                         {run.artifactIds?.length ? (

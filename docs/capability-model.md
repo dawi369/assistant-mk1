@@ -5,9 +5,10 @@ authority. A pack cannot acquire either by prompt wording or manifest metadata:
 the compiled runtime, workspace policy, platform gates, and executable evidence
 must all agree.
 
-Document status: current 1.0 contract. The release target is Operational L3 and
-Authority A2. Delegation is deferred; it is not a prerequisite for direct
-mutation safety.
+Document status: current 0.5 implementation and future 1.0 contract. The local
+implementation targets Operational L3 and Authority A2; the public 1.0 claim
+still requires the hosted evidence below. Delegation is deferred and is not a
+prerequisite for direct mutation safety.
 
 ## Operational axis
 
@@ -39,8 +40,9 @@ never automatically retries an ambiguous dispatched action, records
 
 The 1.0 implementation targets L3+A2 with these hard conditions:
 
-- Retained data, connections, and mutations are separate deployment feature
-  gates. Mutation defaults off globally.
+- Retained data, connections, and mutations are separate ordered deployment
+  feature gates. Production may enable the global mutation subsystem, but
+  workspace mutation remains disabled by default and separately authorized.
 - A workspace must confirm its retention policy and explicitly authorize a
   healthy connection before any mutation proposal can execute.
 - Runtime Module v1 execute bindings declare external mutation risk, proposal

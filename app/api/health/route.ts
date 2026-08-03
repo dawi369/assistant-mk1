@@ -6,6 +6,7 @@
  * persistence.
  */
 import { NextResponse } from "next/server";
+import { compiledWorkbenchVersion } from "../../../generated/agent-runtime/platform";
 
 export const runtime = "nodejs";
 
@@ -13,9 +14,8 @@ export function GET() {
   return NextResponse.json({
     ok: true,
     service: "assistant-mk1",
+    version: compiledWorkbenchVersion,
     release:
       process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.WORKBENCH_RELEASE_SHA ?? "development",
-    langGraphConfigured: Boolean(process.env.LANGGRAPH_API_URL),
-    assistantId: process.env.NEXT_PUBLIC_LANGGRAPH_ASSISTANT_ID ?? null,
   });
 }

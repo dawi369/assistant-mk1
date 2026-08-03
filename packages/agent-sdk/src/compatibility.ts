@@ -1,17 +1,68 @@
-export type SemanticVersion = { major: number; minor: number; patch: number };
+export type SemanticVersion = {
+  major: number;
+  minor: number;
+  patch: number;
+  prerelease?: readonly string[];
+  build?: readonly string[];
+};
+
+const semanticVersionPattern =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
+
+const safeVersionNumber = (value: string) => {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+};
 
 export const parseSemanticVersion = (value: string): SemanticVersion | null => {
-  const match = value.match(/^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?$/);
+  const match = value.match(semanticVersionPattern);
   if (!match) return null;
+  const major = safeVersionNumber(match[1] ?? "");
+  const minor = safeVersionNumber(match[2] ?? "");
+  const patch = safeVersionNumber(match[3] ?? "");
+  if (major === null || minor === null || patch === null) return null;
+  const prerelease = match[4]?.split(".");
+  if (prerelease?.some((identifier) => /^\d+$/.test(identifier) && /^0\d+/.test(identifier))) {
+    return null;
+  }
   return {
-    major: Number(match[1]),
-    minor: Number(match[2]),
-    patch: Number(match[3]),
+    major,
+    minor,
+    patch,
+    ...(prerelease ? { prerelease } : {}),
+    ...(match[5] ? { build: match[5].split(".") } : {}),
   };
 };
 
-export const compareSemanticVersions = (left: SemanticVersion, right: SemanticVersion) =>
-  left.major - right.major || left.minor - right.minor || left.patch - right.patch;
+const comparePrereleaseIdentifiers = (left: string, right: string) => {
+  const leftNumeric = /^\d+$/.test(left);
+  const rightNumeric = /^\d+$/.test(right);
+  if (leftNumeric && rightNumeric) {
+    return left.length - right.length || (left < right ? -1 : left > right ? 1 : 0);
+  }
+  if (leftNumeric !== rightNumeric) return leftNumeric ? -1 : 1;
+  return left < right ? -1 : left > right ? 1 : 0;
+};
+
+export const compareSemanticVersions = (left: SemanticVersion, right: SemanticVersion) => {
+  const core = left.major - right.major || left.minor - right.minor || left.patch - right.patch;
+  if (core) return core;
+  const leftPrerelease = left.prerelease ?? [];
+  const rightPrerelease = right.prerelease ?? [];
+  if (!leftPrerelease.length || !rightPrerelease.length) {
+    return leftPrerelease.length ? -1 : rightPrerelease.length ? 1 : 0;
+  }
+  const length = Math.max(leftPrerelease.length, rightPrerelease.length);
+  for (let index = 0; index < length; index += 1) {
+    const leftIdentifier = leftPrerelease[index];
+    const rightIdentifier = rightPrerelease[index];
+    if (leftIdentifier === undefined) return -1;
+    if (rightIdentifier === undefined) return 1;
+    const compared = comparePrereleaseIdentifiers(leftIdentifier, rightIdentifier);
+    if (compared) return compared;
+  }
+  return 0;
+};
 
 export const isWorkbenchVersionCompatible = (
   workbenchVersion: string,

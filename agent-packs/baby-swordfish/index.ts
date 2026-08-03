@@ -35,7 +35,7 @@ export const babySwordfishPack = defineAgentPack({
   name: "Swordfish Runtime",
   description: "Read-only runtime health, futures snapshots, freshness, and bar integrity.",
   profile: "analyst",
-  version: "1.2.0",
+  version: "1.2.1",
   capabilityLevel: "single_agent_app",
   format: "xml",
   folderPath: "agent-packs/baby-swordfish",
@@ -121,7 +121,7 @@ export const babySwordfishPack = defineAgentPack({
       required: true,
     },
   ],
-  compatibility: { packApi: 2, minimumWorkbenchVersion: "1.0.0-preview.1" },
+  compatibility: { packApi: 2, minimumWorkbenchVersion: "0.5.0" },
   resourceLimits: {
     maxRunSeconds: 30,
     maxToolCallsPerRun: 6,

@@ -2,10 +2,12 @@
 
 Document status: current downstream compatibility and update policy.
 
-`fork-base-v1` is the immutable full-repository foundation for downstream
-agent products. It is not a promise that future Assistant-mk1 source changes
-merge without conflicts. It is a compatibility checkpoint enforced by the SDK
-contract, compiler, runtime resolution, installed-package conformance, and CI.
+`fork-base-v1.0.1` is the recommended immutable full-repository foundation for
+new downstream agent products. `fork-base-v1` remains immutable and supported
+as historical compatibility evidence. Neither tag promises that future
+Assistant-mk1 source changes merge without conflicts; each is a compatibility
+checkpoint enforced by the SDK contract, compiler, runtime resolution,
+installed-package conformance, and CI.
 
 ## Boundaries
 
@@ -30,19 +32,31 @@ actions; runtime resolution fails closed with `workbench_incompatible` or
 
 ## Create the downstream repository
 
-Fork or clone the complete repository at `fork-base-v1`, then retain the
+Fork or clone the complete repository at `fork-base-v1.0.1`, then retain the
 original repository as a read-only upstream:
 
 ```bash
 git remote rename origin upstream
 git remote add origin <downstream-repository-url>
 git fetch --tags upstream
-git switch -c main fork-base-v1
+git switch -c main fork-base-v1.0.1
 git push -u origin main
 ```
 
 Record the base tag and commit in downstream release notes. Do not move or
 recreate foundation tags.
+
+## First real fork checklist
+
+The first domain product is also the first external-repository acceptance proof:
+
+1. Fork from `fork-base-v1.0.1` and run `pnpm fork:check` before domain changes.
+2. Record the base SHA, SDK contract hash, Node and pnpm versions, and CI result.
+3. Add the downstream package only through the four Runtime Module exports and
+   the package entry in `workbench.config.ts`; do not register it in core code.
+4. Rerun `pnpm fork:check` and preserve its ignored conformance evidence.
+5. Rehearse one upstream merge on a disposable update branch before accepting
+   any upstream compatibility update.
 
 ## Review an upstream update
 
