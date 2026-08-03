@@ -85,12 +85,15 @@ test("keyboard, focus, responsive, and accessibility contracts cover workbench s
   await expect(composer).toBeEditable();
   await auditPage(page, testInfo, "chat");
 
-  await page.getByRole("button", { name: "New chat" }).focus();
-  await page.keyboard.press("Enter");
+  await page.getByRole("button", { name: "New chat" }).press("Enter");
   await expect(page.getByRole("textbox", { name: /Message input|Draft message/ })).toBeEditable();
+  await expect(page.locator("[data-summary-sync-status]")).toHaveAttribute(
+    "data-summary-sync-status",
+    "idle",
+  );
   const commandComposer = page.getByRole("textbox", { name: /Message input|Draft message/ });
   await commandComposer.fill("/history");
-  await page.keyboard.press("Enter");
+  await commandComposer.press("Enter");
   await expectDialogFocusTrap(page, "Workbench History");
   await expect(
     page.getByRole("dialog", { name: "Workbench History" }).getByRole("button", {
@@ -103,36 +106,46 @@ test("keyboard, focus, responsive, and accessibility contracts cover workbench s
   await expect(page.getByRole("dialog", { name: "Workbench History" })).toHaveCount(0);
   await expect(page.getByRole("textbox", { name: /Message input|Draft message/ })).toBeFocused();
 
-  await page.getByRole("button", { name: "Workspace access" }).focus();
-  await page.keyboard.press("Enter");
+  await page.getByRole("button", { name: "Workspace access" }).press("Enter");
   await expectDialogFocusTrap(page, "Workspace");
   await expect(page.getByRole("heading", { name: "Data lifecycle" })).toBeVisible();
   await auditPage(page, testInfo, "workspace-lifecycle");
   await page.keyboard.press("Escape");
   await expect(page.getByRole("textbox", { name: /Message input|Draft message/ })).toBeFocused();
 
-  await page.getByRole("textbox", { name: /Message input|Draft message/ }).fill("/admin");
-  await page.keyboard.press("Enter");
+  const adminComposer = page.getByRole("textbox", { name: /Message input|Draft message/ });
+  await adminComposer.fill("/admin");
+  await expect(
+    page.getByText("Open workspace, agent, and runtime controls.", { exact: true }),
+  ).toBeVisible();
+  await adminComposer.press("Enter");
   await expectDialogFocusTrap(page, "Admin");
   await auditPage(page, testInfo, "admin");
-  await page.getByRole("tab", { name: "Agents & Packs" }).focus();
-  await page.keyboard.press("Enter");
+  await page.getByRole("tab", { name: "Agents & Packs" }).press("Enter");
   const repositoryPack = page.locator("article").filter({ hasText: "Repository Analyst" });
-  await repositoryPack.getByRole("button", { name: "Use pack" }).focus();
-  await page.keyboard.press("Enter");
+  const useRepositoryPack = repositoryPack.getByRole("button", { name: "Use pack" });
+  if (await useRepositoryPack.count()) {
+    await useRepositoryPack.press("Enter");
+  } else {
+    await expect(repositoryPack.getByRole("button", { name: "Current pack" })).toBeDisabled();
+    await page.keyboard.press("Escape");
+  }
+  await expect(page.getByRole("dialog", { name: "Admin" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Repository Analyst" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Tools", exact: true }).focus();
-  await page.keyboard.press("Enter");
+  await expect(page.locator("[data-summary-sync-status]")).toHaveAttribute(
+    "data-summary-sync-status",
+    "idle",
+  );
+  const toolsButton = page.getByRole("button", { name: "Tools", exact: true });
+  await toolsButton.press("Enter");
   await expectDialogFocusTrap(page, "Repository Analyst tools");
   await auditPage(page, testInfo, "agent-tools");
   await page.keyboard.press("Escape");
 
-  await page.getByRole("button", { name: /Assess release readiness/i }).focus();
-  await page.keyboard.press("Enter");
+  await page.getByRole("button", { name: /Assess release readiness/i }).press("Enter");
   await expectDialogFocusTrap(page, "Readiness report");
-  await page.getByRole("button", { name: "Run dry-run" }).focus();
-  await page.keyboard.press("Enter");
+  await page.getByRole("button", { name: "Run dry-run" }).press("Enter");
   await expect(page.getByRole("dialog", { name: "Workbench History" })).toBeVisible();
   await expect(page.getByText("Repository snapshot report", { exact: true }).first()).toBeVisible({
     timeout: 30_000,
