@@ -64,9 +64,6 @@ if (targetValue === "production" && process.env.WORKBENCH_CONFORMANCE_MODE === "
 if (targetValue === "production" && process.env.WORKBENCH_VAULT_BACKEND === "memory") {
   failures.push("production rejects WORKBENCH_VAULT_BACKEND=memory");
 }
-if (targetValue === "production" && process.env.WORKBENCH_MUTATIONS_ENABLED === "true") {
-  failures.push("production rejects global mutation enablement during deployment");
-}
 if (
   targetValue === "production" &&
   process.env.WORKBENCH_OPERATOR_ALERT_CONFORMANCE_MODE === "true"

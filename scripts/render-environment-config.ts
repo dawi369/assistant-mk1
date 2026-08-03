@@ -27,9 +27,6 @@ export const renderEnvironmentConfig = (
   if (bootstrap && featureStage !== "disabled") {
     throw new Error("Cloudflare bootstrap requires feature stage disabled");
   }
-  if (target === "production" && featureStage === "mutations") {
-    throw new Error("production deployment cannot globally enable mutations");
-  }
   const resolved = resolveEnvironmentReferences(loadWorkbenchEnvironment(target));
   if (resolved.unresolved.length) {
     throw new Error(`missing required variables: ${resolved.unresolved.join(", ")}`);

@@ -110,7 +110,10 @@ Record operator approval independently for each external-state phase:
    `mutations`; each stage requires the preceding stage's same-SHA deployment
    record;
 7. collect all acceptance evidence and complete the 24-hour soak;
-8. deploy the accepted SHA to production with global mutation still off.
+8. deploy the accepted SHA to production and promote the feature stages in
+   order. The global mutation subsystem may be available, while every
+   workspace remains mutation-disabled until its own retention, connection,
+   pack/tool, policy, approval, and kill-switch checks pass.
 
 Do not proceed if any resource, WorkOS application, secret value, or public
 origin is shared across acceptance and production. Vercel production points

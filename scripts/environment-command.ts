@@ -54,9 +54,6 @@ const featureStage = featureStageValue as FeatureStage;
 if (phase !== "deploy-cloudflare" && featureStage !== "disabled") {
   throw new Error("--feature-stage is supported only for deploy-cloudflare");
 }
-if (target === "production" && featureStage === "mutations") {
-  throw new Error("production deployment cannot globally enable mutations");
-}
 
 const configured = environmentTargets.map(loadWorkbenchEnvironment);
 const failures = validateEnvironmentSet(configured);

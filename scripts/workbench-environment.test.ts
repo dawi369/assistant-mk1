@@ -104,7 +104,7 @@ describe("workbench environment manifests", () => {
     }
   });
 
-  it("enforces ordered feature stages and keeps production mutation-disabled", () => {
+  it("enforces ordered feature stages and permits production mutation availability", () => {
     const variables = {
       WORKBENCH_ACCEPTANCE_D1_DATABASE_ID: "11111111-1111-4111-8111-111111111111",
       WORKBENCH_ACCEPTANCE_CLOUDFLARE_ORIGIN: "https://control.acceptance.example.test",
@@ -114,6 +114,14 @@ describe("workbench environment manifests", () => {
       WORKBENCH_ACCEPTANCE_VERCEL_ORIGIN: "https://workbench.acceptance.example.test",
       WORKBENCH_ACCEPTANCE_WORKOS_APPLICATION_ID: "client_acceptance",
       WORKBENCH_ACCEPTANCE_WORKSPACE_ID: "workspace_acceptance",
+      WORKBENCH_PRODUCTION_D1_DATABASE_ID: "22222222-2222-4222-8222-222222222222",
+      WORKBENCH_PRODUCTION_CLOUDFLARE_ORIGIN: "https://control.production.example.test",
+      WORKBENCH_PRODUCTION_FLY_ORIGIN: "https://runner.production.example.test",
+      WORKBENCH_PRODUCTION_VERCEL_ORG_ID: "team_production",
+      WORKBENCH_PRODUCTION_VERCEL_PROJECT_ID: "project_production",
+      WORKBENCH_PRODUCTION_VERCEL_ORIGIN: "https://workbench.production.example.test",
+      WORKBENCH_PRODUCTION_WORKOS_APPLICATION_ID: "client_production",
+      WORKBENCH_PRODUCTION_ACCEPTANCE_WORKSPACE_ID: "workspace_production",
     };
     const previous = Object.fromEntries(
       Object.keys(variables).map((key) => [key, process.env[key]]),
@@ -135,9 +143,14 @@ describe("workbench environment manifests", () => {
           permittedHosts: ["runner.acceptance.example.test"],
         }),
       ]);
-      expect(() => renderEnvironmentConfig("production", { featureStage: "mutations" })).toThrow(
-        "production deployment cannot globally enable mutations",
+      const production = readFileSync(
+        renderEnvironmentConfig("production", { featureStage: "mutations" }).wranglerPath,
+        "utf8",
       );
+      expect(production).toContain('"WORKBENCH_RETAINED_DATA_ENABLED": "true"');
+      expect(production).toContain('"WORKBENCH_CONNECTIONS_ENABLED": "true"');
+      expect(production).toContain('"WORKBENCH_MUTATIONS_ENABLED": "true"');
+      expect(production).not.toContain("WORKBENCH_OAUTH_PROVIDERS_JSON");
     } finally {
       for (const [key, value] of Object.entries(previous)) {
         if (value === undefined) delete process.env[key];

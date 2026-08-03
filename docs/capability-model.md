@@ -40,8 +40,9 @@ never automatically retries an ambiguous dispatched action, records
 
 The 1.0 implementation targets L3+A2 with these hard conditions:
 
-- Retained data, connections, and mutations are separate deployment feature
-  gates. Mutation defaults off globally.
+- Retained data, connections, and mutations are separate ordered deployment
+  feature gates. Production may enable the global mutation subsystem, but
+  workspace mutation remains disabled by default and separately authorized.
 - A workspace must confirm its retention policy and explicitly authorize a
   healthy connection before any mutation proposal can execute.
 - Runtime Module v1 execute bindings declare external mutation risk, proposal
