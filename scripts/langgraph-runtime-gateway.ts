@@ -25,6 +25,7 @@ import {
 } from "@assistant-mk1/agent-sdk/control-plane";
 import { agentManifestRegistry } from "../generated/agent-runtime/manifests";
 import { agentRunnerRegistry } from "../generated/agent-runtime/runner";
+import { compiledWorkbenchVersion } from "../generated/agent-runtime/platform";
 import { resolvePlatformRunnerTool } from "../lib/agent-runtime/core-runner-provider";
 
 const port = Number(process.env.PORT ?? 3000);
@@ -972,6 +973,7 @@ const server = createServer((request, response) => {
       json(response, 200, {
         ok: true,
         service: "assistant-mk1-langgraph-runtime",
+        version: compiledWorkbenchVersion,
         gatewayReady: true,
         release: process.env.WORKBENCH_RELEASE_SHA ?? "development",
       });
@@ -983,6 +985,7 @@ const server = createServer((request, response) => {
       json(response, langGraphReady ? 200 : 503, {
         ok: langGraphReady,
         service: "assistant-mk1-langgraph-runtime",
+        version: compiledWorkbenchVersion,
         langGraphReady,
         release: process.env.WORKBENCH_RELEASE_SHA ?? "development",
       });

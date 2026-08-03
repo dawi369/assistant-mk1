@@ -131,6 +131,7 @@ import {
 } from "./action-authority";
 import { releaseFeatureConfigurationValid } from "./feature-gates";
 import { connectionProviderRegistry } from "./connection-providers";
+import { compiledWorkbenchVersion } from "../../../generated/agent-runtime/platform";
 
 export { WorkbenchThreadChatAgent };
 export { WorkbenchSessionAgent };
@@ -147,6 +148,7 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
     return json({
       ok: true,
       service: "assistant-mk1-control-plane",
+      version: compiledWorkbenchVersion,
       release: env.WORKBENCH_RELEASE_SHA ?? "development",
     });
   }
@@ -185,6 +187,7 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
       return json({
         ok: true,
         service: "assistant-mk1-control-plane",
+        version: compiledWorkbenchVersion,
         storage: "d1",
         release: env.WORKBENCH_RELEASE_SHA ?? "development",
       });

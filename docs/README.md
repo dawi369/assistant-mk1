@@ -45,6 +45,7 @@ These files should stay aligned with code changes:
   resource checklist.
 - `evals.md`: real-session eval posture, manifest, and verifier command.
 - `release-readiness.md`: 1.0 L3+A2 candidate gates and hosted release evidence.
+- `release-0.5.md`: current internal 0.5 release boundary, evidence, and non-claims.
 - `production-1-conformance.md`: retained-data, Vault, mutation, and same-commit
   Operational L3 plus Authority A2 evidence matrix.
 - `level-2-conformance.md`: executable Level 0-2 guarantees and release evidence mapping.

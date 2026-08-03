@@ -1,3 +1,14 @@
-export * from "./action-authority-core";
-export * from "./action-authority-execution";
-export * from "./action-authority-handlers";
+export {
+  createDurableActionPort,
+  executeActionProposal,
+  reconcileActionProposal,
+} from "./action-authority-execution";
+export {
+  approveAndExecuteActionApproval,
+  cancelActionForDeniedApproval,
+  handleListActionProposals,
+  handleListKillSwitches,
+  handleReconcileAction,
+  handleRequestActionExecution,
+  handleUpdateKillSwitch,
+} from "./action-authority-handlers";

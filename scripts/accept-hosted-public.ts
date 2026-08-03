@@ -1,3 +1,7 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { compiledWorkbenchVersion } from "../generated/agent-runtime/platform";
+
 const requiredOrigin = (name: string) => {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`${name} is required`);
@@ -14,13 +18,22 @@ const readHealth = async (origin: string, path: string, expectedService: string)
   if (!response.ok || body?.ok !== true || body.service !== expectedService) {
     throw new Error(`${expectedService} ${path} failed with HTTP ${response.status}`);
   }
+  if (body.version !== compiledWorkbenchVersion) {
+    throw new Error(`${expectedService} ${path} reports a different application version`);
+  }
   const leakedKey = Object.keys(body).find((key) => forbiddenKeys.test(key));
   if (leakedKey) throw new Error(`${expectedService} ${path} exposed forbidden key ${leakedKey}`);
   const expectedCommit = process.env.GITHUB_SHA?.trim();
   if (expectedCommit && body.release !== expectedCommit) {
     throw new Error(`${expectedService} ${path} reports a different release`);
   }
-  return { path, status: response.status, service: body.service, release: body.release };
+  return {
+    path,
+    status: response.status,
+    service: body.service,
+    version: body.version,
+    release: body.release,
+  };
 };
 
 const main = async () => {
@@ -45,6 +58,9 @@ const main = async () => {
     serviceVersions: Object.fromEntries(
       checks.map((check) => [String(check.service), String(check.release)]),
     ),
+    applicationVersions: Object.fromEntries(
+      checks.map((check) => [String(check.service), String(check.version)]),
+    ),
   };
   if (/^[a-f0-9]{40}$/.test(commit)) {
     const directory = resolve(process.cwd(), "output/release", commit);
@@ -62,5 +78,3 @@ void main().catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : error);
   process.exitCode = 1;
 });
-import { mkdirSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";

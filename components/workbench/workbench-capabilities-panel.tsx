@@ -567,7 +567,7 @@ function CapabilityRow({
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <p className="break-all text-sm font-medium">{name}</p>
-          <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[11px]">
+          <span className="bg-muted text-foreground rounded px-1.5 py-0.5 text-[11px]">
             {badge}
           </span>
         </div>

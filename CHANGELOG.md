@@ -22,6 +22,15 @@ Internal pre-1.0 foundation implementing the local Operational L3 and Authority 
   workbench-version compatibility and normalized declaration/schema hashes.
 - Deterministic synthetic release screenshots and strict Node 24/package
   metadata validation.
+- Domain-split workbench types, control-plane clients, session coordination,
+  lifecycle, and action-authority modules behind import-compatible façades.
+- Production feature promotion through the globally available `mutations`
+  stage while preserving default-off workspace authority and conformance-only
+  mutation fixtures.
+- Serious/critical Axe gating plus deterministic keyboard, focus-trap, and
+  desktop/mobile overflow acceptance across the primary workbench surfaces.
+- Public health identity agreement across Vercel, Cloudflare, and Fly using the
+  same full release SHA and application version.
 
 The public 1.0 tag remains blocked until the same-commit hosted checklist in
 `docs/release-readiness.md` is complete. Version 0.5 makes no production-SLO claim.

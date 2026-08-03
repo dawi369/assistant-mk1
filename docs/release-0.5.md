@@ -1,0 +1,35 @@
+# Assistant-mk1 0.5 Foundation Release
+
+Document status: current internal pre-1.0 release contract.
+
+Version `0.5.0` is the production-hosted fork foundation. It carries the stable
+unpublished Agent SDK `1.0.1`, Pack API v2, Runtime Module v1, retained-data,
+connection-brokerage, and policy-controlled action subsystems. It does not make
+a public-production SLO or real-provider mutation claim.
+
+## Acceptance boundary
+
+- Local `pnpm fork:check`, `pnpm release:check`, accessibility, clean-clone,
+  Docker, generated-registry, dependency-audit, and build evidence is green.
+- Vercel, Cloudflare, and Fly deploy from one full commit SHA and report that SHA
+  with application version `0.5.0` from their public health endpoints.
+- Production Cloudflare promotion is recorded in order: `disabled`,
+  `retained-data`, `connections`, then `mutations`.
+- WorkOS Vault is the production credential backend; conformance mode, memory
+  Vault, local-dev identity, shared secrets, and default workspace mutation are
+  rejected.
+- Global mutation code is available, but every workspace remains disabled by
+  default and no shipped production pack exposes an execute-capable mutation.
+- Signed-in operator acceptance covers current pack activation, chat, History,
+  lifecycle, Connections, and visible mutation-subsystem posture.
+
+The immutable tags `v0.5.0` and `fork-base-v1.0.1` must identify the same
+accepted commit. `fork-base-v1` remains unchanged as historical evidence.
+
+## Deferred to public 1.0
+
+The 24-hour trigger/webhook soak, receiver-outage redelivery, production SLO,
+real-provider mutation acceptance, credential-class rotation review, and the
+complete same-commit checklist in `release-readiness.md` remain unachieved 1.0
+requirements. Trading adapters, delegation, multi-region failover, Polymancer
+mutation, and Swordfish execution are not part of 0.5.

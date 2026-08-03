@@ -77,7 +77,8 @@ browser observation.
       dependency-audit, and generated-registry gates are green.
 - [ ] Local, acceptance, and production Worker/D1/R2/DO, Fly, Vercel, WorkOS,
       origin, and signing-secret references are distinct; production rejects
-      conformance, memory Vault, dev tokens, and global mutation enablement.
+      conformance, memory Vault, dev tokens, shared signing secrets, and default
+      workspace mutation enablement.
 - [ ] New Workers are bootstrapped with public ingress and cron triggers disabled;
       final Cloudflare, Fly, and Vercel deploys require same-commit provider-secret
       evidence.
