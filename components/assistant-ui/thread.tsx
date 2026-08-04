@@ -20,6 +20,7 @@ import {
   Reasoning,
   ReasoningContent,
   ReasoningRoot,
+  ReasoningText,
   ReasoningTrigger,
 } from "@/components/assistant-ui/reasoning";
 import {
@@ -401,34 +402,47 @@ const ComposerAction: FC<{ pendingFirstTurn: boolean }> = ({ pendingFirstTurn })
   return (
     <div className="aui-composer-action-wrapper relative flex items-center justify-between">
       <ComposerAddAttachment />
-      <AuiIf condition={(s) => !s.thread.isRunning}>
-        <ComposerPrimitive.Send asChild>
-          <TooltipIconButton
-            tooltip="Send message"
-            side="bottom"
-            type="button"
-            variant="default"
-            size="icon"
-            className="aui-composer-send size-8 rounded-full"
-            aria-label="Send message"
+      <div className="flex min-w-0 items-center gap-2">
+        <AuiIf condition={(s) => s.thread.isRunning}>
+          <span
+            className="text-muted-foreground hidden truncate text-xs @sm:inline"
+            role="status"
+            aria-live="polite"
           >
-            <ArrowUpIcon className="aui-composer-send-icon size-4" />
-          </TooltipIconButton>
-        </ComposerPrimitive.Send>
-      </AuiIf>
-      <AuiIf condition={(s) => s.thread.isRunning}>
-        <ComposerPrimitive.Cancel asChild>
-          <Button
-            type="button"
-            variant="default"
-            size="icon"
-            className="aui-composer-cancel size-8 rounded-full"
-            aria-label="Stop generating"
-          >
-            <SquareIcon className="aui-composer-cancel-icon size-3 fill-current" />
-          </Button>
-        </ComposerPrimitive.Cancel>
-      </AuiIf>
+            Responding · your draft stays here
+          </span>
+        </AuiIf>
+        <AuiIf condition={(s) => !s.thread.isRunning}>
+          <ComposerPrimitive.Send asChild>
+            <TooltipIconButton
+              tooltip="Send message"
+              side="top"
+              type="button"
+              variant="default"
+              size="icon"
+              className="aui-composer-send size-8 rounded-full"
+              aria-label="Send message"
+            >
+              <ArrowUpIcon className="aui-composer-send-icon size-4" />
+            </TooltipIconButton>
+          </ComposerPrimitive.Send>
+        </AuiIf>
+        <AuiIf condition={(s) => s.thread.isRunning}>
+          <ComposerPrimitive.Cancel asChild>
+            <TooltipIconButton
+              tooltip="Stop response (Esc)"
+              side="top"
+              type="button"
+              variant="default"
+              size="icon"
+              className="aui-composer-cancel size-8 rounded-full"
+              aria-label="Stop response"
+            >
+              <SquareIcon className="aui-composer-cancel-icon size-3 fill-current" />
+            </TooltipIconButton>
+          </ComposerPrimitive.Cancel>
+        </AuiIf>
+      </div>
     </div>
   );
 };
@@ -454,7 +468,7 @@ const AssistantMessage: FC = () => {
     <MessagePrimitive.Root
       data-slot="aui_assistant-message-root"
       data-role="assistant"
-      className="fade-in slide-in-from-bottom-1 animate-in relative duration-150"
+      className="group/message fade-in slide-in-from-bottom-1 animate-in relative duration-150"
     >
       <div
         data-slot="aui_assistant-message-content"
@@ -475,9 +489,11 @@ const AssistantMessage: FC = () => {
               case "group-reasoning": {
                 const running = part.status.type === "running";
                 return (
-                  <ReasoningRoot defaultOpen={running}>
+                  <ReasoningRoot streaming={running} variant="ghost" className="mb-2">
                     <ReasoningTrigger active={running} />
-                    <ReasoningContent aria-busy={running} />
+                    <ReasoningContent aria-busy={running}>
+                      <ReasoningText>{children}</ReasoningText>
+                    </ReasoningContent>
                   </ReasoningRoot>
                 );
               }
@@ -521,7 +537,8 @@ const AssistantActionBar: FC = () => {
     <ActionBarPrimitive.Root
       hideWhenRunning
       autohide="not-last"
-      className="aui-assistant-action-bar-root text-muted-foreground col-start-3 row-start-2 -ms-1 flex gap-1"
+      autohideFloat="always"
+      className="aui-assistant-action-bar-root text-muted-foreground col-start-3 row-start-2 -ms-1 flex gap-1 data-[floating]:pointer-events-none data-[floating]:opacity-0 data-[floating]:transition-opacity data-[floating]:group-hover/message:pointer-events-auto data-[floating]:group-hover/message:opacity-100 data-[floating]:focus-within:pointer-events-auto data-[floating]:focus-within:opacity-100"
     >
       <ActionBarPrimitive.Copy asChild>
         <TooltipIconButton tooltip="Copy">
@@ -540,13 +557,19 @@ const AssistantActionBar: FC = () => {
       </ActionBarPrimitive.Reload>
       <ActionBarMorePrimitive.Root>
         <ActionBarMorePrimitive.Trigger asChild>
-          <TooltipIconButton tooltip="More" className="data-[state=open]:bg-accent">
+          <TooltipIconButton
+            tooltip="More actions"
+            side="top"
+            className="data-[state=open]:bg-accent"
+          >
             <MoreHorizontalIcon />
           </TooltipIconButton>
         </ActionBarMorePrimitive.Trigger>
         <ActionBarMorePrimitive.Content
-          side="bottom"
+          side="top"
           align="start"
+          sideOffset={6}
+          collisionPadding={12}
           className="aui-action-bar-more-content bg-popover text-popover-foreground z-50 min-w-32 overflow-hidden rounded-md border p-1 shadow-md"
         >
           <ActionBarPrimitive.ExportMarkdown asChild>

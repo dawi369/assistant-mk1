@@ -1,4 +1,5 @@
-import { getOwnedChatThread } from "./chat-boundary-store";
+import { selectAgent } from "./authz-store";
+import { getOwnedChatThread, promoteDraftChatThread } from "./chat-boundary-store";
 import { appendControlPlaneEvent } from "./control-plane-events";
 import { parseDataJson } from "./http";
 import { toThreadLifecycleControlPlaneEvent } from "./session-lifecycle-events";
@@ -198,6 +199,38 @@ export const reusableDraftThread = async (
   if (!isExpiredDraftThread(thread)) return thread;
   await markThreadDeleted(env, identity, thread);
   return null;
+};
+
+export const findReusableDraftThread = async (
+  env: Env,
+  identity: AgentIdentity,
+  sessionId: string,
+  ...threadIds: Array<string | null | undefined>
+) => {
+  for (const threadId of threadIds) {
+    const reusable = await reusableDraftThread(env, identity, sessionId, threadId);
+    if (reusable) return reusable;
+  }
+  return null;
+};
+
+export const materializeDraftThread = async (
+  env: Env,
+  identity: AgentIdentity,
+  thread: ChatThreadRow,
+  message: string,
+) => {
+  const activeAgent = await selectAgent(env, thread.agent_id, identity.scope.workspaceId);
+  if (!activeAgent || activeAgent.status !== "active") {
+    throw new Error("Agent is not active");
+  }
+  const promoted = await promoteDraftChatThread(env, identity.scope, thread.thread_id, {
+    title: titleFromUpdate(message) ?? message,
+  });
+  if (!promoted.promoted || !promoted.thread || promoted.thread.status !== "active") {
+    throw new Error("Staged chat could not be materialized");
+  }
+  return { activeAgent, thread: promoted.thread };
 };
 
 export const submitProgrammaticTurn = async (

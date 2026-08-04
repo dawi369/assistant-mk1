@@ -3,18 +3,29 @@
 /**
  * Collapsible reasoning-part renderers for assistant-ui streams.
  *
- * Reasoning text can include transient chain-of-thought content. The workbench
- * only renders a compact status affordance; durable decisions and provenance
- * should be written through framework state contracts instead.
+ * Reasoning text can include transient provider-supplied content. The workbench
+ * renders it as an ephemeral disclosure; durable decisions and provenance
+ * should still be written through framework state contracts instead.
  */
-import { useCallback, useRef, useState } from "react";
+import {
+  createContext,
+  memo,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { BrainIcon, ChevronDownIcon } from "lucide-react";
 import { useScrollLock, type ReasoningMessagePartComponent } from "@assistant-ui/react";
+import { MarkdownText } from "@/components/assistant-ui/markdown-text";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 
 const ANIMATION_DURATION = 200;
+const ReasoningPreviewContext = createContext(false);
 
 const reasoningVariants = cva("aui-reasoning-root mb-4 w-full", {
   variants: {
@@ -34,6 +45,7 @@ type ReasoningRootProps = Omit<React.ComponentProps<typeof Collapsible>, "open" 
     open?: boolean;
     onOpenChange?: (open: boolean) => void;
     defaultOpen?: boolean;
+    streaming?: boolean;
   };
 
 function ReasoningRoot({
@@ -42,23 +54,35 @@ function ReasoningRoot({
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
   defaultOpen = false,
+  streaming,
   children,
   ...props
 }: ReasoningRootProps) {
   const collapsibleRef = useRef<HTMLDivElement>(null);
-  const [uncontrolledOpen, setUncontrolledOpen] = useState(defaultOpen);
+  const initialOpenRef = useRef(defaultOpen);
+  const [userOpen, setUserOpen] = useState<boolean | null>(null);
   const lockScroll = useScrollLock(collapsibleRef, ANIMATION_DURATION);
 
   const isControlled = controlledOpen !== undefined;
-  const isOpen = isControlled ? controlledOpen : uncontrolledOpen;
+  const isOpen = isControlled
+    ? controlledOpen
+    : (userOpen ?? (streaming || initialOpenRef.current));
+  const isPreview = streaming === true && isOpen;
+
+  const previousStreamingRef = useRef(streaming);
+  useLayoutEffect(() => {
+    if (previousStreamingRef.current === streaming) return;
+    previousStreamingRef.current = streaming;
+    if (!isControlled && userOpen === null && !initialOpenRef.current) {
+      lockScroll();
+    }
+  }, [isControlled, lockScroll, streaming, userOpen]);
 
   const handleOpenChange = useCallback(
     (open: boolean) => {
-      if (!open) {
-        lockScroll();
-      }
+      lockScroll();
       if (!isControlled) {
-        setUncontrolledOpen(open);
+        setUserOpen(open);
       }
       controlledOnOpenChange?.(open);
     },
@@ -80,7 +104,9 @@ function ReasoningRoot({
       }
       {...props}
     >
-      {children}
+      <ReasoningPreviewContext.Provider value={isPreview}>
+        {children}
+      </ReasoningPreviewContext.Provider>
     </Collapsible>
   );
 }
@@ -139,8 +165,11 @@ function ReasoningTrigger({
 
 function ReasoningContent({
   className,
+  children,
   ...props
 }: React.ComponentProps<typeof CollapsibleContent>) {
+  const isPreview = useContext(ReasoningPreviewContext);
+
   return (
     <CollapsibleContent
       data-slot="reasoning-content"
@@ -156,10 +185,72 @@ function ReasoningContent({
         className,
       )}
       {...props}
-    />
+    >
+      {children}
+      {isPreview ? (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-linear-to-t from-background to-transparent"
+        />
+      ) : null}
+    </CollapsibleContent>
   );
 }
 
-const Reasoning: ReasoningMessagePartComponent = () => null;
+function ReasoningText({ className, children, ...props }: React.ComponentProps<"div">) {
+  const isPreview = useContext(ReasoningPreviewContext);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
 
-export { Reasoning, ReasoningRoot, ReasoningTrigger, ReasoningContent };
+  useEffect(() => {
+    if (!isPreview) return;
+    const scrollElement = scrollRef.current;
+    const contentElement = contentRef.current;
+    if (!scrollElement || !contentElement) return;
+
+    let pinned = true;
+    const pinToBottom = () => {
+      if (pinned) scrollElement.scrollTop = scrollElement.scrollHeight;
+    };
+    const handleScroll = () => {
+      pinned =
+        Math.abs(
+          scrollElement.scrollHeight - scrollElement.scrollTop - scrollElement.clientHeight,
+        ) <= 1;
+    };
+
+    pinToBottom();
+    scrollElement.addEventListener("scroll", handleScroll);
+    const observer = new ResizeObserver(pinToBottom);
+    observer.observe(contentElement);
+    return () => {
+      scrollElement.removeEventListener("scroll", handleScroll);
+      observer.disconnect();
+    };
+  }, [isPreview]);
+
+  return (
+    <div
+      ref={scrollRef}
+      data-slot="reasoning-text"
+      className={cn(
+        "relative z-0 max-h-64 overflow-y-auto ps-6 pt-2 pb-2 leading-relaxed text-pretty",
+        "transition-[transform,opacity] duration-(--animation-duration) motion-reduce:transition-none",
+        "group-data-[state=open]/collapsible-content:animate-in group-data-[state=closed]/collapsible-content:animate-out",
+        "group-data-[state=open]/collapsible-content:fade-in-0 group-data-[state=closed]/collapsible-content:fade-out-0",
+        className,
+      )}
+      {...props}
+    >
+      <div ref={contentRef} className="space-y-4">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+const ReasoningImpl: ReasoningMessagePartComponent = () => <MarkdownText />;
+const Reasoning = memo(ReasoningImpl) as unknown as ReasoningMessagePartComponent;
+Reasoning.displayName = "Reasoning";
+
+export { Reasoning, ReasoningRoot, ReasoningTrigger, ReasoningContent, ReasoningText };

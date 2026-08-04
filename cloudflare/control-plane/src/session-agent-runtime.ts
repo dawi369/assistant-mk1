@@ -7,7 +7,6 @@ import {
   getLatestChatSession,
   getLatestRunningChatRun,
   getOwnedChatThread,
-  promoteDraftChatThread,
   touchChatSession,
 } from "./chat-boundary-store";
 import { appendControlPlaneEvent } from "./control-plane-events";
@@ -45,7 +44,8 @@ import {
   draftExpiryFromThread,
   encodeSse,
   findFallbackActiveThread,
-  reusableDraftThread,
+  findReusableDraftThread,
+  materializeDraftThread,
   safeAgentSwitchData,
   safeSnapshotData,
   safeThreadData,
@@ -65,10 +65,7 @@ export class WorkbenchSessionAgent {
     private readonly env: Env,
   ) {}
 
-  private nextRevision() {
-    this.revision += 1;
-    return this.revision;
-  }
+  private nextRevision = () => (this.revision += 1);
 
   private createEvent(
     type: WorkbenchSessionEventType,
@@ -214,21 +211,13 @@ export class WorkbenchSessionAgent {
       this.snapshot?.context?.sessionId ??
       latestSession?.session_id ??
       (await createChatSession(this.env, active.identity, { source: "cloudflare-agent-chat" }));
-    const reusable =
-      (this.snapshot?.context?.threadId
-        ? await reusableDraftThread(
-            this.env,
-            active.identity,
-            sessionId,
-            this.snapshot.context.threadId,
-          )
-        : null) ??
-      (await reusableDraftThread(
-        this.env,
-        active.identity,
-        sessionId,
-        latestSession?.active_thread_id,
-      ));
+    const reusable = await findReusableDraftThread(
+      this.env,
+      active.identity,
+      sessionId,
+      this.snapshot?.context?.threadId,
+      latestSession?.active_thread_id,
+    );
     const draftExpiresAt = reusable
       ? draftExpiryFromThread(reusable)
       : new Date(Date.now() + stagedThreadTtlMs).toISOString();
@@ -303,42 +292,15 @@ export class WorkbenchSessionAgent {
       this.snapshot?.context?.sessionId ??
       active.latestSession?.session_id ??
       (await createChatSession(this.env, active.identity, { source: "cloudflare-agent-chat" }));
-    const reusable =
-      (this.snapshot?.context?.threadId
-        ? await reusableDraftThread(
-            this.env,
-            active.identity,
-            sessionId,
-            this.snapshot.context.threadId,
-          )
-        : null) ??
-      (await reusableDraftThread(
-        this.env,
-        active.identity,
-        sessionId,
-        active.latestSession?.active_thread_id,
-      ));
+    const reusable = await findReusableDraftThread(
+      this.env,
+      active.identity,
+      sessionId,
+      this.snapshot?.context?.threadId,
+      active.latestSession?.active_thread_id,
+    );
     const created = reusable
-      ? await (async () => {
-          const activeAgent = await selectAgent(
-            this.env,
-            reusable.agent_id,
-            input.identity.scope.workspaceId,
-          );
-          if (!activeAgent || activeAgent.status !== "active") {
-            throw new Error("Agent is not active");
-          }
-          const promoted = await promoteDraftChatThread(
-            this.env,
-            input.identity.scope,
-            reusable.thread_id,
-            { title: titleFromUpdate(message) ?? message },
-          );
-          if (!promoted.promoted || !promoted.thread || promoted.thread.status !== "active") {
-            throw new Error("Staged chat could not be materialized");
-          }
-          return { activeAgent, thread: promoted.thread };
-        })()
+      ? await materializeDraftThread(this.env, input.identity, reusable, message)
       : await createThreadContext(this.env, active.identity, sessionId, message);
     const activeIdentity = { ...active.identity, agentId: created.activeAgent.id };
     const activeThread = toActiveThreadSummary(
