@@ -120,10 +120,16 @@ secrets, model prompts containing private data, or raw tenant data to Sentry.
 Source maps should use `SENTRY_AUTH_TOKEN` only in trusted CI/deploy
 environments. Never commit the auth token or print it in logs.
 
+Local Sentry transport is disabled by default even when `.env.local` contains
+DSNs. Enable `SENTRY_ENABLE_LOCAL=true` for server/edge diagnostics and
+`NEXT_PUBLIC_SENTRY_ENABLE_LOCAL=true` for browser diagnostics explicitly;
+otherwise local reloads and deterministic E2E traffic stay out of hosted
+error, trace, and replay quotas.
+
 Production Sentry sampling should stay intentionally quiet:
 
 - Production traces default to `0.02` across Vercel and Cloudflare.
-- Local development defaults to full tracing so debugging remains easy.
+- Local development sends no telemetry unless it is explicitly enabled.
 - Browser replay is sampled only on errors in production by default.
 
 Normal request transactions such as `GET /` can still appear under Sentry

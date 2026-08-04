@@ -39,6 +39,7 @@ import { WorkbenchAgentsPanel } from "@/components/workbench/workbench-agents-pa
 import { WorkbenchAssistantEvents } from "@/components/workbench/workbench-assistant-events";
 import { WorkbenchCapabilitiesPanel } from "@/components/workbench/workbench-capabilities-panel";
 import { WorkbenchHistoryPanel } from "@/components/workbench/workbench-history-panel";
+import { WorkbenchMark } from "@/components/workbench/workbench-mark";
 import { WorkbenchRuntimeHint } from "@/components/workbench/workbench-runtime-hint";
 import { PackWorkflowProvider } from "@/components/workbench/pack-workflow-context";
 import { WorkbenchWorkspacePanel } from "@/components/workbench/workbench-workspace-panel";
@@ -121,6 +122,10 @@ function WorkbenchShellContent({
 
   useEffect(() => {
     if (loading) return;
+    if (!hasAuthenticatedSession) {
+      setAdminAccess({ isAdmin: false });
+      return;
+    }
 
     let cancelled = false;
     const loadAdminAccess = async () => {
@@ -141,7 +146,7 @@ function WorkbenchShellContent({
     return () => {
       cancelled = true;
     };
-  }, [loading, user?.email, user?.id]);
+  }, [hasAuthenticatedSession, loading, user?.email, user?.id]);
 
   const openAdmin = useCallback(() => {
     if (adminAccess?.isAdmin) {
@@ -430,16 +435,18 @@ function WorkbenchShellContent({
   ]);
 
   return (
-    <div className="bg-background relative h-dvh overflow-hidden">
+    <div className="workbench-shell bg-background relative h-dvh overflow-hidden">
       <AssistantSlashCommandProvider commands={slashCommands}>
         <PackWorkflowProvider openWorkflow={openPackWorkflowByType}>
           <div className="absolute top-3 right-3 z-30 flex max-w-[calc(100vw-1.5rem)] flex-col items-end gap-2">
-            <AuthButton
-              localSession={!user && hasAuthenticatedSession}
-              onOpenWorkspace={() => setWorkspaceOpen(true)}
-            />
+            {hasAuthenticatedSession ? (
+              <AuthButton
+                localSession={!user && hasAuthenticatedSession}
+                onOpenWorkspace={() => setWorkspaceOpen(true)}
+              />
+            ) : null}
             {adminNotice ? (
-              <div className="border-border bg-background/95 text-muted-foreground rounded-md border px-2.5 py-1.5 text-xs shadow-xs backdrop-blur">
+              <div className="workbench-surface border-border text-muted-foreground rounded-md border px-2.5 py-1.5 text-xs">
                 {adminNotice}
               </div>
             ) : null}
@@ -459,9 +466,9 @@ function WorkbenchShellContent({
               </div>
             </>
           ) : null}
-          {sessionError ? (
+          {sessionError && hasAuthenticatedSession ? (
             <a
-              className="border-border bg-background/95 text-muted-foreground absolute right-3 bottom-3 z-30 rounded-md border px-3 py-2 text-xs shadow-sm"
+              className="workbench-surface border-border text-muted-foreground absolute right-3 bottom-3 z-30 rounded-md border px-3 py-2 text-xs"
               href="/workspace-recovery"
             >
               Workspace unavailable? Check deletion recovery
@@ -469,6 +476,9 @@ function WorkbenchShellContent({
           ) : null}
           <Assistant initialSignedOutPresentation={initialSignedOutPresentation}>
             <WorkbenchAssistantEvents />
+            <div className="pointer-events-none absolute top-4 left-4 z-20 md:hidden">
+              <WorkbenchMark compact />
+            </div>
           </Assistant>
           <WorkbenchAgentsPanel
             open={agentsOpen}

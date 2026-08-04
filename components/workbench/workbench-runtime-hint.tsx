@@ -100,11 +100,16 @@ export function WorkbenchRuntimeHint({
 
   return (
     <div
-      className="border-border bg-background/95 text-muted-foreground hidden w-[min(22rem,calc(100vw-1.5rem))] flex-col gap-1.5 rounded-md border px-2.5 py-2 text-xs shadow-xs backdrop-blur md:flex"
+      className="workbench-surface border-border text-muted-foreground hidden w-[min(22rem,calc(100vw-1.5rem))] flex-col gap-1.5 rounded-lg border px-3 py-2.5 text-xs md:flex"
       data-summary-sync-status={summarySyncStatus}
     >
       <div className="flex min-w-0 items-center justify-between gap-2">
-        <span className={cn("rounded-md border px-2 py-0.5 font-medium", statusClassName)}>
+        <span
+          className={cn(
+            "rounded-full border px-2 py-0.5 font-mono text-[10px] font-medium tracking-wide uppercase",
+            statusClassName,
+          )}
+        >
           {liveRuntime.chatLabel}
         </span>
         <span className="flex shrink-0 items-center gap-1">

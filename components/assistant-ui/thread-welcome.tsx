@@ -35,13 +35,14 @@ export function ThreadWelcomeLayout({ children }: { children: ReactNode }) {
   const { session } = useWorkbenchAgentConnection();
   const welcome = session?.activeAgent?.behavior.pack?.ui.welcome;
   return (
-    <div className="aui-thread-welcome-root my-auto flex grow flex-col">
+    <div className="aui-thread-welcome-root workbench-enter my-auto flex grow flex-col">
       <div className="aui-thread-welcome-center flex w-full grow flex-col items-center justify-center">
         <div className="aui-thread-welcome-message flex size-full flex-col justify-center px-4">
-          <h1 className="aui-thread-welcome-message-inner text-2xl font-semibold">
+          <span className="workbench-kicker mb-3">Active agent</span>
+          <h1 className="aui-thread-welcome-message-inner font-display max-w-xl text-3xl leading-tight font-semibold tracking-[-0.025em] sm:text-4xl">
             {welcome?.title ?? "Hello there!"}
           </h1>
-          <p className="aui-thread-welcome-message-inner text-muted-foreground text-lg">
+          <p className="aui-thread-welcome-message-inner text-muted-foreground mt-2 max-w-xl text-base leading-6 sm:text-lg">
             {welcome?.description ?? "How can I help you today?"}
           </p>
         </div>
@@ -84,7 +85,7 @@ export function StarterSuggestionGrid({
               }
               void onSelect(suggestion.prompt);
             }}
-            className="aui-thread-welcome-suggestion bg-background hover:bg-muted h-full min-h-20 w-full min-w-0 flex-col items-start justify-start gap-1 overflow-hidden rounded-lg border px-4 py-3 text-start text-sm whitespace-normal transition-colors"
+            className="aui-thread-welcome-suggestion bg-card/75 hover:bg-card hover:border-ring/45 h-full min-h-20 w-full min-w-0 flex-col items-start justify-start gap-1 overflow-hidden rounded-lg border px-4 py-3 text-start text-sm whitespace-normal shadow-[0_12px_28px_-28px_rgb(20_35_40/0.7)] transition-[background-color,border-color,transform,box-shadow] hover:-translate-y-0.5 hover:shadow-[0_18px_32px_-26px_rgb(20_35_40/0.55)]"
           >
             <span className="aui-thread-welcome-suggestion-text-1 block w-full min-w-0 break-words font-medium whitespace-normal [overflow-wrap:anywhere]">
               {suggestion.title}

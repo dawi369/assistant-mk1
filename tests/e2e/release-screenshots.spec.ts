@@ -32,6 +32,9 @@ test("captures deterministic public release product evidence", async ({ page }) 
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Hello there!" })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Message input" })).toBeEditable();
+  await expect(
+    page.getByText(/Live (?:updates are connected|session updates connected)/),
+  ).toBeVisible({ timeout: 15_000 });
   await capture(page, "workbench.png");
 
   await page.getByRole("button", { name: "History" }).click();

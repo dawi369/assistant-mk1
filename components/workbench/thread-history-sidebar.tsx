@@ -16,6 +16,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { useWorkbenchComposerFocus } from "@/components/workbench/composer-focus-context";
+import { WorkbenchMark } from "@/components/workbench/workbench-mark";
 import { cn } from "@/lib/utils";
 import { useWorkbenchAgentConnection } from "@/lib/workbench/use-agent-connection";
 import { hasWorkbenchSessionAccess } from "@/lib/workbench/session-access";
@@ -79,7 +80,6 @@ export function ThreadHistorySidebar({
     : view === "archived"
       ? (archiveError ?? archivedThreadsError)
       : (archiveError ?? error);
-  const headerLabel = view === "archived" ? "Archived chats" : "Recent chats";
 
   useEffect(() => {
     if (view !== "archived" || actionsDisabled) return;
@@ -173,13 +173,10 @@ export function ThreadHistorySidebar({
   };
 
   return (
-    <aside className="border-border bg-background/95 absolute inset-y-0 left-0 z-10 hidden w-64 flex-col border-r backdrop-blur md:flex">
+    <aside className="border-sidebar-border bg-sidebar/92 absolute inset-y-0 left-0 z-10 hidden w-64 flex-col border-r shadow-[10px_0_36px_-34px_rgb(24_39_44/0.45)] backdrop-blur-xl md:flex">
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="border-border flex items-center justify-between gap-2 border-b px-3 py-3">
-          <div className="flex min-w-0 items-center gap-2">
-            <MessageSquareIcon className="text-muted-foreground size-4 shrink-0" />
-            <span className="truncate text-sm font-medium">{headerLabel}</span>
-          </div>
+        <div className="border-sidebar-border flex items-center justify-between gap-2 border-b px-3 py-3.5">
+          <WorkbenchMark />
           <Button
             type="button"
             variant="ghost"
@@ -204,12 +201,12 @@ export function ThreadHistorySidebar({
           </div>
         ) : null}
 
-        <div className="border-border flex gap-1 border-b px-2 py-2">
+        <div className="border-sidebar-border flex gap-1 border-b px-2 py-2">
           <Button
             type="button"
             variant={view === "active" ? "secondary" : "ghost"}
             size="sm"
-            className="h-7 flex-1 text-xs"
+            className="h-7 flex-1 text-[11px]"
             disabled={isSignedOut}
             onClick={() => setView("active")}
           >
@@ -219,7 +216,7 @@ export function ThreadHistorySidebar({
             type="button"
             variant={view === "archived" ? "secondary" : "ghost"}
             size="sm"
-            className="h-7 flex-1 text-xs"
+            className="h-7 flex-1 text-[11px]"
             disabled={isSignedOut}
             onClick={() => setView("archived")}
           >

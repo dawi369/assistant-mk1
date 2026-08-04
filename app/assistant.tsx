@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { WorkbenchMark } from "@/components/workbench/workbench-mark";
 import { Thread } from "@/components/assistant-ui/thread";
 import {
   StarterSuggestionGrid,
@@ -345,18 +346,22 @@ function PreRuntimeDraftSurface({
 
   if (!hasSessionAccess) {
     return (
-      <div className="aui-root aui-thread-root bg-background @container flex h-full flex-col">
+      <div className="aui-root aui-thread-root bg-transparent @container flex h-full flex-col">
         <div className="relative flex flex-1 flex-col overflow-x-auto overflow-y-auto scroll-smooth">
           <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-6 py-8 sm:px-10">
             <section
-              className="my-auto w-full border-l-2 border-foreground/15 py-2 pl-5"
+              className="workbench-enter my-auto w-full border-l border-foreground/15 py-3 pl-6"
               aria-labelledby="signed-out-title"
             >
+              <WorkbenchMark className="mb-10" />
               <div className="text-muted-foreground flex items-center gap-2 text-xs font-medium">
                 <LockKeyholeIcon className="size-3.5" />
                 {isRestoringSession ? "Secure session" : "Workspace access required"}
               </div>
-              <h1 id="signed-out-title" className="mt-5 text-3xl font-semibold tracking-normal">
+              <h1
+                id="signed-out-title"
+                className="font-display mt-5 text-4xl leading-tight font-semibold tracking-[-0.03em]"
+              >
                 {isRestoringSession ? "Restoring your workspace" : "Sign in to resume your work"}
               </h1>
               <p className="text-muted-foreground mt-3 max-w-lg text-base leading-6">
@@ -393,7 +398,7 @@ function PreRuntimeDraftSurface({
 
   return (
     <div
-      className="aui-root aui-thread-root bg-background @container flex h-full flex-col"
+      className="aui-root aui-thread-root bg-transparent @container flex h-full flex-col"
       style={{
         ["--thread-max-width" as string]: "44rem",
         ["--composer-radius" as string]: "24px",
@@ -409,7 +414,7 @@ function PreRuntimeDraftSurface({
           ) : (
             <div className="my-auto flex grow flex-col">
               <div className="flex w-full grow flex-col items-center justify-center">
-                <div className="fade-in slide-in-from-bottom-1 animate-in fill-mode-both flex size-full flex-col justify-center px-4 duration-200">
+                <div className="workbench-enter flex size-full flex-col justify-center px-4">
                   {statusLabel ? (
                     <div className="mb-4 flex items-center gap-2 text-xs text-muted-foreground">
                       {visibleError ? (
@@ -420,7 +425,7 @@ function PreRuntimeDraftSurface({
                       <span>{statusLabel}</span>
                     </div>
                   ) : null}
-                  <h1 className="text-2xl font-semibold">
+                  <h1 className="font-display text-3xl font-semibold tracking-[-0.025em]">
                     {activeThreadLabel ? "Draft in your last chat" : "Hello there!"}
                   </h1>
                   {statusDescription ? (
@@ -450,10 +455,10 @@ function PreRuntimeDraftSurface({
             </div>
           )}
 
-          <div className="bg-background sticky bottom-0 mt-auto flex flex-col overflow-visible rounded-t-(--composer-radius) pb-4 md:pb-6">
+          <div className="sticky bottom-0 mt-auto flex flex-col overflow-visible rounded-t-(--composer-radius) bg-gradient-to-t from-background via-background/95 to-transparent pt-7 pb-4 md:pb-6">
             <div
               data-slot="aui_composer-shell"
-              className="bg-background flex w-full flex-col gap-2 rounded-(--composer-radius) border p-(--composer-padding) shadow-xs transition-shadow"
+              className="bg-card/92 flex w-full flex-col gap-2 rounded-(--composer-radius) border p-(--composer-padding) shadow-[0_18px_48px_-34px_rgb(20_35_40/0.65)] backdrop-blur-xl transition-shadow"
             >
               <textarea
                 ref={registerComposerInput}

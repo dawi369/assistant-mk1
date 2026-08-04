@@ -18,9 +18,13 @@ test("signed-out refresh stays on the deliberate access screen", async ({ page, 
   test.skip(releaseMode !== "signed-out");
 
   await page.goto("/");
+  await expect(page).toHaveTitle("Assistant · mk1");
   await expect(page.getByRole("heading", { name: "Sign in to resume your work" })).toBeVisible();
+  await expect(page.getByText("agent workbench · mk1", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sign in" })).toHaveCount(1);
   await expect(page.getByText("Recent chats", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Workspace access" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /deletion recovery/i })).toHaveCount(0);
 
   await expect
     .poll(async () => {
@@ -49,6 +53,8 @@ test("trusted local session is immediately usable and exposes release controls",
   });
 
   await page.goto("/");
+  await expect(page).toHaveTitle("Assistant · mk1");
+  await expect(page.getByText("agent workbench · mk1", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Hello there!" })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Message input" })).toBeEditable();
   await expect.poll(() => adminSummaryRequests).toBeGreaterThan(0);
