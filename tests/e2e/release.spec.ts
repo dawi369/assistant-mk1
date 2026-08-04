@@ -74,10 +74,14 @@ test("trusted local session is immediately usable and exposes release controls",
   await page.getByRole("button", { name: "New chat" }).click();
   await expect(page.getByRole("textbox", { name: "Draft message" })).toBeEditable();
   expect(Date.now() - newChatStartedAt).toBeLessThan(1_200);
+  const welcome = page.locator(".aui-thread-welcome-root");
+  await expect(welcome).toHaveClass(/workbench-enter/);
   await expect(page.getByRole("button", { name: /Run a readiness check/i })).toBeVisible();
   await expect(page.getByRole("button", { name: /Plan a project handoff/i })).toBeVisible();
   await expect(page.getByRole("button", { name: /Test agent behavior/i })).toBeVisible();
   await expect(page.getByRole("button", { name: /Explain a failure/i })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Message input" })).toBeEditable();
+  await expect(welcome).not.toHaveClass(/workbench-enter/);
 
   await page.getByRole("button", { name: "Workspace access" }).click();
   await expect(page.getByRole("dialog", { name: "Workspace" })).toBeVisible();

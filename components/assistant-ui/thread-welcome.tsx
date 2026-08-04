@@ -31,11 +31,19 @@ export const starterSuggestions = [
   },
 ] as const;
 
-export function ThreadWelcomeLayout({ children }: { children: ReactNode }) {
+export function ThreadWelcomeLayout({
+  animate = false,
+  children,
+}: {
+  animate?: boolean;
+  children: ReactNode;
+}) {
   const { session } = useWorkbenchAgentConnection();
   const welcome = session?.activeAgent?.behavior.pack?.ui.welcome;
   return (
-    <div className="aui-thread-welcome-root workbench-enter my-auto flex grow flex-col">
+    <div
+      className={`aui-thread-welcome-root my-auto flex grow flex-col${animate ? " workbench-enter" : ""}`}
+    >
       <div className="aui-thread-welcome-center flex w-full grow flex-col items-center justify-center">
         <div className="aui-thread-welcome-message flex size-full flex-col justify-center px-4">
           <span className="workbench-kicker mb-3">Active agent</span>

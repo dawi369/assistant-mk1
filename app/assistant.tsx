@@ -392,7 +392,7 @@ function PreRuntimeDraftSurface({
       <div className="relative flex flex-1 flex-col overflow-x-auto overflow-y-auto scroll-smooth">
         <div className="mx-auto flex w-full max-w-(--thread-max-width) flex-1 flex-col px-4 pt-4">
           {isLocalNewSession ? (
-            <ThreadWelcomeLayout>
+            <ThreadWelcomeLayout animate>
               <StarterSuggestionGrid disabled={isSubmitting} onSelect={onStarterPrompt} />
             </ThreadWelcomeLayout>
           ) : (
