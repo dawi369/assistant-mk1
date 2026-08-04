@@ -8,7 +8,7 @@ export const openAdminAgentsPanel = async (page: Page) => {
     })
     .toBe(true);
 
-  const composer = page.getByRole("textbox", { name: /Message input|Draft message/ });
+  const composer = page.getByRole("textbox", { name: "Message input" });
   await composer.fill("/admin");
   await page.getByText("Open workspace, agent, and runtime controls.", { exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Admin" })).toBeVisible();

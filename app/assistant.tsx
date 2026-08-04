@@ -21,8 +21,12 @@ import { useAISDKRuntime } from "@assistant-ui/react-ai-sdk";
 import { useAgentChat } from "@cloudflare/ai-chat/react";
 import { useAuth } from "@workos-inc/authkit-nextjs/components";
 import { useAgent } from "agents/react";
-import { ArrowUpIcon, Loader2Icon, LogInIcon, PaperclipIcon, RefreshCwIcon } from "lucide-react";
+import { ArrowUpIcon, Loader2Icon, LogInIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
 
+import {
+  workbenchComposerInputClassName,
+  workbenchComposerShellClassName,
+} from "@/components/assistant-ui/composer-style";
 import { Button } from "@/components/ui/button";
 import { WorkbenchMark } from "@/components/workbench/workbench-mark";
 import { Thread } from "@/components/assistant-ui/thread";
@@ -440,10 +444,7 @@ function PreRuntimeDraftSurface({
           )}
 
           <div className="sticky bottom-0 mt-auto flex flex-col overflow-visible rounded-t-(--composer-radius) bg-gradient-to-t from-background via-background/95 to-transparent pt-7 pb-4 md:pb-6">
-            <div
-              data-slot="aui_composer-shell"
-              className="bg-card/92 flex w-full flex-col gap-2 rounded-(--composer-radius) border p-(--composer-padding) shadow-[0_18px_48px_-34px_rgb(20_35_40/0.65)] backdrop-blur-xl transition-shadow"
-            >
+            <div data-slot="aui_composer-shell" className={workbenchComposerShellClassName}>
               <textarea
                 ref={registerComposerInput}
                 value={draft}
@@ -454,11 +455,11 @@ function PreRuntimeDraftSurface({
                   event.preventDefault();
                   void onSubmit();
                 }}
-                placeholder="Draft a message..."
-                className="placeholder:text-muted-foreground/80 max-h-32 min-h-10 w-full resize-none bg-transparent px-1.75 py-1 text-sm outline-none"
+                placeholder="Send a message..."
+                className={workbenchComposerInputClassName}
                 rows={1}
                 autoFocus
-                aria-label="Draft message"
+                aria-label="Message input"
               />
               <div className="flex items-center justify-between">
                 <Button
@@ -467,9 +468,9 @@ function PreRuntimeDraftSurface({
                   size="icon"
                   className="size-8 rounded-full"
                   disabled
-                  aria-label="Attachments unavailable before the first message"
+                  aria-label="Add Attachment"
                 >
-                  <PaperclipIcon className="size-4" />
+                  <PlusIcon className="size-5 stroke-[1.5px]" />
                 </Button>
                 <Button
                   type="button"

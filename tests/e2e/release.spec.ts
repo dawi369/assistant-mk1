@@ -72,16 +72,44 @@ test("trusted local session is immediately usable and exposes release controls",
   });
   const newChatStartedAt = Date.now();
   await page.getByRole("button", { name: "New chat" }).click();
-  await expect(page.getByRole("textbox", { name: "Draft message" })).toBeEditable();
+  const composer = page.getByRole("textbox", { name: "Message input" });
+  await expect(composer).toBeEditable();
   expect(Date.now() - newChatStartedAt).toBeLessThan(1_200);
+  const composerShell = page.locator('[data-slot="aui_composer-shell"]');
+  await composer.focus();
+  const optimisticComposerStyle = await composerShell.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      backgroundColor: style.backgroundColor,
+      borderColor: style.borderColor,
+      borderRadius: style.borderRadius,
+      boxShadow: style.boxShadow,
+      padding: style.padding,
+    };
+  });
   const welcome = page.locator(".aui-thread-welcome-root");
   await expect(welcome).toHaveClass(/workbench-enter/);
   await expect(page.getByRole("button", { name: /Run a readiness check/i })).toBeVisible();
   await expect(page.getByRole("button", { name: /Plan a project handoff/i })).toBeVisible();
   await expect(page.getByRole("button", { name: /Test agent behavior/i })).toBeVisible();
   await expect(page.getByRole("button", { name: /Explain a failure/i })).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "Message input" })).toBeEditable();
+  await expect(composer).toBeEditable();
   await expect(welcome).not.toHaveClass(/workbench-enter/);
+  await composer.focus();
+  await expect
+    .poll(() =>
+      composerShell.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          backgroundColor: style.backgroundColor,
+          borderColor: style.borderColor,
+          borderRadius: style.borderRadius,
+          boxShadow: style.boxShadow,
+          padding: style.padding,
+        };
+      }),
+    )
+    .toEqual(optimisticComposerStyle);
 
   await page.getByRole("button", { name: "Workspace access" }).click();
   await expect(page.getByRole("dialog", { name: "Workspace" })).toBeVisible();
@@ -89,7 +117,6 @@ test("trusted local session is immediately usable and exposes release controls",
   await expect(page.getByRole("combobox", { name: "Role for e2e-owner" })).toHaveValue("owner");
   await page.getByRole("button", { name: "Close" }).click();
 
-  const composer = page.getByRole("textbox", { name: /Message input|Draft message/ });
   await composer.fill("/admin");
   await page.getByText("Open workspace, agent, and runtime controls.", { exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Admin" })).toBeVisible();
@@ -188,7 +215,7 @@ test("trusted local session is immediately usable and exposes release controls",
   );
   await page.unroute("**/api/workbench/admin-summary**");
 
-  const recoveredComposer = page.getByRole("textbox", { name: /Message input|Draft message/ });
+  const recoveredComposer = page.getByRole("textbox", { name: "Message input" });
   await expect(recoveredComposer).toBeEditable();
   await recoveredComposer.fill("/admin");
   await page.getByText("Open workspace, agent, and runtime controls.", { exact: true }).click();

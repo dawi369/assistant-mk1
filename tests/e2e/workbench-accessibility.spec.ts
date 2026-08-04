@@ -86,12 +86,12 @@ test("keyboard, focus, responsive, and accessibility contracts cover workbench s
   await auditPage(page, testInfo, "chat");
 
   await page.getByRole("button", { name: "New chat" }).press("Enter");
-  await expect(page.getByRole("textbox", { name: /Message input|Draft message/ })).toBeEditable();
+  await expect(page.getByRole("textbox", { name: "Message input" })).toBeEditable();
   await expect(page.locator("[data-summary-sync-status]")).toHaveAttribute(
     "data-summary-sync-status",
     "idle",
   );
-  const commandComposer = page.getByRole("textbox", { name: /Message input|Draft message/ });
+  const commandComposer = page.getByRole("textbox", { name: "Message input" });
   await commandComposer.fill("/history");
   await commandComposer.press("Enter");
   await expectDialogFocusTrap(page, "Workbench History");
@@ -104,16 +104,16 @@ test("keyboard, focus, responsive, and accessibility contracts cover workbench s
   await auditPage(page, testInfo, "history");
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog", { name: "Workbench History" })).toHaveCount(0);
-  await expect(page.getByRole("textbox", { name: /Message input|Draft message/ })).toBeFocused();
+  await expect(page.getByRole("textbox", { name: "Message input" })).toBeFocused();
 
   await page.getByRole("button", { name: "Workspace access" }).press("Enter");
   await expectDialogFocusTrap(page, "Workspace");
   await expect(page.getByRole("heading", { name: "Data lifecycle" })).toBeVisible();
   await auditPage(page, testInfo, "workspace-lifecycle");
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("textbox", { name: /Message input|Draft message/ })).toBeFocused();
+  await expect(page.getByRole("textbox", { name: "Message input" })).toBeFocused();
 
-  const adminComposer = page.getByRole("textbox", { name: /Message input|Draft message/ });
+  const adminComposer = page.getByRole("textbox", { name: "Message input" });
   await adminComposer.fill("/admin");
   await expect(
     page.getByText("Open workspace, agent, and runtime controls.", { exact: true }),
@@ -180,7 +180,7 @@ test("keyboard, focus, responsive, and accessibility contracts cover workbench s
   await expectNoHorizontalOverflow(page);
   await auditPage(page, testInfo, "connections-mobile");
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("textbox", { name: /Message input|Draft message/ })).toBeFocused();
+  await expect(page.getByRole("textbox", { name: "Message input" })).toBeFocused();
 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.getByRole("button", { name: "History" }).click();
