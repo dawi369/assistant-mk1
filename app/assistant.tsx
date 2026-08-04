@@ -21,14 +21,7 @@ import { useAISDKRuntime } from "@assistant-ui/react-ai-sdk";
 import { useAgentChat } from "@cloudflare/ai-chat/react";
 import { useAuth } from "@workos-inc/authkit-nextjs/components";
 import { useAgent } from "agents/react";
-import {
-  ArrowUpIcon,
-  Loader2Icon,
-  LockKeyholeIcon,
-  LogInIcon,
-  PaperclipIcon,
-  RefreshCwIcon,
-} from "lucide-react";
+import { ArrowUpIcon, Loader2Icon, LogInIcon, PaperclipIcon, RefreshCwIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { WorkbenchMark } from "@/components/workbench/workbench-mark";
@@ -353,24 +346,20 @@ function PreRuntimeDraftSurface({
               className="workbench-enter my-auto w-full border-l border-foreground/15 py-3 pl-6"
               aria-labelledby="signed-out-title"
             >
-              <WorkbenchMark className="mb-10" />
-              <div className="text-muted-foreground flex items-center gap-2 text-xs font-medium">
-                <LockKeyholeIcon className="size-3.5" />
-                {isRestoringSession ? "Secure session" : "Workspace access required"}
-              </div>
+              <WorkbenchMark className="mb-12" />
               <h1
                 id="signed-out-title"
-                className="font-display mt-5 text-4xl leading-tight font-semibold tracking-[-0.03em]"
+                className="font-display text-4xl leading-tight font-semibold tracking-[-0.03em]"
               >
-                {isRestoringSession ? "Restoring your workspace" : "Sign in to resume your work"}
+                {isRestoringSession ? "Restoring your workspace" : "Resume your workspace"}
               </h1>
-              <p className="text-muted-foreground mt-3 max-w-lg text-base leading-6">
-                {isRestoringSession
-                  ? "Checking your signed-in session before opening workspace data."
-                  : "Chats, agents, and workspace history are available after you sign in."}
-              </p>
+              {!isRestoringSession ? (
+                <p className="text-muted-foreground mt-3 max-w-lg text-base leading-6">
+                  Pick up your chats, agents, and history.
+                </p>
+              ) : null}
               {isRestoringSession ? (
-                <div className="text-muted-foreground mt-6 flex items-center gap-2 text-sm">
+                <div className="text-muted-foreground mt-4 flex items-center gap-2 text-sm">
                   <Loader2Icon className="size-4 animate-spin" />
                   Verifying access
                 </div>
@@ -384,11 +373,6 @@ function PreRuntimeDraftSurface({
                   Sign in
                 </Button>
               )}
-              <p className="text-muted-foreground mt-5 text-xs">
-                {isRestoringSession
-                  ? "Workspace content stays hidden until access is confirmed."
-                  : "Your workspace opens after authentication completes."}
-              </p>
             </section>
           </div>
         </div>

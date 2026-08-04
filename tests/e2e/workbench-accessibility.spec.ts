@@ -64,12 +64,12 @@ test("signed-out access is accessible and responsive", async ({ page }, testInfo
   test.skip(releaseMode !== "signed-out");
 
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Sign in to resume your work" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Resume your workspace" })).toBeVisible();
   await auditPage(page, testInfo, "signed-out");
   await expectNoHorizontalOverflow(page);
 
   await page.setViewportSize({ width: 375, height: 812 });
-  await expect(page.getByRole("heading", { name: "Sign in to resume your work" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Resume your workspace" })).toBeVisible();
   await expectNoHorizontalOverflow(page);
   await auditPage(page, testInfo, "signed-out-mobile");
 });

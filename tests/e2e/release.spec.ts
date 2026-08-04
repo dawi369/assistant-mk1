@@ -19,7 +19,8 @@ test("signed-out refresh stays on the deliberate access screen", async ({ page, 
 
   await page.goto("/");
   await expect(page).toHaveTitle("Assistant · mk1");
-  await expect(page.getByRole("heading", { name: "Sign in to resume your work" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Resume your workspace" })).toBeVisible();
+  await expect(page.getByText("Pick up your chats, agents, and history.")).toBeVisible();
   await expect(page.getByText("agent workbench · mk1", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign in" })).toHaveCount(1);
   await expect(page.getByText("Recent chats", { exact: true })).toHaveCount(0);
@@ -36,9 +37,9 @@ test("signed-out refresh stays on the deliberate access screen", async ({ page, 
   const response = await page.reload();
   expect(response).not.toBeNull();
   const firstFrameHtml = await response!.text();
-  expect(firstFrameHtml).toContain("Sign in to resume your work");
+  expect(firstFrameHtml).toContain("Resume your workspace");
   expect(firstFrameHtml).not.toContain("How can I help you today?");
-  await expect(page.getByRole("heading", { name: "Sign in to resume your work" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Resume your workspace" })).toBeVisible();
   expect(hydrationErrors).toEqual([]);
 });
 
