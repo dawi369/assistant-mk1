@@ -88,4 +88,27 @@ describe("workbench API errors", () => {
     expect(serializedLog).not.toContain("sandbox");
     expect(serializedLog).not.toContain(rawMessage);
   });
+
+  it("records expected client failures without classifying them as server errors", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const warningSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    const response = toWorkbenchApiError(
+      new ControlPlaneRequestError("Authentication required", 401),
+      "Cloudflare chat session request failed",
+    );
+    const body = (await response.json()) as { error?: string; errorId?: string };
+
+    expect(response.status).toBe(401);
+    expect(body).toEqual({ error: "Authentication required" });
+    expect(errorSpy).not.toHaveBeenCalled();
+    expect(warningSpy).toHaveBeenCalledWith(
+      "Cloudflare chat session request failed",
+      expect.objectContaining({
+        errorId: undefined,
+        status: 401,
+        name: "ControlPlaneRequestError",
+      }),
+    );
+  });
 });

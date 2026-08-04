@@ -90,7 +90,12 @@ export const toWorkbenchApiError = (
   const internalMessage = error instanceof Error ? error.message : fallback;
   const message = publicMessage(error, fallback, status);
 
-  console.error(fallback, logPayload(error, internalMessage, status, errorId));
+  const payload = logPayload(error, internalMessage, status, errorId);
+  if (status >= 500) {
+    console.error(fallback, payload);
+  } else {
+    console.warn(fallback, payload);
+  }
 
   return NextResponse.json({ error: message, ...(errorId ? { errorId } : {}) }, { status });
 };
