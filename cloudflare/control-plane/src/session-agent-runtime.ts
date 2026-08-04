@@ -7,6 +7,7 @@ import {
   getLatestChatSession,
   getLatestRunningChatRun,
   getOwnedChatThread,
+  promoteDraftChatThread,
   touchChatSession,
 } from "./chat-boundary-store";
 import { appendControlPlaneEvent } from "./control-plane-events";
@@ -302,7 +303,43 @@ export class WorkbenchSessionAgent {
       this.snapshot?.context?.sessionId ??
       active.latestSession?.session_id ??
       (await createChatSession(this.env, active.identity, { source: "cloudflare-agent-chat" }));
-    const created = await createThreadContext(this.env, active.identity, sessionId, message);
+    const reusable =
+      (this.snapshot?.context?.threadId
+        ? await reusableDraftThread(
+            this.env,
+            active.identity,
+            sessionId,
+            this.snapshot.context.threadId,
+          )
+        : null) ??
+      (await reusableDraftThread(
+        this.env,
+        active.identity,
+        sessionId,
+        active.latestSession?.active_thread_id,
+      ));
+    const created = reusable
+      ? await (async () => {
+          const activeAgent = await selectAgent(
+            this.env,
+            reusable.agent_id,
+            input.identity.scope.workspaceId,
+          );
+          if (!activeAgent || activeAgent.status !== "active") {
+            throw new Error("Agent is not active");
+          }
+          const promoted = await promoteDraftChatThread(
+            this.env,
+            input.identity.scope,
+            reusable.thread_id,
+            { title: titleFromUpdate(message) ?? message },
+          );
+          if (!promoted.promoted || !promoted.thread || promoted.thread.status !== "active") {
+            throw new Error("Staged chat could not be materialized");
+          }
+          return { activeAgent, thread: promoted.thread };
+        })()
+      : await createThreadContext(this.env, active.identity, sessionId, message);
     const activeIdentity = { ...active.identity, agentId: created.activeAgent.id };
     const activeThread = toActiveThreadSummary(
       this.env,

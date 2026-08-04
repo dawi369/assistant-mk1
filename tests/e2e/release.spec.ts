@@ -67,9 +67,13 @@ test("trusted local session is immediately usable and exposes release controls",
     .toBe(true);
 
   await page.route("**/api/workbench/chat-session/stage-thread**", async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 800));
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
     await route.continue();
   });
+  const stageResponsePromise = page.waitForResponse(
+    (response) =>
+      response.url().includes("/api/workbench/chat-session/stage-thread") && response.ok(),
+  );
   const newChatStartedAt = Date.now();
   await page.getByRole("button", { name: "New chat" }).click();
   const composer = page.getByRole("textbox", { name: "Message input" });
@@ -93,9 +97,31 @@ test("trusted local session is immediately usable and exposes release controls",
   await expect(page.getByRole("button", { name: /Plan a project handoff/i })).toBeVisible();
   await expect(page.getByRole("button", { name: /Test agent behavior/i })).toBeVisible();
   await expect(page.getByRole("button", { name: /Explain a failure/i })).toBeVisible();
+  const materializeResponsePromise = page.waitForResponse(
+    (response) =>
+      response.url().includes("/api/workbench/chat-session/materialize-turn") && response.ok(),
+  );
+  const firstMessage = "Queue this while the Agent connects.";
+  await composer.fill(firstMessage);
+  await composer.press("Enter");
+  await expect(page.getByRole("status")).toContainText("Sending…");
+  await expect(composer).toBeDisabled();
+
+  const [stageResponse, materializeResponse] = await Promise.all([
+    stageResponsePromise,
+    materializeResponsePromise,
+  ]);
+  const staged = (await stageResponse.json()) as { stagedThread?: { threadId?: string } };
+  const materialized = (await materializeResponse.json()) as {
+    materializedTurn?: { threadId?: string };
+  };
+  expect(materialized.materializedTurn?.threadId).toBe(staged.stagedThread?.threadId);
+  await expect(
+    page.locator('[data-slot="aui_message-group"]').getByText(firstMessage, { exact: true }),
+  ).toBeVisible();
   await expect(composer).toBeEditable();
-  await expect(welcome).not.toHaveClass(/workbench-enter/);
-  await composer.focus();
+  await expect(composer).toHaveValue("");
+  await expect(page.getByRole("status")).toHaveCount(0);
   await expect
     .poll(() =>
       composerShell.evaluate((element) => {

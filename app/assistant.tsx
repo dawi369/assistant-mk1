@@ -37,7 +37,6 @@ import {
 import { useWorkbenchComposerFocus } from "@/components/workbench/composer-focus-context";
 import { authPresentationCookieName } from "@/lib/workbench/auth-presentation";
 import { hasPendingActiveThread } from "@/lib/workbench/chat-session-state";
-import { sendQueuedDraftWhenReady } from "@/lib/workbench/runtime-draft-handoff";
 import { hasWorkbenchSessionAccess } from "@/lib/workbench/session-access";
 import {
   type WorkbenchAgentConnection,
@@ -79,8 +78,8 @@ export function Assistant({
   } = useWorkbenchAgentConnection();
   const [preRuntimeDraft, setPreRuntimeDraft] = useState("");
   const clearPreRuntimeDraft = useCallback(() => setPreRuntimeDraft(""), []);
-  const [queuedFirstSendDraft, setQueuedFirstSendDraft] = useState<string | null>(null);
-  const clearQueuedFirstSendDraft = useCallback(() => setQueuedFirstSendDraft(null), []);
+  const [acceptedFirstSendDraft, setAcceptedFirstSendDraft] = useState<string | null>(null);
+  const clearAcceptedFirstSendDraft = useCallback(() => setAcceptedFirstSendDraft(null), []);
   const [isSubmittingLocalTurn, setIsSubmittingLocalTurn] = useState(false);
   const handlePreRuntimeDraftChange = useCallback(
     (nextDraft: string) => {
@@ -99,14 +98,11 @@ export function Assistant({
       const draft = draftOverride ?? preRuntimeDraft;
       if (!isLocalNewSession || isSubmittingLocalTurn || !draft.trim()) return;
       setIsSubmittingLocalTurn(true);
-      setQueuedFirstSendDraft(draft);
       try {
-        const staged = await stageNewSession("first-send");
-        if (!staged?.connection) {
-          setQueuedFirstSendDraft(null);
-          await materializeTurn(draft);
-          clearPreRuntimeDraft();
-        }
+        await stageNewSession("first-send");
+        await materializeTurn(draft);
+        setAcceptedFirstSendDraft(draft);
+        clearPreRuntimeDraft();
       } finally {
         setIsSubmittingLocalTurn(false);
       }
@@ -151,12 +147,12 @@ export function Assistant({
       key={`${connection.threadId ?? connection.instanceName}:${connection.agentId ?? "agent"}`}
       connection={connection}
       draft={preRuntimeDraft}
-      queuedDraft={queuedFirstSendDraft}
+      acceptedDraft={acceptedFirstSendDraft}
       onDraftHydrated={clearPreRuntimeDraft}
-      onQueuedDraftSent={clearQueuedFirstSendDraft}
+      onAcceptedDraftCleared={clearAcceptedFirstSendDraft}
     >
       {children}
-      <Thread />
+      <Thread pendingFirstTurn={isSubmittingLocalTurn || Boolean(acceptedFirstSendDraft)} />
     </AgentRuntime>
   );
 }
@@ -164,16 +160,16 @@ export function Assistant({
 function AgentRuntime({
   connection,
   draft,
-  queuedDraft,
+  acceptedDraft,
   onDraftHydrated,
-  onQueuedDraftSent,
+  onAcceptedDraftCleared,
   children,
 }: {
   connection: WorkbenchAgentConnection;
   draft: string;
-  queuedDraft: string | null;
+  acceptedDraft: string | null;
   onDraftHydrated: () => void;
-  onQueuedDraftSent: () => void;
+  onAcceptedDraftCleared: () => void;
   children?: ReactNode;
 }) {
   const hostOptions = useMemo(
@@ -205,11 +201,10 @@ function AgentRuntime({
   return (
     <AssistantRuntimeProvider runtime={providerRuntime}>
       <RuntimeDraftHandoff
-        connectionReady={agent.ready}
         draft={draft}
-        queuedDraft={queuedDraft}
+        acceptedDraft={acceptedDraft}
         onHydrated={onDraftHydrated}
-        onQueuedDraftSent={onQueuedDraftSent}
+        onAcceptedDraftCleared={onAcceptedDraftCleared}
       />
       <div className="relative h-full">{children}</div>
     </AssistantRuntimeProvider>
@@ -217,25 +212,29 @@ function AgentRuntime({
 }
 
 function RuntimeDraftHandoff({
-  connectionReady,
   draft,
-  queuedDraft,
+  acceptedDraft,
   onHydrated,
-  onQueuedDraftSent,
+  onAcceptedDraftCleared,
 }: {
-  connectionReady: Promise<void>;
   draft: string;
-  queuedDraft: string | null;
+  acceptedDraft: string | null;
   onHydrated: () => void;
-  onQueuedDraftSent: () => void;
+  onAcceptedDraftCleared: () => void;
 }) {
   const aui = useAui();
   const attemptedDraftRef = useRef<string | null>(null);
 
   useEffect(() => {
-    const targetDraft = queuedDraft?.trim() ? queuedDraft : draft;
-    const shouldSend = Boolean(queuedDraft?.trim());
-    const attemptKey = `${shouldSend ? "send" : "hydrate"}:${targetDraft}`;
+    if (acceptedDraft) {
+      const composer = aui.composer();
+      if (composer.getState().text === acceptedDraft) composer.setText("");
+      onAcceptedDraftCleared();
+      return;
+    }
+
+    const targetDraft = draft;
+    const attemptKey = `hydrate:${targetDraft}`;
     if (!targetDraft || attemptedDraftRef.current === attemptKey) return;
 
     const composer = aui.composer();
@@ -247,34 +246,12 @@ function RuntimeDraftHandoff({
       composer.setText(targetDraft);
     }
 
-    if (shouldSend) {
-      let cancelled = false;
-      void sendQueuedDraftWhenReady({
-        connectionReady,
-        draft: targetDraft,
-        getComposer: () => aui.composer(),
-        isCancelled: () => cancelled,
-      })
-        .then((sent) => {
-          if (sent) {
-            onQueuedDraftSent();
-            onHydrated();
-          }
-        })
-        .catch(() => {
-          attemptedDraftRef.current = null;
-        });
-      return () => {
-        cancelled = true;
-      };
-    }
-
     if (currentText === targetDraft) {
       onHydrated();
       return;
     }
     onHydrated();
-  }, [aui, connectionReady, draft, onHydrated, onQueuedDraftSent, queuedDraft]);
+  }, [acceptedDraft, aui, draft, onAcceptedDraftCleared, onHydrated]);
 
   return null;
 }
@@ -459,6 +436,7 @@ function PreRuntimeDraftSurface({
                 className={workbenchComposerInputClassName}
                 rows={1}
                 autoFocus
+                disabled={isSubmitting}
                 aria-label="Message input"
               />
               <div className="flex items-center justify-between">
@@ -472,28 +450,35 @@ function PreRuntimeDraftSurface({
                 >
                   <PlusIcon className="size-5 stroke-[1.5px]" />
                 </Button>
-                <Button
-                  type="button"
-                  variant="default"
-                  size="icon"
-                  className="size-8 rounded-full"
-                  disabled={!isLocalNewSession || isSubmitting || !draft.trim()}
-                  aria-label={
-                    isLocalNewSession ? "Send message" : "Send unavailable while connecting"
-                  }
-                  title={
-                    isLocalNewSession
-                      ? "Create the chat and send this message"
-                      : "Send is available when the Agent connection is ready"
-                  }
-                  onClick={() => void onSubmit()}
-                >
-                  {isSubmitting ? (
-                    <Loader2Icon className="size-4 animate-spin" />
-                  ) : (
+                {isSubmitting ? (
+                  <span
+                    className="text-muted-foreground flex h-8 items-center gap-2 px-1 text-xs"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <Loader2Icon className="size-3.5 animate-spin" />
+                    Sending…
+                  </span>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="default"
+                    size="icon"
+                    className="size-8 rounded-full"
+                    disabled={!isLocalNewSession || !draft.trim()}
+                    aria-label={
+                      isLocalNewSession ? "Send message" : "Send unavailable while connecting"
+                    }
+                    title={
+                      isLocalNewSession
+                        ? "Create the chat and send this message"
+                        : "Send is available when the Agent connection is ready"
+                    }
+                    onClick={() => void onSubmit()}
+                  >
                     <ArrowUpIcon className="size-4" />
-                  )}
-                </Button>
+                  </Button>
+                )}
               </div>
             </div>
           </div>

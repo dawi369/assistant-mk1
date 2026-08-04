@@ -65,14 +65,16 @@ import {
   ChevronRightIcon,
   CopyIcon,
   DownloadIcon,
+  Loader2Icon,
   MoreHorizontalIcon,
   PencilIcon,
+  PlusIcon,
   RefreshCwIcon,
   SquareIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, type FC, type FormEvent } from "react";
 
-export const Thread: FC = () => {
+export const Thread: FC<{ pendingFirstTurn?: boolean }> = ({ pendingFirstTurn = false }) => {
   return (
     <ThreadPrimitive.Root
       className="aui-root aui-thread-root bg-transparent @container flex h-full flex-col"
@@ -100,7 +102,7 @@ export const Thread: FC = () => {
 
           <ThreadPrimitive.ViewportFooter className="aui-thread-viewport-footer sticky bottom-0 mt-auto flex flex-col gap-4 overflow-visible rounded-t-(--composer-radius) bg-gradient-to-t from-background via-background/95 to-transparent pt-7 pb-4 md:pb-6">
             <ThreadScrollToBottom />
-            <Composer />
+            <Composer pendingFirstTurn={pendingFirstTurn} />
           </ThreadPrimitive.ViewportFooter>
         </div>
       </ThreadPrimitive.Viewport>
@@ -209,7 +211,7 @@ const ThreadSuggestionItem: FC = () => {
   );
 };
 
-const Composer: FC = () => {
+const Composer: FC<{ pendingFirstTurn: boolean }> = ({ pendingFirstTurn }) => {
   const commands = useAssistantSlashCommands();
   const { focusComposerAfterInteraction, focusComposerAfterOverlayClose, registerComposerInput } =
     useWorkbenchComposerFocus();
@@ -280,9 +282,10 @@ const Composer: FC = () => {
               className={workbenchComposerInputClassName}
               rows={1}
               autoFocus
+              disabled={pendingFirstTurn}
               aria-label="Message input"
             />
-            <ComposerAction />
+            <ComposerAction pendingFirstTurn={pendingFirstTurn} />
           </div>
         </ComposerPrimitive.AttachmentDropzone>
         <ComposerSlashCommandPopover
@@ -369,7 +372,32 @@ const ComposerSlashCommandPopover: FC<{
   );
 };
 
-const ComposerAction: FC = () => {
+const ComposerAction: FC<{ pendingFirstTurn: boolean }> = ({ pendingFirstTurn }) => {
+  if (pendingFirstTurn) {
+    return (
+      <div className="aui-composer-action-wrapper relative flex h-8 items-center justify-between">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-8 rounded-full"
+          disabled
+          aria-label="Add Attachment"
+        >
+          <PlusIcon className="size-5 stroke-[1.5px]" />
+        </Button>
+        <span
+          className="text-muted-foreground flex h-8 items-center gap-2 px-1 text-xs"
+          role="status"
+          aria-live="polite"
+        >
+          <Loader2Icon className="size-3.5 animate-spin" />
+          Sending…
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div className="aui-composer-action-wrapper relative flex items-center justify-between">
       <ComposerAddAttachment />
