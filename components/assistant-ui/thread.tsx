@@ -403,15 +403,6 @@ const ComposerAction: FC<{ pendingFirstTurn: boolean }> = ({ pendingFirstTurn })
     <div className="aui-composer-action-wrapper relative flex items-center justify-between">
       <ComposerAddAttachment />
       <div className="flex min-w-0 items-center gap-2">
-        <AuiIf condition={(s) => s.thread.isRunning}>
-          <span
-            className="text-muted-foreground hidden truncate text-xs @sm:inline"
-            role="status"
-            aria-live="polite"
-          >
-            Responding · your draft stays here
-          </span>
-        </AuiIf>
         <AuiIf condition={(s) => !s.thread.isRunning}>
           <ComposerPrimitive.Send asChild>
             <TooltipIconButton
