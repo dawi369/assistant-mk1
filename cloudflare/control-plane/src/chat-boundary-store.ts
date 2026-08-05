@@ -610,7 +610,8 @@ export const updateChatRun = async (
   const existingMetadata = parseDataJson(existing?.metadata_json ?? "{}");
   const metadata = input.metadata ? { ...existingMetadata, ...input.metadata } : existingMetadata;
 
-  await env.DB.prepare(
+  const transitionGuard = input.status === "running" ? "" : " AND status = 'running'";
+  const result = await env.DB.prepare(
     `UPDATE chat_runs
      SET status = ?,
          upstream_run_id = COALESCE(?, upstream_run_id),
@@ -619,7 +620,7 @@ export const updateChatRun = async (
          completed_at = CASE WHEN ? = 'completed' THEN ? ELSE completed_at END,
          failed_at = CASE WHEN ? = 'failed' THEN ? ELSE failed_at END,
          updated_at = ?
-     WHERE user_id = ? AND workspace_id = ? AND id = ?`,
+     WHERE user_id = ? AND workspace_id = ? AND id = ?${transitionGuard}`,
   )
     .bind(
       input.status,
@@ -636,6 +637,7 @@ export const updateChatRun = async (
       input.runId,
     )
     .run();
+  return { updated: (result as D1Result).meta?.changes !== 0 };
 };
 
 export const getLatestChatRun = async (env: Env, scope: TenantScope, threadId: string) =>

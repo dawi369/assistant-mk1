@@ -541,32 +541,46 @@ const AssistantActionBar: FC = () => {
       className="aui-assistant-action-bar-root text-muted-foreground col-start-3 row-start-2 -ms-1 flex gap-1 data-[floating]:pointer-events-none data-[floating]:opacity-0 data-[floating]:transition-opacity data-[floating]:group-hover/message:pointer-events-auto data-[floating]:group-hover/message:opacity-100 data-[floating]:focus-within:pointer-events-auto data-[floating]:focus-within:opacity-100"
     >
       <ActionBarPrimitive.Copy asChild>
-        <TooltipIconButton tooltip="Copy">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="aui-button-icon size-6 p-1"
+          aria-label="Copy"
+        >
           <AuiIf condition={(s) => s.message.isCopied}>
             <CheckIcon />
           </AuiIf>
           <AuiIf condition={(s) => !s.message.isCopied}>
             <CopyIcon />
           </AuiIf>
-        </TooltipIconButton>
+          <span className="sr-only">Copy</span>
+        </Button>
       </ActionBarPrimitive.Copy>
       <ActionBarPrimitive.Reload asChild>
-        <TooltipIconButton tooltip="Refresh">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="aui-button-icon size-6 p-1"
+          aria-label="Regenerate response"
+        >
           <RefreshCwIcon />
-        </TooltipIconButton>
+          <span className="sr-only">Regenerate response</span>
+        </Button>
       </ActionBarPrimitive.Reload>
       <ActionBarMorePrimitive.Root>
         <ActionBarMorePrimitive.Trigger asChild>
-          <TooltipIconButton
-            tooltip="More actions"
-            side="top"
-            className="data-[state=open]:bg-accent"
+          <Button
+            variant="ghost"
+            size="icon"
+            className="aui-button-icon size-6 p-1 data-[state=open]:bg-accent"
+            aria-label="More actions"
           >
             <MoreHorizontalIcon />
-          </TooltipIconButton>
+            <span className="sr-only">More actions</span>
+          </Button>
         </ActionBarMorePrimitive.Trigger>
         <ActionBarMorePrimitive.Content
-          side="top"
+          side="bottom"
           align="start"
           sideOffset={6}
           collisionPadding={12}

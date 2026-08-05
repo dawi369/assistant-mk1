@@ -320,6 +320,15 @@ export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
     if (request.method === "POST" && url.pathname === "/internal/programmatic-submit") {
       return this.handleProgrammaticSubmit(request);
     }
+    if (request.method === "POST" && url.pathname === "/internal/thread-cancel") {
+      const provided = request.headers.get("x-workbench-agent-secret")?.trim();
+      if (!provided || provided !== getRequiredSecret(this.getEnv())) {
+        return jsonResponse({ ok: false, error: "Agent cancellation authorization failed" }, 401);
+      }
+      this.resetTurnState();
+      this.programmaticSubmitBody = null;
+      return jsonResponse({ ok: true, cancelled: true });
+    }
     try {
       await this.verifyScopedClaims(getTokenFromRequest(request));
     } catch (error) {
@@ -597,7 +606,7 @@ export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
             (async () => {
               const completionMirrorStartedAtMs = Date.now();
               if (runId) {
-                await updateChatRun(this.getEnv(), {
+                const completion = await updateChatRun(this.getEnv(), {
                   runId,
                   scope: identity.scope,
                   status: "completed",
@@ -614,6 +623,7 @@ export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
                     },
                   },
                 });
+                if (!completion.updated) return;
               }
               await updateChatThreadUpstream(this.getEnv(), identity.scope, claims.threadId, {
                 source: "cloudflare-agent-chat",
@@ -725,7 +735,7 @@ const failAgentRun = async (
 ) => {
   const message = input.error instanceof Error ? input.error.message : "Agent chat failed";
   if (input.runId) {
-    await updateChatRun(env, {
+    const failure = await updateChatRun(env, {
       runId: input.runId,
       scope: identity.scope,
       status: "failed",
@@ -736,6 +746,7 @@ const failAgentRun = async (
         retryable: true,
       },
     });
+    if (!failure.updated) return;
   }
   await recordSpan(env, identity, {
     traceId: trace.traceId,

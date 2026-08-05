@@ -996,6 +996,21 @@ export const handleCloudflareRunStream = async (
             },
           ]);
           const postStreamStartedAtMs = Date.now();
+          timing.mark("runCompleted");
+          const completion = await updateChatRun(env, {
+            runId,
+            scope: identity.scope,
+            status: "completed",
+            metadata: {
+              ...metadata,
+              outputChars: assistantText.length,
+              timings: timing.snapshot(),
+            },
+          });
+          if (!completion.updated) {
+            controller.close();
+            return;
+          }
           await updateChatThreadUpstream(
             env,
             identity.scope,
@@ -1010,17 +1025,6 @@ export const handleCloudflareRunStream = async (
             }),
           );
           timing.mark("threadOutputStored");
-          timing.mark("runCompleted");
-          await updateChatRun(env, {
-            runId,
-            scope: identity.scope,
-            status: "completed",
-            metadata: {
-              ...metadata,
-              outputChars: assistantText.length,
-              timings: timing.snapshot(),
-            },
-          });
           await recordSpan(env, identity, {
             traceId: trace.traceId,
             name: "Post-stream D1 writes",
@@ -1070,7 +1074,7 @@ export const handleCloudflareRunStream = async (
           const message = runtimeError.message;
           timing.mark("runFailed");
           const failureStartedAtMs = Date.now();
-          await updateChatRun(env, {
+          const failure = await updateChatRun(env, {
             runId,
             scope: identity.scope,
             status: "failed",
@@ -1084,6 +1088,10 @@ export const handleCloudflareRunStream = async (
             },
             error: truncate(message),
           });
+          if (!failure.updated) {
+            controller.close();
+            return;
+          }
           await recordSpan(env, identity, {
             traceId: trace.traceId,
             name: "Run failure write",

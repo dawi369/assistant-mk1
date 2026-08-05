@@ -146,7 +146,7 @@ export function ThreadHistorySidebar({
   };
 
   const handleArchive = async (thread: ChatThreadSummary) => {
-    if (actionsDisabled || thread.latestRunStatus === "running") return;
+    if (actionsDisabled) return;
     await runThreadAction(async () => {
       await archiveThread(thread.threadId);
       await reloadArchived();
@@ -162,7 +162,7 @@ export function ThreadHistorySidebar({
   };
 
   const handleDelete = async (thread: ChatThreadSummary) => {
-    if (actionsDisabled || thread.latestRunStatus === "running") return;
+    if (actionsDisabled) return;
     const confirmed = window.confirm(
       `Delete "${thread.title || "New chat"}"? This hides the chat but keeps its audit records.`,
     );
@@ -292,7 +292,6 @@ function ThreadHistoryItem({
       pendingType === "archive" ||
       pendingType === "restore" ||
       pendingType === "delete");
-  const hasRunningRun = thread.latestRunStatus === "running";
   const actionButtonsDisabled = disabled || pendingActivation || pendingMutation;
   const activationDisabled = actionButtonsDisabled || thread.isActive;
   const canActivate = view === "active";
@@ -366,8 +365,8 @@ function ThreadHistoryItem({
           variant="ghost"
           size="icon-sm"
           className="size-7 shrink-0"
-          disabled={actionButtonsDisabled || hasRunningRun}
-          title={hasRunningRun ? "Wait for the running response to finish" : "Archive"}
+          disabled={actionButtonsDisabled}
+          title="Archive"
           aria-label="Archive chat"
           onClick={() => void onArchive(thread)}
         >
@@ -379,8 +378,8 @@ function ThreadHistoryItem({
         variant="ghost"
         size="icon-sm"
         className="text-destructive hover:text-destructive size-7 shrink-0"
-        disabled={actionButtonsDisabled || hasRunningRun}
-        title={hasRunningRun ? "Wait for the running response to finish" : "Delete"}
+        disabled={actionButtonsDisabled}
+        title="Delete"
         aria-label="Delete chat"
         onClick={() => void onDelete(thread)}
       >

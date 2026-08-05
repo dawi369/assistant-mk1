@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { createAllowedChatRunBoundary, isChatRunClaimConflict } from "./chat-boundary-store";
+import {
+  createAllowedChatRunBoundary,
+  isChatRunClaimConflict,
+  updateChatRun,
+} from "./chat-boundary-store";
 import type { AgentIdentity, D1PreparedStatement, D1Result, Env } from "./types";
 
 const identity = {
@@ -75,5 +79,20 @@ describe("chat run claims", () => {
       ),
     ).toBe(true);
     expect(isChatRunClaimConflict(new Error("D1_ERROR: database unavailable"))).toBe(false);
+  });
+
+  it("only permits terminal publication while the chat run is still running", async () => {
+    const { env, statements } = makeEnv();
+    const result = await updateChatRun(env, {
+      runId: "run-1",
+      scope: identity.scope,
+      status: "completed",
+      metadata: { outputChars: 12 },
+    });
+
+    expect(result).toEqual({ updated: true });
+    expect(statements).toHaveLength(1);
+    expect(statements[0]?.query).toContain("AND status = 'running'");
+    expect(statements[0]?.values).toContain("completed");
   });
 });

@@ -40,7 +40,8 @@ export const realSessionEvalSuites = [
     command: "pnpm smoke:cloudflare-chat-session-lifecycle",
     surface: "cloudflare_agent_session",
     requiredAssertions: ["threads", "runs", "messages", "events"],
-    description: "Exercises create, switch, rename, archive, restore, delete, and running guards.",
+    description:
+      "Exercises create, switch, rename, archive, restore, delete, and running-response cancellation.",
   },
   {
     id: "workspace-membership",

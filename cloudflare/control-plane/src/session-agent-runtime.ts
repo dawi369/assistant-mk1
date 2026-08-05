@@ -38,6 +38,7 @@ import type {
   SessionSnapshot,
 } from "./session-agent-model";
 import {
+  abortThreadChatResponse,
   agentHandoffTransition,
   appendThreadLifecycleEvent,
   clearActiveThread,
@@ -46,6 +47,7 @@ import {
   findFallbackActiveThread,
   findReusableDraftThread,
   materializeDraftThread,
+  persistThreadMutation,
   safeAgentSwitchData,
   safeSnapshotData,
   safeThreadData,
@@ -384,47 +386,13 @@ export class WorkbenchSessionAgent {
     if (nextTitle === null) return { ok: false, error: "title cannot be empty", status: 400 };
 
     const nextStatus = input.update.status;
+    await persistThreadMutation(this.env, input.identity, thread, {
+      title: nextTitle,
+      status: nextStatus,
+    });
     if (nextStatus === "archived" || nextStatus === "deleted") {
-      const runningRun = await getLatestRunningChatRun(this.env, input.identity.scope, threadId);
-      if (runningRun) {
-        await appendThreadLifecycleEvent(this.env, input.identity, {
-          transition: "blocked",
-          threadId,
-          previousStatus: thread.status,
-          nextStatus,
-          blockedAction: transitionForStatus(nextStatus),
-          reasonCode: "running_chat_response",
-        });
-        return {
-          ok: false,
-          error: "Thread has a running chat response",
-          status: 409,
-        };
-      }
+      await abortThreadChatResponse(this.env, thread);
     }
-
-    const timestamp = new Date().toISOString();
-    const upstream = parseDataJson(thread.upstream_json);
-    if (nextTitle !== undefined) upstream.title = nextTitle;
-    const status = nextStatus ?? thread.status;
-    await this.env.DB.prepare(
-      `UPDATE chat_threads
-       SET status = ?,
-           upstream_json = ?,
-           updated_at = ?,
-           last_seen_at = ?
-       WHERE user_id = ? AND workspace_id = ? AND thread_id = ?`,
-    )
-      .bind(
-        status,
-        toJson(upstream),
-        timestamp,
-        timestamp,
-        input.identity.scope.userId,
-        input.identity.scope.workspaceId,
-        threadId,
-      )
-      .run();
 
     const latestSession = await getLatestChatSession(this.env, input.identity.scope);
     const deactivatedActiveThread =

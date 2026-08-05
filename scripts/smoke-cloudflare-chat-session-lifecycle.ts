@@ -187,7 +187,7 @@ runSmoke("Cloudflare chat session lifecycle smoke", async () => {
     owner,
     runningThread,
     streamBody({
-      content: "Keep this run open for lifecycle blocking smoke.",
+      content: "Keep this run open for lifecycle cancellation smoke.",
       executionMode: "ask",
     }),
   );
@@ -197,14 +197,14 @@ runSmoke("Cloudflare chat session lifecycle smoke", async () => {
     );
   }
   try {
-    await assertStatus(`/chat/session/threads/${encodeURIComponent(runningThread)}`, owner, 409, {
-      method: "PATCH",
-      body: JSON.stringify({ status: "archived" }),
-    });
-    await assertStatus(`/chat/session/threads/${encodeURIComponent(runningThread)}`, owner, 409, {
-      method: "PATCH",
-      body: JSON.stringify({ status: "deleted" }),
-    });
+    const archivedRunning = await updateThread(owner, runningThread, { status: "archived" });
+    if (archivedRunning.transition?.type !== "archive") {
+      throw new Error("archive did not cancel the running response");
+    }
+    const deletedRunning = await updateThread(owner, runningThread, { status: "deleted" });
+    if (deletedRunning.transition?.type !== "delete") {
+      throw new Error("delete did not remain available after running-response cancellation");
+    }
   } finally {
     await runningResponse.body?.cancel().catch(() => undefined);
   }
@@ -234,7 +234,6 @@ runSmoke("Cloudflare chat session lifecycle smoke", async () => {
     "session.thread.archived",
     "session.thread.restored",
     "session.thread.deleted",
-    "session.thread.blocked",
   ]);
   assertEventDataIsRedacted(events);
 

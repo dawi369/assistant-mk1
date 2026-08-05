@@ -1,4 +1,5 @@
 import { selectAgent } from "./authz-store";
+import { resolveThreadAgentInstanceName } from "./chat-agent-connection-context";
 import { getOwnedChatThread, promoteDraftChatThread } from "./chat-boundary-store";
 import { appendControlPlaneEvent } from "./control-plane-events";
 import { parseDataJson } from "./http";
@@ -141,6 +142,94 @@ export const updateChatSessionAgent = async (
       input.sessionId,
     )
     .run();
+};
+
+export const persistThreadMutation = async (
+  env: Env,
+  identity: AgentIdentity,
+  thread: ChatThreadRow,
+  input: { title?: string; status?: ThreadMutationStatus },
+) => {
+  const timestamp = new Date().toISOString();
+  const upstream = parseDataJson(thread.upstream_json);
+  if (input.title !== undefined) upstream.title = input.title;
+  const status = input.status ?? thread.status;
+  const revokesActiveResponse = status === "archived" || status === "deleted";
+  const statements = [];
+
+  if (revokesActiveResponse) {
+    statements.push(
+      env.DB.prepare(
+        `UPDATE chat_intents
+         SET status = 'cancelled', updated_at = ?
+         WHERE user_id = ? AND workspace_id = ? AND thread_id = ?
+           AND id IN (
+             SELECT intent_id FROM chat_runs
+             WHERE user_id = ? AND workspace_id = ? AND thread_id = ? AND status = 'running'
+           )`,
+      ).bind(
+        timestamp,
+        identity.scope.userId,
+        identity.scope.workspaceId,
+        thread.thread_id,
+        identity.scope.userId,
+        identity.scope.workspaceId,
+        thread.thread_id,
+      ),
+      env.DB.prepare(
+        `UPDATE chat_runs
+         SET status = 'cancelled',
+             metadata_json = json_set(metadata_json, '$.cancellationReason', ?, '$.cancelledAt', ?),
+             error = NULL,
+             updated_at = ?
+         WHERE user_id = ? AND workspace_id = ? AND thread_id = ? AND status = 'running'`,
+      ).bind(
+        `thread_${status}`,
+        timestamp,
+        timestamp,
+        identity.scope.userId,
+        identity.scope.workspaceId,
+        thread.thread_id,
+      ),
+    );
+  }
+
+  statements.push(
+    env.DB.prepare(
+      `UPDATE chat_threads
+       SET status = ?, upstream_json = ?, updated_at = ?, last_seen_at = ?
+       WHERE user_id = ? AND workspace_id = ? AND thread_id = ?`,
+    ).bind(
+      status,
+      toJson(upstream),
+      timestamp,
+      timestamp,
+      identity.scope.userId,
+      identity.scope.workspaceId,
+      thread.thread_id,
+    ),
+  );
+  const results = await env.DB.batch(statements);
+  const runResult = revokesActiveResponse ? results[1] : undefined;
+  return { cancelledRunningRuns: runResult?.meta?.changes ?? 0 };
+};
+
+export const abortThreadChatResponse = async (env: Env, thread: ChatThreadRow) => {
+  const secret = env.WORKBENCH_AGENT_CONNECTION_SECRET?.trim();
+  if (!env.WorkbenchThreadChatAgent || !secret) return false;
+  try {
+    const instanceName = await resolveThreadAgentInstanceName(thread);
+    const stub = env.WorkbenchThreadChatAgent.get(
+      env.WorkbenchThreadChatAgent.idFromName(instanceName),
+    );
+    const response = await stub.fetch("https://thread-agent.internal/internal/thread-cancel", {
+      method: "POST",
+      headers: { "x-workbench-agent-secret": secret },
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
 };
 
 export const draftExpiryFromThread = (thread: ChatThreadRow) => {
