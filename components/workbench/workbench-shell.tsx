@@ -502,6 +502,7 @@ function WorkbenchShellContent({
           <WorkbenchHistoryPanel
             open={historyOpen}
             focus={historyFocus}
+            showTechnicalDetails={adminAccess?.isAdmin === true}
             onOpenChange={handleHistoryOpenChange}
             onCloseAutoFocus={handlePanelCloseAutoFocus}
             onFocusConsumed={handleHistoryFocusConsumed}
@@ -510,14 +511,6 @@ function WorkbenchShellContent({
             open={adminOpen}
             onOpenChange={handleAdminOpenChange}
             onCloseAutoFocus={handlePanelCloseAutoFocus}
-            onOpenWorkspace={() => {
-              setAdminOpen(false);
-              setWorkspaceOpen(true);
-            }}
-            onOpenAgents={() => {
-              setAdminOpen(false);
-              setAgentsOpen(true);
-            }}
             onOpenHistory={(runId) => {
               setAdminOpen(false);
               if (runId) {

@@ -108,6 +108,8 @@ test("keyboard, focus, responsive, and accessibility contracts cover workbench s
 
   await page.getByRole("button", { name: "Workspace access" }).press("Enter");
   await expectDialogFocusTrap(page, "Workspace");
+  await page.getByRole("button", { name: "Manage workspace" }).press("Enter");
+  await page.getByRole("tab", { name: "Data & privacy" }).press("Enter");
   await expect(page.getByRole("heading", { name: "Data lifecycle" })).toBeVisible();
   await auditPage(page, testInfo, "workspace-lifecycle");
   await page.keyboard.press("Escape");
@@ -187,7 +189,7 @@ test("keyboard, focus, responsive, and accessibility contracts cover workbench s
   await page.getByRole("button", { name: "History" }).click();
   await expect(page.getByRole("dialog", { name: "Workbench History" })).toBeVisible();
   const approvalRun = page.getByRole("listitem").filter({ hasText: "Approval recovery fixture" });
-  await approvalRun.getByRole("button", { name: "Inspect" }).click();
+  await approvalRun.getByRole("button", { name: /Open Approval recovery fixture/ }).click();
   await expect(page.getByRole("button", { name: "Approve" })).toBeVisible();
   await page.getByRole("button", { name: "Approve" }).focus();
   await page.keyboard.press("Shift+Tab");

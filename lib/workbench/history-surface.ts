@@ -11,7 +11,7 @@ export type HistoryFocusRequest = {
   createdAt: number;
 };
 
-export type HistoryFilter = "all" | "workflows" | "tools" | "artifacts" | "failed";
+export type HistoryFilter = "all" | "attention" | "completed";
 
 export type ArtifactPreview = {
   title: string;
@@ -23,10 +23,8 @@ export type HistoryRunCounts = Record<HistoryFilter, number>;
 
 export const historyFilters: Array<{ id: HistoryFilter; label: string }> = [
   { id: "all", label: "All" },
-  { id: "workflows", label: "Workflows" },
-  { id: "tools", label: "Tools" },
-  { id: "artifacts", label: "Artifacts" },
-  { id: "failed", label: "Failed" },
+  { id: "attention", label: "Needs attention" },
+  { id: "completed", label: "Completed" },
 ];
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -100,6 +98,12 @@ export const isWorkflowRun = (
 export const isFailedRun = (run: Pick<ExecutionHistoryRunSummary, "status">) =>
   run.status === "failed" || run.status === "cancelled";
 
+export const isAttentionRun = (run: Pick<ExecutionHistoryRunSummary, "status">) =>
+  isFailedRun(run) || run.status === "interrupted" || run.status === "blocked";
+
+export const isCompletedRun = (run: Pick<ExecutionHistoryRunSummary, "status">) =>
+  run.status === "completed";
+
 export const isArtifactLinkedRun = (run: Pick<ExecutionHistoryRunSummary, "artifactIds">) =>
   Boolean(run.artifactIds?.length);
 
@@ -111,10 +115,8 @@ export const filterHistoryRuns = (
   runs: ExecutionHistoryRunSummary[],
   filter: HistoryFilter,
 ): ExecutionHistoryRunSummary[] => {
-  if (filter === "workflows") return runs.filter(isWorkflowRun);
-  if (filter === "tools") return runs.filter(isToolOnlyRun);
-  if (filter === "artifacts") return runs.filter(isArtifactLinkedRun);
-  if (filter === "failed") return runs.filter(isFailedRun);
+  if (filter === "attention") return runs.filter(isAttentionRun);
+  if (filter === "completed") return runs.filter(isCompletedRun);
   return runs;
 };
 
@@ -148,10 +150,8 @@ export const searchHistoryRuns = (
 
 export const countHistoryRuns = (runs: ExecutionHistoryRunSummary[]): HistoryRunCounts => ({
   all: runs.length,
-  workflows: filterHistoryRuns(runs, "workflows").length,
-  tools: filterHistoryRuns(runs, "tools").length,
-  artifacts: filterHistoryRuns(runs, "artifacts").length,
-  failed: filterHistoryRuns(runs, "failed").length,
+  attention: filterHistoryRuns(runs, "attention").length,
+  completed: filterHistoryRuns(runs, "completed").length,
 });
 
 export const resolveFocusedRunId = (

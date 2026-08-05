@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CheckIcon,
+  CircleAlertIcon,
   CircleStopIcon,
   ClipboardIcon,
   ExternalLinkIcon,
@@ -12,7 +13,6 @@ import {
   RefreshCwIcon,
   RotateCcwIcon,
   SearchIcon,
-  type LucideIcon,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -48,29 +48,44 @@ import type {
   CloudflareArtifactHistoryResponse,
   CloudflareExecutionHistoryResponse,
   CloudflareExecutionHistoryRunResponse,
-  ExecutionRunSnapshot,
   ExecutionHistoryRunSummary,
+  ExecutionRunSnapshot,
 } from "@/lib/workbench/workbench-types";
 
 const historyRunsPath = "/api/workbench/history/runs";
 const historyArtifactsPath = "/api/workbench/history/artifacts";
 
+type ActionProposalSummary = {
+  id: string;
+  toolId: string;
+  status: string;
+  summary: string;
+  externalReference?: string;
+  createdAt: string;
+  ledger: Array<{
+    sequence: number;
+    status: string;
+    summary: string;
+    externalReference?: string;
+    createdAt: string;
+  }>;
+};
+
+const attentionActionStatuses = new Set(["proposed", "approved", "failed", "outcome_unknown"]);
 const runHistoryTitle = (run: ExecutionHistoryRunSummary) =>
-  run.displayName ?? run.summary ?? run.id;
+  run.displayName ?? run.summary ?? "Untitled run";
 
 const formatAge = (value?: string) => {
-  if (!value) return "time unknown";
+  if (!value) return "Time unknown";
   const timestamp = new Date(value).getTime();
-  if (!Number.isFinite(timestamp)) return "time unknown";
-
+  if (!Number.isFinite(timestamp)) return "Time unknown";
   const seconds = Math.max(0, Math.round((Date.now() - timestamp) / 1000));
   if (seconds < 60) return `${seconds}s ago`;
   const minutes = Math.round(seconds / 60);
   if (minutes < 60) return `${minutes}m ago`;
   const hours = Math.round(minutes / 60);
   if (hours < 48) return `${hours}h ago`;
-  const days = Math.round(hours / 24);
-  return `${days}d ago`;
+  return `${Math.round(hours / 24)}d ago`;
 };
 
 const formatBytes = (value?: number) => {
@@ -80,45 +95,24 @@ const formatBytes = (value?: number) => {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 };
 
-const summaryDetail = (run: ExecutionHistoryRunSummary) =>
-  [
-    run.stage ?? "unknown stage",
-    run.engine ?? "unknown engine",
-    `${run.toolCallCount ?? 0} tool calls`,
-  ].join(" / ");
-
 export function WorkbenchHistoryPanel({
   open,
   focus,
+  showTechnicalDetails = false,
   onOpenChange,
   onCloseAutoFocus,
   onFocusConsumed,
 }: {
   open: boolean;
   focus?: HistoryFocusRequest | null;
+  showTechnicalDetails?: boolean;
   onOpenChange: (open: boolean) => void;
   onCloseAutoFocus?: (event: Event) => void;
   onFocusConsumed?: () => void;
 }) {
   const [runs, setRuns] = useState<ExecutionHistoryRunSummary[]>([]);
   const [artifacts, setArtifacts] = useState<ArtifactSummary[]>([]);
-  const [actions, setActions] = useState<
-    Array<{
-      id: string;
-      toolId: string;
-      status: string;
-      summary: string;
-      externalReference?: string;
-      createdAt: string;
-      ledger: Array<{
-        sequence: number;
-        status: string;
-        summary: string;
-        externalReference?: string;
-        createdAt: string;
-      }>;
-    }>
-  >([]);
+  const [actions, setActions] = useState<ActionProposalSummary[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [selectedRunSnapshot, setSelectedRunSnapshot] = useState<ExecutionRunSnapshot | null>(null);
   const [activeFilter, setActiveFilter] = useState<HistoryFilter>("all");
@@ -137,7 +131,7 @@ export function WorkbenchHistoryPanel({
     [runs, selectedRunId],
   );
   const searchedRuns = useMemo(() => searchHistoryRuns(runs, searchQuery), [runs, searchQuery]);
-  const filteredSearchedRuns = useMemo(
+  const filteredRuns = useMemo(
     () => filterHistoryRuns(searchedRuns, activeFilter),
     [activeFilter, searchedRuns],
   );
@@ -147,6 +141,10 @@ export function WorkbenchHistoryPanel({
     const artifactIds = new Set(selectedRun.artifactIds);
     return artifacts.filter((artifact) => artifactIds.has(artifact.id));
   }, [artifacts, selectedRun?.artifactIds]);
+  const attentionActions = useMemo(
+    () => actions.filter((action) => attentionActionStatuses.has(action.status)),
+    [actions],
+  );
 
   useEffect(() => {
     selectedRunIdRef.current = selectedRunId;
@@ -171,15 +169,14 @@ export function WorkbenchHistoryPanel({
           "Failed to load artifact history",
         ),
         actionsResponse.ok
-          ? (actionsResponse.json() as Promise<{ proposals?: typeof actions }>)
+          ? (actionsResponse.json() as Promise<{ proposals?: ActionProposalSummary[] }>)
           : Promise.resolve({ proposals: [] }),
       ]);
       const nextRuns = runsBody.runs ?? [];
-      const nextArtifacts = artifactsBody.artifacts ?? [];
       setRuns(nextRuns);
-      setArtifacts(nextArtifacts);
+      setArtifacts(artifactsBody.artifacts ?? []);
       setActions(actionsBody.proposals ?? []);
-      return { runs: nextRuns, artifacts: nextArtifacts };
+      return nextRuns;
     } catch (error) {
       setHistoryError(error instanceof Error ? error.message : "Failed to load history");
       return null;
@@ -218,9 +215,9 @@ export function WorkbenchHistoryPanel({
         await fetch(`${historyRunsPath}/${encodeURIComponent(selectedRunId)}/${action}`, {
           method: "POST",
         }).then((response) => readJsonResponse(response, `Failed to ${action} run`));
-        const loaded = await loadHistory();
+        const loadedRuns = await loadHistory();
         const nextRunId =
-          action === "retry" ? (loaded?.runs[0]?.id ?? selectedRunId) : selectedRunId;
+          action === "retry" ? (loadedRuns?.[0]?.id ?? selectedRunId) : selectedRunId;
         await inspectRun(nextRunId);
       } catch (actionError) {
         setRunError(actionError instanceof Error ? actionError.message : `Failed to ${action} run`);
@@ -278,24 +275,20 @@ export function WorkbenchHistoryPanel({
 
   useEffect(() => {
     if (!open) return;
-
     let cancelled = false;
     const refresh = async () => {
-      const loaded = await loadHistory();
-      if (cancelled || !loaded) return;
-
+      const loadedRuns = await loadHistory();
+      if (cancelled || !loadedRuns) return;
       const runId = focus
-        ? resolveFocusedRunId(loaded.runs, focus)
-        : (selectedRunIdRef.current ?? loaded.runs[0]?.id ?? null);
+        ? resolveFocusedRunId(loadedRuns, focus)
+        : (selectedRunIdRef.current ?? loadedRuns[0]?.id ?? null);
       if (runId) {
         setHighlightedRunId(focus ? runId : null);
         void inspectRun(runId);
       }
-
       setHighlightedArtifactId(focus?.artifactId ?? null);
       if (focus) onFocusConsumed?.();
     };
-
     void refresh();
     return () => {
       cancelled = true;
@@ -310,7 +303,7 @@ export function WorkbenchHistoryPanel({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="top-0 right-0 left-auto flex h-dvh max-h-dvh w-full max-w-xl translate-x-0 translate-y-0 flex-col gap-0 rounded-none border-y-0 border-r-0 p-0 sm:max-w-xl"
+        className="top-0 right-0 left-auto flex h-dvh max-h-dvh w-full translate-x-0 translate-y-0 flex-col gap-0 rounded-none border-y-0 border-r-0 p-0 sm:w-[min(92vw,64rem)] sm:max-w-[min(92vw,64rem)]"
         onCloseAutoFocus={onCloseAutoFocus}
         onOverlayMouseDown={closeFromOverlay}
         onOverlayPointerDown={closeFromOverlay}
@@ -320,80 +313,43 @@ export function WorkbenchHistoryPanel({
           <div className="flex items-start justify-between gap-4 pr-8">
             <span>
               <DialogTitle className="flex items-center gap-2 text-base">
-                <HistoryIcon className="text-muted-foreground size-4" />
-                Workbench History
+                <HistoryIcon className="text-muted-foreground size-4" /> Workbench History
               </DialogTitle>
-              <DialogDescription>
-                Scoped workflow runs, tool calls, and artifact metadata for this workspace.
-              </DialogDescription>
+              <DialogDescription>What ran, what it produced, and what needs you.</DialogDescription>
             </span>
             <Button
               type="button"
-              variant="outline"
-              size="sm"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Refresh history"
               onClick={() => void loadHistory()}
               disabled={isLoadingHistory}
             >
               {isLoadingHistory ? <Loader2Icon className="animate-spin" /> : <RefreshCwIcon />}
-              Refresh
             </Button>
           </div>
         </DialogHeader>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-5">
-            <StatusRow
-              label="Recent runs"
-              value={isLoadingHistory ? "Loading" : String(runs.length)}
-              compact
-              tone={runs.length ? "ok" : "muted"}
-            />
-            <StatusRow
-              label="Visible"
-              value={isLoadingHistory ? "Loading" : String(filteredSearchedRuns.length)}
-              compact
-              tone={filteredSearchedRuns.length ? "ok" : "muted"}
-            />
-            <StatusRow
-              label="Artifacts"
-              value={isLoadingHistory ? "Loading" : String(artifacts.length)}
-              compact
-              tone={artifacts.length ? "ok" : "muted"}
-            />
-            <StatusRow
-              label="Selected"
-              value={selectedRun ? runHistoryTitle(selectedRun) : "No run selected"}
-              compact
-            />
-            <StatusRow
-              label="Actions"
-              value={isLoadingHistory ? "Loading" : String(actions.length)}
-              compact
-              tone={actions.length ? "ok" : "muted"}
-            />
+        {historyError ? (
+          <div className="border-destructive/30 bg-destructive/10 text-destructive border-b px-5 py-2 text-sm">
+            {historyError}
           </div>
+        ) : null}
 
-          {historyError ? (
-            <div className="border-destructive/30 bg-destructive/10 mt-4 rounded-md border p-3 text-sm">
-              <p className="text-destructive font-medium">{historyError}</p>
-              <p className="text-muted-foreground mt-1 text-xs">
-                The chat thread can keep running while history reloads.
-              </p>
-            </div>
-          ) : null}
-
-          <HistorySection icon={HistoryIcon} title="Recent Runs">
-            <label className="relative mb-3 block">
+        <div className="grid min-h-0 flex-1 md:grid-cols-[21rem_minmax(0,1fr)]">
+          <aside className="border-border min-h-0 overflow-y-auto border-b p-4 md:border-r md:border-b-0">
+            <label className="relative block">
               <SearchIcon className="text-muted-foreground pointer-events-none absolute top-2.5 left-2.5 size-4" />
               <input
                 type="search"
-                className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring h-9 w-full rounded-md border pr-3 pl-8 text-sm outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                aria-label="Search history"
+                className="border-input bg-background placeholder:text-muted-foreground focus-visible:ring-ring h-9 w-full rounded-md border pr-3 pl-8 text-sm outline-none focus-visible:ring-2"
                 value={searchQuery}
-                placeholder="Search runs, tools, artifacts, or status"
+                placeholder="Search history"
                 onChange={(event) => setSearchQuery(event.target.value)}
               />
             </label>
-            <div className="mb-3 flex flex-wrap gap-1">
+            <div className="mt-3 flex flex-wrap gap-1">
               {historyFilters.map((filter) => (
                 <Button
                   key={filter.id}
@@ -406,135 +362,74 @@ export function WorkbenchHistoryPanel({
                 </Button>
               ))}
             </div>
-            {isLoadingHistory && !runs.length ? (
-              <EmptyPanelText>Loading execution history.</EmptyPanelText>
-            ) : filteredSearchedRuns.length ? (
-              <ol className="space-y-2">
-                {filteredSearchedRuns.map((run) => (
-                  <li
-                    key={run.id}
-                    className={cn(
-                      "border-border rounded-md border p-3 text-sm",
-                      highlightedRunId === run.id
-                        ? "border-primary/40 bg-primary/5 shadow-xs"
-                        : selectedRunId === run.id
-                          ? "bg-muted/40"
-                          : "",
-                    )}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <span className="min-w-0">
-                        <span className="block truncate font-medium">{runHistoryTitle(run)}</span>
-                        <span className="text-muted-foreground block text-xs">
-                          {summaryDetail(run)}
-                        </span>
-                        <span className="text-muted-foreground block text-xs">
-                          {formatAge(run.updatedAt ?? run.createdAt)}
-                        </span>
-                        {run.artifactIds?.length ? (
-                          <span className="text-muted-foreground block text-xs">
-                            {run.artifactIds.length} artifacts
-                          </span>
-                        ) : null}
-                      </span>
-                      <span className="flex shrink-0 flex-col items-end gap-2">
-                        <StatusPill status={run.status ?? "unknown"} tone={run.status} />
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          disabled={isLoadingRun && selectedRunId === run.id}
-                          onClick={() => void inspectRun(run.id)}
-                        >
-                          {isLoadingRun && selectedRunId === run.id ? (
-                            <Loader2Icon className="animate-spin" />
-                          ) : (
-                            <SearchIcon />
-                          )}
-                          {selectedRunId === run.id ? "Selected" : "Inspect"}
-                        </Button>
-                      </span>
-                    </div>
-                  </li>
-                ))}
-              </ol>
-            ) : runs.length ? (
-              <EmptyPanelText>No runs match the current search or filter.</EmptyPanelText>
-            ) : (
-              <EmptyPanelText>
-                Run a tool, callback, or workflow to populate execution history.
-              </EmptyPanelText>
-            )}
-          </HistorySection>
 
-          <HistorySection icon={CircleStopIcon} title="Action Ledger">
-            {actions.length ? (
-              <ol className="space-y-2">
-                {actions.map((action) => (
-                  <li key={action.id} className="border-border rounded-md border p-3 text-sm">
-                    <div className="flex items-start justify-between gap-3">
-                      <span className="min-w-0">
-                        <span className="block font-medium">{action.summary}</span>
-                        <span className="text-muted-foreground block text-xs">
-                          {action.toolId} · {formatAge(action.createdAt)}
-                        </span>
-                        {action.externalReference ? (
-                          <span className="text-muted-foreground block break-all text-xs">
-                            {action.externalReference}
-                          </span>
-                        ) : null}
-                      </span>
-                      <StatusPill status={action.status} tone={action.status} />
-                    </div>
-                    {action.status === "proposed" ? (
-                      <Button
-                        className="mt-2"
-                        size="sm"
-                        disabled={Boolean(busyAction)}
-                        onClick={() => void performProposalAction(action.id, "execute")}
+            <div className="mt-4">
+              {isLoadingHistory && !runs.length ? (
+                <EmptyPanelText>Loading history.</EmptyPanelText>
+              ) : filteredRuns.length ? (
+                <ol className="space-y-1">
+                  {filteredRuns.map((run) => (
+                    <li key={run.id}>
+                      <button
+                        type="button"
+                        aria-label={`Open ${runHistoryTitle(run)}`}
+                        disabled={isLoadingRun && selectedRunId === run.id}
+                        onClick={() => void inspectRun(run.id)}
+                        className={cn(
+                          "focus-visible:ring-ring w-full rounded-md px-3 py-2.5 text-left outline-none transition-colors focus-visible:ring-2",
+                          highlightedRunId === run.id
+                            ? "bg-primary/8"
+                            : selectedRunId === run.id
+                              ? "bg-muted"
+                              : "hover:bg-muted/60",
+                        )}
                       >
-                        Request approval
-                      </Button>
-                    ) : null}
-                    {action.status === "outcome_unknown" ? (
-                      <Button
-                        className="mt-2"
-                        size="sm"
-                        variant="outline"
-                        disabled={Boolean(busyAction)}
-                        onClick={() => void performProposalAction(action.id, "reconcile")}
-                      >
-                        Reconcile outcome
-                      </Button>
-                    ) : null}
-                    {action.ledger.length ? (
-                      <ol className="border-border mt-3 space-y-1 border-l pl-3">
-                        {action.ledger.map((entry) => (
-                          <li key={`${action.id}:${entry.sequence}`} className="text-xs">
-                            <span className="font-medium">{entry.status}</span>
-                            <span className="text-muted-foreground">
-                              {` · ${entry.summary} · ${formatAge(entry.createdAt)}`}
+                        <span className="flex items-start justify-between gap-3">
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm font-medium">
+                              {runHistoryTitle(run)}
                             </span>
-                          </li>
-                        ))}
-                      </ol>
-                    ) : null}
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <EmptyPanelText>No durable action proposals have been recorded.</EmptyPanelText>
-            )}
-          </HistorySection>
+                            <span className="text-muted-foreground mt-0.5 block text-xs">
+                              {formatAge(run.updatedAt ?? run.createdAt)}
+                            </span>
+                          </span>
+                          {isLoadingRun && selectedRunId === run.id ? (
+                            <Loader2Icon className="text-muted-foreground mt-0.5 size-3.5 animate-spin" />
+                          ) : (
+                            <StatusPill status={run.status ?? "unknown"} tone={run.status} />
+                          )}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ol>
+              ) : runs.length ? (
+                <EmptyPanelText>No runs match this view.</EmptyPanelText>
+              ) : (
+                <EmptyPanelText>Your workflows and tools will appear here.</EmptyPanelText>
+              )}
+            </div>
+          </aside>
 
-          <HistorySection icon={SearchIcon} title="Selected Run">
+          <main className="min-h-0 overflow-y-auto p-5 md:p-6">
+            {attentionActions.length ? (
+              <AttentionActions
+                actions={attentionActions}
+                busyAction={busyAction}
+                showTechnicalDetails={showTechnicalDetails}
+                onAction={performProposalAction}
+              />
+            ) : null}
+
             {!selectedRunId ? (
-              <EmptyPanelText>Select a run to inspect its stored summary.</EmptyPanelText>
+              <EmptyPanelText>Select a run to see its outcome.</EmptyPanelText>
             ) : isLoadingRun ? (
-              <EmptyPanelText>Loading run details.</EmptyPanelText>
+              <div className="text-muted-foreground flex items-center gap-2 text-sm">
+                <Loader2Icon className="size-4 animate-spin" /> Loading run
+              </div>
             ) : runError ? (
-              <div className="border-destructive/30 bg-destructive/10 rounded-md border p-3 text-sm">
-                <p className="text-destructive font-medium">{runError}</p>
+              <div className="border-destructive/30 bg-destructive/10 text-destructive rounded-md border p-3 text-sm">
+                {runError}
               </div>
             ) : selectedRunSnapshot ? (
               <SelectedRunSummary
@@ -543,55 +438,86 @@ export function WorkbenchHistoryPanel({
                 artifacts={selectedRunArtifacts}
                 highlightedArtifactId={highlightedArtifactId}
                 busyAction={busyAction}
+                showTechnicalDetails={showTechnicalDetails}
                 onRunAction={performRunAction}
                 onApprovalAction={decideApproval}
               />
             ) : (
               <EmptyPanelText>No details returned for this run.</EmptyPanelText>
             )}
-          </HistorySection>
-
-          <HistorySection icon={FileTextIcon} title="Artifacts">
-            {isLoadingHistory && !artifacts.length ? (
-              <EmptyPanelText>Loading artifact metadata.</EmptyPanelText>
-            ) : artifacts.length ? (
-              <ol className="space-y-2">
-                {artifacts.map((artifact) => (
-                  <ArtifactPreviewCard
-                    key={artifact.id}
-                    artifact={artifact}
-                    highlighted={highlightedArtifactId === artifact.id}
-                  />
-                ))}
-              </ol>
-            ) : (
-              <EmptyPanelText>
-                Metadata artifacts will appear after tools or callbacks create them.
-              </EmptyPanelText>
-            )}
-          </HistorySection>
+          </main>
         </div>
       </DialogContent>
     </Dialog>
   );
 }
 
-function HistorySection({
-  icon: Icon,
-  title,
-  children,
+function AttentionActions({
+  actions,
+  busyAction,
+  showTechnicalDetails,
+  onAction,
 }: {
-  icon: LucideIcon;
-  title: string;
-  children: ReactNode;
+  actions: ActionProposalSummary[];
+  busyAction: string | null;
+  showTechnicalDetails: boolean;
+  onAction: (proposalId: string, action: "execute" | "reconcile") => Promise<void>;
 }) {
   return (
-    <section className="mt-5">
-      <div className="mb-2 flex items-center gap-2">
-        <Icon className="text-muted-foreground size-4" />
-        <h2 className="text-sm font-semibold">{title}</h2>
+    <section className="border-border mb-6 rounded-lg border p-4">
+      <h2 className="flex items-center gap-2 text-sm font-semibold">
+        <CircleAlertIcon className="text-amber-600 size-4" /> Needs attention
+      </h2>
+      <div className="divide-border mt-2 divide-y">
+        {actions.map((action) => (
+          <div
+            key={action.id}
+            className="flex flex-col gap-3 py-3 first:pt-2 last:pb-0 sm:flex-row sm:items-start sm:justify-between"
+          >
+            <span className="min-w-0">
+              <span className="block text-sm font-medium">{action.summary}</span>
+              <span className="text-muted-foreground mt-1 block text-xs">
+                {formatAge(action.createdAt)}
+              </span>
+              {showTechnicalDetails && action.ledger.length ? (
+                <details className="mt-2 text-xs">
+                  <summary className="text-muted-foreground cursor-pointer">Action ledger</summary>
+                  <ol className="border-border mt-2 space-y-1 border-l pl-3">
+                    {action.ledger.map((entry) => (
+                      <li key={entry.sequence}>
+                        <span className="font-medium">{entry.status}</span>
+                        <span className="text-muted-foreground"> · {entry.summary}</span>
+                      </li>
+                    ))}
+                  </ol>
+                </details>
+              ) : null}
+            </span>
+            <span className="flex shrink-0 items-center gap-2">
+              <StatusPill status={action.status} tone={action.status} />
+              {action.status === "proposed" ? (
+                <Button
+                  size="sm"
+                  disabled={Boolean(busyAction)}
+                  onClick={() => void onAction(action.id, "execute")}
+                >
+                  Request approval
+                </Button>
+              ) : null}
+              {action.status === "outcome_unknown" ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={Boolean(busyAction)}
+                  onClick={() => void onAction(action.id, "reconcile")}
+                >
+                  Reconcile
+                </Button>
+              ) : null}
+            </span>
+          </div>
+        ))}
       </div>
-      {children}
     </section>
   );
 }
@@ -604,6 +530,7 @@ function SelectedRunSummary({
   artifacts,
   highlightedArtifactId,
   busyAction,
+  showTechnicalDetails,
   onRunAction,
   onApprovalAction,
 }: {
@@ -611,69 +538,41 @@ function SelectedRunSummary({
   run: ExecutionHistoryRunSummary | null;
   artifacts: ArtifactSummary[];
   highlightedArtifactId?: string | null;
-  busyAction?: string | null;
+  busyAction: string | null;
+  showTechnicalDetails: boolean;
   onRunAction: (action: "cancel" | "retry") => Promise<void>;
   onApprovalAction: (approvalId: string, action: "approve" | "deny") => Promise<void>;
 }) {
-  const snapshotArtifacts = snapshot.artifacts ?? [];
   const artifactMap = new Map<string, PreviewableArtifact>();
-  for (const artifact of snapshotArtifacts) artifactMap.set(artifact.id, artifact);
+  for (const artifact of snapshot.artifacts ?? []) artifactMap.set(artifact.id, artifact);
   for (const artifact of artifacts) artifactMap.set(artifact.id, artifact);
   const previewArtifacts = Array.from(artifactMap.values());
-  const runId = run?.id ?? snapshot.run?.id;
-  const workflowIntentId =
-    run?.workflowIntentId ?? snapshot.run?.workflowIntentId ?? snapshot.intent?.id;
   const pendingInterventions = (snapshot.interventions ?? []).filter(
     (intervention) => intervention.status === "requested",
   );
+  const runId = run?.id ?? snapshot.run?.id;
+  const workflowIntentId =
+    run?.workflowIntentId ?? snapshot.run?.workflowIntentId ?? snapshot.intent?.id;
 
   return (
-    <div className="space-y-3">
-      {run?.summary ? (
-        <p className="text-muted-foreground rounded-md border px-3 py-2 text-sm">{run.summary}</p>
-      ) : null}
-
-      {run?.controls?.canCancel || run?.controls?.canRetry ? (
-        <div className="border-border flex flex-wrap items-center gap-2 border-y py-3">
-          {run.controls.canCancel ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={Boolean(busyAction)}
-              onClick={() => void onRunAction("cancel")}
-            >
-              {busyAction === "cancel" ? (
-                <Loader2Icon className="animate-spin" />
-              ) : (
-                <CircleStopIcon />
-              )}
-              Cancel run
-            </Button>
-          ) : null}
-          {run.controls.canRetry ? (
-            <Button
-              type="button"
-              size="sm"
-              disabled={Boolean(busyAction)}
-              onClick={() => void onRunAction("retry")}
-            >
-              {busyAction === "retry" ? (
-                <Loader2Icon className="animate-spin" />
-              ) : (
-                <RotateCcwIcon />
-              )}
-              Retry run
-            </Button>
-          ) : null}
+    <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h2 className="text-lg font-semibold">{run ? runHistoryTitle(run) : "Run outcome"}</h2>
+          <p className="text-muted-foreground mt-1 text-xs">
+            {formatAge(run?.updatedAt ?? run?.createdAt)}
+          </p>
         </div>
-      ) : null}
+        <StatusPill
+          status={run?.status ?? snapshot.run?.status ?? "unknown"}
+          tone={run?.status ?? snapshot.run?.status}
+        />
+      </div>
+
+      {run?.summary ? <p className="mt-4 text-sm leading-6">{run.summary}</p> : null}
 
       {pendingInterventions.map((intervention) => (
-        <div
-          key={intervention.id}
-          className="border-border bg-muted/30 rounded-md border px-3 py-3"
-        >
+        <div key={intervention.id} className="border-border bg-muted/30 mt-5 rounded-lg border p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <span className="min-w-0">
               <span className="block text-sm font-medium">{intervention.title}</span>
@@ -703,101 +602,152 @@ function SelectedRunSummary({
                 {busyAction === `approve:${intervention.id}` ? (
                   <Loader2Icon className="animate-spin" />
                 ) : null}
-                Approve and resume
+                Approve
               </Button>
             </span>
           </div>
         </div>
       ))}
 
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <StatusRow label="Status" value={run?.status ?? snapshot.run?.status} compact />
-        <StatusRow
-          label="Stage"
-          value={run?.stage ?? snapshot.run?.stage ?? snapshot.intent?.stage}
-          compact
-        />
-        <StatusRow label="Engine" value={run?.engine} compact />
-        <StatusRow label="Intent" value={snapshot.intent?.type} compact />
-        <StatusRow label="Tool calls" value={String(snapshot.toolCalls.length)} compact />
-        <StatusRow label="Artifacts" value={String(previewArtifacts.length)} compact />
-      </div>
+      {run?.controls?.canCancel || run?.controls?.canRetry ? (
+        <div className="mt-5 flex flex-wrap gap-2">
+          {run.controls.canCancel ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={Boolean(busyAction)}
+              onClick={() => void onRunAction("cancel")}
+            >
+              {busyAction === "cancel" ? (
+                <Loader2Icon className="animate-spin" />
+              ) : (
+                <CircleStopIcon />
+              )}
+              Cancel
+            </Button>
+          ) : null}
+          {run.controls.canRetry ? (
+            <Button
+              type="button"
+              size="sm"
+              disabled={Boolean(busyAction)}
+              onClick={() => void onRunAction("retry")}
+            >
+              {busyAction === "retry" ? (
+                <Loader2Icon className="animate-spin" />
+              ) : (
+                <RotateCcwIcon />
+              )}
+              Retry
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
 
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <CopyId label="Run id" value={runId} />
-        <CopyId label="Workflow intent id" value={workflowIntentId} />
-      </div>
-
-      <SummaryList
-        title="Tool calls"
-        empty="No tool calls attached to this run."
-        items={snapshot.toolCalls.slice(0, 6).map((toolCall) => ({
-          key: toolCall.id,
-          title: toolCall.toolId ?? "Unknown tool",
-          detail: toolCall.outputSummary ?? toolCall.inputSummary ?? "Tool call recorded.",
-          status: toolCall.status,
-        }))}
-      />
-
-      <div>
-        <h3 className="mb-2 text-xs font-semibold">Artifacts</h3>
+      <section className="mt-7">
+        <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold">
+          <FileTextIcon className="text-muted-foreground size-4" /> Results
+        </h3>
         {previewArtifacts.length ? (
-          <ol className="space-y-2">
-            {previewArtifacts.slice(0, 6).map((artifact) => (
+          <ol className="space-y-3">
+            {previewArtifacts.map((artifact, index) => (
               <ArtifactPreviewCard
                 key={artifact.id}
                 artifact={artifact}
+                featured={index === 0}
+                technical={showTechnicalDetails}
                 highlighted={highlightedArtifactId === artifact.id}
               />
             ))}
           </ol>
         ) : (
-          <EmptyPanelText>No artifacts attached to this run.</EmptyPanelText>
+          <EmptyPanelText>No artifacts were produced by this run.</EmptyPanelText>
         )}
-      </div>
+      </section>
 
-      <SummaryList
-        title="Decisions"
-        empty="No decisions attached to this run."
-        items={snapshot.decisions.slice(0, 6).map((decision) => ({
-          key: decision.id,
-          title: decision.title ?? "Decision",
-          detail: decision.summary ?? decision.thesis ?? "Decision recorded.",
-        }))}
-      />
-      <SummaryList
-        title="Child runs"
-        empty="No child runs attached to this run."
-        items={(snapshot.childRuns ?? []).slice(0, 6).map((childRun, index) => ({
-          key: childRun.id ?? `child-${index}`,
-          title: childRun.stage ?? "Child run",
-          detail: `${childRun.engine ?? "unknown engine"} / ${formatAge(
-            childRun.updatedAt ?? childRun.createdAt,
-          )}`,
-          status: childRun.status,
-        }))}
-      />
-      <SummaryList
-        title="Audit"
-        empty="No audit events attached to this run."
-        items={snapshot.auditEvents.slice(0, 6).map((event) => ({
-          key: event.id,
-          title: event.action ?? "Audit event",
-          detail: event.summary ?? "Audit event recorded.",
-        }))}
-      />
+      {showTechnicalDetails ? (
+        <details className="border-border mt-7 border-t pt-5">
+          <summary className="text-muted-foreground hover:text-foreground cursor-pointer text-sm font-medium">
+            Technical details
+          </summary>
+          <div className="mt-4 space-y-5">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <StatusRow label="Status" value={run?.status ?? snapshot.run?.status} compact />
+              <StatusRow
+                label="Stage"
+                value={run?.stage ?? snapshot.run?.stage ?? snapshot.intent?.stage}
+                compact
+              />
+              <StatusRow label="Engine" value={run?.engine} compact />
+              <StatusRow label="Intent" value={snapshot.intent?.type} compact />
+              <StatusRow label="Tool calls" value={String(snapshot.toolCalls.length)} compact />
+              <StatusRow label="Artifacts" value={String(previewArtifacts.length)} compact />
+            </div>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <CopyId label="Run id" value={runId} />
+              <CopyId label="Workflow intent id" value={workflowIntentId} />
+            </div>
+            <SummaryList
+              title="Tool calls"
+              empty="No tool calls attached to this run."
+              items={snapshot.toolCalls.slice(0, 6).map((toolCall) => ({
+                key: toolCall.id,
+                title: toolCall.toolId ?? "Unknown tool",
+                detail: toolCall.outputSummary ?? toolCall.inputSummary ?? "Tool call recorded.",
+                status: toolCall.status,
+              }))}
+            />
+            <SummaryList
+              title="Decisions"
+              empty="No decisions attached to this run."
+              items={snapshot.decisions.slice(0, 6).map((decision) => ({
+                key: decision.id,
+                title: decision.title ?? "Decision",
+                detail: decision.summary ?? decision.thesis ?? "Decision recorded.",
+              }))}
+            />
+            <SummaryList
+              title="Child runs"
+              empty="No child runs attached to this run."
+              items={(snapshot.childRuns ?? []).slice(0, 6).map((childRun, index) => ({
+                key: childRun.id ?? `child-${index}`,
+                title: childRun.stage ?? "Child run",
+                detail: `${childRun.engine ?? "unknown engine"} · ${formatAge(
+                  childRun.updatedAt ?? childRun.createdAt,
+                )}`,
+                status: childRun.status,
+              }))}
+            />
+            <SummaryList
+              title="Audit"
+              empty="No audit events attached to this run."
+              items={snapshot.auditEvents.slice(0, 6).map((event) => ({
+                key: event.id,
+                title: event.action ?? "Audit event",
+                detail: event.summary ?? "Audit event recorded.",
+              }))}
+            />
+          </div>
+        </details>
+      ) : null}
     </div>
   );
 }
 
 function ArtifactPreviewCard({
   artifact,
+  featured,
+  technical,
   highlighted,
 }: {
   artifact: PreviewableArtifact;
+  featured?: boolean;
+  technical: boolean;
   highlighted?: boolean;
 }) {
   const [copiedUri, setCopiedUri] = useState(false);
+  const [expanded, setExpanded] = useState(Boolean(featured));
   const preview = buildArtifactPreview(artifact);
   const sizeBytes = "sizeBytes" in artifact ? formatBytes(artifact.sizeBytes) : undefined;
   const createdAt = "createdAt" in artifact ? formatAge(artifact.createdAt) : undefined;
@@ -812,79 +762,83 @@ function ArtifactPreviewCard({
     window.setTimeout(() => setCopiedUri(false), 1200);
   };
 
-  const openUri = () => {
-    if (!openable || !uri) return;
-    window.open(uri, "_blank", "noopener,noreferrer");
-  };
-
   return (
     <li
       className={cn(
-        "border-border rounded-md border p-3 text-sm",
+        "border-border rounded-lg border p-4 text-sm",
         highlighted ? "border-primary/40 bg-primary/5 shadow-xs" : "",
       )}
     >
       <div className="flex items-start justify-between gap-3">
         <span className="min-w-0">
           <span className="block truncate font-medium">{preview.title}</span>
-          <span className="text-muted-foreground text-xs">
-            {[
-              kind ?? "artifact",
-              artifact.mimeType ?? "metadata",
-              sizeBytes ?? "size unknown",
-              createdAt,
-            ]
-              .filter(Boolean)
-              .join(" / ")}
+          <span className="text-muted-foreground mt-0.5 block text-xs">
+            {[kind ?? "artifact", sizeBytes, createdAt].filter(Boolean).join(" · ")}
           </span>
         </span>
-        <span className="flex shrink-0 items-center gap-1">
-          <Button type="button" variant="ghost" size="icon-xs" onClick={copyUri} disabled={!uri}>
-            {copiedUri ? <CheckIcon /> : <ClipboardIcon />}
-            <span className="sr-only">Copy artifact URI</span>
+        {openable && uri ? (
+          <Button type="button" variant="outline" size="sm" asChild>
+            <a href={uri} target="_blank" rel="noreferrer">
+              Open <ExternalLinkIcon />
+            </a>
           </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-xs"
-            onClick={openUri}
-            disabled={!openable}
-          >
-            <ExternalLinkIcon />
-            <span className="sr-only">Open artifact URI</span>
-          </Button>
-        </span>
+        ) : null}
       </div>
 
-      <div className="mt-2 space-y-1">
-        {preview.lines.slice(0, 3).map((line, index) => (
-          <p
-            key={`${artifact.id}-line-${index}`}
-            className="text-muted-foreground text-xs break-words"
-          >
-            {line}
-          </p>
-        ))}
-      </div>
+      {preview.lines.length ? (
+        <div className="mt-3 space-y-1">
+          {preview.lines.slice(0, featured ? 4 : 2).map((line, index) => (
+            <p
+              key={`${artifact.id}-line-${index}`}
+              className="text-muted-foreground break-words text-xs"
+            >
+              {line}
+            </p>
+          ))}
+        </div>
+      ) : null}
 
-      <div className="mt-3 space-y-2">
-        <CopyId label="Artifact id" value={artifact.id} />
-        <CopyId label="Artifact URI" value={uri} />
-      </div>
-
-      {preview.json ? (
-        <details className="mt-3">
+      {"kind" in artifact ? (
+        <details
+          className="mt-3"
+          open={expanded}
+          onToggle={(event) => setExpanded(event.currentTarget.open)}
+        >
           <summary className="text-muted-foreground hover:text-foreground cursor-pointer text-xs">
-            Metadata JSON
+            {featured ? "Result" : "View result"}
           </summary>
-          <pre className="bg-muted mt-2 max-h-44 overflow-auto rounded-md p-2 text-xs whitespace-pre-wrap">
-            {preview.json}
-          </pre>
-          {"kind" in artifact ? (
-            <div className="mt-2 text-xs">
-              <RuntimeArtifactContent artifact={artifact as ArtifactSummary} />
+          <div className="mt-3 text-xs">
+            <RuntimeArtifactContent artifact={artifact as ArtifactSummary} />
+          </div>
+        </details>
+      ) : null}
+
+      {technical ? (
+        <details className="border-border mt-4 border-t pt-3">
+          <summary className="text-muted-foreground hover:text-foreground cursor-pointer text-xs">
+            Artifact details
+          </summary>
+          <div className="mt-3 space-y-2">
+            <CopyId label="Artifact id" value={artifact.id} />
+            <div className="flex items-center gap-2">
+              <CopyId label="Artifact URI" value={uri} />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                onClick={copyUri}
+                disabled={!uri}
+              >
+                {copiedUri ? <CheckIcon /> : <ClipboardIcon />}
+                <span className="sr-only">Copy artifact URI</span>
+              </Button>
             </div>
-          ) : null}
+            {preview.json ? (
+              <pre className="bg-muted max-h-44 overflow-auto rounded-md p-2 text-xs whitespace-pre-wrap">
+                {preview.json}
+              </pre>
+            ) : null}
+          </div>
         </details>
       ) : null}
     </li>

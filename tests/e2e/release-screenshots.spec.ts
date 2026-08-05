@@ -39,8 +39,7 @@ test("captures deterministic public release product evidence", async ({ page }) 
 
   await page.getByRole("button", { name: "History" }).click();
   await expect(page.getByRole("dialog", { name: "Workbench History" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Action Ledger" })).toBeVisible();
-  await expect(page.getByText("Synthetic release action completed after approval.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Results" })).toBeVisible();
   await capture(page, "history-and-action-ledger.png");
   await page.getByRole("button", { name: "Close" }).click();
 
@@ -77,6 +76,8 @@ test("captures deterministic public release product evidence", async ({ page }) 
 
   await page.getByRole("button", { name: "Workspace access" }).click();
   await expect(page.getByRole("dialog", { name: "Workspace" })).toBeVisible();
+  await page.getByRole("button", { name: "Manage workspace" }).click();
+  await page.getByRole("tab", { name: "Data & privacy" }).click();
   await expect(page.getByRole("heading", { name: "Data lifecycle" })).toBeVisible();
   await capture(page, "workspace-retention-and-export.png");
 });

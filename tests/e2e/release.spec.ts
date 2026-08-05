@@ -212,13 +212,15 @@ test("trusted local session is immediately usable and exposes release controls",
   await page.getByRole("button", { name: "Workspace access" }).click();
   await expect(page.getByRole("dialog", { name: "Workspace" })).toBeVisible();
   await expect(page.getByText("Default Workspace", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Manage workspace" }).click();
+  await page.getByRole("tab", { name: "Members" }).click();
   await expect(page.getByRole("combobox", { name: "Role for e2e-owner" })).toHaveValue("owner");
   await page.getByRole("button", { name: "Close" }).click();
 
   await composer.fill("/admin");
   await page.getByText("Open workspace, agent, and runtime controls.", { exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Admin" })).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Overview" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Overview" })).toHaveCount(0);
   await expect(page.getByRole("tab", { name: "Agents & Packs" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "Tools & Approvals" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "Diagnostics" })).toBeVisible();
@@ -268,9 +270,9 @@ test("trusted local session is immediately usable and exposes release controls",
   await page
     .getByRole("listitem")
     .filter({ hasText: "Release recovery fixture" })
-    .getByRole("button", { name: "Inspect" })
+    .getByRole("button", { name: /Open Release recovery fixture/ })
     .click();
-  await expect(page.getByRole("button", { name: "Retry run" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
 
   await page
     .getByRole("dialog", { name: "Workbench History" })

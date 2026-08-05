@@ -2,12 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
-  ActivityIcon,
   AlertCircleIcon,
   BotIcon,
   BoxIcon,
   CheckIcon,
-  ExternalLinkIcon,
   FileClockIcon,
   FlaskConicalIcon,
   Loader2Icon,
@@ -34,7 +32,6 @@ import {
   EmptyPanelText,
   formatTime,
   StatusPill,
-  StatusRow,
 } from "@/components/workbench/dev-monitor-primitives";
 import { resolveAdminAgentPackState } from "@/lib/workbench/admin-agent-packs";
 import { requestWorkbenchSummaryRefresh } from "@/lib/workbench/admin-summary-events";
@@ -76,15 +73,11 @@ export function AdminPanel({
   open,
   onOpenChange,
   onCloseAutoFocus,
-  onOpenWorkspace,
-  onOpenAgents,
   onOpenHistory,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCloseAutoFocus?: (event: Event) => void;
-  onOpenWorkspace: () => void;
-  onOpenAgents: () => void;
   onOpenHistory: (runId?: string) => void;
 }) {
   const {
@@ -349,24 +342,45 @@ export function AdminPanel({
             </div>
           </DialogHeader>
 
-          {importantError ? (
-            <div className="border-destructive/30 bg-destructive/5 text-destructive flex items-center gap-2 border-b px-5 py-2 text-xs">
-              <AlertCircleIcon className="size-3.5 shrink-0" />
-              <span className="min-w-0 truncate">{importantError}</span>
-            </div>
-          ) : (
-            <div className="border-border text-muted-foreground border-b px-5 py-2 text-xs">
-              Updated {formatTime(summary?.generatedAt)}
-            </div>
-          )}
+          <div
+            className={
+              importantError
+                ? "border-destructive/30 bg-destructive/5 text-destructive flex items-center gap-3 border-b px-5 py-2 text-xs"
+                : "border-border text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1 border-b px-5 py-2 text-xs"
+            }
+          >
+            {importantError ? (
+              <>
+                <AlertCircleIcon className="size-3.5 shrink-0" />
+                <span className="min-w-0 truncate">{importantError}</span>
+              </>
+            ) : (
+              <>
+                <span className="flex items-center gap-1.5">
+                  <span
+                    className={`size-1.5 rounded-full ${
+                      liveRuntime.chatTone === "completed"
+                        ? "bg-emerald-500"
+                        : liveRuntime.chatTone === "failed"
+                          ? "bg-destructive"
+                          : "bg-amber-500"
+                    }`}
+                  />
+                  {liveRuntime.chatLabel}
+                </span>
+                <span>
+                  {pendingApprovals.length
+                    ? `${pendingApprovals.length} approval${pendingApprovals.length === 1 ? "" : "s"} pending`
+                    : "No pending approvals"}
+                </span>
+                <span className="ml-auto">Updated {formatTime(summary?.generatedAt)}</span>
+              </>
+            )}
+          </div>
 
-          <Tabs defaultValue="overview" className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)]">
+          <Tabs defaultValue="packs" className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)]">
             <div className="border-border overflow-x-auto border-b px-4 py-2">
               <TabsList>
-                <TabsTrigger value="overview">
-                  <ActivityIcon />
-                  Overview
-                </TabsTrigger>
                 <TabsTrigger value="packs">
                   <BoxIcon />
                   Agents & Packs
@@ -381,83 +395,6 @@ export function AdminPanel({
                 </TabsTrigger>
               </TabsList>
             </div>
-
-            <TabsContent value="overview" className="overflow-y-auto p-5">
-              <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(18rem,.7fr)]">
-                <section className={`${sectionClass} p-4`}>
-                  <div className="mb-3 flex items-center justify-between gap-2">
-                    <h2 className="text-sm font-semibold">Current environment</h2>
-                    <StatusPill status={liveRuntime.chatLabel} tone={liveRuntime.chatTone} />
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <StatusRow
-                      label="Workspace"
-                      value={session?.workspace?.name ?? summary?.workspace?.name}
-                      compact
-                      tone="ok"
-                    />
-                    <StatusRow
-                      label="Agent"
-                      value={session?.activeAgent?.name ?? summary?.activeAgent?.name}
-                      compact
-                      tone="ok"
-                    />
-                    <StatusRow
-                      label="Pack"
-                      value={
-                        session?.activeAgent?.behavior.pack?.name ??
-                        session?.activeAgent?.behavior.pack?.id ??
-                        summary?.activeAgent?.behavior.pack?.name ??
-                        summary?.activeAgent?.behavior.pack?.id
-                      }
-                      compact
-                    />
-                    <StatusRow
-                      label="Model"
-                      value={
-                        session?.activeAgent?.runtime.model ?? summary?.activeAgent?.runtime.model
-                      }
-                      compact
-                    />
-                    <StatusRow
-                      label="Membership"
-                      value={
-                        summary?.membership
-                          ? `${summary.membership.role} / ${summary.membership.status}`
-                          : undefined
-                      }
-                      compact
-                    />
-                    <StatusRow
-                      label="Connection"
-                      value={connection ? "Live token available" : "Connecting"}
-                      compact
-                    />
-                  </div>
-                </section>
-                <section className={`${sectionClass} p-4`}>
-                  <h2 className="text-sm font-semibold">Product surfaces</h2>
-                  <p className="text-muted-foreground mt-1 text-xs">
-                    Use the dedicated interfaces for normal workspace operations.
-                  </p>
-                  <div className="mt-4 grid gap-2">
-                    <Button variant="outline" className="justify-between" onClick={onOpenWorkspace}>
-                      Workspace <ExternalLinkIcon />
-                    </Button>
-                    <Button variant="outline" className="justify-between" onClick={onOpenAgents}>
-                      Agents <ExternalLinkIcon />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      className="justify-between"
-                      onClick={() => onOpenHistory()}
-                    >
-                      History <ExternalLinkIcon />
-                    </Button>
-                  </div>
-                </section>
-              </div>
-            </TabsContent>
 
             <TabsContent value="packs" className="overflow-y-auto p-5">
               <div className="mb-4 flex items-center justify-between gap-3">
