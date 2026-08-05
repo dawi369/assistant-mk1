@@ -43,6 +43,39 @@ test("signed-out refresh stays on the deliberate access screen", async ({ page, 
   expect(hydrationErrors).toEqual([]);
 });
 
+test("chat deletion uses an accessible in-app confirmation", async ({ page }) => {
+  test.skip(releaseMode !== "local-session");
+
+  await page.goto("/");
+  const created = await page.request.post("/api/workbench/chat-session/threads", {
+    data: { title: "Delete confirmation fixture" },
+  });
+  expect(created.ok(), await created.text()).toBe(true);
+  const createdBody = (await created.json()) as { activeThread?: { threadId?: string } };
+  const threadId = createdBody.activeThread?.threadId;
+  expect(threadId).toBeTruthy();
+
+  await page.reload();
+  const threadItem = page.getByTestId(`thread-history-item-${threadId}`);
+  const deleteChatButton = threadItem.getByRole("button", { name: "Delete chat" });
+  await deleteChatButton.click();
+  const deleteDialog = page.getByRole("dialog", { name: "Delete this chat?" });
+  await expect(deleteDialog).toBeVisible();
+  await expect(deleteDialog).toContainText("Delete confirmation fixture");
+  await expect(deleteDialog).toContainText("Any active response will be stopped.");
+  await expect(deleteDialog).toContainText("Operational audit records are retained.");
+  await expect(deleteDialog.getByRole("button", { name: "Keep chat" })).toBeFocused();
+
+  await page.keyboard.press("Escape");
+  await expect(deleteDialog).toHaveCount(0);
+  await expect(deleteChatButton).toBeFocused();
+
+  await deleteChatButton.click();
+  await deleteDialog.getByRole("button", { name: "Delete chat" }).click();
+  await expect(deleteDialog).toHaveCount(0);
+  await expect(threadItem).toHaveCount(0);
+});
+
 test("trusted local session is immediately usable and exposes release controls", async ({
   page,
 }) => {

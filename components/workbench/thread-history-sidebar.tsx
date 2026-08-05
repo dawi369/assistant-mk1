@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuiState } from "@assistant-ui/react";
 import { useAuth } from "@workos-inc/authkit-nextjs/components";
 import {
@@ -15,6 +15,14 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useWorkbenchComposerFocus } from "@/components/workbench/composer-focus-context";
 import { WorkbenchMark } from "@/components/workbench/workbench-mark";
 import { cn } from "@/lib/utils";
@@ -55,6 +63,10 @@ export function ThreadHistorySidebar({
   const { user, loading: authLoading } = useAuth();
   const [view, setView] = useState<"active" | "archived">("active");
   const [archiveError, setArchiveError] = useState<string | null>(null);
+  const [deleteCandidate, setDeleteCandidate] = useState<ChatThreadSummary | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+  const deleteTriggerRef = useRef<HTMLElement | null>(null);
   const { focusComposerAfterInteraction } = useWorkbenchComposerFocus();
   const creatingThread = pending?.type === "create";
   const isNavigatingThread =
@@ -163,13 +175,41 @@ export function ThreadHistorySidebar({
 
   const handleDelete = async (thread: ChatThreadSummary) => {
     if (actionsDisabled) return;
-    const confirmed = window.confirm(
-      `Delete "${thread.title || "New chat"}"? This hides the chat but keeps its audit records.`,
-    );
-    if (!confirmed) return;
-    deleteThread(thread.threadId).catch((nextError) => {
-      setArchiveError(nextError instanceof Error ? nextError.message : "Failed to delete chat");
+    deleteTriggerRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setDeleteError(null);
+    setDeleteCandidate(thread);
+  };
+
+  const closeDeleteDialog = () => {
+    setDeleteCandidate(null);
+    setDeleteError(null);
+    requestAnimationFrame(() => {
+      const trigger = deleteTriggerRef.current;
+      if (trigger?.isConnected) {
+        trigger.focus();
+      } else {
+        document.querySelector<HTMLElement>('button[aria-label="New chat"]')?.focus();
+      }
+      deleteTriggerRef.current = null;
     });
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteCandidate || isConfirmingDelete) return;
+    setDeleteError(null);
+    setArchiveError(null);
+    setIsConfirmingDelete(true);
+    try {
+      await deleteThread(deleteCandidate.threadId);
+      closeDeleteDialog();
+    } catch (nextError) {
+      const message = nextError instanceof Error ? nextError.message : "Failed to delete chat";
+      setDeleteError(message);
+      setArchiveError(message);
+    } finally {
+      setIsConfirmingDelete(false);
+    }
   };
 
   return (
@@ -258,6 +298,65 @@ export function ThreadHistorySidebar({
           )}
         </div>
       </div>
+      <Dialog
+        open={Boolean(deleteCandidate)}
+        onOpenChange={(open) => {
+          if (!open && !isConfirmingDelete) {
+            closeDeleteDialog();
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-[26rem]" showCloseButton={false}>
+          <DialogHeader className="gap-3 text-left">
+            <div className="bg-destructive/10 text-destructive flex size-9 items-center justify-center rounded-lg">
+              <Trash2Icon className="size-4" />
+            </div>
+            <div className="space-y-1.5">
+              <DialogTitle>Delete this chat?</DialogTitle>
+              <DialogDescription className="leading-relaxed">
+                <span className="text-foreground font-medium">
+                  {deleteCandidate?.title || "New chat"}
+                </span>{" "}
+                will be removed from your chat history. Any active response will be stopped.
+              </DialogDescription>
+            </div>
+          </DialogHeader>
+
+          <div className="border-border/70 bg-muted/45 rounded-lg border px-3 py-2.5 text-xs leading-relaxed text-muted-foreground">
+            This cannot be undone. Operational audit records are retained.
+          </div>
+
+          {deleteError ? (
+            <p role="alert" className="text-destructive text-xs">
+              {deleteError}
+            </p>
+          ) : null}
+
+          <DialogFooter className="mt-1 grid grid-cols-2 sm:grid-cols-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isConfirmingDelete}
+              onClick={closeDeleteDialog}
+            >
+              Keep chat
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={isConfirmingDelete}
+              onClick={() => void confirmDelete()}
+            >
+              {isConfirmingDelete ? (
+                <Loader2Icon className="size-4 animate-spin" />
+              ) : (
+                <Trash2Icon className="size-4" />
+              )}
+              {isConfirmingDelete ? "Deleting..." : "Delete chat"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </aside>
   );
 }
@@ -298,6 +397,7 @@ function ThreadHistoryItem({
 
   return (
     <div
+      data-testid={`thread-history-item-${thread.threadId}`}
       className={cn(
         "hover:bg-muted/70 mb-1 flex w-full min-w-0 items-center gap-1 rounded-md px-1 py-1 text-sm transition-colors",
         thread.isActive && "bg-muted",
