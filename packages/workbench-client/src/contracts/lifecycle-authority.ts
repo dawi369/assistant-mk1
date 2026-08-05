@@ -146,3 +146,35 @@ export type CloudflareKillSwitchesResponse = {
   killSwitch?: Record<string, unknown>;
   error?: string;
 };
+
+export type ClientDeviceSummary = {
+  id: Id;
+  installationId: string;
+  platform: "ios" | "android";
+  provider: "expo";
+  status: "active" | "disabled" | "revoked";
+  lastSeenAt: string;
+  appVersion: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CloudflareClientDevicesResponse = {
+  ok: boolean;
+  enabled?: boolean;
+  devices?: ClientDeviceSummary[];
+  device?: ClientDeviceSummary;
+  revoked?: boolean;
+  error?: string;
+};
+
+export type CloudflareNotificationPreferencesResponse = {
+  ok: boolean;
+  enabled?: boolean;
+  preferences?: {
+    approvalRequired: boolean;
+    terminalOutcomes: boolean;
+    updatedAt?: string;
+  };
+  error?: string;
+};

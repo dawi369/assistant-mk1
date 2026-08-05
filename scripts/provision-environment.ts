@@ -43,6 +43,7 @@ const descriptions: Record<Provider, string[]> = {
   cloudflare: [
     `D1 database ${manifest.cloudflare.d1DatabaseName}`,
     `R2 bucket ${manifest.cloudflare.r2BucketName}`,
+    `Queue ${manifest.cloudflare.workerName}-notifications`,
     `Worker and Durable Object namespace ${manifest.cloudflare.workerName} (created on first deploy)`,
   ],
   fly: [`Fly application ${manifest.fly.appName}`],
@@ -98,6 +99,15 @@ const commands: Record<Exclude<Provider, "workos">, ProvisionCommand[]> = {
       create: [
         "pnpm",
         ["exec", "wrangler", "r2", "bucket", "create", manifest.cloudflare.r2BucketName],
+      ],
+    },
+    {
+      kind: "cloudflare-queue",
+      resourceName: `${manifest.cloudflare.workerName}-notifications`,
+      inspect: ["pnpm", ["exec", "wrangler", "queues", "list"]],
+      create: [
+        "pnpm",
+        ["exec", "wrangler", "queues", "create", `${manifest.cloudflare.workerName}-notifications`],
       ],
     },
   ],

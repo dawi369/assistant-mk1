@@ -204,9 +204,7 @@ describe("runtime extension architecture", () => {
       /workspace-data-(?!lifecycle\.test).*\.ts$/,
     );
     const schema = read("cloudflare/control-plane/schema.sql");
-    const migration = read(
-      "cloudflare/control-plane/migrations/0012_consistent_workspace_exports.sql",
-    );
+    const migrations = readMatching("cloudflare/control-plane/migrations", /\.sql$/);
     const exportedTables = [
       ...lifecycle.matchAll(/tenantCollection\(\s*"([^"]+)"/g),
       ...lifecycle.matchAll(/name:\s*"(users|workspaces|agents)"/g),
@@ -235,7 +233,7 @@ describe("runtime extension architecture", () => {
           ? ["update", "delete"]
           : ["insert", "update", "delete"];
       for (const action of actions) {
-        expect(migration, `${table} ${action}`).toContain(
+        expect(migrations, `${table} ${action}`).toContain(
           `CREATE TRIGGER export_fence_${table}_${action}`,
         );
       }

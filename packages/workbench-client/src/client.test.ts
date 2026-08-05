@@ -90,6 +90,35 @@ describe("createWorkbenchClient", () => {
     expect(fetcher.mock.calls[0]![0]).toBe("https://workbench.example/api/workbench/workflows");
   });
 
+  it("registers and revokes mobile delivery without changing token ownership", async () => {
+    const fetcher = vi.fn<typeof fetch>(async () =>
+      jsonResponse({ ok: true, enabled: true, devices: [] }),
+    );
+    const client = createWorkbenchClient({
+      baseUrl: "https://workbench.example",
+      client: { platform: "ios", version: "0.1.0" },
+      fetch: fetcher,
+      getAccessToken: async () => "access-token",
+    });
+
+    await client.devices.register({
+      installationId: "installation-0001",
+      platform: "ios",
+      token: "ExponentPushToken[opaque]",
+      appVersion: "0.1.0",
+    });
+    await client.devices.revoke("device-1");
+
+    expect(fetcher.mock.calls[0]![0]).toBe("https://workbench.example/api/workbench/devices");
+    expect(new Headers(fetcher.mock.calls[0]![1]?.headers).get("idempotency-key")).toBe(
+      "installation-0001",
+    );
+    expect(fetcher.mock.calls[1]![0]).toBe(
+      "https://workbench.example/api/workbench/devices/device-1",
+    );
+    expect(fetcher.mock.calls[1]![1]?.method).toBe("DELETE");
+  });
+
   it("rejects malformed successful responses", async () => {
     const client = createWorkbenchClient({
       baseUrl: "https://workbench.example",

@@ -76,6 +76,7 @@ export const renderEnvironmentConfig = (
       WORKBENCH_RETAINED_DATA_ENABLED: String(features.retainedData),
       WORKBENCH_CONNECTIONS_ENABLED: String(features.connections),
       WORKBENCH_MUTATIONS_ENABLED: String(features.mutations),
+      WORKBENCH_PUSH_ENABLED: "false",
       WORKBENCH_VAULT_BACKEND: manifest.vaultBackend,
       ...(conformanceProviders ? { WORKBENCH_OAUTH_PROVIDERS_JSON: conformanceProviders } : {}),
       WORKBENCH_RELEASE_SHA: releaseSha,
@@ -93,6 +94,26 @@ export const renderEnvironmentConfig = (
       },
     ],
     r2_buckets: [{ binding: "ARTIFACTS", bucket_name: manifest.cloudflare.r2BucketName }],
+    ...(bootstrap
+      ? {}
+      : {
+          queues: {
+            producers: [
+              {
+                binding: "NOTIFICATIONS",
+                queue: `${manifest.cloudflare.workerName}-notifications`,
+              },
+            ],
+            consumers: [
+              {
+                queue: `${manifest.cloudflare.workerName}-notifications`,
+                max_batch_size: 10,
+                max_batch_timeout: 5,
+                max_retries: 4,
+              },
+            ],
+          },
+        }),
     durable_objects: {
       bindings: [
         { name: "WorkbenchThreadChatAgent", class_name: "WorkbenchThreadChatAgent" },

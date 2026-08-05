@@ -25,6 +25,11 @@ const database = () => {
           text TEXT NOT NULL,
           created_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS local_settings (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
       `);
       return db;
     });
@@ -105,6 +110,28 @@ export const mobileStore = {
     await db.runAsync(
       "DELETE FROM pending_turn WHERE singleton = 1 AND client_turn_id = ?",
       clientTurnId,
+    );
+  },
+  async getSetting(key: string) {
+    const db = await database();
+    return (
+      (
+        await db.getFirstAsync<{ value: string }>(
+          "SELECT value FROM local_settings WHERE key = ?",
+          key,
+        )
+      )?.value ?? null
+    );
+  },
+  async putSetting(key: string, value: string | null) {
+    const db = await database();
+    if (value === null) return db.runAsync("DELETE FROM local_settings WHERE key = ?", key);
+    return db.runAsync(
+      `INSERT INTO local_settings (key, value, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+      key,
+      value,
+      new Date().toISOString(),
     );
   },
   async clearLocalAuthority() {

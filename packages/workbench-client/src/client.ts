@@ -7,6 +7,8 @@ import type {
   CloudflareAgentsResponse,
   CloudflareArtifactHistoryResponse,
   CloudflareConnectionsResponse,
+  CloudflareClientDevicesResponse,
+  CloudflareNotificationPreferencesResponse,
   ConnectionAuthorizationResponse,
   CloudflareExecutionHistoryResponse,
   CloudflareExecutionHistoryRunResponse,
@@ -60,7 +62,7 @@ export class WorkbenchClientError extends Error {
 }
 
 export type WorkbenchRequestOptions = {
-  method?: "GET" | "POST" | "PATCH" | "DELETE";
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
   headers?: HeadersInit;
   idempotencyKey?: string;
@@ -348,6 +350,36 @@ export const createWorkbenchClient = (options: WorkbenchClientOptions) => {
       list: (input: { namespace?: string; type?: string; limit?: number } = {}) =>
         request<CloudflareManagedStateResponse>(
           `/api/workbench/managed-state${queryString(input)}`,
+        ),
+    },
+    devices: {
+      list: () => request<CloudflareClientDevicesResponse>("/api/workbench/devices"),
+      register: (input: {
+        installationId: string;
+        platform: "ios" | "android";
+        token: string;
+        appVersion: string;
+      }) =>
+        request<CloudflareClientDevicesResponse>("/api/workbench/devices", {
+          method: "POST",
+          body: input,
+          idempotencyKey: input.installationId,
+        }),
+      revoke: (deviceId: Id) =>
+        request<CloudflareClientDevicesResponse>(
+          `/api/workbench/devices/${encodeURIComponent(deviceId)}`,
+          { method: "DELETE" },
+        ),
+    },
+    notificationPreferences: {
+      get: () =>
+        request<CloudflareNotificationPreferencesResponse>(
+          "/api/workbench/notification-preferences",
+        ),
+      update: (input: { approvalRequired: boolean; terminalOutcomes: boolean }) =>
+        request<CloudflareNotificationPreferencesResponse>(
+          "/api/workbench/notification-preferences",
+          { method: "PUT", body: input },
         ),
     },
   };

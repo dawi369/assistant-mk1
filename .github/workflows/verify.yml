@@ -40,6 +40,12 @@ jobs:
         env:
           SENTRY_AUTH_TOKEN: ""
 
+      - name: Verify portable frontend contract
+        run: pnpm conformance:client
+
+      - name: Verify mobile bundles and delivery contract
+        run: pnpm conformance:mobile
+
       - name: Upload SDK and extension failure evidence
         if: failure()
         uses: actions/upload-artifact@v4
@@ -50,6 +56,8 @@ jobs:
             output/conformance
             output/extension-contract
             output/sdk-consumer
+            output/workbench-client-consumer
+            output/mobile
 
   docker:
     needs: verify

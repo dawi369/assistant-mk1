@@ -1,5 +1,6 @@
 import { selectWorkspace } from "./authz-store";
 import { revokeWorkspaceConnections } from "./connection-broker";
+import { revokeWorkspaceDevices } from "./notification-delivery";
 import { retainedDataEnabled } from "./feature-gates";
 import { isRecord, json, parseDataJson } from "./http";
 import { prepareOperatorAlertStatement } from "./operator-alerts";
@@ -190,8 +191,11 @@ export const handleRequestWorkspaceDeletion = async (
       { status: 409 },
     );
   }
-  const revocation = await revokeWorkspaceConnections(env, identity);
-  if (revocation.failed > 0) {
+  const [revocation, deviceRevocation] = await Promise.all([
+    revokeWorkspaceConnections(env, identity),
+    revokeWorkspaceDevices(env, identity.scope.workspaceId),
+  ]);
+  if (revocation.failed > 0 || deviceRevocation.failed > 0) {
     await prepareOperatorAlertStatement(env, {
       userId: identity.scope.userId,
       workspaceId: identity.scope.workspaceId,
@@ -201,7 +205,7 @@ export const handleRequestWorkspaceDeletion = async (
       targetType: "workspace",
       targetId: identity.scope.workspaceId,
       dedupKey: `workspace-credential-revocation:${identity.scope.workspaceId}`,
-      data: { failed: revocation.failed },
+      data: { failed: revocation.failed, deviceFailed: deviceRevocation.failed },
       timestamp,
     }).run();
   }
@@ -214,7 +218,8 @@ export const handleRequestWorkspaceDeletion = async (
         purgeAfter,
         purgeJobId,
         credentialsRecoverable: false,
-        credentialRevocation: revocation.failed === 0 ? "completed" : "pending_retry",
+        credentialRevocation:
+          revocation.failed === 0 && deviceRevocation.failed === 0 ? "completed" : "pending_retry",
       },
     },
     { status: 202 },

@@ -20,16 +20,24 @@ import {
   selectProposal,
 } from "./action-authority-core";
 import { executeActionProposal, reconcileActionProposal } from "./action-authority-execution";
+import { enqueueNotificationEvent } from "./notification-delivery";
 
-const dispatchActionUpdate = (
+const dispatchActionUpdate = async (
   env: Env,
   identity: AgentIdentity,
   input: { proposalId: string; status: string; approvalRequestId?: string; runId?: string },
-) =>
-  dispatchWorkbenchSessionEvent(env, identity, {
+) => {
+  await dispatchWorkbenchSessionEvent(env, identity, {
     type: "action.updated",
     data: input,
   });
+  await enqueueNotificationEvent(env, identity, {
+    type: "action.updated",
+    targetType: "actionProposal",
+    targetId: input.proposalId,
+    data: { status: input.status },
+  });
+};
 
 export const handleListActionProposals = async (env: Env, identity: AgentIdentity, url: URL) => {
   const requested = Number(url.searchParams.get("limit") ?? 25);
@@ -233,6 +241,12 @@ export const handleRequestActionExecution = async (
     proposalId: row.id,
     runId,
     status: "approval_requested",
+  });
+  await enqueueNotificationEvent(env, identity, {
+    type: "action.approval.requested",
+    targetType: "actionProposal",
+    targetId: row.id,
+    data: { approvalRequestId: approvalId, runId },
   });
   return json(
     {

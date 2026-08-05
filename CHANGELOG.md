@@ -40,6 +40,12 @@ Internal pre-1.0 foundation implementing the local Operational L3 and Authority 
 - Versioned chat transport descriptors, durable `clientTurnId` deduplication,
   bounded session-event replay, cursor-reset snapshots, and shared resumable
   event streaming for web and native clients.
+- Expo Router iOS/Android operator reference app with native navigation,
+  SecureStore identity, SQLite display/draft state, generic pack workflows,
+  History, approvals, connections, and action recovery.
+- Provider-neutral, Vault-backed Expo push delivery for approvals and terminal
+  outcomes through a redacted Cloudflare Queue ledger, default-off until real
+  device acceptance.
 
 The public 1.0 tag remains blocked until the same-commit hosted checklist in
 `docs/release-readiness.md` is complete. Version 0.5 makes no production-SLO claim.

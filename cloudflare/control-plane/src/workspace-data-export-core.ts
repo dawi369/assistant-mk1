@@ -104,6 +104,13 @@ export const exportCollections: readonly ExportCollection[] = [
   tenantCollection("control_action_proposals"),
   tenantCollection("control_action_ledger"),
   tenantCollection("control_kill_switches"),
+  tenantCollection(
+    "control_client_devices",
+    `id, user_id, workspace_id, installation_id, platform, provider, status, last_seen_at,
+     app_version, created_at, updated_at, revoked_at`,
+  ),
+  tenantCollection("control_notification_preferences"),
+  tenantCollection("control_notification_deliveries"),
 ];
 
 export const workspaceExportOmittedTables = [

@@ -7,6 +7,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { MobileAuthProvider, useMobileAuth } from "../src/auth/auth-provider";
 import { colors } from "../src/theme";
 import { MobileWorkbenchProvider } from "../src/workbench-provider";
+import { MobileDeviceProvider } from "../src/notifications/device-provider";
 
 const Navigation = () => {
   const { state } = useMobileAuth();
@@ -57,8 +58,10 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <MobileAuthProvider>
           <MobileWorkbenchProvider>
-            <StatusBar style="auto" />
-            <Navigation />
+            <MobileDeviceProvider>
+              <StatusBar style="auto" />
+              <Navigation />
+            </MobileDeviceProvider>
           </MobileWorkbenchProvider>
         </MobileAuthProvider>
       </SafeAreaProvider>

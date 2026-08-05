@@ -1,6 +1,7 @@
 export type ProvisionResourceKind =
   | "cloudflare-d1"
   | "cloudflare-r2"
+  | "cloudflare-queue"
   | "fly-app"
   | "vercel-project";
 
@@ -15,6 +16,7 @@ export const provisionResourceExists = (
   const patterns: Record<ProvisionResourceKind, RegExp> = {
     "cloudflare-d1": new RegExp(`"name"\\s*:\\s*"${name}"`),
     "cloudflare-r2": new RegExp(`(?:^|\\n)name:\\s*${name}(?:\\s|$)`),
+    "cloudflare-queue": new RegExp(`(?:^|\\n)(?:name:\\s*)?${name}(?:\\s|$)`),
     "fly-app": new RegExp(`"(?:Name|ID)"\\s*:\\s*"${name}"`),
     "vercel-project": new RegExp(`(?:^|\\n)\\s*${name}(?:\\s|$)`),
   };

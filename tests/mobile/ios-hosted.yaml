@@ -1,0 +1,7 @@
+appId: ${MOBILE_E2E_APP_ID}
+---
+- launchApp
+- assertVisible:
+    text: "Assistant MK1"
+- assertVisible:
+    text: "Sign in"

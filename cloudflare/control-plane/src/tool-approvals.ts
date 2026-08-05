@@ -9,6 +9,7 @@ import { resolveRuntimeToolForAgent } from "./runtime-tool-catalog";
 import { dispatchWorkbenchSessionEvent } from "./session-coordinator";
 import { evaluateToolPolicy, recordToolPolicyDecision, toolPolicyError } from "./tool-policy";
 import { approveAndExecuteActionApproval, cancelActionForDeniedApproval } from "./action-authority";
+import { enqueueNotificationEvent } from "./notification-delivery";
 import {
   createId,
   toJson,
@@ -199,6 +200,12 @@ export const createRuntimeToolApproval = async (input: {
       workflowIntentId,
       toolName: input.toolName,
     },
+  });
+  await enqueueNotificationEvent(input.env, input.identity, {
+    type: "approval.requested",
+    targetType: "approvalRequest",
+    targetId: approvalRequestId,
+    data: { runId },
   });
   return json(
     {

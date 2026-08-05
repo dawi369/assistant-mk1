@@ -17,14 +17,18 @@ const mobileRoutes = [
   "chat-session/stage-thread/route.ts",
   "chat-session/stream/route.ts",
   "chat-session/threads/route.ts",
+  "devices/route.ts",
+  "devices/[deviceId]/route.ts",
   "connections/route.ts",
   "history/artifacts/route.ts",
   "history/runs/route.ts",
   "managed-state/route.ts",
+  "notification-preferences/route.ts",
   "tools/approvals/route.ts",
   "workspaces/route.ts",
   "workspaces/[workspaceId]/activate/route.ts",
   "workflows/[workflowType]/route.ts",
+  "workflows/route.ts",
 ];
 
 describe("mobile-facing API identity parity", () => {

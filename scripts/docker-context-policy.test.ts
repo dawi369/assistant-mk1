@@ -12,6 +12,7 @@ const requiredExclusions = [
   ".playwright-cli",
   ".omm",
   "output",
+  "**/output",
   "coverage",
   "cloudflare/control-plane/.dev.vars",
   "cloudflare/control-plane/.wrangler",

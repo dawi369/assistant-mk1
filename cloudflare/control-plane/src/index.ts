@@ -133,6 +133,15 @@ import {
 import { releaseFeatureConfigurationValid } from "./feature-gates";
 import { connectionProviderRegistry } from "./connection-providers";
 import { compiledWorkbenchVersion } from "../../../generated/agent-runtime/platform";
+import {
+  handleListClientDevices,
+  handleNotificationPreferences,
+  handleRegisterClientDevice,
+  handleRevokeClientDevice,
+  processNotificationQueue,
+  sweepNotificationDeliveries,
+} from "./notification-delivery";
+import type { MessageBatch, NotificationQueueMessage } from "./types";
 
 export { WorkbenchThreadChatAgent };
 export { WorkbenchSessionAgent };
@@ -365,6 +374,23 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
 
   if (request.method === "GET" && url.pathname === "/workbench/actions") {
     return handleListActionProposals(env, identity, url);
+  }
+
+  if (url.pathname === "/workbench/devices") {
+    if (request.method === "GET") return handleListClientDevices(env, identity);
+    if (request.method === "POST") return handleRegisterClientDevice(request, env, identity);
+  }
+
+  const clientDeviceMatch = url.pathname.match(/^\/workbench\/devices\/([^/]+)$/);
+  if (request.method === "DELETE" && clientDeviceMatch?.[1]) {
+    return handleRevokeClientDevice(env, identity, decodeURIComponent(clientDeviceMatch[1]));
+  }
+
+  if (
+    url.pathname === "/workbench/notification-preferences" &&
+    (request.method === "GET" || request.method === "PUT")
+  ) {
+    return handleNotificationPreferences(request, env, identity);
   }
 
   if (request.method === "GET" && url.pathname === "/workbench/workflows") {
@@ -789,8 +815,12 @@ export default Sentry.withSentry<Env>(
           expireDataExports(env, new Date(controller.scheduledTime)),
           expireConnectionOAuthStates(env, new Date(controller.scheduledTime)),
           deliverPendingOperatorAlerts(env, { now: new Date(controller.scheduledTime) }),
+          sweepNotificationDeliveries(env, new Date(controller.scheduledTime)),
         ]),
       );
+    },
+    async queue(batch: MessageBatch<NotificationQueueMessage>, env: Env) {
+      await processNotificationQueue(batch, env);
     },
   },
 );

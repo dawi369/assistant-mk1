@@ -1,0 +1,13 @@
+{
+  "name": "@assistant-mk1/workbench-client-vite-consumer",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@assistant-mk1/workbench-client": "workspace:*",
+    "vite": "8.0.16"
+  }
+}

@@ -330,6 +330,9 @@ export const runExportJob = async (env: Env, identity: AgentIdentity, job: Contr
       "control_connection_capabilities",
       "control_connections.vault_object_id",
       "control_connections.vault_version",
+      "control_client_devices.vault_object_id",
+      "control_client_devices.vault_version",
+      "Expo push tokens",
       "WorkOS Vault credential objects",
     ],
   };

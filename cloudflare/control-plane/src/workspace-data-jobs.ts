@@ -1,6 +1,7 @@
 import { selectWorkspace } from "./authz-store";
 import { revokeWorkspaceConnections } from "./connection-broker";
 import { retainedDataEnabled } from "./feature-gates";
+import { revokeWorkspaceDevices } from "./notification-delivery";
 import { parseDataJson } from "./http";
 import { prepareOperatorAlertStatement } from "./operator-alerts";
 import {
@@ -87,8 +88,12 @@ export const purgeWorkspace = async (env: Env, identity: AgentIdentity, job: Con
 
   if (!phaseReached("credentials_revoked")) {
     await injectE2eFailure("credential_revocation");
-    const revocation = await revokeWorkspaceConnections(env, identity);
-    if (revocation.failed > 0) throw new Error("workspace_credential_revocation_incomplete");
+    const [revocation, deviceRevocation] = await Promise.all([
+      revokeWorkspaceConnections(env, identity),
+      revokeWorkspaceDevices(env, identity.scope.workspaceId),
+    ]);
+    if (revocation.failed > 0 || deviceRevocation.failed > 0)
+      throw new Error("workspace_credential_revocation_incomplete");
     await checkpoint("credentials_revoked");
   }
 
@@ -121,6 +126,9 @@ export const purgeWorkspace = async (env: Env, identity: AgentIdentity, job: Con
   }
 
   const tables = [
+    "control_notification_deliveries",
+    "control_notification_preferences",
+    "control_client_devices",
     "control_connection_capabilities",
     "control_connection_oauth_states",
     "control_connections",
@@ -382,6 +390,8 @@ export const retryQuarantinedCredentialRevocations = async (
                  WHERE connection.workspace_id = workspaces.id AND connection.status <> 'revoked')
          OR EXISTS (SELECT 1 FROM control_connection_oauth_states oauth
                     WHERE oauth.workspace_id = workspaces.id)
+         OR EXISTS (SELECT 1 FROM control_client_devices device
+                    WHERE device.workspace_id = workspaces.id AND device.status = 'active')
        )
      ORDER BY deletion_requested_at ASC LIMIT ?`,
   )
@@ -397,8 +407,11 @@ export const retryQuarantinedCredentialRevocations = async (
       },
       agentId: "lifecycle",
     };
-    const result = await revokeWorkspaceConnections(env, identity);
-    if (result.failed > 0) {
+    const [result, deviceResult] = await Promise.all([
+      revokeWorkspaceConnections(env, identity),
+      revokeWorkspaceDevices(env, workspace.id),
+    ]);
+    if (result.failed > 0 || deviceResult.failed > 0) {
       failed += 1;
       continue;
     }

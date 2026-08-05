@@ -82,7 +82,7 @@ browser observation.
 - [ ] New Workers are bootstrapped with public ingress and cron triggers disabled;
       final Cloudflare, Fly, and Vercel deploys require same-commit provider-secret
       evidence.
-- [ ] Fresh and prior-baseline databases apply migrations `0006`–`0013`; backup
+- [ ] Fresh and prior-baseline databases apply migrations `0006`–`0014`; backup
       restore and forward-fix rehearsal meet recorded RPO/RTO.
 - [ ] D1/R2/DO export manifest checksums pass; quarantine recovery and
       time-shifted final purge remove all customer state while retaining only a

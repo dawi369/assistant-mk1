@@ -1,4 +1,4 @@
-import { connectionsEnabled } from "./feature-gates";
+import { connectionsEnabled, pushEnabled } from "./feature-gates";
 import type { Env } from "./types";
 
 export type VaultContext = {
@@ -157,7 +157,7 @@ export const resolveCredentialVault = (env: Env): CredentialVault => {
     if (env.WORKBENCH_E2E_MODE !== "true") throw new Error("insecure_vault_backend_forbidden");
     return createMemoryCredentialVault();
   }
-  if (connectionsEnabled(env) && !env.WORKOS_API_KEY?.trim())
+  if ((connectionsEnabled(env) || pushEnabled(env)) && !env.WORKOS_API_KEY?.trim())
     throw new Error("vault_not_configured");
   return createWorkOSCredentialVault(env);
 };

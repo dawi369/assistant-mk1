@@ -1,5 +1,6 @@
 import { parseDataJson } from "./http";
 import { createId, toJson, type AgentIdentity, type ControlPlaneEventRow, type Env } from "./types";
+import { enqueueNotificationEvent } from "./notification-delivery";
 
 const defaultLimit = 50;
 const maxLimit = 100;
@@ -47,6 +48,7 @@ export const appendControlPlaneEvent = async (
       timestamp,
     )
     .run();
+  await enqueueNotificationEvent(env, identity, input);
   return eventId;
 };
 

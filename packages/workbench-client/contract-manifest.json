@@ -11,7 +11,7 @@
         },
         {
           "path": "workbench-client/dist/client.d.ts",
-          "sha256": "e845b9f68ed1a8443590ff0d7206819dd714d65926ed5176cbc86532f4fbef4a"
+          "sha256": "d01736112b77f84eb507eb7fd8b2e94ca730ca79c51b450011e2fd9b5a4f08f9"
         },
         {
           "path": "workbench-client/dist/contracts/agents-chat.d.ts",
@@ -31,7 +31,7 @@
         },
         {
           "path": "workbench-client/dist/contracts/lifecycle-authority.d.ts",
-          "sha256": "4c8357986dc81f390ffb9c3117e52a5879b90f84b6331366e0d679d544c5edd5"
+          "sha256": "0eae44afd2e0df8f7e636be2e323624991985f2d981116e477705149637caaf1"
         },
         {
           "path": "workbench-client/dist/contracts/tenancy.d.ts",
@@ -61,7 +61,7 @@
       "files": [
         {
           "path": "workbench-react/dist/index.d.ts",
-          "sha256": "9c183f5df0ece1f2e8db2b10518ba8227a7012a1a9d8fb9bc4e198fd4ae2f38b"
+          "sha256": "c1be64923c90f38543a8becf8e30f2aa623bb564a0c09f36f542e1e183e9eaa8"
         }
       ]
     }

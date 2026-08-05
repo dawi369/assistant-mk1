@@ -1,138 +1,118 @@
 # Mobile Frontends
 
-Assistant-mk1 should make a native client comparable in effort to a web client:
-authenticate, construct one typed workbench client, bind a chat transport, and
-render platform-native surfaces. It should not require duplicating tenancy,
-policy, workflow, connection, action, or lifecycle logic.
+Assistant-mk1 includes a native-first Expo Router reference app for iOS and
+Android. It consumes the same portable client, Vercel bearer facade, Cloudflare
+control plane, runtime registry, and agent chat protocol as the web product.
+Admin and destructive workspace lifecycle operations remain web-only.
 
-Document status: active implementation contract. The shared headless client and
-React Query packages are implemented and dogfooded by the web application;
-mobile identity, resumable transport, the Expo reference app, and push evidence
-remain required before native is a supported release surface.
+## Ownership boundary
 
-## Current Readiness
-
-| Boundary            | Current state                                                                         | Mobile consequence                                                                           |
-| ------------------- | ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Control-plane data  | Tenant-scoped JSON APIs and redacted contracts                                        | Reusable once exposed through a supported client transport                                   |
-| Identity            | WorkOS AuthKit Next.js cookie session                                                 | Web-only; native bearer validation and refresh are absent                                    |
-| Vercel facade       | Server derives identity and signs Cloudflare requests                                 | Correct trust boundary; native must call it rather than hold its signing secret              |
-| Product API client  | Headless typed client plus React Query adapter; mobile-facing web surfaces dogfood it | Reusable request/auth/error contract is available; Expo installation evidence is still gated |
-| Live product events | Browser `EventSource` with reconnect behavior                                         | Needs a fetch-stream or native event adapter with cursor-based resume and AppState handling  |
-| Chat transport      | `agents/react`, PartySocket, and `@cloudflare/ai-chat/react` in `app/assistant.tsx`   | Native compatibility is unproven and the wire behavior is not a workbench-owned contract     |
-| Chat UI             | DOM assistant-ui primitives and Tailwind                                              | Must be rendered with `@assistant-ui/react-native`; runtime concepts can remain shared       |
-| Pack UI             | Trusted React web renderers plus generic web fallbacks                                | Native uses generic schema/artifact views until a pack declares a native renderer            |
-| Responsive web      | Desktop and 375px browser acceptance                                                  | Useful mobile web baseline, not evidence for iOS/Android lifecycle behavior                  |
-
-The backend ownership split is already the right one. The missing layer is a
-platform-neutral client contract between product UIs and the Vercel/Cloudflare
-boundaries. Reusing the current React components in React Native is explicitly
-not the goal.
-
-## Target Client Boundary
-
-Add an initially unpublished `@assistant-mk1/workbench-client` package with no
-React, Next.js, Node.js, Cloudflare, or DOM dependency. Its public surface is:
-
-```ts
-type AccessTokenProvider = () => Promise<string | null>;
-
-type WorkbenchClientOptions = {
-  baseUrl: string;
-  getAccessToken?: AccessTokenProvider;
-  fetch?: typeof globalThis.fetch;
-};
-
-type WorkbenchRealtimeAdapter = {
-  subscribeSession(input: SessionSubscriptionInput): SessionSubscription;
-  connectChat(input: ChatConnectionDescriptor): WorkbenchChatTransport;
-};
+```text
+Expo app
+  -> WorkOS public-client token
+  -> Vercel bearer facade
+  -> signed Cloudflare control plane
+  -> scoped Agent token
+  -> Cloudflare Agent chat transport
+  -> Fly only for registered heavy execution
 ```
 
-The client owns request construction, schema parsing, normalized errors,
-abort/timeouts, pagination, idempotency headers, and typed resource methods.
-It does not own authentication state, caching policy, React state, UI, retries
-of mutations, or any service secret.
+The app contains no WorkOS API key, Vercel/Cloudflare signing secret, provider
+credential, Vault credential, or runner secret. WorkOS access and refresh tokens
+are stored in SecureStore. Non-sensitive display snapshots, drafts, the device
+installation ID, and at most one pending chat turn are stored in SQLite.
 
-Adapters remain platform-specific:
+`@assistant-mk1/workbench-client` is framework-neutral. It owns HTTP construction,
+bearer injection, runtime validation, normalized errors, aborts, pagination,
+idempotency, session replay, and the public chat transport contract.
+`@assistant-mk1/workbench-react` adds React Query behavior for the web product.
+Both are unpublished workspace packages and are verified as packed, zero-context
+Vite and Expo dependencies.
 
-- Web: same-origin base URL, HttpOnly WorkOS cookie, browser fetch/EventSource,
-  and the existing assistant-ui web renderer.
-- Native: absolute Vercel origin, WorkOS public-client authorization-code flow
-  with PKCE, bearer access-token provider, native fetch/WebSocket/AppState, and
-  `@assistant-ui/react-native` primitives.
-- Tests: deterministic in-memory HTTP and realtime adapters.
+## Configure WorkOS mobile identity
 
-Vercel validates either its existing server session or a WorkOS bearer access
-token, derives the same trusted identity, and signs the same private Cloudflare
-request. The facade signing secret never enters web or native application code.
-Cloudflare continues to make every tenant and authorization decision.
+Create a separate public application in the same WorkOS environment as the web
+application:
 
-The bearer boundary is implemented behind `WORKBENCH_MOBILE_CLIENTS_ENABLED`.
-When enabled, deployments must configure the environment issuer, JWKS URL, and
-comma-separated mobile application IDs. A present `Authorization` header is
-authoritative: invalid or unapproved bearer tokens return `401` and never fall
-back to the web cookie. The production flag remains off until a separate WorkOS
-public application and hosted mobile acceptance are complete.
+1. Enable Authorization Code with PKCE; do not create or embed a client secret.
+2. Register `assistantmk1://auth/callback` for internal builds.
+3. Register the production universal/app-link callbacks for the deployed origin.
+4. Choose the mobile session lifetime independently from the web application.
+5. Set `EXPO_PUBLIC_WORKOS_CLIENT_ID` to the public application ID.
+6. Add that ID to server-only `WORKBENCH_WORKOS_ALLOWED_CLIENT_IDS` and configure
+   `WORKBENCH_WORKOS_ISSUER` plus `WORKBENCH_WORKOS_JWKS_URL` on Vercel.
+7. Enable `WORKBENCH_MOBILE_CLIENTS_ENABLED` only after hosted bearer acceptance.
 
-## Realtime And Offline Rules
+When an Authorization header is present, bearer identity is authoritative. An
+invalid, expired, wrong-environment, or unapproved token returns `401`; it never
+falls back to the web cookie. Without a bearer token, existing web and local
+development identity behavior is unchanged.
 
-- A client may cache display snapshots, never authorization or mutation state.
-- Resource reads use stale-while-revalidate with request deduplication. A
-  background refresh does not replace usable content with a loading screen.
-- Mutations update optimistically only when rollback is deterministic. Their
-  stable idempotency key survives app suspension and network retries.
-- Session events carry a cursor. Reconnect resumes from the cursor or performs
-  one scoped snapshot refresh when the replay window is unavailable.
-- Native foregrounding checks token freshness, reconnects live channels, and
-  revalidates visible resources. Backgrounding must not imply cancellation.
-- Push notifications are wake-up hints only; opening the app re-reads canonical
-  state before showing an approval or terminal outcome.
+## Run the reference app
 
-## Chat Contract
+```bash
+pnpm --filter @assistant-mk1/mobile start
+pnpm mobile:check
+pnpm conformance:client
+pnpm conformance:mobile
+```
 
-Do not make PartySocket or a Cloudflare package's internal wire messages the
-public mobile API. Define a workbench-owned chat transport contract covering:
+Public Expo configuration:
 
-- thread and agent identity;
-- append, cancel, reconnect, and resume;
-- ordered message/tool/status parts;
-- bounded attachment references;
-- terminal and recoverable errors;
-- token expiry and connection replacement after agent handoff.
+- `EXPO_PUBLIC_WORKBENCH_ORIGIN`
+- `EXPO_PUBLIC_WORKOS_CLIENT_ID`
+- `EXPO_PUBLIC_WORKOS_ISSUER`
+- `EXPO_PUBLIC_EAS_PROJECT_ID` for remote push registration outside an EAS build
 
-The web adapter may continue using Cloudflare's React hooks internally. The
-native adapter can use a native WebSocket or HTTP stream, but both must pass the
-same transport conformance fixtures. assistant-ui runtime state and tool
-descriptors are shared; DOM and native renderers remain separate.
+Core navigation uses native tabs for Chat, Agents, History, and Settings, with
+native stack routes for chats, workflows, runs, approvals, connections, and
+actions. Packs remain fully operable through generic workflow schemas, managed
+state, and JSON/Markdown/table/artifact descriptors; web renderer contributions
+are not loaded on native.
 
-## Pack Rendering
+## Resume and offline contract
 
-Runtime Module v1 web renderers remain trusted web-only contributions. A pack
-must work on native without one through generic JSON, Markdown, table, form,
-artifact, approval, connection, and action-ledger views. A future additive
-native renderer declaration may improve presentation but cannot be required to
-operate a pack.
+- Sending before bootstrap waits for auth/session readiness and retains one stable
+  `clientTurnId`; a crash or retry cannot start a second model run.
+- Session events resume from a durable cursor. The Session Durable Object retains
+  256 events or 15 minutes and sends `replayReset: true` with a canonical snapshot
+  when a cursor is too old.
+- Backgrounding closes live transports without cancelling server work.
+  Foregrounding refreshes auth, reconnects chat, resumes events, and revalidates
+  visible resources.
+- Drafts and one pending chat turn survive restarts. Workflows, approvals,
+  connections, and actions are online-only and never queued.
+- Agent handoff closes the old transport; the old scoped token is rejected.
 
-## Implementation Sequence
+## Push delivery
 
-1. Extract all browser-facing workbench requests into
-   `@assistant-mk1/workbench-client`; migrate the web app without changing API
-   behavior and add package/contract hashes beside the Agent SDK checks.
-2. Add WorkOS bearer validation to the Vercel facade, a separate mobile WorkOS
-   application, PKCE/deep-link documentation, and cross-client tenant-isolation
-   tests.
-3. Define the workbench chat transport and session-event cursor contracts;
-   retain web adapters and add deterministic reconnect/background tests.
-4. Add a minimal Expo acceptance app outside production navigation. Prove sign
-   in, thread list, send/stream/cancel/resume, archived history, workflow run,
-   approval, artifact, connection status, and sign out on iOS and Android.
-5. Promote native support only after the same lifecycle, authorization,
-   mutation, accessibility, and failure-state guarantees pass for both clients.
+Push is an optional wake-up channel behind `WORKBENCH_PUSH_ENABLED`. Expo tokens
+are stored in WorkOS Vault under the workspace context. D1 stores device metadata,
+preferences, a Vault reference/version, and a redacted 30-day delivery ledger.
 
-## Release Gate
+A Cloudflare Queue isolates delivery from workflow/chat transactions. LangGraph
+runs cannot replace this queue: notifications are out-of-band fan-out that must
+survive after a run is terminal and must retry independently of agent execution.
+Queue messages contain only a delivery ID. Lock-screen text is generic; payloads
+contain only an allowlisted route and opaque record ID. Opening a notification
+reauthenticates and reloads canonical state.
 
-“Native mobile supported” is true only when a clean external app can install
-the client package, authenticate without a service secret, and pass the shared
-client conformance suite plus iOS and Android device journeys. Responsive web
-screens and TypeScript compatibility alone are not sufficient evidence.
+Sign-out and workspace quarantine delete the Vault token and revoke the device.
+Invalid Expo tokens disable the device. Workspace export includes non-secret
+device/preferences/delivery metadata and explicitly excludes token references and
+push tokens; purge removes all device state.
+
+## Release evidence
+
+```bash
+pnpm test:mobile:e2e:ios
+pnpm test:mobile:e2e:android
+pnpm acceptance:mobile:hosted
+```
+
+The Maestro commands require an installed internal-preview build and available
+simulator/device. Hosted acceptance additionally requires a same-commit evidence
+JSON covering real WorkOS sign-in, foreground recovery, approval push, terminal
+push, and sign-out revocation on one iOS and one Android device. Push stays off
+until this evidence is recorded. App Store and Play Store submission are outside
+this foundation slice.

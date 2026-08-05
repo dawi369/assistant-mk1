@@ -16,6 +16,13 @@ describe("environment provisioning helpers", () => {
     ).toBe(true);
     expect(
       provisionResourceExists(
+        "cloudflare-queue",
+        "assistant-mk1-production-control-plane-notifications\n",
+        "assistant-mk1-production-control-plane-notifications",
+      ),
+    ).toBe(true);
+    expect(
+      provisionResourceExists(
         "cloudflare-r2",
         "name: assistant-mk1-acceptance-artifacts-old\n",
         "assistant-mk1-acceptance-artifacts",

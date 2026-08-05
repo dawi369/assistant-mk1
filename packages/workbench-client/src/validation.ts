@@ -26,6 +26,7 @@ export const parseWorkbenchResponse = <T>(value: unknown, label: string): T => {
     "agents",
     "artifacts",
     "connections",
+    "devices",
     "proposals",
     "runs",
     "states",

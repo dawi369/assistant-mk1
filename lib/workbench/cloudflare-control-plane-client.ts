@@ -54,5 +54,6 @@ export * from "./control-plane-client/automation";
 export * from "./control-plane-client/chat";
 export * from "./control-plane-client/execution";
 export * from "./control-plane-client/lifecycle-authority";
+export * from "./control-plane-client/mobile";
 export * from "./control-plane-client/tenancy";
 export { ControlPlaneRequestError } from "./control-plane-client/transport";

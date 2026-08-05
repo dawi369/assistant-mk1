@@ -1,10 +1,12 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { relative, resolve } from "node:path";
 
 const root = process.cwd();
 const output = resolve(root, "output/workbench-client-consumer");
 const consumer = resolve(output, "consumer");
+const viteConsumer = resolve(output, "vite-consumer");
+const expoConsumer = resolve(output, "expo-consumer");
 const run = (command: string, args: string[], cwd: string) => {
   const result = spawnSync(command, args, { cwd, encoding: "utf8", env: process.env });
   if (result.status !== 0) {
@@ -92,7 +94,45 @@ writeFileSync(
   )}\n`,
 );
 run("pnpm", ["exec", "tsc", "-p", "tsconfig.json"], consumer);
+run(
+  "pnpm",
+  [
+    "--filter",
+    "@assistant-mk1/workbench-client-vite-consumer",
+    "deploy",
+    "--prod",
+    "--legacy",
+    viteConsumer,
+  ],
+  root,
+);
+const deployedViteClient = realpathSync(
+  resolve(viteConsumer, "node_modules/@assistant-mk1/workbench-client"),
+);
+if (
+  !deployedViteClient.startsWith(viteConsumer) ||
+  readdirSync(deployedViteClient).includes("src")
+) {
+  throw new Error("Vite consumer retained a workspace/source link instead of a packaged client.");
+}
+run("pnpm", ["run", "build"], viteConsumer);
+run(
+  "pnpm",
+  ["--filter", "@assistant-mk1/mobile", "deploy", "--prod", "--legacy", expoConsumer],
+  root,
+);
+const deployedClient = realpathSync(
+  resolve(expoConsumer, "node_modules/@assistant-mk1/workbench-client"),
+);
+if (!deployedClient.startsWith(expoConsumer) || readdirSync(deployedClient).includes("src")) {
+  throw new Error("Expo consumer retained a workspace/source link instead of a packaged client.");
+}
+run(
+  "pnpm",
+  ["exec", "expo", "export", "--platform", "android", "--output-dir", "dist-expo"],
+  expoConsumer,
+);
 const manifest = JSON.parse(
   readFileSync(resolve(root, "packages/workbench-client/package.json"), "utf8"),
 ) as { name: string };
-console.log(`${manifest.name} packed zero-context consumer verified.`);
+console.log(`${manifest.name} packed zero-context Vite and Expo consumers verified.`);

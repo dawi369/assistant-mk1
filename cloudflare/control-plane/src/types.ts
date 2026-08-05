@@ -74,9 +74,24 @@ export type R2Bucket = {
   delete(key: string): Promise<void>;
 };
 
+export type QueueMessage<T> = {
+  body: T;
+  ack(): void;
+  retry(options?: { delaySeconds?: number }): void;
+};
+
+export type MessageBatch<T> = {
+  messages: QueueMessage<T>[];
+};
+
+export type Queue<T> = {
+  send(message: T, options?: { delaySeconds?: number }): Promise<void>;
+};
+
 export type Env = {
   DB: D1Database;
   ARTIFACTS?: R2Bucket;
+  NOTIFICATIONS?: Queue<NotificationQueueMessage>;
   WorkbenchThreadChatAgent?: DurableObjectNamespace;
   WorkbenchSessionAgent?: DurableObjectNamespace;
   CLOUDFLARE_CONTROL_PLANE_DEV_TOKEN?: string;
@@ -108,11 +123,17 @@ export type Env = {
   WORKBENCH_RETAINED_DATA_ENABLED?: string;
   WORKBENCH_CONNECTIONS_ENABLED?: string;
   WORKBENCH_MUTATIONS_ENABLED?: string;
+  WORKBENCH_PUSH_ENABLED?: string;
   WORKBENCH_VAULT_BACKEND?: "workos" | "memory";
   WORKOS_API_KEY?: string;
   WORKOS_VAULT_API_URL?: string;
   WORKBENCH_OAUTH_PROVIDERS_JSON?: string;
   ALLOWED_ORIGINS?: string;
+};
+
+export type NotificationQueueMessage = {
+  deliveryId: string;
+  phase: "send" | "receipt";
 };
 
 export type WorkerExecutionContext = {
