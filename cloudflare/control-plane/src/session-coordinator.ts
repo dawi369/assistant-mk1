@@ -2,6 +2,7 @@ import type { AgentIdentity, Env } from "./types";
 import type { WorkbenchSessionEvent } from "./session-event-types";
 
 const encoder = new TextEncoder();
+export const sessionCoordinatorProtocolVersion = 2;
 
 const sha256Hex = async (value: string) => {
   const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", encoder.encode(value)));
@@ -9,7 +10,9 @@ const sha256Hex = async (value: string) => {
 };
 
 export const sessionCoordinatorName = async (identity: AgentIdentity) =>
-  `session-${(await sha256Hex(`${identity.scope.userId}:${identity.scope.workspaceId}`)).slice(0, 48)}`;
+  `session-v${sessionCoordinatorProtocolVersion}-${(
+    await sha256Hex(`${identity.scope.userId}:${identity.scope.workspaceId}`)
+  ).slice(0, 48)}`;
 
 export const sessionCoordinatorStub = async (env: Env, identity: AgentIdentity) => {
   if (!env.WorkbenchSessionAgent) return null;
