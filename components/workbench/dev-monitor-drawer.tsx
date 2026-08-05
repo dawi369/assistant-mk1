@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   ActivityIcon,
   AlertCircleIcon,
@@ -120,6 +120,7 @@ export function AdminPanel({
   const [customDescription, setCustomDescription] = useState("");
   const [customTemplateId, setCustomTemplateId] = useState("assistant-analyst");
   const [urlTarget, setUrlTarget] = useState("");
+  const adminDialogRef = useRef<HTMLDivElement>(null);
 
   const loadSecondaryData = async () => {
     try {
@@ -316,7 +317,13 @@ export function AdminPanel({
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
+          ref={adminDialogRef}
+          tabIndex={-1}
           className="grid h-[min(88vh,58rem)] w-[min(92vw,72rem)] max-w-[calc(100vw-1rem)] grid-rows-[auto_auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-[min(92vw,72rem)]"
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+            adminDialogRef.current?.focus({ preventScroll: true });
+          }}
           onCloseAutoFocus={onCloseAutoFocus}
         >
           <DialogHeader className="border-border border-b px-5 py-4">

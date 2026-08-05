@@ -119,6 +119,7 @@ test("keyboard, focus, responsive, and accessibility contracts cover workbench s
     page.getByText("Open workspace, agent, and runtime controls.", { exact: true }),
   ).toBeVisible();
   await adminComposer.press("Enter");
+  await expect(page.getByRole("dialog", { name: "Admin" })).toBeFocused();
   await expectDialogFocusTrap(page, "Admin");
   await auditPage(page, testInfo, "admin");
   await page.getByRole("tab", { name: "Agents & Packs" }).press("Enter");
