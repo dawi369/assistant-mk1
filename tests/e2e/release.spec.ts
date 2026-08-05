@@ -221,16 +221,24 @@ test("trusted local session is immediately usable and exposes release controls",
   await page.getByText("Open workspace, agent, and runtime controls.", { exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Admin" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "Overview" })).toHaveCount(0);
-  await expect(page.getByRole("tab", { name: "Agents & Packs" })).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Tools & Approvals" })).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Diagnostics" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Agents" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Controls" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "System" })).toBeVisible();
 
-  await page.getByRole("tab", { name: "Agents & Packs" }).click();
+  await page.getByRole("tab", { name: "Controls" }).click();
+  await expect(page.getByRole("heading", { name: "Approvals" })).toBeVisible();
+  await expect(page.getByText("Tool permissions", { exact: true })).toBeVisible();
+
+  await page.getByRole("tab", { name: "System" }).click();
+  await expect(page.getByRole("heading", { name: "Recent runtime" })).toBeVisible();
+  await expect(page.getByText("Run system checks", { exact: true })).toBeVisible();
+
+  await page.getByRole("tab", { name: "Agents" }).click();
   const repositoryPack = page.locator("article").filter({ hasText: "Repository Analyst" });
-  await expect(repositoryPack).toContainText("Version 1.2.1");
+  await expect(repositoryPack).toContainText("v1.2.1");
   await expect(page.getByText("Polymancer Research", { exact: true })).toBeVisible();
   await expect(page.getByText("Swordfish Runtime", { exact: true })).toBeVisible();
-  await repositoryPack.getByRole("button", { name: "Use pack" }).click();
+  await repositoryPack.getByRole("button", { name: "Use agent" }).click();
 
   await expect(page.getByRole("dialog", { name: "Admin" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Repository Analyst" })).toBeVisible();

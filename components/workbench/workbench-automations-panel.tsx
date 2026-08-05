@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   BellRingIcon,
   CheckCircle2Icon,
+  ChevronDownIcon,
   Clock3Icon,
   CopyIcon,
   ExternalLinkIcon,
@@ -268,17 +269,21 @@ export function WorkbenchAutomationsPanel({
   if (!pack) return null;
 
   return (
-    <section className={`${sectionClass} mt-5`}>
-      <div className="border-border flex items-start justify-between gap-3 border-b px-4 py-3">
-        <div>
+    <details className={`group ${sectionClass}`}>
+      <summary className="flex cursor-pointer list-none items-start justify-between gap-3 px-4 py-3 marker:hidden">
+        <span>
           <h2 className="flex items-center gap-2 text-sm font-semibold">
             <Clock3Icon className="text-muted-foreground size-4" />
             Automations
           </h2>
-          <p className="text-muted-foreground mt-1 text-xs">
+          <span className="text-muted-foreground mt-1 block text-xs">
             Disabled-by-default schedules, monitors, and webhooks declared by the current pack.
-          </p>
-        </div>
+          </span>
+        </span>
+        <ChevronDownIcon className="text-muted-foreground mt-0.5 size-4 transition-transform group-open:rotate-180" />
+      </summary>
+
+      <div className="border-border flex justify-end border-t px-4 py-2">
         <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
           {loading ? <Loader2Icon className="animate-spin" /> : <RefreshCwIcon />}
           Refresh
@@ -562,6 +567,6 @@ export function WorkbenchAutomationsPanel({
           </div>
         ) : null}
       </div>
-    </section>
+    </details>
   );
 }

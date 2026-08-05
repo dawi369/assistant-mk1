@@ -124,13 +124,13 @@ test("keyboard, focus, responsive, and accessibility contracts cover workbench s
   await expect(page.getByRole("dialog", { name: "Admin" })).toBeFocused();
   await expectDialogFocusTrap(page, "Admin");
   await auditPage(page, testInfo, "admin");
-  await page.getByRole("tab", { name: "Agents & Packs" }).press("Enter");
+  await page.getByRole("tab", { name: "Agents" }).press("Enter");
   const repositoryPack = page.locator("article").filter({ hasText: "Repository Analyst" });
-  const useRepositoryPack = repositoryPack.getByRole("button", { name: "Use pack" });
+  const useRepositoryPack = repositoryPack.getByRole("button", { name: "Use agent" });
   if (await useRepositoryPack.count()) {
     await useRepositoryPack.press("Enter");
   } else {
-    await expect(repositoryPack.getByRole("button", { name: "Current pack" })).toBeDisabled();
+    await expect(repositoryPack.getByRole("button", { name: "Current" })).toBeDisabled();
     await page.keyboard.press("Escape");
   }
   await expect(page.getByRole("dialog", { name: "Admin" })).toHaveCount(0);

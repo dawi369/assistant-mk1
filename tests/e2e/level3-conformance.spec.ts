@@ -202,6 +202,7 @@ test.describe.serial("Level 3 executable conformance", () => {
       .toBe("completed");
 
     await openAdminAgentsPanel(page);
+    await page.locator("summary").filter({ hasText: "Automations" }).click();
     await expect(page.getByRole("heading", { name: "Automations" })).toBeVisible();
     await expect(page.getByText("scheduled-readiness", { exact: true })).toBeVisible();
     await expect(page.getByText("readiness-requested", { exact: true })).toBeVisible();

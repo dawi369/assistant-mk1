@@ -4,19 +4,20 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   AlertCircleIcon,
   BotIcon,
-  BoxIcon,
   CheckIcon,
-  FileClockIcon,
   FlaskConicalIcon,
   Loader2Icon,
-  PlayIcon,
-  PlusIcon,
   RefreshCwIcon,
   ShieldCheckIcon,
   SlidersHorizontalIcon,
-  WrenchIcon,
 } from "lucide-react";
 
+import { AdminAgentsPanel } from "@/components/workbench/admin-agents-panel";
+import {
+  AdminControlsPanel,
+  type AdminApprovalDecision,
+} from "@/components/workbench/admin-controls-panel";
+import { AdminSystemPanel } from "@/components/workbench/admin-system-panel";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -27,8 +28,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CopyId, EmptyPanelText, StatusPill } from "@/components/workbench/dev-monitor-primitives";
-import { resolveAdminAgentPackState } from "@/lib/workbench/admin-agent-packs";
 import { requestWorkbenchSummaryRefresh } from "@/lib/workbench/admin-summary-events";
 import { deriveRuntimeState } from "@/lib/workbench/chat-runtime-live-state";
 import { readJsonResponse } from "@/lib/workbench/read-json-response";
@@ -45,7 +44,6 @@ import type {
   ToolApprovalRequestSummary,
   ToolSummary,
 } from "@/lib/workbench/workbench-types";
-import { WorkbenchAutomationsPanel } from "@/components/workbench/workbench-automations-panel";
 
 const behaviorTemplatesPath = "/api/workbench/agent-behavior-templates";
 const agentsPath = "/api/workbench/agents";
@@ -53,14 +51,6 @@ const toolRunsPath = "/api/workbench/tools/runs";
 const toolPolicyPath = "/api/workbench/tools/policy";
 const toolApprovalsPath = "/api/workbench/tools/approvals";
 
-const packStateLabel = {
-  current: "Current",
-  ready: "Ready",
-  update_available: "Update available",
-  not_instantiated: "Not instantiated",
-} as const;
-
-const sectionClass = "border-border rounded-lg border bg-background";
 const inputClass =
   "border-input bg-background h-9 w-full rounded-md border px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
@@ -98,10 +88,7 @@ export function AdminPanel({
   const [busyPackId, setBusyPackId] = useState<string | null>(null);
   const [busyTool, setBusyTool] = useState<string | null>(null);
   const [busyApprovalId, setBusyApprovalId] = useState<string | null>(null);
-  const [approvalDialog, setApprovalDialog] = useState<{
-    approval: ToolApprovalRequestSummary;
-    action: "approve" | "deny";
-  } | null>(null);
+  const [approvalDialog, setApprovalDialog] = useState<AdminApprovalDecision | null>(null);
   const [denyReason, setDenyReason] = useState("");
   const [customAgentOpen, setCustomAgentOpen] = useState(false);
   const [customName, setCustomName] = useState("");
@@ -307,7 +294,7 @@ export function AdminPanel({
         <DialogContent
           ref={adminDialogRef}
           tabIndex={-1}
-          className="grid h-[min(88vh,58rem)] w-[min(92vw,72rem)] max-w-[calc(100vw-1rem)] grid-rows-[auto_auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-[min(92vw,72rem)]"
+          className="grid h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] grid-rows-[auto_auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:h-[min(88vh,58rem)] sm:w-[min(92vw,72rem)] sm:max-w-[min(92vw,72rem)]"
           onOpenAutoFocus={(event) => {
             event.preventDefault();
             adminDialogRef.current?.focus({ preventScroll: true });
@@ -322,7 +309,7 @@ export function AdminPanel({
                   Admin
                 </DialogTitle>
                 <DialogDescription className="mt-1">
-                  Operate agent packs, approvals, tools, and runtime diagnostics.
+                  Configure agents, intervene when needed, and inspect system health.
                 </DialogDescription>
               </div>
               <Button
@@ -344,328 +331,62 @@ export function AdminPanel({
             </div>
           ) : null}
 
-          <Tabs defaultValue="packs" className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)]">
+          <Tabs defaultValue="agents" className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)]">
             <div className="border-border overflow-x-auto border-b px-4 py-2">
               <TabsList>
-                <TabsTrigger value="packs">
-                  <BoxIcon />
-                  Agents & Packs
+                <TabsTrigger value="agents">
+                  <BotIcon />
+                  Agents
                 </TabsTrigger>
-                <TabsTrigger value="tools">
+                <TabsTrigger value="controls">
                   <SlidersHorizontalIcon />
-                  Tools & Approvals
+                  Controls
+                  {pendingApprovals.length ? (
+                    <span className="bg-amber-500/15 text-amber-700 dark:text-amber-300 rounded-full px-1.5 text-[10px] font-semibold tabular-nums">
+                      {pendingApprovals.length}
+                    </span>
+                  ) : null}
                 </TabsTrigger>
-                <TabsTrigger value="diagnostics">
+                <TabsTrigger value="system">
                   <FlaskConicalIcon />
-                  Diagnostics
+                  System
                 </TabsTrigger>
               </TabsList>
             </div>
 
-            <TabsContent value="packs" className="overflow-y-auto p-5">
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-sm font-semibold">Installed packs</h2>
-                  <p className="text-muted-foreground text-xs">
-                    Use the current version without changing existing conversations.
-                  </p>
-                </div>
-                <Button variant="outline" size="sm" onClick={() => setCustomAgentOpen(true)}>
-                  <PlusIcon />
-                  Custom agent
-                </Button>
-              </div>
-              <div className="grid gap-3 lg:grid-cols-3">
-                {packTemplates.map((template) => {
-                  const state = resolveAdminAgentPackState(
-                    template,
-                    summary?.agents ?? [],
-                    session?.activeAgent?.id ?? summary?.activeAgent?.id,
-                  );
-                  if (!template.pack || !state) return null;
-                  const busy = busyPackId === template.pack.id;
-                  return (
-                    <article
-                      key={template.id}
-                      className={`${sectionClass} flex min-h-64 flex-col p-4`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <h3 className="font-medium">{template.name}</h3>
-                          <p className="text-muted-foreground mt-1 text-xs">
-                            {template.description}
-                          </p>
-                        </div>
-                        <StatusPill
-                          status={packStateLabel[state.state]}
-                          tone={state.state === "current" ? "completed" : undefined}
-                        />
-                      </div>
-                      <div className="text-muted-foreground mt-4 space-y-1 text-xs">
-                        <p>Version {template.version}</p>
-                        <p>
-                          {template.pack.tools.length} tools · {template.pack.workflows.length}{" "}
-                          workflow{template.pack.workflows.length === 1 ? "" : "s"}
-                        </p>
-                        <p>
-                          {template.pack.risk.externalMutation ? "Mutation capable" : "Read-only"}
-                        </p>
-                      </div>
-                      <div className="mt-3 flex flex-wrap gap-1">
-                        {template.pack.tools.slice(0, 3).map((tool) => (
-                          <span
-                            key={tool.id}
-                            className="bg-muted text-muted-foreground rounded-md px-1.5 py-1 text-[11px]"
-                          >
-                            {tool.id}
-                          </span>
-                        ))}
-                      </div>
-                      <div className="mt-auto pt-5">
-                        <Button
-                          className="w-full"
-                          disabled={busy || state.state === "current"}
-                          onClick={() => void usePack(template)}
-                        >
-                          {busy ? (
-                            <Loader2Icon className="animate-spin" />
-                          ) : state.state === "current" ? (
-                            <CheckIcon />
-                          ) : (
-                            <PlayIcon />
-                          )}
-                          {state.state === "current" ? "Current pack" : "Use pack"}
-                        </Button>
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
-              {packTemplates.length === 0 ? (
-                <EmptyPanelText>No installed packs were returned.</EmptyPanelText>
-              ) : null}
-              <WorkbenchAutomationsPanel
+            <TabsContent value="agents" className="overflow-y-auto p-5">
+              <AdminAgentsPanel
                 open={open}
-                pack={currentPack}
-                canManage={canManageAutomations}
-                onOpenHistory={(runId) => onOpenHistory(runId)}
+                templates={packTemplates}
+                agents={summary?.agents ?? []}
+                activeAgentId={session?.activeAgent?.id ?? summary?.activeAgent?.id}
+                currentPack={currentPack}
+                canManageAutomations={canManageAutomations}
+                busyPackId={busyPackId}
+                onUsePack={usePack}
+                onCreateCustomAgent={() => setCustomAgentOpen(true)}
+                onOpenHistory={onOpenHistory}
               />
             </TabsContent>
 
-            <TabsContent value="tools" className="overflow-y-auto p-5">
-              <section className={`${sectionClass} mb-4`}>
-                <div className="border-border border-b px-4 py-3">
-                  <h2 className="text-sm font-semibold">Pending approvals</h2>
-                </div>
-                {pendingApprovals.length ? (
-                  pendingApprovals.map((approval) => (
-                    <div
-                      key={approval.id}
-                      className="border-border flex flex-col gap-3 border-b px-4 py-3 last:border-b-0 sm:flex-row sm:items-center sm:justify-between"
-                    >
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium">{approval.toolId ?? "Tool request"}</p>
-                        <p className="text-muted-foreground mt-0.5 text-xs">
-                          {approval.reason ?? approval.input?.url ?? "Operator decision required."}
-                        </p>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setApprovalDialog({ approval, action: "deny" })}
-                        >
-                          Deny
-                        </Button>
-                        <Button
-                          size="sm"
-                          onClick={() => setApprovalDialog({ approval, action: "approve" })}
-                        >
-                          Approve
-                        </Button>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="p-4">
-                    <EmptyPanelText>No pending approvals.</EmptyPanelText>
-                  </div>
-                )}
-              </section>
-              <section className={sectionClass}>
-                <div className="border-border border-b px-4 py-3">
-                  <h2 className="text-sm font-semibold">Registered tools</h2>
-                </div>
-                <div className="divide-border divide-y">
-                  {(summary?.tools ?? []).map((tool) => (
-                    <div
-                      key={tool.name}
-                      className="grid gap-3 px-4 py-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center"
-                    >
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-sm font-medium">{tool.name}</p>
-                          <StatusPill
-                            status={tool.permissionStatus ?? tool.status}
-                            tone={tool.permissionStatus === "enabled" ? "completed" : undefined}
-                          />
-                          {tool.modelVisible ? (
-                            <span className="text-muted-foreground text-xs">Model visible</span>
-                          ) : null}
-                          {tool.mutationRisk === "mutation_capable" ? (
-                            <span className="text-muted-foreground text-xs">
-                              {tool.mutationEnabled ? "Mutation enabled" : "Mutation disabled"}
-                            </span>
-                          ) : null}
-                        </div>
-                        <p className="text-muted-foreground mt-1 text-xs">{tool.description}</p>
-                      </div>
-                      {tool.policyEditable ? (
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={busyTool === tool.name}
-                            onClick={() =>
-                              void updateToolPolicy(tool, {
-                                status:
-                                  tool.permissionStatus === "enabled" ? "disabled" : "enabled",
-                              })
-                            }
-                          >
-                            {tool.permissionStatus === "enabled" ? "Disable" : "Enable"}
-                          </Button>
-                          {tool.mutationRisk === "mutation_capable" ? (
-                            <Button
-                              size="sm"
-                              variant={tool.mutationEnabled ? "destructive" : "outline"}
-                              disabled={busyTool === tool.name}
-                              onClick={() =>
-                                void updateToolPolicy(tool, {
-                                  mutationEnabled: !tool.mutationEnabled,
-                                })
-                              }
-                            >
-                              {tool.mutationEnabled ? "Revoke mutation" : "Enable mutation"}
-                            </Button>
-                          ) : null}
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={busyTool === tool.name}
-                            onClick={() =>
-                              void updateToolPolicy(tool, { modelVisible: !tool.modelVisible })
-                            }
-                          >
-                            {tool.modelVisible ? "Hide from model" : "Show to model"}
-                          </Button>
-                        </div>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-              </section>
+            <TabsContent value="controls" className="overflow-y-auto p-5">
+              <AdminControlsPanel
+                approvals={pendingApprovals}
+                tools={summary?.tools ?? []}
+                busyTool={busyTool}
+                onDecideApproval={setApprovalDialog}
+                onUpdateToolPolicy={updateToolPolicy}
+              />
             </TabsContent>
 
-            <TabsContent value="diagnostics" className="overflow-y-auto p-5">
-              <div className="grid gap-4 lg:grid-cols-2">
-                <section className={`${sectionClass} p-4`}>
-                  <h2 className="flex items-center gap-2 text-sm font-semibold">
-                    <WrenchIcon className="size-4" />
-                    Conformance tools
-                  </h2>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                    {["diagnostic.ping", "runner.echo", "artifact.metadata.test"].map(
-                      (toolName) => (
-                        <Button
-                          key={toolName}
-                          variant="outline"
-                          size="sm"
-                          disabled={Boolean(busyTool)}
-                          onClick={() =>
-                            void runDiagnostic(
-                              toolName,
-                              toolName === "runner.echo"
-                                ? { message: "runner echo ok" }
-                                : toolName === "artifact.metadata.test"
-                                  ? { label: "admin conformance" }
-                                  : {},
-                            )
-                          }
-                        >
-                          {busyTool === toolName ? (
-                            <Loader2Icon className="animate-spin" />
-                          ) : (
-                            <PlayIcon />
-                          )}
-                          {toolName}
-                        </Button>
-                      ),
-                    )}
-                  </div>
-                  <form
-                    className="mt-4 flex gap-2"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      if (urlTarget.trim())
-                        void runDiagnostic("url.inspect", { url: urlTarget.trim() });
-                    }}
-                  >
-                    <input
-                      className={inputClass}
-                      value={urlTarget}
-                      onChange={(event) => setUrlTarget(event.target.value)}
-                      placeholder="https://example.com"
-                      aria-label="URL to inspect"
-                    />
-                    <Button
-                      type="submit"
-                      variant="outline"
-                      disabled={!urlTarget.trim() || Boolean(busyTool)}
-                    >
-                      Inspect
-                    </Button>
-                  </form>
-                </section>
-                <section className={`${sectionClass} p-4`}>
-                  <h2 className="flex items-center gap-2 text-sm font-semibold">
-                    <FileClockIcon className="size-4" />
-                    Recent runtime
-                  </h2>
-                  <div className="mt-3 space-y-3">
-                    {(summary?.recentTraces ?? []).slice(0, 5).map((trace) => (
-                      <div key={trace.traceId} className="border-border rounded-md border p-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="truncate text-sm font-medium">{trace.rootName}</p>
-                          <StatusPill status={trace.status} tone={trace.status} />
-                        </div>
-                        <p className="text-muted-foreground mt-1 text-xs">
-                          {trace.summary ?? `${trace.durationMs ?? 0}ms`}
-                        </p>
-                      </div>
-                    ))}
-                    {!summary?.recentTraces?.length ? (
-                      <EmptyPanelText>No runtime traces.</EmptyPanelText>
-                    ) : null}
-                  </div>
-                </section>
-              </div>
-              <section className={`${sectionClass} mt-4 p-4`}>
-                <h2 className="text-sm font-semibold">Raw diagnostic context</h2>
-                <div className="mt-3 grid gap-3 md:grid-cols-3">
-                  <CopyId label="User id" value={summary?.identity.userId} />
-                  <CopyId label="Workspace id" value={summary?.identity.workspaceId} />
-                  <CopyId label="Agent id" value={summary?.identity.agentId} />
-                </div>
-                <details className="mt-4">
-                  <summary className="text-muted-foreground hover:text-foreground cursor-pointer text-xs">
-                    Summary JSON
-                  </summary>
-                  <pre className="bg-muted mt-2 max-h-80 overflow-auto rounded-md p-3 text-xs whitespace-pre-wrap">
-                    {JSON.stringify(summary ?? {}, null, 2)}
-                  </pre>
-                </details>
-              </section>
+            <TabsContent value="system" className="overflow-y-auto p-5">
+              <AdminSystemPanel
+                summary={summary}
+                busyTool={busyTool}
+                urlTarget={urlTarget}
+                onUrlTargetChange={setUrlTarget}
+                onRunDiagnostic={runDiagnostic}
+              />
             </TabsContent>
           </Tabs>
         </DialogContent>
