@@ -49,14 +49,6 @@ writeFileSync(
       type: "module",
       dependencies: {
         "@assistant-mk1/workbench-client": `file:${relative(consumer, clientArchive)}`,
-        "@assistant-mk1/workbench-react": `file:${relative(consumer, reactArchive)}`,
-        "@tanstack/react-query": "5.101.4",
-        react: "19.2.6",
-      },
-      pnpm: {
-        overrides: {
-          "@assistant-mk1/workbench-client": `file:${relative(consumer, clientArchive)}`,
-        },
       },
     },
     null,
@@ -67,10 +59,9 @@ run("pnpm", ["install", "--ignore-workspace", "--offline"], consumer);
 writeFileSync(
   resolve(consumer, "consumer.ts"),
   `import { createWorkbenchClient, workbenchChatProtocolVersion } from "@assistant-mk1/workbench-client";
-import { createWorkbenchQueryClient, workbenchQueryKeys } from "@assistant-mk1/workbench-react";
 
 const client = createWorkbenchClient({ baseUrl: "https://example.invalid", client: { platform: "ios", version: "test" }, fetch });
-void [client, workbenchChatProtocolVersion, createWorkbenchQueryClient(), workbenchQueryKeys.session];
+void [client, workbenchChatProtocolVersion];
 `,
 );
 writeFileSync(
@@ -109,11 +100,16 @@ run(
 const deployedViteClient = realpathSync(
   resolve(viteConsumer, "node_modules/@assistant-mk1/workbench-client"),
 );
+const deployedViteReact = realpathSync(
+  resolve(viteConsumer, "node_modules/@assistant-mk1/workbench-react"),
+);
 if (
   !deployedViteClient.startsWith(viteConsumer) ||
-  readdirSync(deployedViteClient).includes("src")
+  readdirSync(deployedViteClient).includes("src") ||
+  !deployedViteReact.startsWith(viteConsumer) ||
+  readdirSync(deployedViteReact).includes("src")
 ) {
-  throw new Error("Vite consumer retained a workspace/source link instead of a packaged client.");
+  throw new Error("Vite consumer retained a workspace/source link instead of packaged clients.");
 }
 run("pnpm", ["run", "build"], viteConsumer);
 run(

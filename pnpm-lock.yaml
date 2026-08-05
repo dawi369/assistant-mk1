@@ -301,6 +301,15 @@ importers:
       '@assistant-mk1/workbench-client':
         specifier: workspace:*
         version: link:../../packages/workbench-client
+      '@assistant-mk1/workbench-react':
+        specifier: workspace:*
+        version: link:../../packages/workbench-react
+      '@tanstack/react-query':
+        specifier: 5.101.4
+        version: 5.101.4(react@19.2.6)
+      react:
+        specifier: 19.2.6
+        version: 19.2.6
       vite:
         specifier: 8.0.16
         version: 8.0.16(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0)
