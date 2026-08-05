@@ -60,6 +60,7 @@ cloudflare/control-plane/.wrangler/
 /output/sdk-consumer/
 /output/workbench-client-consumer/
 /output/mobile/
+/apps/mobile/.expo/
 /output/extension-contract/
 /packages/agent-sdk/dist/
 /packages/workbench-client/dist/
