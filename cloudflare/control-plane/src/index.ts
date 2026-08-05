@@ -44,6 +44,7 @@ import {
   handleLatestChatSession,
 } from "./langgraph-facade";
 import { executeRuntimeWorkflow, runtimeWorkflowTypeForPath } from "./pack-workflow-runtime";
+import { listRuntimeWorkflows } from "./runtime-workflows";
 import {
   getTraceId,
   handleGetRuntimeTrace,
@@ -364,6 +365,10 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
 
   if (request.method === "GET" && url.pathname === "/workbench/actions") {
     return handleListActionProposals(env, identity, url);
+  }
+
+  if (request.method === "GET" && url.pathname === "/workbench/workflows") {
+    return listRuntimeWorkflows(env, identity);
   }
 
   const actionExecuteMatch = url.pathname.match(/^\/workbench\/actions\/([^/]+)\/execute$/);

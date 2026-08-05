@@ -1,5 +1,27 @@
 import type { Id } from "../core-contracts.js";
 
+export type WorkbenchWorkflowDescriptor = {
+  type: string;
+  label: string;
+  description?: string;
+  engine: "cloudflare" | "langgraph";
+  inputSchema: Record<string, unknown>;
+  outputSchema: Record<string, unknown>;
+  toolIds: string[];
+  runDisplayName?: string;
+};
+
+export type WorkbenchWorkflowDiscoveryResponse = {
+  ok: boolean;
+  packId?: Id;
+  packVersion?: string;
+  runtimeVersion?: string;
+  runnable: boolean;
+  reason?: string;
+  workflows: WorkbenchWorkflowDescriptor[];
+  error?: string;
+};
+
 export type TriggerSummary = {
   id: Id;
   publicId?: string;

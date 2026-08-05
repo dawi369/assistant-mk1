@@ -1,0 +1,114 @@
+import * as SQLite from "expo-sqlite";
+
+export type PendingTurn = { clientTurnId: string; text: string; createdAt: string };
+
+let databasePromise: Promise<SQLite.SQLiteDatabase> | null = null;
+
+const database = () => {
+  if (!databasePromise) {
+    databasePromise = SQLite.openDatabaseAsync("assistant-mk1.db").then(async (db) => {
+      await db.execAsync(`
+        PRAGMA journal_mode = WAL;
+        CREATE TABLE IF NOT EXISTS display_cache (
+          key TEXT PRIMARY KEY,
+          payload TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS drafts (
+          thread_id TEXT PRIMARY KEY,
+          text TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS pending_turn (
+          singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+          client_turn_id TEXT NOT NULL,
+          text TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        );
+      `);
+      return db;
+    });
+  }
+  return databasePromise;
+};
+
+export const mobileStore = {
+  async putDisplaySnapshot(key: string, value: unknown) {
+    const db = await database();
+    await db.runAsync(
+      `INSERT INTO display_cache (key, payload, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at`,
+      key,
+      JSON.stringify(value),
+      new Date().toISOString(),
+    );
+  },
+  async getDisplaySnapshot<T>(key: string): Promise<T | null> {
+    const db = await database();
+    const row = await db.getFirstAsync<{ payload: string }>(
+      "SELECT payload FROM display_cache WHERE key = ?",
+      key,
+    );
+    if (!row) return null;
+    try {
+      return JSON.parse(row.payload) as T;
+    } catch {
+      return null;
+    }
+  },
+  async putDraft(threadId: string, text: string) {
+    const db = await database();
+    if (!text) return db.runAsync("DELETE FROM drafts WHERE thread_id = ?", threadId);
+    return db.runAsync(
+      `INSERT INTO drafts (thread_id, text, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(thread_id) DO UPDATE SET text = excluded.text, updated_at = excluded.updated_at`,
+      threadId,
+      text,
+      new Date().toISOString(),
+    );
+  },
+  async getDraft(threadId: string) {
+    const db = await database();
+    return (
+      (
+        await db.getFirstAsync<{ text: string }>(
+          "SELECT text FROM drafts WHERE thread_id = ?",
+          threadId,
+        )
+      )?.text ?? ""
+    );
+  },
+  async putPendingTurn(turn: PendingTurn) {
+    const db = await database();
+    await db.runAsync(
+      `INSERT INTO pending_turn (singleton, client_turn_id, text, created_at) VALUES (1, ?, ?, ?)
+       ON CONFLICT(singleton) DO UPDATE SET client_turn_id = excluded.client_turn_id,
+         text = excluded.text, created_at = excluded.created_at`,
+      turn.clientTurnId,
+      turn.text,
+      turn.createdAt,
+    );
+  },
+  async getPendingTurn(): Promise<PendingTurn | null> {
+    const db = await database();
+    const row = await db.getFirstAsync<{
+      client_turn_id: string;
+      text: string;
+      created_at: string;
+    }>("SELECT client_turn_id, text, created_at FROM pending_turn WHERE singleton = 1");
+    return row
+      ? { clientTurnId: row.client_turn_id, text: row.text, createdAt: row.created_at }
+      : null;
+  },
+  async clearPendingTurn(clientTurnId: string) {
+    const db = await database();
+    await db.runAsync(
+      "DELETE FROM pending_turn WHERE singleton = 1 AND client_turn_id = ?",
+      clientTurnId,
+    );
+  },
+  async clearLocalAuthority() {
+    const db = await database();
+    await db.execAsync("DELETE FROM drafts; DELETE FROM pending_turn;");
+  },
+};

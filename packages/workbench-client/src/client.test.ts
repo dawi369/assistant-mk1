@@ -61,6 +61,35 @@ describe("createWorkbenchClient", () => {
     );
   });
 
+  it("discovers workflows through the portable contract", async () => {
+    const fetcher = vi.fn<typeof fetch>(async () =>
+      jsonResponse({
+        ok: true,
+        runnable: true,
+        workflows: [
+          {
+            type: "operator.inspect",
+            label: "Inspect",
+            engine: "cloudflare",
+            inputSchema: { type: "object" },
+            outputSchema: { type: "object" },
+            toolIds: [],
+          },
+        ],
+      }),
+    );
+    const client = createWorkbenchClient({
+      baseUrl: "https://workbench.example",
+      client: { platform: "android", version: "0.1.0" },
+      fetch: fetcher,
+    });
+
+    const response = await client.workflows.list();
+
+    expect(response.workflows).toHaveLength(1);
+    expect(fetcher.mock.calls[0]![0]).toBe("https://workbench.example/api/workbench/workflows");
+  });
+
   it("rejects malformed successful responses", async () => {
     const client = createWorkbenchClient({
       baseUrl: "https://workbench.example",

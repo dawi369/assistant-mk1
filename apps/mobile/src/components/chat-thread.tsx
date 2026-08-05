@@ -1,0 +1,114 @@
+import { ComposerPrimitive, MessagePrimitive, ThreadPrimitive } from "@assistant-ui/react-native";
+import { Text, View } from "react-native";
+
+import { colors } from "../theme";
+
+const Message = () => (
+  <MessagePrimitive.Root style={{ paddingHorizontal: 16, paddingVertical: 6 }}>
+    <MessagePrimitive.If user>
+      <View
+        style={{
+          alignSelf: "flex-end",
+          maxWidth: "88%",
+          borderRadius: 20,
+          backgroundColor: colors.accent,
+          paddingHorizontal: 14,
+          paddingVertical: 10,
+        }}
+      >
+        <MessagePrimitive.Content
+          renderText={({ part }) => (
+            <Text style={{ color: "white", fontSize: 16 }}>{part.text}</Text>
+          )}
+        />
+      </View>
+    </MessagePrimitive.If>
+    <MessagePrimitive.If assistant>
+      <View style={{ maxWidth: "94%", paddingHorizontal: 2, paddingVertical: 10 }}>
+        <MessagePrimitive.Content
+          renderText={({ part }) => (
+            <Text style={{ color: colors.ink, fontSize: 16, lineHeight: 24 }}>{part.text}</Text>
+          )}
+          renderReasoning={() => (
+            <Text style={{ color: colors.muted, fontSize: 13 }}>Working…</Text>
+          )}
+          renderToolCall={({ part }) => (
+            <Text style={{ color: colors.muted, fontSize: 13 }}>{part.toolName}</Text>
+          )}
+        />
+      </View>
+    </MessagePrimitive.If>
+  </MessagePrimitive.Root>
+);
+
+export const ChatThread = () => (
+  <ThreadPrimitive.Root style={{ flex: 1, backgroundColor: colors.canvas }}>
+    <ThreadPrimitive.Empty>
+      <View style={{ flex: 1, justifyContent: "center", padding: 32 }}>
+        <Text style={{ color: colors.ink, fontSize: 28, fontWeight: "700" }}>
+          What are we working on?
+        </Text>
+        <Text style={{ color: colors.muted, fontSize: 16, lineHeight: 23, marginTop: 8 }}>
+          Your first message waits for the workspace to connect, then sends once.
+        </Text>
+      </View>
+    </ThreadPrimitive.Empty>
+    <ThreadPrimitive.MessagesFlatList
+      components={{ Message }}
+      contentContainerStyle={{ flexGrow: 1, justifyContent: "flex-end", paddingVertical: 12 }}
+      keyboardDismissMode="interactive"
+      keyboardShouldPersistTaps="handled"
+    />
+    <ComposerPrimitive.Root
+      style={{
+        flexDirection: "row",
+        alignItems: "flex-end",
+        gap: 10,
+        margin: 12,
+        padding: 8,
+        paddingLeft: 14,
+        borderRadius: 24,
+        borderWidth: 1,
+        borderColor: colors.line,
+        backgroundColor: colors.surface,
+      }}
+    >
+      <ComposerPrimitive.Input
+        accessibilityLabel="Message"
+        multiline
+        placeholder="Message your agent"
+        placeholderTextColor={colors.muted}
+        style={{
+          flex: 1,
+          minHeight: 40,
+          maxHeight: 140,
+          color: colors.ink,
+          fontSize: 16,
+          paddingTop: 9,
+        }}
+      />
+      <ComposerPrimitive.Send
+        accessibilityLabel="Send message"
+        style={{
+          borderRadius: 18,
+          backgroundColor: colors.accent,
+          paddingHorizontal: 14,
+          paddingVertical: 10,
+        }}
+      >
+        <Text style={{ color: "white", fontWeight: "700" }}>Send</Text>
+      </ComposerPrimitive.Send>
+      <ComposerPrimitive.Cancel
+        accessibilityLabel="Stop response"
+        style={{
+          borderRadius: 18,
+          backgroundColor: colors.danger,
+          paddingHorizontal: 14,
+          paddingVertical: 10,
+        }}
+      >
+        <Text style={{ color: "white", fontWeight: "700" }}>Stop</Text>
+      </ComposerPrimitive.Cancel>
+    </ComposerPrimitive.Root>
+  </ThreadPrimitive.Root>
+);

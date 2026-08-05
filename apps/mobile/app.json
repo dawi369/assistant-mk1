@@ -1,0 +1,50 @@
+{
+  "expo": {
+    "name": "Assistant MK1",
+    "slug": "assistant-mk1",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "assistantmk1",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.dawi369.assistantmk1",
+      "associatedDomains": ["applinks:assistant-mk1.vercel.app"]
+    },
+    "android": {
+      "package": "com.dawi369.assistantmk1",
+      "adaptiveIcon": {
+        "backgroundColor": "#f7f5ef"
+      },
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "assistant-mk1.vercel.app",
+              "pathPrefix": "/mobile"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-sqlite",
+      [
+        "expo-notifications",
+        {
+          "defaultChannel": "workbench"
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

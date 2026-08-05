@@ -11,7 +11,7 @@
         },
         {
           "path": "workbench-client/dist/client.d.ts",
-          "sha256": "95d94c3a37acc2da35ab1c261b3bca7ef881fd45ec9d1b01968da8379173fa60"
+          "sha256": "e845b9f68ed1a8443590ff0d7206819dd714d65926ed5176cbc86532f4fbef4a"
         },
         {
           "path": "workbench-client/dist/contracts/agents-chat.d.ts",
@@ -19,7 +19,7 @@
         },
         {
           "path": "workbench-client/dist/contracts/automation.d.ts",
-          "sha256": "2602346e06b1a49a6decc127bfb6009caa102b74ed25571c04c72176f3e58834"
+          "sha256": "ab46a0dff0d778b7e67482f1c5aa6190234547a25cdb57878189980b97660d28"
         },
         {
           "path": "workbench-client/dist/contracts/execution.d.ts",
@@ -61,7 +61,7 @@
       "files": [
         {
           "path": "workbench-react/dist/index.d.ts",
-          "sha256": "481c5ddd390f53c6808c5c946392bc9635feb0e87fe0d4dd7968950640da849d"
+          "sha256": "9c183f5df0ece1f2e8db2b10518ba8227a7012a1a9d8fb9bc4e198fd4ae2f38b"
         }
       ]
     }

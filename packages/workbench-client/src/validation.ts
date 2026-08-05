@@ -30,6 +30,7 @@ export const parseWorkbenchResponse = <T>(value: unknown, label: string): T => {
     "runs",
     "states",
     "threads",
+    "workflows",
     "workspaces",
   ]) {
     if (field in object && !Array.isArray(object[field])) {

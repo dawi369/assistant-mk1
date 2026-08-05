@@ -7,8 +7,12 @@ import type {
   CreateTriggerDispatchInput,
   CreateTriggerInput,
   UpdateTriggerInput,
+  WorkbenchWorkflowDiscoveryResponse,
 } from "@/lib/workbench/workbench-types";
 import { requestControlPlane } from "./transport";
+
+export const getCloudflareWorkflows = () =>
+  requestControlPlane<WorkbenchWorkflowDiscoveryResponse>("/workbench/workflows");
 
 export const getCloudflareTriggers = (limit = 50) =>
   requestControlPlane<CloudflareTriggersResponse>(

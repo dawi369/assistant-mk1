@@ -59,6 +59,47 @@ const toolResult = (value: unknown): RuntimeResult => {
   );
 };
 
+export const listRuntimeWorkflows = async (env: Env, identity: AgentIdentity) => {
+  const agent = await selectAgent(env, identity.agentId, identity.scope.workspaceId);
+  const pack = resolveAgentBehaviorConfig(agent).pack;
+  if (!pack) {
+    return json({ ok: true, runnable: true, workflows: [] });
+  }
+  const runtime = resolvePackRuntime(pack.id, pack.version);
+  if (!runtime.runnable) {
+    return json({
+      ok: true,
+      packId: pack.id,
+      packVersion: pack.version,
+      runnable: false,
+      reason: runtime.reason,
+      workflows: [],
+    });
+  }
+  const userInvocable = new Set(
+    pack.workflows.filter((workflow) => workflow.userInvocable).map((workflow) => workflow.type),
+  );
+  return json({
+    ok: true,
+    packId: pack.id,
+    packVersion: pack.version,
+    runtimeVersion: runtime.runtimeVersion,
+    runnable: true,
+    workflows: runtime.controlPlane.workflows
+      .filter((workflow) => userInvocable.has(workflow.type))
+      .map((workflow) => ({
+        type: workflow.type,
+        label: workflow.label,
+        description: workflow.description,
+        engine: workflow.engine,
+        inputSchema: workflow.inputSchema,
+        outputSchema: workflow.outputSchema,
+        toolIds: workflow.toolIds,
+        runDisplayName: workflow.runDisplayName,
+      })),
+  });
+};
+
 export const executeRuntimeWorkflowRequest = async (
   workflowType: string,
   request: Request,

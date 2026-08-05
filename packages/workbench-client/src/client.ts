@@ -19,6 +19,7 @@ import type {
   ExecutionRunResponse,
   Id,
   WorkbenchAccountContextResponse,
+  WorkbenchWorkflowDiscoveryResponse,
 } from "./contracts/index.js";
 import {
   isJsonObject,
@@ -252,6 +253,7 @@ export const createWorkbenchClient = (options: WorkbenchClientOptions) => {
         ),
     },
     workflows: {
+      list: () => request<WorkbenchWorkflowDiscoveryResponse>("/api/workbench/workflows"),
       run: (
         workflowType: string,
         input: { input?: Record<string, unknown>; executionMode?: "dry_run" } = {},
