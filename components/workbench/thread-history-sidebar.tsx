@@ -291,36 +291,38 @@ export function ThreadHistorySidebar({
           )}
         </div>
       </div>
-      <Dialog
-        open={Boolean(deleteCandidate)}
-        onOpenChange={(open) => {
-          if (!open) closeDeleteDialog();
-        }}
-      >
-        <DialogContent className="gap-4 p-5 sm:max-w-[22rem]" showCloseButton={false}>
-          <DialogHeader className="gap-2 text-left">
-            <div className="flex items-center gap-2.5">
-              <div className="bg-destructive/10 text-destructive flex size-8 shrink-0 items-center justify-center rounded-md">
-                <Trash2Icon className="size-4" />
+      {deleteCandidate ? (
+        <Dialog
+          open
+          onOpenChange={(open) => {
+            if (!open) closeDeleteDialog();
+          }}
+        >
+          <DialogContent className="gap-4 p-5 sm:max-w-[22rem]" showCloseButton={false}>
+            <DialogHeader className="gap-2 text-left">
+              <div className="flex items-center gap-2.5">
+                <div className="bg-destructive/10 text-destructive flex size-8 shrink-0 items-center justify-center rounded-md">
+                  <Trash2Icon className="size-4" />
+                </div>
+                <DialogTitle>Delete this chat?</DialogTitle>
               </div>
-              <DialogTitle>Delete this chat?</DialogTitle>
-            </div>
-            <DialogDescription className="text-foreground text-sm leading-relaxed">
-              This permanently removes the chat and stops any active response.
-            </DialogDescription>
-          </DialogHeader>
+              <DialogDescription className="text-foreground text-sm leading-relaxed">
+                This permanently removes the chat and stops any active response.
+              </DialogDescription>
+            </DialogHeader>
 
-          <DialogFooter className="grid grid-cols-2 sm:grid-cols-2">
-            <Button type="button" variant="outline" onClick={closeDeleteDialog}>
-              Cancel
-            </Button>
-            <Button type="button" variant="destructive" onClick={() => void confirmDelete()}>
-              <Trash2Icon className="size-4" />
-              Delete chat
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <DialogFooter className="grid grid-cols-2 sm:grid-cols-2">
+              <Button type="button" variant="outline" onClick={closeDeleteDialog}>
+                Cancel
+              </Button>
+              <Button type="button" variant="destructive" onClick={() => void confirmDelete()}>
+                <Trash2Icon className="size-4" />
+                Delete chat
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : null}
     </aside>
   );
 }
