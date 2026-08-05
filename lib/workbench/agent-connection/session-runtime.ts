@@ -19,6 +19,11 @@ const cacheTtlMs = 12 * 60 * 60 * 1000;
 const cacheVersion = 1;
 const lastSessionShellCacheKey = "assistant-mk1:chat-session:last";
 export const warmupFreshMs = 15_000;
+export const archivedThreadsFreshMs = 60_000;
+
+export type ArchivedThreadsLoadInput = {
+  force?: boolean;
+};
 
 export type SessionWarmupSource = "new-session" | "first-draft" | "stream-open";
 export type SessionStageSource =
@@ -161,7 +166,7 @@ export type ChatSessionContextValue = {
   archiveThread: (threadId: string) => Promise<void>;
   restoreThread: (threadId: string) => Promise<void>;
   deleteThread: (threadId: string) => Promise<void>;
-  loadArchivedThreads: () => Promise<void>;
+  loadArchivedThreads: (input?: ArchivedThreadsLoadInput) => Promise<void>;
   refresh: () => Promise<void>;
   retry: () => Promise<void>;
 };

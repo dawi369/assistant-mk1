@@ -37,6 +37,14 @@ Document status: this page is the concise current system map. Use
 - OpenRouter is configured server-side for Cloudflare Agent chat and the
   Fly/LangGraph runtime.
 
+The browser is the only supported product client in `0.5.0`. The control-plane
+contracts are intentionally client-neutral, but the current WorkOS cookie
+session, relative API calls, session event source, and Cloudflare Agent React
+runtime are web adapters rather than a public frontend SDK. The boundary and
+acceptance work required for a native client is specified in
+`docs/mobile-frontends.md`; native clients must not receive the Vercel facade
+signing secret or bypass Cloudflare authorization.
+
 ## Control Plane Model
 
 The core runtime model is:

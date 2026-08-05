@@ -71,10 +71,48 @@ test("chat deletion uses an accessible in-app confirmation", async ({ page }) =>
   await expect(deleteDialog).toHaveCount(0);
   await expect(deleteChatButton).toBeFocused();
 
+  await page.route(`**/api/workbench/chat-session/threads/${threadId}`, async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    await route.continue();
+  });
   await deleteChatButton.click();
   await deleteDialog.getByRole("button", { name: "Delete chat" }).click();
-  await expect(deleteDialog).toHaveCount(0);
+  await expect(deleteDialog).toHaveCount(0, { timeout: 300 });
   await expect(threadItem).toHaveCount(0);
+});
+
+test("archived chats are prefetched and remain visible while revalidating", async ({ page }) => {
+  test.skip(releaseMode !== "local-session");
+
+  const created = await page.request.post("/api/workbench/chat-session/threads", {
+    data: { title: "Archived cache fixture" },
+  });
+  expect(created.ok(), await created.text()).toBe(true);
+  const createdBody = (await created.json()) as { activeThread?: { threadId?: string } };
+  const threadId = createdBody.activeThread?.threadId;
+  expect(threadId).toBeTruthy();
+  const archived = await page.request.patch(
+    `/api/workbench/chat-session/threads/${encodeURIComponent(threadId!)}`,
+    { data: { status: "archived" } },
+  );
+  expect(archived.ok(), await archived.text()).toBe(true);
+
+  let archivedRequests = 0;
+  await page.route("**/api/workbench/chat-session/threads?status=archived", async (route) => {
+    archivedRequests += 1;
+    await route.continue();
+  });
+  await page.goto("/");
+  await expect.poll(() => archivedRequests).toBeGreaterThan(0);
+  const requestsAfterPrefetch = archivedRequests;
+
+  await page.getByRole("button", { name: "Archived" }).click();
+  await expect(page.getByText("Archived cache fixture", { exact: true })).toBeVisible();
+  await expect(page.getByText("Loading archived chats...", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Recent" }).click();
+  await page.getByRole("button", { name: "Archived" }).click();
+  await expect(page.getByText("Archived cache fixture", { exact: true })).toBeVisible();
+  expect(archivedRequests).toBe(requestsAfterPrefetch);
 });
 
 test("trusted local session is immediately usable and exposes release controls", async ({

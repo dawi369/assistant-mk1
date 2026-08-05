@@ -64,8 +64,6 @@ export function ThreadHistorySidebar({
   const [view, setView] = useState<"active" | "archived">("active");
   const [archiveError, setArchiveError] = useState<string | null>(null);
   const [deleteCandidate, setDeleteCandidate] = useState<ChatThreadSummary | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const deleteTriggerRef = useRef<HTMLElement | null>(null);
   const { focusComposerAfterInteraction } = useWorkbenchComposerFocus();
   const creatingThread = pending?.type === "create";
@@ -85,7 +83,8 @@ export function ThreadHistorySidebar({
   const visibleThreads = (view === "archived" ? archivedThreads : threads).filter(
     (thread) => !deletingThreadIds.has(thread.threadId),
   );
-  const loadingArchived = view === "archived" && isLoadingArchivedThreads;
+  const loadingArchived =
+    view === "archived" && isLoadingArchivedThreads && archivedThreads.length === 0;
   const loadingInitialThreads = isInitialLoading && visibleThreads.length === 0;
   const visibleError = isSignedOut
     ? null
@@ -113,7 +112,7 @@ export function ThreadHistorySidebar({
     if (view !== "archived") return;
     setArchiveError(null);
     try {
-      await loadArchivedThreads();
+      await loadArchivedThreads({ force: true });
     } catch (nextError) {
       setArchiveError(
         nextError instanceof Error ? nextError.message : "Failed to load archived chats",
@@ -177,13 +176,11 @@ export function ThreadHistorySidebar({
     if (actionsDisabled) return;
     deleteTriggerRef.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    setDeleteError(null);
     setDeleteCandidate(thread);
   };
 
   const closeDeleteDialog = () => {
     setDeleteCandidate(null);
-    setDeleteError(null);
     requestAnimationFrame(() => {
       const trigger = deleteTriggerRef.current;
       if (trigger?.isConnected) {
@@ -196,19 +193,15 @@ export function ThreadHistorySidebar({
   };
 
   const confirmDelete = async () => {
-    if (!deleteCandidate || isConfirmingDelete) return;
-    setDeleteError(null);
+    if (!deleteCandidate) return;
+    const threadId = deleteCandidate.threadId;
     setArchiveError(null);
-    setIsConfirmingDelete(true);
+    closeDeleteDialog();
     try {
-      await deleteThread(deleteCandidate.threadId);
-      closeDeleteDialog();
+      await deleteThread(threadId);
     } catch (nextError) {
       const message = nextError instanceof Error ? nextError.message : "Failed to delete chat";
-      setDeleteError(message);
       setArchiveError(message);
-    } finally {
-      setIsConfirmingDelete(false);
     }
   };
 
@@ -301,9 +294,7 @@ export function ThreadHistorySidebar({
       <Dialog
         open={Boolean(deleteCandidate)}
         onOpenChange={(open) => {
-          if (!open && !isConfirmingDelete) {
-            closeDeleteDialog();
-          }
+          if (!open) closeDeleteDialog();
         }}
       >
         <DialogContent className="gap-4 p-5 sm:max-w-[22rem]" showCloseButton={false}>
@@ -319,33 +310,13 @@ export function ThreadHistorySidebar({
             </DialogDescription>
           </DialogHeader>
 
-          {deleteError ? (
-            <p role="alert" className="text-destructive text-xs">
-              {deleteError}
-            </p>
-          ) : null}
-
           <DialogFooter className="grid grid-cols-2 sm:grid-cols-2">
-            <Button
-              type="button"
-              variant="outline"
-              disabled={isConfirmingDelete}
-              onClick={closeDeleteDialog}
-            >
+            <Button type="button" variant="outline" onClick={closeDeleteDialog}>
               Cancel
             </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={isConfirmingDelete}
-              onClick={() => void confirmDelete()}
-            >
-              {isConfirmingDelete ? (
-                <Loader2Icon className="size-4 animate-spin" />
-              ) : (
-                <Trash2Icon className="size-4" />
-              )}
-              {isConfirmingDelete ? "Deleting..." : "Delete chat"}
+            <Button type="button" variant="destructive" onClick={() => void confirmDelete()}>
+              <Trash2Icon className="size-4" />
+              Delete chat
             </Button>
           </DialogFooter>
         </DialogContent>

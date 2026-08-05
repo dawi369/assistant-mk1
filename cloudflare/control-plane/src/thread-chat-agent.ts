@@ -233,17 +233,13 @@ export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
       parts: [{ type: "text", text: message }],
     };
     this.programmaticSubmitBody = submitBody;
-    this.waitUntil(
-      (async () => {
-        try {
-          await this.saveMessages((messages) => [...messages, userMessage]);
-        } finally {
-          if (this.programmaticSubmitBody?.id === submitId) {
-            this.programmaticSubmitBody = null;
-          }
-        }
-      })(),
-    );
+    try {
+      await this.saveMessages((messages) => [...messages, userMessage]);
+    } finally {
+      if (this.programmaticSubmitBody?.id === submitId) {
+        this.programmaticSubmitBody = null;
+      }
+    }
 
     return jsonResponse({ ok: true, status: "accepted", threadId: claims.threadId });
   }

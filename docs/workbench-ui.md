@@ -71,7 +71,12 @@ Current implemented layout:
   `url.inspect`, `repo.snapshot`, `diagnostic.ping`, `runner.echo`, and
   `artifact.metadata.test`.
 - Cache-backed recent-chat sidebar for display-only workspace history. Cached
-  rows can paint immediately, then reconcile with Cloudflare.
+  rows can paint immediately, then reconcile with Cloudflare. Archived chats
+  prefetch after the trusted session resolves, remain visible while stale data
+  revalidates, and refresh after thread mutations, session events, or a stale
+  foreground transition. Optimistic deletion closes its confirmation
+  immediately; a failed mutation restores the row and exposes a recoverable
+  sidebar error instead of reopening the dialog.
 - Signed-out recovery state hides cached workspace chrome and provider
   diagnostics, giving the user one clear sign-in path before the composer,
   recent chats, or runtime state become available.

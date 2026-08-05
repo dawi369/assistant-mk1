@@ -30,7 +30,6 @@ import { sessionEventShouldRefreshAdminSummary } from "@/lib/workbench/session-e
 import type {
   AgentSwitchTarget,
   ChatSessionResponse,
-  ChatThreadSummary,
   WorkbenchSessionEvent,
 } from "@/lib/workbench/workbench-types";
 import { sessionContainsThread } from "@/lib/workbench/agent-connection/delete-reconciliation";
@@ -53,6 +52,7 @@ import {
   type SessionWarmupSource,
   type WorkbenchAgentConnection,
 } from "@/lib/workbench/agent-connection/session-runtime";
+import { useArchivedThreadsResource } from "@/lib/workbench/agent-connection/use-archived-threads-resource";
 import { useSessionEventStream } from "@/lib/workbench/agent-connection/use-session-event-stream";
 
 export type {
@@ -71,9 +71,6 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
   const [isSessionStreamConnected, setIsSessionStreamConnected] = useState(false);
   const [latestSessionEvent, setLatestSessionEvent] = useState<WorkbenchSessionEvent | null>(null);
   const [pending, setPending] = useState<PendingSessionTransition | null>({ type: "initial" });
-  const [archivedThreads, setArchivedThreads] = useState<ChatThreadSummary[]>([]);
-  const [isLoadingArchivedThreads, setIsLoadingArchivedThreads] = useState(false);
-  const [archivedThreadsError, setArchivedThreadsError] = useState<string | null>(null);
   const [localNewSession, setLocalNewSession] = useState(false);
   const [deletingThreadIds, setDeletingThreadIds] = useState<ReadonlySet<string>>(() => new Set());
   const connectionRef = useRef<WorkbenchAgentConnection | null>(null);
@@ -85,6 +82,18 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
   const deletingThreadIdsRef = useRef<ReadonlySet<string>>(new Set());
   const deleteRollbacksRef = useRef<Map<string, OptimisticDeleteRollback>>(new Map());
   const threadRefreshTimeoutRef = useRef<number | null>(null);
+  const workspaceId = session?.workspace?.id;
+  const {
+    archivedThreads,
+    archivedThreadsError,
+    isLoadingArchivedThreads,
+    loadArchivedThreads,
+    refreshArchivedThreadsIfLoaded,
+    setArchivedThreads,
+  } = useArchivedThreadsResource({
+    workspaceId,
+    preload: Boolean(workspaceId && !session?.isStale),
+  });
 
   useEffect(() => {
     connectionRef.current = connection;
@@ -114,12 +123,28 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
   );
 
   const applySession = useCallback(
-    (nextSession: ChatSessionResponse, input?: { preserveLocalNew?: boolean }) => {
+    (
+      nextSession: ChatSessionResponse,
+      input?: { preserveConnection?: boolean; preserveLocalNew?: boolean },
+    ) => {
       const filteredSession =
         removeThreadsFromSession(nextSession, deletingThreadIdsRef.current) ?? nextSession;
-      const effectiveSession = input?.preserveLocalNew
+      let effectiveSession = input?.preserveLocalNew
         ? (enterLocalNewSession(filteredSession) ?? filteredSession)
         : filteredSession;
+      const currentConnection = connectionRef.current;
+      if (
+        input?.preserveConnection &&
+        currentConnection &&
+        currentConnection.threadId === effectiveSession.activeThread?.threadId &&
+        currentConnection.agentId === effectiveSession.activeAgent?.id
+      ) {
+        effectiveSession = {
+          ...effectiveSession,
+          connection: currentConnection,
+          expiresAt: currentConnection.expiresAt,
+        };
+      }
       const nextConnection = toConnection(effectiveSession);
       if (!nextConnection && effectiveSession.activeThread) {
         throw new Error("Cloudflare Agent connection response was incomplete");
@@ -170,7 +195,10 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
         const nextSession = await readSession(input);
         requestOk = true;
         const preserveLocalNew = localNewSessionRef.current && !input.action && !input.update;
-        applySession(nextSession, { preserveLocalNew });
+        applySession(nextSession, {
+          preserveConnection: input.refresh === "threads",
+          preserveLocalNew,
+        });
         if (
           input.threadId &&
           (input.update?.status === "active" || input.update?.status === "deleted")
@@ -179,6 +207,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
             current.filter((thread) => thread.threadId !== input.threadId),
           );
         }
+        if (input.update) refreshArchivedThreadsIfLoaded();
         if (input.refreshSummary ?? input.action !== undefined) {
           requestWorkbenchSummaryRefresh({ source: "event" });
         }
@@ -219,7 +248,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
         if (transition) setPending(null);
       }
     },
-    [applySession, scheduleThreadRefresh],
+    [applySession, refreshArchivedThreadsIfLoaded, scheduleThreadRefresh],
   );
 
   useEffect(() => {
@@ -581,66 +610,72 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
     ],
   );
 
-  const applySessionEvent = useCallback((event: WorkbenchSessionEvent) => {
-    setLatestSessionEvent(event);
+  const applySessionEvent = useCallback(
+    (event: WorkbenchSessionEvent) => {
+      setLatestSessionEvent(event);
 
-    let shouldRefreshConnection = false;
-    let shouldClearConnection = false;
-    let refreshedThreadId: string | null = null;
-    const eventSession = sessionFromEvent(event);
-    if (eventSession) {
-      setSession((current) => {
-        if (shouldIgnoreSessionEvent(current, event)) return current;
-        const passiveSnapshot =
-          event.type === "session.snapshot" || event.type === "session.threads.refreshed";
-        const effectiveEventSession =
-          localNewSessionRef.current && passiveSnapshot
-            ? (enterLocalNewSession(eventSession) ?? eventSession)
-            : eventSession;
-        const filteredEventSession =
-          removeThreadsFromSession(effectiveEventSession, deletingThreadIdsRef.current) ??
-          effectiveEventSession;
-        const merged = mergeSession(current, filteredEventSession);
-        writeCachedShell(merged);
-        shouldRefreshConnection = sessionEventRequiresConnectionRefresh(
-          event,
-          merged,
-          connectionRef.current,
+      let shouldRefreshConnection = false;
+      let shouldClearConnection = false;
+      let refreshedThreadId: string | null = null;
+      const eventSession = sessionFromEvent(event);
+      if (eventSession) {
+        setSession((current) => {
+          if (shouldIgnoreSessionEvent(current, event)) return current;
+          const passiveSnapshot =
+            event.type === "session.snapshot" || event.type === "session.threads.refreshed";
+          const effectiveEventSession =
+            localNewSessionRef.current && passiveSnapshot
+              ? (enterLocalNewSession(eventSession) ?? eventSession)
+              : eventSession;
+          const filteredEventSession =
+            removeThreadsFromSession(effectiveEventSession, deletingThreadIdsRef.current) ??
+            effectiveEventSession;
+          const merged = mergeSession(current, filteredEventSession);
+          writeCachedShell(merged);
+          shouldRefreshConnection = sessionEventRequiresConnectionRefresh(
+            event,
+            merged,
+            connectionRef.current,
+          );
+          refreshedThreadId = merged.activeThread?.threadId ?? null;
+          shouldClearConnection =
+            Object.prototype.hasOwnProperty.call(filteredEventSession, "activeThread") &&
+            filteredEventSession.activeThread === null;
+          return merged;
+        });
+        if (event.type === "session.threads.refreshed") {
+          setPending(null);
+        }
+      } else {
+        setSession((current) =>
+          shouldIgnoreSessionEvent(current, event)
+            ? current
+            : updateThreadStatusFromEvent(current, event),
         );
-        refreshedThreadId = merged.activeThread?.threadId ?? null;
-        shouldClearConnection =
-          Object.prototype.hasOwnProperty.call(filteredEventSession, "activeThread") &&
-          filteredEventSession.activeThread === null;
-        return merged;
-      });
-      if (event.type === "session.threads.refreshed") {
-        setPending(null);
       }
-    } else {
-      setSession((current) =>
-        shouldIgnoreSessionEvent(current, event)
-          ? current
-          : updateThreadStatusFromEvent(current, event),
-      );
-    }
 
-    if (shouldRefreshConnection) {
-      if (refreshedThreadId) setPending({ type: "activate", threadId: refreshedThreadId });
-      window.setTimeout(() => {
-        void loadSessionRef.current?.({ refreshSummary: false });
-      }, 0);
-    } else if (shouldClearConnection) {
-      connectionRef.current = null;
-      setConnection(null);
-    }
+      if (shouldRefreshConnection) {
+        if (refreshedThreadId) setPending({ type: "activate", threadId: refreshedThreadId });
+        window.setTimeout(() => {
+          void loadSessionRef.current?.({ refreshSummary: false });
+        }, 0);
+      } else if (shouldClearConnection) {
+        connectionRef.current = null;
+        setConnection(null);
+      }
 
-    if (sessionEventShouldRefreshAdminSummary(event.type)) {
-      requestWorkbenchSummaryRefresh({
-        source: "event",
-        minimumGeneratedAt: event.createdAt,
-      });
-    }
-  }, []);
+      if (sessionEventShouldRefreshAdminSummary(event.type)) {
+        requestWorkbenchSummaryRefresh({
+          source: "event",
+          minimumGeneratedAt: event.createdAt,
+        });
+      }
+      if (event.type === "session.thread.updated" || event.type === "session.threads.refreshed") {
+        refreshArchivedThreadsIfLoaded();
+      }
+    },
+    [refreshArchivedThreadsIfLoaded],
+  );
 
   useEffect(() => {
     void loadSession();
@@ -674,32 +709,6 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
     );
     return () => window.clearTimeout(timeout);
   }, [connection?.expiresAt, loadSession]);
-
-  const loadArchivedThreads = useCallback(async () => {
-    setIsLoadingArchivedThreads(true);
-    setArchivedThreadsError(null);
-    try {
-      const response = await fetch(`${sessionPath}/threads?status=archived`, {
-        cache: "no-store",
-      });
-      const body = (await response.json().catch(() => ({}))) as {
-        ok?: boolean;
-        threads?: ChatThreadSummary[];
-        error?: string;
-      };
-      if (!response.ok || !body.ok) {
-        throw new Error(body.error ?? "Failed to load archived chats");
-      }
-      setArchivedThreads(body.threads ?? []);
-    } catch (nextError) {
-      const message =
-        nextError instanceof Error ? nextError.message : "Failed to load archived chats";
-      setArchivedThreadsError(message);
-      throw nextError;
-    } finally {
-      setIsLoadingArchivedThreads(false);
-    }
-  }, []);
 
   const value = useMemo<ChatSessionContextValue>(() => {
     const isLocalBlankSession =
