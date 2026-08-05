@@ -138,6 +138,12 @@
       "cv05" 1;
     text-rendering: optimizeLegibility;
   }
+
+  :where(button, a, input, textarea, select, [role="button"], [tabindex]):focus:not(
+      :focus-visible
+    ) {
+    outline: none;
+  }
 }
 
 @layer components {

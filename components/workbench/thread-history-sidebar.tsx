@@ -373,8 +373,7 @@ function ThreadHistoryItem({
         type="button"
         disabled={activationDisabled || !canActivate}
         className={cn(
-          "flex min-w-0 flex-1 items-center gap-2 rounded px-1.5 py-1 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-70",
-          pendingActivation && "disabled:cursor-wait",
+          "flex min-w-0 flex-1 cursor-default items-center gap-2 rounded px-1.5 py-1 text-left outline-none transition-colors disabled:opacity-70 focus-visible:ring-2 focus-visible:ring-ring/50",
         )}
         onClick={() => {
           if (thread.isActive) return;
