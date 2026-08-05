@@ -11,7 +11,7 @@ export type HistoryFocusRequest = {
   createdAt: number;
 };
 
-export type HistoryFilter = "all" | "attention" | "completed";
+export type HistoryFilter = "all" | "completed" | "failed";
 
 export type ArtifactPreview = {
   title: string;
@@ -23,8 +23,8 @@ export type HistoryRunCounts = Record<HistoryFilter, number>;
 
 export const historyFilters: Array<{ id: HistoryFilter; label: string }> = [
   { id: "all", label: "All" },
-  { id: "attention", label: "Needs attention" },
   { id: "completed", label: "Completed" },
+  { id: "failed", label: "Failed" },
 ];
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -115,8 +115,8 @@ export const filterHistoryRuns = (
   runs: ExecutionHistoryRunSummary[],
   filter: HistoryFilter,
 ): ExecutionHistoryRunSummary[] => {
-  if (filter === "attention") return runs.filter(isAttentionRun);
   if (filter === "completed") return runs.filter(isCompletedRun);
+  if (filter === "failed") return runs.filter(isFailedRun);
   return runs;
 };
 
@@ -150,8 +150,8 @@ export const searchHistoryRuns = (
 
 export const countHistoryRuns = (runs: ExecutionHistoryRunSummary[]): HistoryRunCounts => ({
   all: runs.length,
-  attention: filterHistoryRuns(runs, "attention").length,
   completed: filterHistoryRuns(runs, "completed").length,
+  failed: filterHistoryRuns(runs, "failed").length,
 });
 
 export const resolveFocusedRunId = (

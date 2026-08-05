@@ -27,12 +27,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  CopyId,
-  EmptyPanelText,
-  formatTime,
-  StatusPill,
-} from "@/components/workbench/dev-monitor-primitives";
+import { CopyId, EmptyPanelText, StatusPill } from "@/components/workbench/dev-monitor-primitives";
 import { resolveAdminAgentPackState } from "@/lib/workbench/admin-agent-packs";
 import { requestWorkbenchSummaryRefresh } from "@/lib/workbench/admin-summary-events";
 import { deriveRuntimeState } from "@/lib/workbench/chat-runtime-live-state";
@@ -342,41 +337,12 @@ export function AdminPanel({
             </div>
           </DialogHeader>
 
-          <div
-            className={
-              importantError
-                ? "border-destructive/30 bg-destructive/5 text-destructive flex items-center gap-3 border-b px-5 py-2 text-xs"
-                : "border-border text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1 border-b px-5 py-2 text-xs"
-            }
-          >
-            {importantError ? (
-              <>
-                <AlertCircleIcon className="size-3.5 shrink-0" />
-                <span className="min-w-0 truncate">{importantError}</span>
-              </>
-            ) : (
-              <>
-                <span className="flex items-center gap-1.5">
-                  <span
-                    className={`size-1.5 rounded-full ${
-                      liveRuntime.chatTone === "completed"
-                        ? "bg-emerald-500"
-                        : liveRuntime.chatTone === "failed"
-                          ? "bg-destructive"
-                          : "bg-amber-500"
-                    }`}
-                  />
-                  {liveRuntime.chatLabel}
-                </span>
-                <span>
-                  {pendingApprovals.length
-                    ? `${pendingApprovals.length} approval${pendingApprovals.length === 1 ? "" : "s"} pending`
-                    : "No pending approvals"}
-                </span>
-                <span className="ml-auto">Updated {formatTime(summary?.generatedAt)}</span>
-              </>
-            )}
-          </div>
+          {importantError ? (
+            <div className="border-destructive/30 bg-destructive/5 text-destructive flex items-center gap-3 border-b px-5 py-2 text-xs">
+              <AlertCircleIcon className="size-3.5 shrink-0" />
+              <span className="min-w-0 truncate">{importantError}</span>
+            </div>
+          ) : null}
 
           <Tabs defaultValue="packs" className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)]">
             <div className="border-border overflow-x-auto border-b px-4 py-2">

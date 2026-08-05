@@ -33,21 +33,21 @@ const runs = [
 ] satisfies ExecutionHistoryRunSummary[];
 
 describe("history surface helpers", () => {
-  it("keeps the default history filters focused on outcomes and attention", () => {
+  it("keeps the default history filters focused on completed and failed outcomes", () => {
     expect(filterHistoryRuns(runs, "all").map((run) => run.id)).toEqual([
       "workflow-run",
       "tool-run",
       "failed-run",
     ]);
-    expect(filterHistoryRuns(runs, "attention").map((run) => run.id)).toEqual(["failed-run"]);
     expect(filterHistoryRuns(runs, "completed").map((run) => run.id)).toEqual([
       "workflow-run",
       "tool-run",
     ]);
+    expect(filterHistoryRuns(runs, "failed").map((run) => run.id)).toEqual(["failed-run"]);
     expect(countHistoryRuns(runs)).toEqual({
       all: 3,
-      attention: 1,
       completed: 2,
+      failed: 1,
     });
   });
 
