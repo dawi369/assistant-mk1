@@ -33,6 +33,7 @@ import type {
   ChatThreadSummary,
   WorkbenchSessionEvent,
 } from "@/lib/workbench/workbench-types";
+import { sessionContainsThread } from "@/lib/workbench/agent-connection/delete-reconciliation";
 import {
   agentSwitchPath,
   minimumRefreshDelayMs,
@@ -539,6 +540,22 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
           scheduleThreadRefresh("post-delete");
           return;
         }
+
+        try {
+          const refreshedSession = await readSession({
+            refresh: "threads",
+            source: "post-delete",
+          });
+          if (!sessionContainsThread(refreshedSession, threadId)) {
+            applySession(refreshedSession);
+            deleteRollbacksRef.current.delete(threadId);
+            requestWorkbenchSummaryRefresh({ source: "event" });
+            return;
+          }
+        } catch {
+          // Preserve the original mutation error and rollback when reconciliation is unavailable.
+        }
+
         restoreOptimisticDelete(threadId);
         deleteRollbacksRef.current.delete(threadId);
         setError(message);
