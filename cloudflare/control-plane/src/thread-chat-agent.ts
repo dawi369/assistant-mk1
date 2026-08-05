@@ -2,6 +2,8 @@ import { AIChatAgent } from "@cloudflare/ai-chat";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import {
   convertToModelMessages,
+  createUIMessageStream,
+  createUIMessageStreamResponse,
   stepCountIs,
   streamText,
   type StreamTextOnFinishCallback,
@@ -69,6 +71,22 @@ const normalizeProgrammaticMessage = (message: unknown) => {
   const normalized = message.replace(/\r\n/g, "\n").trim();
   if (!normalized || normalized.length > 8_000) return null;
   return normalized;
+};
+
+const createE2EChatResponse = () => {
+  const messageId = `assistant-e2e-${crypto.randomUUID()}`;
+  const textId = `text-e2e-${crypto.randomUUID()}`;
+  return createUIMessageStreamResponse({
+    stream: createUIMessageStream({
+      execute: ({ writer }) => {
+        writer.write({ type: "start", messageId });
+        writer.write({ type: "text-start", id: textId });
+        writer.write({ type: "text-delta", id: textId, delta: "Ready." });
+        writer.write({ type: "text-end", id: textId });
+        writer.write({ type: "finish", finishReason: "stop" });
+      },
+    }),
+  });
 };
 
 const textFromContent = (content: unknown): string => {
@@ -232,16 +250,35 @@ export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
       role: "user",
       parts: [{ type: "text", text: message }],
     };
+    const nextMessages = [...this.messages, userMessage];
     this.programmaticSubmitBody = submitBody;
-    try {
-      await this.saveMessages((messages) => [...messages, userMessage]);
-    } finally {
-      if (this.programmaticSubmitBody?.id === submitId) {
-        this.programmaticSubmitBody = null;
-      }
-    }
+    // Make the accepted user turn durable and visible before returning. Model
+    // execution remains detached so a cold/new thread does not turn provider
+    // latency into composer latency.
+    await this.persistMessages(nextMessages);
+    this.waitUntil(
+      (async () => {
+        try {
+          await this.saveMessages(nextMessages);
+        } catch (error) {
+          console.error(
+            "Programmatic chat turn failed after acceptance",
+            error instanceof Error ? error.message : "Unknown chat error",
+          );
+        } finally {
+          if (this.programmaticSubmitBody?.id === submitId) {
+            this.programmaticSubmitBody = null;
+          }
+        }
+      })(),
+    );
 
-    return jsonResponse({ ok: true, status: "accepted", threadId: claims.threadId });
+    return jsonResponse({
+      ok: true,
+      status: "accepted",
+      threadId: claims.threadId,
+      messageId: userMessage.id,
+    });
   }
 
   async fetch(request: Request) {
@@ -366,6 +403,7 @@ export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
     const tokenVerifyStartedAtMs = Date.now();
     const claims = await this.verifyScopedClaims(getTokenFromBody(requestBody));
     const tokenVerifyEndedAtMs = Date.now();
+    if (this.getEnv().WORKBENCH_E2E_MODE === "true") return createE2EChatResponse();
     if (!this.getEnv().OPENROUTER_API_KEY) throw new Error("OPENROUTER_API_KEY is not configured");
 
     const identity = claimsToIdentity(claims);

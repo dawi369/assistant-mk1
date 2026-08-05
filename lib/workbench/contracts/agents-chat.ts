@@ -310,7 +310,7 @@ export type ChatSessionResponse = {
     status: "draft";
   };
   pending?: { type: "create" } | { type: "activate"; threadId: Id };
-  materializedTurn?: { threadId: Id; status: "accepted" };
+  materializedTurn?: { threadId: Id; status: "accepted"; messageId?: Id };
   transition?: {
     type:
       | "initial"

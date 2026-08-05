@@ -119,7 +119,7 @@ export type SessionResponseOptions = {
   threadsRefreshRecommended?: boolean;
   transition?: { type: SessionTransitionType; startedAt?: string };
   stagedThread?: { threadId: string; sessionId: string; expiresAt: string; status: "draft" };
-  materializedTurn?: { threadId: string; status: "accepted" };
+  materializedTurn?: { threadId: string; status: "accepted"; messageId?: string };
   agentHandoff?: AgentHandoffSummary | null;
 };
 

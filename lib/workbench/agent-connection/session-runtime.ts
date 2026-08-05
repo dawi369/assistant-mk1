@@ -159,7 +159,9 @@ export type ChatSessionContextValue = {
   startNewSession: () => void;
   preloadNewSession: (source: SessionWarmupSource) => void;
   stageNewSession: (source: SessionStageSource) => Promise<ChatSessionResponse | null>;
-  materializeTurn: (message: string) => Promise<void>;
+  materializeTurn: (
+    message: string,
+  ) => Promise<ChatSessionResponse["materializedTurn"] | undefined>;
   switchAgent: (agentId: string, target: AgentSwitchTarget, threadId?: string) => Promise<void>;
   activateThread: (threadId: string) => Promise<void>;
   renameThread: (threadId: string, title: string) => Promise<void>;

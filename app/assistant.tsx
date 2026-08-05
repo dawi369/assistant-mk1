@@ -78,7 +78,10 @@ export function Assistant({
   } = useWorkbenchAgentConnection();
   const [preRuntimeDraft, setPreRuntimeDraft] = useState("");
   const clearPreRuntimeDraft = useCallback(() => setPreRuntimeDraft(""), []);
-  const [acceptedFirstSendDraft, setAcceptedFirstSendDraft] = useState<string | null>(null);
+  const [acceptedFirstSendDraft, setAcceptedFirstSendDraft] = useState<{
+    id: string;
+    text: string;
+  } | null>(null);
   const clearAcceptedFirstSendDraft = useCallback(() => setAcceptedFirstSendDraft(null), []);
   const [isSubmittingLocalTurn, setIsSubmittingLocalTurn] = useState(false);
   const handlePreRuntimeDraftChange = useCallback(
@@ -100,8 +103,11 @@ export function Assistant({
       setIsSubmittingLocalTurn(true);
       try {
         await stageNewSession("first-send");
-        await materializeTurn(draft);
-        setAcceptedFirstSendDraft(draft);
+        const accepted = await materializeTurn(draft);
+        setAcceptedFirstSendDraft({
+          id: accepted?.messageId ?? `accepted-${crypto.randomUUID()}`,
+          text: draft,
+        });
         clearPreRuntimeDraft();
       } finally {
         setIsSubmittingLocalTurn(false);
@@ -167,7 +173,7 @@ function AgentRuntime({
 }: {
   connection: WorkbenchAgentConnection;
   draft: string;
-  acceptedDraft: string | null;
+  acceptedDraft: { id: string; text: string } | null;
   onDraftHydrated: () => void;
   onAcceptedDraftCleared: () => void;
   children?: ReactNode;
@@ -194,6 +200,20 @@ function AgentRuntime({
       traceId: `trace-${crypto.randomUUID()}`,
     }),
   });
+  useEffect(() => {
+    if (!acceptedDraft) return;
+    chat.setMessages((messages) => {
+      if (messages.some((message) => message.id === acceptedDraft.id)) return messages;
+      return [
+        ...messages,
+        {
+          id: acceptedDraft.id,
+          role: "user",
+          parts: [{ type: "text", text: acceptedDraft.text }],
+        },
+      ];
+    });
+  }, [acceptedDraft, chat.setMessages]);
   const runtime = useAISDKRuntime(chat);
   const providerRuntime = runtime as unknown as ComponentProps<
     typeof AssistantRuntimeProvider
@@ -219,7 +239,7 @@ function RuntimeDraftHandoff({
   onAcceptedDraftCleared,
 }: {
   draft: string;
-  acceptedDraft: string | null;
+  acceptedDraft: { id: string; text: string } | null;
   onHydrated: () => void;
   onAcceptedDraftCleared: () => void;
 }) {
@@ -229,7 +249,7 @@ function RuntimeDraftHandoff({
   useEffect(() => {
     if (acceptedDraft) {
       const composer = aui.composer();
-      if (composer.getState().text === acceptedDraft) composer.setText("");
+      if (composer.getState().text === acceptedDraft.text) composer.setText("");
       onAcceptedDraftCleared();
       return;
     }

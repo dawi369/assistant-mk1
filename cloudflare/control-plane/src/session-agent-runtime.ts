@@ -346,6 +346,11 @@ export class WorkbenchSessionAgent {
         status: submitted.status,
       };
     }
+    response.materializedTurn = {
+      threadId: activeThread.threadId,
+      status: "accepted",
+      messageId: submitted.messageId,
+    };
 
     await appendThreadLifecycleEvent(this.env, activeIdentity, {
       transition: "create",

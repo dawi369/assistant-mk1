@@ -366,7 +366,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
           throw new Error(nextSession.error ?? "Failed to start chat");
         }
         localNewSessionRef.current = false;
-        applySession(nextSession);
+        applySession(nextSession, { preserveConnection: true });
         requestWorkbenchSummaryRefresh({ source: "event" });
         if (nextSession.threadsRefreshRecommended) {
           scheduleThreadRefresh("post-materialize");
@@ -378,6 +378,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
             warmSession: hadWarmSession,
           });
         }
+        return nextSession.materializedTurn;
       } catch (nextError) {
         const errorMessage =
           nextError instanceof Error ? nextError.message : "Failed to start chat";

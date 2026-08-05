@@ -342,8 +342,17 @@ export const submitProgrammaticTurn = async (
       sessionId: input.context.sessionId,
     }),
   });
-  if (response.ok) return { ok: true, status: response.status };
-  const body = (await response.json().catch(() => ({}))) as { error?: unknown };
+  const body = (await response.json().catch(() => ({}))) as {
+    error?: unknown;
+    messageId?: unknown;
+  };
+  if (response.ok) {
+    return {
+      ok: true,
+      status: response.status,
+      messageId: typeof body.messageId === "string" ? body.messageId : undefined,
+    };
+  }
   return {
     ok: false,
     error: typeof body.error === "string" ? body.error : "Programmatic turn submit failed",
