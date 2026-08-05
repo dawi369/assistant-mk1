@@ -5,23 +5,24 @@ authenticate, construct one typed workbench client, bind a chat transport, and
 render platform-native surfaces. It should not require duplicating tenancy,
 policy, workflow, connection, action, or lifecycle logic.
 
-Document status: architecture decision and current-gap audit for the post-0.5
-client slice. The shipped application is responsive web; a native client is not
-yet a supported release surface.
+Document status: active implementation contract. The shared headless client and
+React Query packages are implemented and dogfooded by the web application;
+mobile identity, resumable transport, the Expo reference app, and push evidence
+remain required before native is a supported release surface.
 
 ## Current Readiness
 
-| Boundary            | Current state                                                                       | Mobile consequence                                                                          |
-| ------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| Control-plane data  | Tenant-scoped JSON APIs and redacted contracts                                      | Reusable once exposed through a supported client transport                                  |
-| Identity            | WorkOS AuthKit Next.js cookie session                                               | Web-only; native bearer validation and refresh are absent                                   |
-| Vercel facade       | Server derives identity and signs Cloudflare requests                               | Correct trust boundary; native must call it rather than hold its signing secret             |
-| Product API client  | Components call relative `/api/workbench/*` routes directly                         | No reusable client package, base URL, auth adapter, or normalized error model               |
-| Live product events | Browser `EventSource` with reconnect behavior                                       | Needs a fetch-stream or native event adapter with cursor-based resume and AppState handling |
-| Chat transport      | `agents/react`, PartySocket, and `@cloudflare/ai-chat/react` in `app/assistant.tsx` | Native compatibility is unproven and the wire behavior is not a workbench-owned contract    |
-| Chat UI             | DOM assistant-ui primitives and Tailwind                                            | Must be rendered with `@assistant-ui/react-native`; runtime concepts can remain shared      |
-| Pack UI             | Trusted React web renderers plus generic web fallbacks                              | Native uses generic schema/artifact views until a pack declares a native renderer           |
-| Responsive web      | Desktop and 375px browser acceptance                                                | Useful mobile web baseline, not evidence for iOS/Android lifecycle behavior                 |
+| Boundary            | Current state                                                                         | Mobile consequence                                                                           |
+| ------------------- | ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Control-plane data  | Tenant-scoped JSON APIs and redacted contracts                                        | Reusable once exposed through a supported client transport                                   |
+| Identity            | WorkOS AuthKit Next.js cookie session                                                 | Web-only; native bearer validation and refresh are absent                                    |
+| Vercel facade       | Server derives identity and signs Cloudflare requests                                 | Correct trust boundary; native must call it rather than hold its signing secret              |
+| Product API client  | Headless typed client plus React Query adapter; mobile-facing web surfaces dogfood it | Reusable request/auth/error contract is available; Expo installation evidence is still gated |
+| Live product events | Browser `EventSource` with reconnect behavior                                         | Needs a fetch-stream or native event adapter with cursor-based resume and AppState handling  |
+| Chat transport      | `agents/react`, PartySocket, and `@cloudflare/ai-chat/react` in `app/assistant.tsx`   | Native compatibility is unproven and the wire behavior is not a workbench-owned contract     |
+| Chat UI             | DOM assistant-ui primitives and Tailwind                                              | Must be rendered with `@assistant-ui/react-native`; runtime concepts can remain shared       |
+| Pack UI             | Trusted React web renderers plus generic web fallbacks                                | Native uses generic schema/artifact views until a pack declares a native renderer            |
+| Responsive web      | Desktop and 375px browser acceptance                                                  | Useful mobile web baseline, not evidence for iOS/Android lifecycle behavior                  |
 
 The backend ownership split is already the right one. The missing layer is a
 platform-neutral client contract between product UIs and the Vercel/Cloudflare

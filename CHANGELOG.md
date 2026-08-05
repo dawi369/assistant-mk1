@@ -31,6 +31,9 @@ Internal pre-1.0 foundation implementing the local Operational L3 and Authority 
   desktop/mobile overflow acceptance across the primary workbench surfaces.
 - Public health identity agreement across Vercel, Cloudflare, and Fly using the
   same full release SHA and application version.
+- Unpublished framework-neutral `@assistant-mk1/workbench-client` and React
+  Query adapter packages, dogfooded by the web session, Agents, History,
+  workflow, approval, and Connections surfaces with a hashed client contract.
 
 The public 1.0 tag remains blocked until the same-commit hosted checklist in
 `docs/release-readiness.md` is complete. Version 0.5 makes no production-SLO claim.

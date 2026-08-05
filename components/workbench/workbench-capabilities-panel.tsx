@@ -20,6 +20,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { resolveAgentSlashWorkflowActions } from "@/lib/workbench/agent-slash-actions";
+import { browserWorkbenchClient } from "@/lib/workbench/browser-client";
 import { resolvePackToolCapabilities } from "@/lib/workbench/pack-capabilities";
 import { useWorkbenchAgentConnection } from "@/lib/workbench/use-agent-connection";
 
@@ -70,8 +71,7 @@ export function WorkbenchCapabilitiesPanel({
   const [mutationPermissions, setMutationPermissions] = useState<Record<string, boolean>>({});
 
   const refreshConnections = async () => {
-    const response = await fetch("/api/workbench/connections", { cache: "no-store" });
-    const body = (await response.json().catch(() => ({}))) as { connections?: typeof connections };
+    const body = await browserWorkbenchClient.connections.list();
     setConnections(body.connections ?? []);
   };
 
@@ -113,44 +113,41 @@ export function WorkbenchCapabilitiesPanel({
 
   const authorizeConnection = async (connectionId: string) => {
     setConnectionNotice("Authorizing connection...");
-    const response = await fetch(
-      `/api/workbench/connections/${encodeURIComponent(connectionId)}/credentials`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ secret: connectionSecrets[connectionId] ?? "" }),
-      },
-    );
-    const body = (await response.json().catch(() => ({}))) as { error?: string };
-    setConnectionNotice(
-      response.ok ? "Connection authorized." : (body.error ?? "Authorization failed."),
-    );
-    if (response.ok) {
+    try {
+      await browserWorkbenchClient.connections.submitCredential(
+        connectionId,
+        connectionSecrets[connectionId] ?? "",
+      );
+      setConnectionNotice("Connection authorized.");
       setConnectionSecrets((current) => ({ ...current, [connectionId]: "" }));
       await refreshConnections();
+    } catch (error) {
+      setConnectionNotice(error instanceof Error ? error.message : "Authorization failed.");
     }
   };
 
   const revokeConnection = async (connectionId: string) => {
-    const response = await fetch(`/api/workbench/connections/${encodeURIComponent(connectionId)}`, {
-      method: "DELETE",
-    });
-    setConnectionNotice(response.ok ? "Connection revoked." : "Connection revocation failed.");
-    if (response.ok) await refreshConnections();
+    try {
+      await browserWorkbenchClient.connections.revoke(connectionId);
+      setConnectionNotice("Connection revoked.");
+      await refreshConnections();
+    } catch (error) {
+      setConnectionNotice(error instanceof Error ? error.message : "Connection revocation failed.");
+    }
   };
 
   const checkConnection = async (connectionId: string, refresh = false) => {
-    const response = await fetch(
-      `/api/workbench/connections/${encodeURIComponent(connectionId)}/${refresh ? "refresh" : "health"}`,
-      { method: "POST" },
-    );
-    const body = (await response.json().catch(() => ({}))) as { error?: string; status?: string };
-    setConnectionNotice(
-      response.ok
-        ? `Connection ${refresh ? "refreshed" : "checked"}: ${body.status ?? "authorized"}.`
-        : (body.error ?? `Connection ${refresh ? "refresh" : "health check"} failed.`),
-    );
-    await refreshConnections();
+    try {
+      await browserWorkbenchClient.connections[refresh ? "refresh" : "health"](connectionId);
+      setConnectionNotice(`Connection ${refresh ? "refreshed" : "checked"}.`);
+      await refreshConnections();
+    } catch (error) {
+      setConnectionNotice(
+        error instanceof Error
+          ? error.message
+          : `Connection ${refresh ? "refresh" : "health check"} failed.`,
+      );
+    }
   };
 
   const updateKillSwitch = async (
@@ -199,19 +196,14 @@ export function WorkbenchCapabilitiesPanel({
 
   const startOAuthConnection = async (connectionId: string) => {
     setConnectionNotice("Starting secure authorization...");
-    const response = await fetch(
-      `/api/workbench/connections/${encodeURIComponent(connectionId)}/authorize`,
-      { method: "POST" },
-    );
-    const body = (await response.json().catch(() => ({}))) as {
-      authorizationUrl?: string;
-      error?: string;
-    };
-    if (!response.ok || !body.authorizationUrl) {
-      setConnectionNotice(body.error ?? "Authorization could not be started.");
-      return;
+    try {
+      const body = await browserWorkbenchClient.connections.authorize(connectionId);
+      window.location.assign(body.authorizationUrl);
+    } catch (error) {
+      setConnectionNotice(
+        error instanceof Error ? error.message : "Authorization could not be started.",
+      );
     }
-    window.location.assign(body.authorizationUrl);
   };
 
   const closeFromOverlay = (event: { preventDefault: () => void }) => {

@@ -12,6 +12,7 @@ import {
 } from "react";
 
 import { requestWorkbenchSummaryRefresh } from "@/lib/workbench/admin-summary-events";
+import { browserWorkbenchClient } from "@/lib/workbench/browser-client";
 import {
   activateThreadOptimistically,
   canCreateThreadFromSessionShell,
@@ -34,12 +35,10 @@ import type {
 } from "@/lib/workbench/workbench-types";
 import { sessionContainsThread } from "@/lib/workbench/agent-connection/delete-reconciliation";
 import {
-  agentSwitchPath,
   minimumRefreshDelayMs,
   readInitialCachedShell,
   readSession,
   sessionFromCachedShell,
-  sessionPath,
   toConnection,
   tokenRefreshSkewMs,
   warmupFreshMs,
@@ -282,19 +281,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
       const stagePromise = (async () => {
         try {
           setError(null);
-          const response = await fetch(
-            `${sessionPath}/stage-thread?source=${encodeURIComponent(source)}`,
-            {
-              method: "POST",
-              cache: "no-store",
-            },
-          );
-          const nextSession = (await response.json().catch(() => ({}))) as ChatSessionResponse & {
-            error?: string;
-          };
-          if (!response.ok || !nextSession.ok) {
-            throw new Error(nextSession.error ?? "Failed to prepare chat");
-          }
+          const nextSession = await browserWorkbenchClient.session.stageThread({ source });
           applySession(nextSession);
           if (process.env.NODE_ENV !== "production") {
             console.debug("Cloudflare Agent stage thread", {
@@ -354,17 +341,11 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
       setPending({ type: "materialize" });
       try {
         setError(null);
-        const response = await fetch(`${sessionPath}/materialize-turn`, {
-          method: "POST",
-          cache: "no-store",
-          body: JSON.stringify({ clientWarmSession: hadWarmSession, message: normalized }),
+        const nextSession = await browserWorkbenchClient.session.materializeTurn({
+          clientTurnId: crypto.randomUUID(),
+          clientWarmSession: hadWarmSession,
+          text: normalized,
         });
-        const nextSession = (await response.json().catch(() => ({}))) as ChatSessionResponse & {
-          error?: string;
-        };
-        if (!response.ok || !nextSession.ok) {
-          throw new Error(nextSession.error ?? "Failed to start chat");
-        }
         localNewSessionRef.current = false;
         applySession(nextSession, { preserveConnection: true });
         requestWorkbenchSummaryRefresh({ source: "event" });
@@ -405,21 +386,11 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
       setPending({ type: "agent_handoff", agentId: normalizedAgentId });
       try {
         setError(null);
-        const response = await fetch(agentSwitchPath, {
-          method: "POST",
-          cache: "no-store",
-          body: JSON.stringify({
-            agentId: normalizedAgentId,
-            target,
-            threadId,
-          }),
+        const nextSession = await browserWorkbenchClient.session.switchAgent({
+          agentId: normalizedAgentId,
+          target,
+          threadId,
         });
-        const nextSession = (await response.json().catch(() => ({}))) as ChatSessionResponse & {
-          error?: string;
-        };
-        if (!response.ok || !nextSession.ok) {
-          throw new Error(nextSession.error ?? "Failed to switch agent");
-        }
         if (target === "new_thread") {
           localNewSessionRef.current = true;
           setLocalNewSession(true);

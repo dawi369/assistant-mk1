@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "packages": [
+    {
+      "name": "@assistant-mk1/workbench-client",
+      "version": "0.1.0",
+      "files": [
+        {
+          "path": "workbench-client/dist/chat.d.ts",
+          "sha256": "c7de0f7df61b3df0f50a67e7dd933863d00291a9e7cf7879e0d1b964ac5bcfb6"
+        },
+        {
+          "path": "workbench-client/dist/client.d.ts",
+          "sha256": "15cb2830d123976beb2cf80603bd845df4697182ee65e3bebcc8d4754ea6e154"
+        },
+        {
+          "path": "workbench-client/dist/contracts/agents-chat.d.ts",
+          "sha256": "d4b1fa7a8613b50b8cbb40fc171099739ca588115d96be82491bd0cfad2a1685"
+        },
+        {
+          "path": "workbench-client/dist/contracts/automation.d.ts",
+          "sha256": "2602346e06b1a49a6decc127bfb6009caa102b74ed25571c04c72176f3e58834"
+        },
+        {
+          "path": "workbench-client/dist/contracts/execution.d.ts",
+          "sha256": "776a71ca272acfb4ea22748682c889347fb567c7f65d8e70d9694f1b907d55ad"
+        },
+        {
+          "path": "workbench-client/dist/contracts/index.d.ts",
+          "sha256": "8c74a1eb39f057d677dbf478266cf166bcd4f851cd5137f7ce55954eedb04b98"
+        },
+        {
+          "path": "workbench-client/dist/contracts/lifecycle-authority.d.ts",
+          "sha256": "4c8357986dc81f390ffb9c3117e52a5879b90f84b6331366e0d679d544c5edd5"
+        },
+        {
+          "path": "workbench-client/dist/contracts/tenancy.d.ts",
+          "sha256": "9bef5db753655e03f87611f67e04f423913983ecbdc10145050ccfc7a8afb1a8"
+        },
+        {
+          "path": "workbench-client/dist/core-contracts.d.ts",
+          "sha256": "1683151be1e3c46c45ee76c0f952a2834b0fff1a6a624b4faaf042c87f772041"
+        },
+        {
+          "path": "workbench-client/dist/index.d.ts",
+          "sha256": "f7abfcdbe674d30e9a1e9c4abbb105cafacab0de693a5e1c0b8f5b5c893e7649"
+        },
+        {
+          "path": "workbench-client/dist/realtime.d.ts",
+          "sha256": "918ba66b80cc644145d3216f460fdd121457638c164e9e16a65f0d89504e852e"
+        },
+        {
+          "path": "workbench-client/dist/validation.d.ts",
+          "sha256": "2ae36e62e13583f80b5ef46f2bc82f2e3964d4f02aeb3e680073d269cd4ddbce"
+        }
+      ]
+    },
+    {
+      "name": "@assistant-mk1/workbench-react",
+      "version": "0.1.0",
+      "files": [
+        {
+          "path": "workbench-react/dist/index.d.ts",
+          "sha256": "312b3b71d9f00161dc22ff59c80e11a2492062c9a319e5b23b236b5f5794aa6c"
+        }
+      ]
+    }
+  ]
+}

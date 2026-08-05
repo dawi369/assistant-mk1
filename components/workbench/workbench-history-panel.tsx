@@ -41,19 +41,13 @@ import {
   type HistoryFilter,
   type HistoryFocusRequest,
 } from "@/lib/workbench/history-surface";
-import { readJsonResponse } from "@/lib/workbench/read-json-response";
+import { browserWorkbenchClient } from "@/lib/workbench/browser-client";
 import { cn } from "@/lib/utils";
 import type {
   ArtifactSummary,
-  CloudflareArtifactHistoryResponse,
-  CloudflareExecutionHistoryResponse,
-  CloudflareExecutionHistoryRunResponse,
   ExecutionHistoryRunSummary,
   ExecutionRunSnapshot,
 } from "@/lib/workbench/workbench-types";
-
-const historyRunsPath = "/api/workbench/history/runs";
-const historyArtifactsPath = "/api/workbench/history/artifacts";
 
 type ActionProposalSummary = {
   id: string;
@@ -154,23 +148,10 @@ export function WorkbenchHistoryPanel({
     setIsLoadingHistory(true);
     setHistoryError(null);
     try {
-      const [runsResponse, artifactsResponse, actionsResponse] = await Promise.all([
-        fetch(`${historyRunsPath}?limit=20`, { cache: "no-store" }),
-        fetch(`${historyArtifactsPath}?limit=20`, { cache: "no-store" }),
-        fetch("/api/workbench/actions?limit=20", { cache: "no-store" }),
-      ]);
       const [runsBody, artifactsBody, actionsBody] = await Promise.all([
-        readJsonResponse<CloudflareExecutionHistoryResponse>(
-          runsResponse,
-          "Failed to load execution history",
-        ),
-        readJsonResponse<CloudflareArtifactHistoryResponse>(
-          artifactsResponse,
-          "Failed to load artifact history",
-        ),
-        actionsResponse.ok
-          ? (actionsResponse.json() as Promise<{ proposals?: ActionProposalSummary[] }>)
-          : Promise.resolve({ proposals: [] }),
+        browserWorkbenchClient.history.listRuns({ limit: 20 }),
+        browserWorkbenchClient.history.listArtifacts({ limit: 20 }),
+        browserWorkbenchClient.actions.list({ limit: 20 }),
       ]);
       const nextRuns = runsBody.runs ?? [];
       setRuns(nextRuns);
@@ -191,13 +172,7 @@ export function WorkbenchHistoryPanel({
     setIsLoadingRun(true);
     setRunError(null);
     try {
-      const response = await fetch(`${historyRunsPath}/${encodeURIComponent(runId)}`, {
-        cache: "no-store",
-      });
-      const body = await readJsonResponse<CloudflareExecutionHistoryRunResponse>(
-        response,
-        "Failed to load run details",
-      );
+      const body = await browserWorkbenchClient.history.getRun(runId);
       setSelectedRunSnapshot(body.snapshot ?? null);
     } catch (error) {
       setRunError(error instanceof Error ? error.message : "Failed to load run details");
@@ -212,9 +187,7 @@ export function WorkbenchHistoryPanel({
       setBusyAction(action);
       setRunError(null);
       try {
-        await fetch(`${historyRunsPath}/${encodeURIComponent(selectedRunId)}/${action}`, {
-          method: "POST",
-        }).then((response) => readJsonResponse(response, `Failed to ${action} run`));
+        await browserWorkbenchClient.history[action](selectedRunId);
         const loadedRuns = await loadHistory();
         const nextRunId =
           action === "retry" ? (loadedRuns?.[0]?.id ?? selectedRunId) : selectedRunId;
@@ -233,11 +206,11 @@ export function WorkbenchHistoryPanel({
       setBusyAction(`${action}:${approvalId}`);
       setRunError(null);
       try {
-        await fetch(`/api/workbench/tools/approvals/${encodeURIComponent(approvalId)}/${action}`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: action === "deny" ? JSON.stringify({ reason: "Denied from History" }) : undefined,
-        }).then((response) => readJsonResponse(response, `Failed to ${action} approval`));
+        if (action === "deny") {
+          await browserWorkbenchClient.approvals.deny(approvalId, "Denied from History");
+        } else {
+          await browserWorkbenchClient.approvals.approve(approvalId);
+        }
         await loadHistory();
         if (selectedRunId) await inspectRun(selectedRunId);
       } catch (approvalError) {
@@ -256,13 +229,7 @@ export function WorkbenchHistoryPanel({
       setBusyAction(`proposal:${action}:${proposalId}`);
       setHistoryError(null);
       try {
-        const response = await fetch(
-          `/api/workbench/actions/${encodeURIComponent(proposalId)}/${action}`,
-          { method: "POST" },
-        );
-        if (!response.ok && response.status !== 202) {
-          await readJsonResponse(response, `Failed to ${action} action`);
-        }
+        await browserWorkbenchClient.actions[action](proposalId);
         await loadHistory();
       } catch (error) {
         setHistoryError(error instanceof Error ? error.message : `Failed to ${action} action`);

@@ -2,12 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { browserWorkbenchClient } from "@/lib/workbench/browser-client";
 import type { ChatThreadSummary } from "@/lib/workbench/workbench-types";
-import {
-  archivedThreadsFreshMs,
-  sessionPath,
-  type ArchivedThreadsLoadInput,
-} from "./session-runtime";
+import { archivedThreadsFreshMs, type ArchivedThreadsLoadInput } from "./session-runtime";
 
 export const useArchivedThreadsResource = (input: { workspaceId?: string; preload: boolean }) => {
   const [threads, setThreads] = useState<ChatThreadSummary[]>([]);
@@ -36,17 +33,7 @@ export const useArchivedThreadsResource = (input: { workspaceId?: string; preloa
       setError(null);
       const request = (async () => {
         try {
-          const response = await fetch(`${sessionPath}/threads?status=archived`, {
-            cache: "no-store",
-          });
-          const body = (await response.json().catch(() => ({}))) as {
-            ok?: boolean;
-            threads?: ChatThreadSummary[];
-            error?: string;
-          };
-          if (!response.ok || !body.ok) {
-            throw new Error(body.error ?? "Failed to load archived chats");
-          }
+          const body = await browserWorkbenchClient.threads.list("archived");
           if (currentWorkspaceIdRef.current !== workspaceId) return;
           setThreads(body.threads ?? []);
           loadedRef.current = true;

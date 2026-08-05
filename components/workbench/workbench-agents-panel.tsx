@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useWorkbenchAgents } from "@assistant-mk1/workbench-react";
 import {
   BotIcon,
   CheckCircle2Icon,
@@ -19,15 +20,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { requestWorkbenchSummaryRefresh } from "@/lib/workbench/admin-summary-events";
-import { readJsonResponse } from "@/lib/workbench/read-json-response";
 import { useWorkbenchAgentConnection } from "@/lib/workbench/use-agent-connection";
-import type {
-  AgentSwitchTarget,
-  AgentSummary,
-  CloudflareAgentsResponse,
-} from "@/lib/workbench/workbench-types";
-
-const agentsPath = "/api/workbench/agents";
+import type { AgentSwitchTarget, AgentSummary } from "@/lib/workbench/workbench-types";
 
 export function WorkbenchAgentsPanel({
   open,
@@ -38,9 +32,6 @@ export function WorkbenchAgentsPanel({
   onOpenChange: (open: boolean) => void;
   onCloseAutoFocus?: (event: Event) => void;
 }) {
-  const [agents, setAgents] = useState<AgentSummary[]>([]);
-  const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
   const [busyAgentId, setBusyAgentId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pendingAgent, setPendingAgent] = useState<AgentSummary | null>(null);
@@ -52,25 +43,17 @@ export function WorkbenchAgentsPanel({
     switchAgent,
   } = useWorkbenchAgentConnection();
 
-  const loadAgents = useCallback(async () => {
-    setLoading(true);
+  const agentsQuery = useWorkbenchAgents(open);
+  const agents = agentsQuery.data?.agents ?? [];
+  const activeAgentId = agentsQuery.data?.activeAgentId ?? null;
+  const loading = agentsQuery.isFetching;
+  const loadAgents = async () => {
     setError(null);
-    try {
-      const agentsBody = await fetch(agentsPath, { cache: "no-store" }).then((response) =>
-        readJsonResponse<CloudflareAgentsResponse>(response, "Failed to load agents"),
-      );
-      setAgents(agentsBody.agents ?? []);
-      setActiveAgentId(agentsBody.activeAgentId ?? null);
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Failed to load agents");
-    } finally {
-      setLoading(false);
+    const result = await agentsQuery.refetch();
+    if (result.error) {
+      setError(result.error instanceof Error ? result.error.message : "Failed to load agents");
     }
-  }, []);
-
-  useEffect(() => {
-    if (open) void loadAgents();
-  }, [loadAgents, open]);
+  };
 
   const currentThread = session?.activeThread ?? null;
   const hasCurrentThread = Boolean(currentThread?.status === "active" && !isLocalNewSession);
@@ -110,7 +93,6 @@ export function WorkbenchAgentsPanel({
         target,
         target === "current_thread" ? currentThread?.threadId : undefined,
       );
-      setActiveAgentId(agent.id);
       setPendingAgent(null);
       await loadAgents();
       requestWorkbenchSummaryRefresh({ source: "event" });

@@ -25,6 +25,12 @@ importers:
       '@assistant-mk1/agent-sdk':
         specifier: workspace:*
         version: link:packages/agent-sdk
+      '@assistant-mk1/workbench-client':
+        specifier: workspace:*
+        version: link:packages/workbench-client
+      '@assistant-mk1/workbench-react':
+        specifier: workspace:*
+        version: link:packages/workbench-react
       '@assistant-ui/react':
         specifier: ^0.14.24
         version: 0.14.24(@types/react-dom@19.2.3(@types/react@19.2.15))(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(use-sync-external-store@1.6.0(react@19.2.6))
@@ -202,6 +208,24 @@ importers:
     dependencies:
       react:
         specifier: '>=19'
+        version: 19.2.6
+
+  packages/workbench-client: {}
+
+  packages/workbench-react:
+    dependencies:
+      '@assistant-mk1/workbench-client':
+        specifier: workspace:*
+        version: link:../workbench-client
+      '@tanstack/react-query':
+        specifier: ^5.90.21
+        version: 5.101.4(react@19.2.6)
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.15
+        version: 19.2.15
+      react:
+        specifier: ^19.2.6
         version: 19.2.6
 
 packages:
@@ -3511,6 +3535,14 @@ packages:
 
   '@tailwindcss/postcss@4.3.0':
     resolution: {integrity: sha512-Jm05Tjx+9yCLGv5qw1c+84Psds8MnyrEQYCB+FFk2lgGiUjlRqdxke4mVTuYrj2xnVZqKim2Apr5ySuQRYAw/w==}
+
+  '@tanstack/query-core@5.101.4':
+    resolution: {integrity: sha512-gNwcvOJcRbLWPOLG/2OBm+zM+Yv+MKsXKEOWC57USuZDEsI71hEErQsiEGx5wX9rzWWkfwM0fVSPoiIFSsxfiw==}
+
+  '@tanstack/react-query@5.101.4':
+    resolution: {integrity: sha512-yRg2pfOCxIs4ZJW3XYYHU/WgtD04FHSnfHlpRT7h7pR77hwkdRG4wxbKe4aq6P0RvXUTBSQpQeadS1SUYUe+KA==}
+    peerDependencies:
+      react: ^18 || ^19
 
   '@tokenizer/inflate@0.4.1':
     resolution: {integrity: sha512-2mAv+8pkG6GIZiF1kNg1jAjh27IDxEPKwdGul3snfztFerfPGI1LjDezZp3i7BElXompqEtPmoPx6c2wgtWsOA==}
@@ -9316,6 +9348,13 @@ snapshots:
       '@tailwindcss/oxide': 4.3.0
       postcss: 8.5.18
       tailwindcss: 4.3.0
+
+  '@tanstack/query-core@5.101.4': {}
+
+  '@tanstack/react-query@5.101.4(react@19.2.6)':
+    dependencies:
+      '@tanstack/query-core': 5.101.4
+      react: 19.2.6
 
   '@tokenizer/inflate@0.4.1':
     dependencies:

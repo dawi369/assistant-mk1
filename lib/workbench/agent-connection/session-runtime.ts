@@ -3,6 +3,7 @@ import {
   sanitizeThread,
   type PendingSessionTransition,
 } from "@/lib/workbench/chat-session-state";
+import { browserWorkbenchClient } from "@/lib/workbench/browser-client";
 import type {
   AgentSummary,
   AgentSwitchTarget,
@@ -57,28 +58,6 @@ export type OptimisticDeleteRollback = {
   session: ChatSessionResponse | null;
 };
 
-const sessionActionPath = (input: {
-  action?: SessionAction;
-  threadId?: string;
-  update?: ThreadUpdateInput;
-  source?: SessionReadSource;
-}) => {
-  if (input.action === "create") return `${sessionPath}/threads`;
-  if (input.action === "activate" && input.threadId) {
-    return `${sessionPath}/threads/${encodeURIComponent(input.threadId)}/activate`;
-  }
-  if (input.update && input.threadId) {
-    return `${sessionPath}/threads/${encodeURIComponent(input.threadId)}`;
-  }
-  return sessionPath;
-};
-
-const sessionRequestMethod = (input: { action?: SessionAction; update?: ThreadUpdateInput }) => {
-  if (input.update) return "PATCH";
-  if (input.action === "create" || input.action === "activate") return "POST";
-  return "GET";
-};
-
 export const readSession = async (
   input: {
     action?: SessionAction;
@@ -89,31 +68,17 @@ export const readSession = async (
     source?: SessionReadSource;
   } = {},
 ): Promise<ChatSessionResponse> => {
-  const basePath = sessionActionPath(input);
-  const query = new URLSearchParams();
-  if (input.refresh && input.action !== "create" && input.action !== "activate") {
-    query.set("refresh", input.refresh);
-  }
-  if (input.source) {
-    query.set("source", input.source);
-  }
-  const path = query.size > 0 ? `${basePath}?${query.toString()}` : basePath;
-  const requestBody = input.update
-    ? input.update
-    : input.action === "create" && input.title
-      ? { title: input.title }
-      : undefined;
-  const response = await fetch(path, {
-    method: sessionRequestMethod(input),
-    cache: "no-store",
-    body: requestBody ? JSON.stringify(requestBody) : undefined,
-  });
-  const body = (await response.json().catch(() => ({}))) as ChatSessionResponse & {
-    error?: string;
-  };
-  if (!response.ok || !body.ok) {
-    throw new Error(body.error ?? "Failed to load Cloudflare chat session");
-  }
+  const body =
+    input.update && input.threadId
+      ? await browserWorkbenchClient.threads.update(input.threadId, input.update)
+      : input.action === "create"
+        ? await browserWorkbenchClient.threads.create(input.title)
+        : input.action === "activate" && input.threadId
+          ? await browserWorkbenchClient.threads.activate(input.threadId)
+          : await browserWorkbenchClient.session.get({
+              refresh: input.refresh,
+              source: input.source,
+            });
   if (
     body.activeThread &&
     (!body.connection?.agentHost ||

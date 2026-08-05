@@ -1,0 +1,35 @@
+{
+  "name": "@assistant-mk1/workbench-react",
+  "version": "0.1.0",
+  "private": true,
+  "description": "React query bindings for the Assistant-mk1 workbench client.",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist",
+    "prepack": "pnpm clean && pnpm build"
+  },
+  "dependencies": {
+    "@assistant-mk1/workbench-client": "workspace:*",
+    "@tanstack/react-query": "^5.90.21"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.15",
+    "react": "^19.2.6"
+  },
+  "peerDependencies": {
+    "react": ">=19"
+  }
+}

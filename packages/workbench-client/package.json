@@ -1,0 +1,61 @@
+{
+  "name": "@assistant-mk1/workbench-client",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Platform-neutral client contracts for Assistant-mk1 frontends.",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "files": [
+    "dist",
+    "README.md",
+    "contract-manifest.json"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./core-contracts": {
+      "types": "./dist/core-contracts.d.ts",
+      "default": "./dist/core-contracts.js"
+    },
+    "./contracts": {
+      "types": "./dist/contracts/index.d.ts",
+      "default": "./dist/contracts/index.js"
+    },
+    "./contracts/agents-chat": {
+      "types": "./dist/contracts/agents-chat.d.ts",
+      "default": "./dist/contracts/agents-chat.js"
+    },
+    "./contracts/automation": {
+      "types": "./dist/contracts/automation.d.ts",
+      "default": "./dist/contracts/automation.js"
+    },
+    "./contracts/execution": {
+      "types": "./dist/contracts/execution.d.ts",
+      "default": "./dist/contracts/execution.js"
+    },
+    "./contracts/lifecycle-authority": {
+      "types": "./dist/contracts/lifecycle-authority.d.ts",
+      "default": "./dist/contracts/lifecycle-authority.js"
+    },
+    "./contracts/tenancy": {
+      "types": "./dist/contracts/tenancy.d.ts",
+      "default": "./dist/contracts/tenancy.js"
+    },
+    "./chat": {
+      "types": "./dist/chat.d.ts",
+      "default": "./dist/chat.js"
+    },
+    "./realtime": {
+      "types": "./dist/realtime.d.ts",
+      "default": "./dist/realtime.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist",
+    "prepack": "pnpm clean && pnpm build"
+  }
+}

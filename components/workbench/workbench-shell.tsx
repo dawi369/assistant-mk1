@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { WorkbenchClientProvider } from "@assistant-mk1/workbench-react";
 import { useAuth } from "@workos-inc/authkit-nextjs/components";
 import {
   ActivityIcon,
@@ -45,6 +46,7 @@ import { PackWorkflowProvider } from "@/components/workbench/pack-workflow-conte
 import { WorkbenchWorkspacePanel } from "@/components/workbench/workbench-workspace-panel";
 import { requestWorkbenchSummaryRefresh } from "@/lib/workbench/admin-summary-events";
 import { resolveAgentSlashWorkflowActions } from "@/lib/workbench/agent-slash-actions";
+import { browserWorkbenchClient } from "@/lib/workbench/browser-client";
 import type { HistoryFocusRequest } from "@/lib/workbench/history-surface";
 import {
   ChatSessionProvider,
@@ -56,7 +58,6 @@ import {
   type PackWorkflowFieldDefinition,
 } from "@/lib/workbench/pack-workflow-bindings";
 import type { AgentSlashWorkflowAction } from "@/lib/workbench/agent-slash-actions";
-import type { CloudflareToolRunResponse } from "@/lib/workbench/workbench-types";
 import { hasWorkbenchSessionAccess } from "@/lib/workbench/session-access";
 
 const adminAccessPath = "/api/workbench/admin-access";
@@ -77,11 +78,13 @@ export function WorkbenchShell({
   initialSignedOutPresentation?: boolean;
 }) {
   return (
-    <ChatSessionProvider>
-      <WorkbenchComposerFocusProvider>
-        <WorkbenchShellContent initialSignedOutPresentation={initialSignedOutPresentation} />
-      </WorkbenchComposerFocusProvider>
-    </ChatSessionProvider>
+    <WorkbenchClientProvider client={browserWorkbenchClient}>
+      <ChatSessionProvider>
+        <WorkbenchComposerFocusProvider>
+          <WorkbenchShellContent initialSignedOutPresentation={initialSignedOutPresentation} />
+        </WorkbenchComposerFocusProvider>
+      </ChatSessionProvider>
+    </WorkbenchClientProvider>
   );
 }
 
@@ -241,19 +244,10 @@ function WorkbenchShellContent({
       setIsWorkflowRunning(true);
       setAdminNotice(`Running ${action.label}...`);
       try {
-        const response = await fetch(action.binding.route, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(request),
-        });
-        const body = (await response.json().catch(() => ({}))) as CloudflareToolRunResponse & {
-          error?: unknown;
-        };
-        if (!response.ok || body.ok === false) {
-          throw new Error(
-            typeof body.error === "string" ? body.error : `Failed to run ${action.label}`,
-          );
-        }
+        const body = await browserWorkbenchClient.workflows.run(
+          action.binding.workflowType,
+          request,
+        );
         const status = body.run?.status ?? (body.ok ? "accepted" : "submitted");
         setHistoryFocus({
           runId: body.run?.id,
