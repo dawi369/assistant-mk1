@@ -70,6 +70,23 @@ if (
 ) {
   failures.push("production rejects operator-alert conformance mode");
 }
+if (process.env.WORKBENCH_MOBILE_CLIENTS_ENABLED === "true") {
+  const allowedClientIds = process.env.WORKBENCH_WORKOS_ALLOWED_CLIENT_IDS?.trim();
+  if (!allowedClientIds) failures.push("mobile clients require allowed WorkOS client IDs");
+  for (const [name, value] of Object.entries({
+    WORKBENCH_WORKOS_ISSUER: process.env.WORKBENCH_WORKOS_ISSUER,
+    WORKBENCH_WORKOS_JWKS_URL: process.env.WORKBENCH_WORKOS_JWKS_URL,
+  })) {
+    try {
+      const url = new URL(value ?? "");
+      if (targetValue !== "local" && url.protocol !== "https:") {
+        failures.push(`${name} must use https for hosted mobile clients`);
+      }
+    } catch {
+      failures.push(`${name} must be configured for mobile clients`);
+    }
+  }
+}
 
 if (failures.length) {
   console.error(`Environment ${targetValue} is invalid:`);

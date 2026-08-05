@@ -1,30 +1,11 @@
 import { withAuth } from "@workos-inc/authkit-nextjs";
+import { headers } from "next/headers";
 
-import type { Id, TenantScope } from "@/lib/workbench/core-contracts";
+import type { Id } from "@/lib/workbench/core-contracts";
+import { resolveWorkbenchAgentIdentity } from "./agent-identity-resolution";
+import { WorkbenchAuthError, type WorkbenchAgentIdentity } from "./agent-identity-types";
 
-export type WorkbenchAgentIdentity = {
-  scope: TenantScope;
-  agentId?: Id;
-  authMode: "local-dev" | "workos";
-  accountId: Id;
-  accountSource: "local-dev" | "workos-organization" | "workos-personal";
-  workspaceSource: "local-dev" | "workos-organization" | "workos-personal";
-  userEmail?: string;
-  userName?: string;
-  membershipRole?: string;
-  membershipRoles?: string[];
-  membershipPermissions?: string[];
-};
-
-export class WorkbenchAuthError extends Error {
-  constructor(
-    message: string,
-    readonly status = 401,
-  ) {
-    super(message);
-    this.name = "WorkbenchAuthError";
-  }
-}
+export { WorkbenchAuthError, type WorkbenchAgentIdentity } from "./agent-identity-types";
 
 const requiredEnv = (name: string) => {
   const value = process.env[name]?.trim();
@@ -64,7 +45,7 @@ const getWorkOsOrgAccountId = (organizationId: Id): Id => `workos-org:${organiza
 const getPersonalAccountId = (userId: Id): Id => `workos-personal:${userId}`;
 const getDefaultWorkspaceId = (accountId: Id): Id => `workspace:${accountId}:default`;
 
-export const getWorkbenchAgentIdentity = async (): Promise<WorkbenchAgentIdentity> => {
+const getCookieOrDevIdentity = async (): Promise<WorkbenchAgentIdentity> => {
   if (!isWorkOsConfigured()) {
     if (!isLocalDevIdentityAllowed()) {
       throw new WorkbenchAuthError(
@@ -94,6 +75,7 @@ export const getWorkbenchAgentIdentity = async (): Promise<WorkbenchAgentIdentit
     accountId,
     accountSource,
     workspaceSource: accountSource,
+    organizationId: auth.organizationId,
     userEmail: auth.user.email,
     userName: userName || auth.user.email || auth.user.id,
     membershipRole: auth.role ?? (hasOrganization ? undefined : "owner"),
@@ -101,6 +83,12 @@ export const getWorkbenchAgentIdentity = async (): Promise<WorkbenchAgentIdentit
     membershipPermissions: auth.permissions,
   };
 };
+
+export const getWorkbenchAgentIdentity = async (): Promise<WorkbenchAgentIdentity> =>
+  resolveWorkbenchAgentIdentity({
+    authorization: (await headers()).get("authorization"),
+    cookieIdentity: getCookieOrDevIdentity,
+  });
 
 export const getWorkbenchIdentityHeaders = async () => {
   const identity = await getWorkbenchAgentIdentity();

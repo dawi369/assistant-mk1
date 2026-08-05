@@ -18,6 +18,7 @@ import type {
   CloudflareWorkspacesResponse,
   ExecutionRunResponse,
   Id,
+  WorkbenchAccountContextResponse,
 } from "./contracts/index.js";
 import { isJsonObject, parseWorkbenchResponse } from "./validation.js";
 
@@ -217,6 +218,7 @@ export const createWorkbenchClient = (options: WorkbenchClientOptions) => {
         ),
     },
     workspaces: {
+      listAccounts: () => request<WorkbenchAccountContextResponse>("/api/workbench/accounts"),
       list: () => request<CloudflareWorkspacesResponse>("/api/workbench/workspaces"),
       activate: (workspaceId: Id) =>
         request<CloudflareWorkspaceMutationResponse>(

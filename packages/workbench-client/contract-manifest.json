@@ -11,7 +11,7 @@
         },
         {
           "path": "workbench-client/dist/client.d.ts",
-          "sha256": "15cb2830d123976beb2cf80603bd845df4697182ee65e3bebcc8d4754ea6e154"
+          "sha256": "95d94c3a37acc2da35ab1c261b3bca7ef881fd45ec9d1b01968da8379173fa60"
         },
         {
           "path": "workbench-client/dist/contracts/agents-chat.d.ts",
@@ -61,7 +61,7 @@
       "files": [
         {
           "path": "workbench-react/dist/index.d.ts",
-          "sha256": "312b3b71d9f00161dc22ff59c80e11a2492062c9a319e5b23b236b5f5794aa6c"
+          "sha256": "481c5ddd390f53c6808c5c946392bc9635feb0e87fe0d4dd7968950640da849d"
         }
       ]
     }

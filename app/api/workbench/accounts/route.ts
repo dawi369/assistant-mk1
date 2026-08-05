@@ -1,5 +1,6 @@
-import { getWorkOS, withAuth } from "@workos-inc/authkit-nextjs";
+import { getWorkOS } from "@workos-inc/authkit-nextjs";
 
+import { toWorkbenchApiError } from "@/lib/workbench/api-errors";
 import { getWorkbenchAgentIdentity } from "@/lib/workbench/agent-identity";
 import type { WorkbenchAccountContextResponse } from "@/lib/workbench/workbench-types";
 
@@ -25,9 +26,8 @@ export async function GET() {
       } satisfies WorkbenchAccountContextResponse);
     }
 
-    const auth = await withAuth({ ensureSignedIn: true });
     const organizationMemberships = await getWorkOS().userManagement.listOrganizationMemberships({
-      userId: auth.user.id,
+      userId: identity.scope.userId,
       statuses: ["active"],
       limit: 100,
     });
@@ -39,12 +39,12 @@ export async function GET() {
         source: "workos-organization" as const,
         role: membership.role?.slug,
         roles: membership.roles?.map((role) => role.slug),
-        isCurrent: membership.organizationId === auth.organizationId,
+        isCurrent: membership.organizationId === identity.organizationId,
       }));
 
-    if (!auth.organizationId) {
+    if (!identity.organizationId) {
       accounts.unshift({
-        id: `workos-personal:${auth.user.id}`,
+        id: `workos-personal:${identity.scope.userId}`,
         organizationId: undefined,
         name: "Personal",
         source: "workos-personal",
@@ -57,12 +57,10 @@ export async function GET() {
     return Response.json({
       ok: true,
       currentAccountId: identity.accountId,
-      currentOrganizationId: auth.organizationId,
+      currentOrganizationId: identity.organizationId,
       accounts,
     } satisfies WorkbenchAccountContextResponse);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to load account context";
-    const status = message === "Authentication required" ? 401 : 502;
-    return Response.json({ ok: false, error: message }, { status });
+    return toWorkbenchApiError(error, "Failed to load account context");
   }
 }

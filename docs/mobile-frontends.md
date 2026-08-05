@@ -68,6 +68,13 @@ token, derives the same trusted identity, and signs the same private Cloudflare
 request. The facade signing secret never enters web or native application code.
 Cloudflare continues to make every tenant and authorization decision.
 
+The bearer boundary is implemented behind `WORKBENCH_MOBILE_CLIENTS_ENABLED`.
+When enabled, deployments must configure the environment issuer, JWKS URL, and
+comma-separated mobile application IDs. A present `Authorization` header is
+authoritative: invalid or unapproved bearer tokens return `401` and never fall
+back to the web cookie. The production flag remains off until a separate WorkOS
+public application and hosted mobile acceptance are complete.
+
 ## Realtime And Offline Rules
 
 - A client may cache display snapshots, never authorization or mutation state.

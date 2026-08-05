@@ -34,6 +34,9 @@ Internal pre-1.0 foundation implementing the local Operational L3 and Authority 
 - Unpublished framework-neutral `@assistant-mk1/workbench-client` and React
   Query adapter packages, dogfooded by the web session, Agents, History,
   workflow, approval, and Connections surfaces with a hashed client contract.
+- Default-off WorkOS mobile bearer identity with authoritative bearer handling,
+  issuer/JWKS/client allowlisting, cookie-equivalent tenancy, and configured
+  independent-frontend CORS.
 
 The public 1.0 tag remains blocked until the same-commit hosted checklist in
 `docs/release-readiness.md` is complete. Version 0.5 makes no production-SLO claim.
