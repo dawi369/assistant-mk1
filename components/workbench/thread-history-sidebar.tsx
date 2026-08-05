@@ -306,25 +306,18 @@ export function ThreadHistorySidebar({
           }
         }}
       >
-        <DialogContent className="sm:max-w-[26rem]" showCloseButton={false}>
-          <DialogHeader className="gap-3 text-left">
-            <div className="bg-destructive/10 text-destructive flex size-9 items-center justify-center rounded-lg">
-              <Trash2Icon className="size-4" />
-            </div>
-            <div className="space-y-1.5">
+        <DialogContent className="gap-4 p-5 sm:max-w-[22rem]" showCloseButton={false}>
+          <DialogHeader className="gap-2 text-left">
+            <div className="flex items-center gap-2.5">
+              <div className="bg-destructive/10 text-destructive flex size-8 shrink-0 items-center justify-center rounded-md">
+                <Trash2Icon className="size-4" />
+              </div>
               <DialogTitle>Delete this chat?</DialogTitle>
-              <DialogDescription className="leading-relaxed">
-                <span className="text-foreground font-medium">
-                  {deleteCandidate?.title || "New chat"}
-                </span>{" "}
-                will be removed from your chat history. Any active response will be stopped.
-              </DialogDescription>
             </div>
+            <DialogDescription className="text-foreground text-sm leading-relaxed">
+              This permanently removes the chat and stops any active response.
+            </DialogDescription>
           </DialogHeader>
-
-          <div className="border-border/70 bg-muted/45 rounded-lg border px-3 py-2.5 text-xs leading-relaxed text-muted-foreground">
-            This cannot be undone. Operational audit records are retained.
-          </div>
 
           {deleteError ? (
             <p role="alert" className="text-destructive text-xs">
@@ -332,14 +325,14 @@ export function ThreadHistorySidebar({
             </p>
           ) : null}
 
-          <DialogFooter className="mt-1 grid grid-cols-2 sm:grid-cols-2">
+          <DialogFooter className="grid grid-cols-2 sm:grid-cols-2">
             <Button
               type="button"
               variant="outline"
               disabled={isConfirmingDelete}
               onClick={closeDeleteDialog}
             >
-              Keep chat
+              Cancel
             </Button>
             <Button
               type="button"

@@ -61,10 +61,11 @@ test("chat deletion uses an accessible in-app confirmation", async ({ page }) =>
   await deleteChatButton.click();
   const deleteDialog = page.getByRole("dialog", { name: "Delete this chat?" });
   await expect(deleteDialog).toBeVisible();
-  await expect(deleteDialog).toContainText("Delete confirmation fixture");
-  await expect(deleteDialog).toContainText("Any active response will be stopped.");
-  await expect(deleteDialog).toContainText("Operational audit records are retained.");
-  await expect(deleteDialog.getByRole("button", { name: "Keep chat" })).toBeFocused();
+  await expect(deleteDialog).not.toContainText("Delete confirmation fixture");
+  await expect(deleteDialog).toContainText(
+    "This permanently removes the chat and stops any active response.",
+  );
+  await expect(deleteDialog.getByRole("button", { name: "Cancel" })).toBeFocused();
 
   await page.keyboard.press("Escape");
   await expect(deleteDialog).toHaveCount(0);
