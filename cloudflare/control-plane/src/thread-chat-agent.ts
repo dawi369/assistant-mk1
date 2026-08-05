@@ -38,6 +38,7 @@ import {
 import { finishTrace, recordSpan, type RuntimeTraceContext } from "./runtime-traces";
 import { dispatchWorkbenchSessionEvent } from "./session-coordinator";
 import { resolveModelVisibleTools } from "./model-tools";
+import { existingProgrammaticTurnMessageId } from "./thread-chat-idempotency";
 import type { AgentRow, Env, WorkerExecutionContext } from "./types";
 
 const getRequiredSecret = (env: Env) => {
@@ -54,6 +55,11 @@ const getTokenFromBody = (body?: Record<string, unknown>) =>
 
 const getTraceIdFromBody = (body?: Record<string, unknown>) =>
   typeof body?.traceId === "string" && body.traceId.trim() ? body.traceId.trim() : undefined;
+
+const getClientTurnIdFromBody = (body?: Record<string, unknown>) => {
+  const value = typeof body?.clientTurnId === "string" ? body.clientTurnId.trim() : "";
+  return value && value.length <= 128 ? value : null;
+};
 
 const jsonResponse = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -211,13 +217,14 @@ export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
   }
 
   private async handleProgrammaticSubmit(request: Request) {
-    if (this.programmaticSubmitBody) {
-      return jsonResponse({ ok: false, error: "Programmatic turn already in progress" }, 409);
-    }
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
     const message = normalizeProgrammaticMessage(body.message);
-    if (!message) {
-      return jsonResponse({ ok: false, error: "message must be non-empty bounded text" }, 400);
+    const clientTurnId = getClientTurnIdFromBody(body);
+    if (!message || !clientTurnId) {
+      return jsonResponse(
+        { ok: false, error: "message and clientTurnId must be non-empty bounded text" },
+        400,
+      );
     }
 
     let claims: AgentConnectionClaims;
@@ -234,6 +241,29 @@ export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
       return jsonResponse({ ok: false, error: "Programmatic turn scope mismatch" }, 403);
     }
 
+    const existingMessageId = existingProgrammaticTurnMessageId(this.messages, clientTurnId);
+    if (existingMessageId) {
+      return jsonResponse({
+        ok: true,
+        duplicate: true,
+        status: "accepted",
+        threadId: claims.threadId,
+        messageId: existingMessageId,
+      });
+    }
+    if (this.programmaticSubmitBody) {
+      if (this.programmaticSubmitBody.body.clientTurnId === clientTurnId) {
+        return jsonResponse({
+          ok: true,
+          duplicate: true,
+          status: "accepted",
+          threadId: claims.threadId,
+          messageId: clientTurnId,
+        });
+      }
+      return jsonResponse({ ok: false, error: "Programmatic turn already in progress" }, 409);
+    }
+
     const submitId = crypto.randomUUID();
     const submitBody = {
       id: submitId,
@@ -243,10 +273,11 @@ export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
         sessionId: claims.sessionId,
         traceId: getTraceIdFromBody(body) ?? `trace-${crypto.randomUUID()}`,
         source: "programmatic-materialize-turn",
+        clientTurnId,
       },
     };
     const userMessage: UIMessage = {
-      id: crypto.randomUUID(),
+      id: clientTurnId,
       role: "user",
       parts: [{ type: "text", text: message }],
     };

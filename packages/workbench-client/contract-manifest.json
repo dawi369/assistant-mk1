@@ -7,7 +7,7 @@
       "files": [
         {
           "path": "workbench-client/dist/chat.d.ts",
-          "sha256": "c7de0f7df61b3df0f50a67e7dd933863d00291a9e7cf7879e0d1b964ac5bcfb6"
+          "sha256": "fc28923b6c2ee1dc0258c083d8e6269ca1140e3a722ebe33802c78c4ff8d85ba"
         },
         {
           "path": "workbench-client/dist/client.d.ts",
@@ -15,7 +15,7 @@
         },
         {
           "path": "workbench-client/dist/contracts/agents-chat.d.ts",
-          "sha256": "d4b1fa7a8613b50b8cbb40fc171099739ca588115d96be82491bd0cfad2a1685"
+          "sha256": "079620f13edeba0b24a9db8b6fa73caa58654ada54d5538be3da5a6b53e481e9"
         },
         {
           "path": "workbench-client/dist/contracts/automation.d.ts",
@@ -47,11 +47,11 @@
         },
         {
           "path": "workbench-client/dist/realtime.d.ts",
-          "sha256": "918ba66b80cc644145d3216f460fdd121457638c164e9e16a65f0d89504e852e"
+          "sha256": "33c0f30b9f9c99f25baa4329a000667169404ce10fd1410f60e6960f23163de2"
         },
         {
           "path": "workbench-client/dist/validation.d.ts",
-          "sha256": "2ae36e62e13583f80b5ef46f2bc82f2e3964d4f02aeb3e680073d269cd4ddbce"
+          "sha256": "b54938d503fc784a6fe28f53755a88385bd2bef9b364d1210803bb84fa4408d9"
         }
       ]
     },

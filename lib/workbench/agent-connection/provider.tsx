@@ -332,7 +332,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
   }, [stageNewSession]);
 
   const materializeTurn = useCallback(
-    async (message: string) => {
+    async (message: string, clientTurnId = crypto.randomUUID()) => {
       const normalized = message.trim();
       if (!normalized) return;
       const startedAt = performance.now();
@@ -342,7 +342,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
       try {
         setError(null);
         const nextSession = await browserWorkbenchClient.session.materializeTurn({
-          clientTurnId: crypto.randomUUID(),
+          clientTurnId,
           clientWarmSession: hadWarmSession,
           text: normalized,
         });

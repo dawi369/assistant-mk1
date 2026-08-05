@@ -8,19 +8,31 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json().catch(() => ({}))) as {
       clientWarmSession?: unknown;
+      clientTurnId?: unknown;
       message?: unknown;
     };
     clientWarmSession = body.clientWarmSession === true;
-    if (typeof body.message !== "string") {
+    if (
+      typeof body.message !== "string" ||
+      typeof body.clientTurnId !== "string" ||
+      !body.clientTurnId.trim() ||
+      body.clientTurnId.length > 128
+    ) {
       console.info("workbench.chat_session.materialize_turn", {
         clientWarmSession,
         durationMs: Date.now() - startedAt,
         ok: false,
-        reason: "invalid-message",
+        reason: "invalid-turn",
       });
-      return NextResponse.json({ ok: false, error: "message is required" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "message and clientTurnId are required" },
+        { status: 400 },
+      );
     }
-    const response = await materializeChatSessionTurn({ message: body.message });
+    const response = await materializeChatSessionTurn({
+      clientTurnId: body.clientTurnId,
+      message: body.message,
+    });
     console.info("workbench.chat_session.materialize_turn", {
       clientWarmSession,
       durationMs: Date.now() - startedAt,

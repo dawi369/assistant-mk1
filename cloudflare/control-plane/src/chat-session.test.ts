@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { handleSwitchChatSessionAgent } from "./chat-session";
+import {
+  handleChatSessionStream,
+  handleMaterializeChatSessionTurn,
+  handleSwitchChatSessionAgent,
+} from "./chat-session";
 import type { AgentIdentity, Env } from "./types";
 
 const identity = {
@@ -120,5 +124,37 @@ describe("chat session switch agent handler", () => {
       action: "switchAgent",
       agentSwitch: { agentId: "agent-b", target: "current_thread" },
     });
+  });
+});
+
+describe("mobile chat session protocol", () => {
+  it("requires and forwards a stable client turn id", async () => {
+    const { env, requests } = createEnv();
+    const response = await handleMaterializeChatSessionTurn(
+      new Request("https://control.test/chat/session/materialize-turn", {
+        method: "POST",
+        body: JSON.stringify({ clientTurnId: "turn-mobile-1", message: "hello" }),
+      }),
+      env,
+      identity,
+    );
+    expect(response.status).toBe(200);
+    expect(requests[0]).toMatchObject({
+      action: "materializeTurn",
+      clientTurnId: "turn-mobile-1",
+      message: "hello",
+    });
+  });
+
+  it("forwards query cursors before Last-Event-ID", async () => {
+    const { env, requests } = createEnv();
+    await handleChatSessionStream(
+      new Request("https://control.test/chat/session/stream?after=query-cursor", {
+        headers: { "Last-Event-ID": "header-cursor" },
+      }),
+      env,
+      identity,
+    );
+    expect(requests[0]).toMatchObject({ action: "stream", after: "query-cursor" });
   });
 });

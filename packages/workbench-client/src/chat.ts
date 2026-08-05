@@ -3,7 +3,7 @@ import type { ChatSessionResponse, Id } from "./contracts/index.js";
 export const workbenchChatProtocolVersion = 1 as const;
 
 export type WorkbenchChatConnectionDescriptor = NonNullable<ChatSessionResponse["connection"]> & {
-  protocolVersion: typeof workbenchChatProtocolVersion;
+  chatProtocolVersion: typeof workbenchChatProtocolVersion;
 };
 
 export type WorkbenchChatEvent =

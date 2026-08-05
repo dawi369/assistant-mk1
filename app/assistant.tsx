@@ -84,6 +84,7 @@ export function Assistant({
   } | null>(null);
   const clearAcceptedFirstSendDraft = useCallback(() => setAcceptedFirstSendDraft(null), []);
   const [isSubmittingLocalTurn, setIsSubmittingLocalTurn] = useState(false);
+  const pendingFirstTurnRef = useRef<{ id: string; text: string } | null>(null);
   const handlePreRuntimeDraftChange = useCallback(
     (nextDraft: string) => {
       setPreRuntimeDraft(nextDraft);
@@ -102,12 +103,19 @@ export function Assistant({
       if (!isLocalNewSession || isSubmittingLocalTurn || !draft.trim()) return;
       setIsSubmittingLocalTurn(true);
       try {
+        const normalizedDraft = draft.trim();
+        const pending =
+          pendingFirstTurnRef.current?.text === normalizedDraft
+            ? pendingFirstTurnRef.current
+            : { id: crypto.randomUUID(), text: normalizedDraft };
+        pendingFirstTurnRef.current = pending;
         await stageNewSession("first-send");
-        const accepted = await materializeTurn(draft);
+        const accepted = await materializeTurn(normalizedDraft, pending.id);
         setAcceptedFirstSendDraft({
-          id: accepted?.messageId ?? `accepted-${crypto.randomUUID()}`,
-          text: draft,
+          id: accepted?.messageId ?? pending.id,
+          text: normalizedDraft,
         });
+        pendingFirstTurnRef.current = null;
         clearPreRuntimeDraft();
       } finally {
         setIsSubmittingLocalTurn(false);

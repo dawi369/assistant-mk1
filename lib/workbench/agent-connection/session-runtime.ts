@@ -3,6 +3,7 @@ import {
   sanitizeThread,
   type PendingSessionTransition,
 } from "@/lib/workbench/chat-session-state";
+import { workbenchChatProtocolVersion } from "@assistant-mk1/workbench-client";
 import { browserWorkbenchClient } from "@/lib/workbench/browser-client";
 import type {
   AgentSummary,
@@ -82,6 +83,7 @@ export const readSession = async (
   if (
     body.activeThread &&
     (!body.connection?.agentHost ||
+      body.connection.chatProtocolVersion !== workbenchChatProtocolVersion ||
       !body.connection.agentName ||
       !body.connection.instanceName ||
       !body.connection.token)
@@ -126,6 +128,7 @@ export type ChatSessionContextValue = {
   stageNewSession: (source: SessionStageSource) => Promise<ChatSessionResponse | null>;
   materializeTurn: (
     message: string,
+    clientTurnId?: string,
   ) => Promise<ChatSessionResponse["materializedTurn"] | undefined>;
   switchAgent: (agentId: string, target: AgentSwitchTarget, threadId?: string) => Promise<void>;
   activateThread: (threadId: string) => Promise<void>;

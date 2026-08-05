@@ -69,9 +69,22 @@ describe("createWorkbenchClient", () => {
     });
 
     await expect(client.history.listRuns()).rejects.toMatchObject({
-      code: "network_error",
+      code: "invalid_response",
       status: 0,
-      retryable: true,
+      retryable: false,
+    });
+  });
+
+  it("fails closed on an unsupported chat protocol", async () => {
+    const client = createWorkbenchClient({
+      baseUrl: "https://workbench.example",
+      client: { platform: "ios", version: "0.1.0" },
+      fetch: async () => jsonResponse({ ok: true, connection: { chatProtocolVersion: 2 } }),
+    });
+
+    await expect(client.session.get()).rejects.toMatchObject({
+      code: "invalid_response",
+      status: 0,
     });
   });
 

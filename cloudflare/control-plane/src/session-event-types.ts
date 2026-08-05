@@ -10,6 +10,7 @@ export type WorkbenchSessionEventType =
   | "chat.run.failed"
   | "workflow.run.updated"
   | "approval.updated"
+  | "action.updated"
   | "tool.run.updated"
   | "trace.updated"
   | "admin.summary.invalidated";

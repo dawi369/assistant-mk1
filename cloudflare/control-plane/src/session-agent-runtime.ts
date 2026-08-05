@@ -1,28 +1,33 @@
-import { toAgentSummary, toAgentRuntimeMetadata } from "./agent-records";
+import { toAgentSummary } from "./agent-records";
 import { upsertActiveAgentPreference } from "./authz";
 import { selectAgent } from "./authz-store";
-import { resolveThreadAgentInstanceName } from "./chat-agent-connection-context";
 import {
   createChatSession,
   getLatestChatSession,
-  getLatestRunningChatRun,
   getOwnedChatThread,
   touchChatSession,
 } from "./chat-boundary-store";
-import { appendControlPlaneEvent } from "./control-plane-events";
-import { parseDataJson } from "./http";
+import { switchSessionAgent } from "./session-agent-handoff";
 import { handleSessionAgentRequest } from "./session-agent-router";
-import { createSessionEventStream } from "./session-agent-stream";
-import type { WorkbenchSessionEvent, WorkbenchSessionEventType } from "./session-event-types";
-import { createId, toJson, type AgentRow, type ChatThreadRow, type Env } from "./types";
 import {
-  appendAgentHandoffToUpstream,
+  createSessionEventStream,
+  pruneSessionEvents,
+  resolveSessionReplay,
+} from "./session-agent-stream";
+import type { WorkbenchSessionEvent, WorkbenchSessionEventType } from "./session-event-types";
+import {
+  createId,
+  type AgentRow,
+  type ChatThreadRow,
+  type DurableObjectState,
+  type Env,
+} from "./types";
+import {
   buildSnapshot,
   createThreadContext,
   listWorkspaceThreads,
   maxMaterializeTurnMessageLength,
   mergeActiveThread,
-  normalizeAgentSwitchTarget,
   normalizeMaterializeMessage,
   responseFromSnapshot,
   sessionContext,
@@ -32,14 +37,9 @@ import {
   toThreadSummary,
   workspaceSummary,
 } from "./session-agent-model";
-import type {
-  AgentHandoffSummary,
-  CoordinatorRequest,
-  SessionSnapshot,
-} from "./session-agent-model";
+import type { CoordinatorRequest, SessionSnapshot } from "./session-agent-model";
 import {
   abortThreadChatResponse,
-  agentHandoffTransition,
   appendThreadLifecycleEvent,
   clearActiveThread,
   draftExpiryFromThread,
@@ -48,24 +48,78 @@ import {
   findReusableDraftThread,
   materializeDraftThread,
   persistThreadMutation,
-  safeAgentSwitchData,
   safeSnapshotData,
   safeThreadData,
   submitProgrammaticTurn,
   titleFromUpdate,
   transitionForStatus,
-  updateChatSessionAgent,
 } from "./session-agent-transitions";
+
+type ClientTurnReceipt = {
+  clientTurnId: string;
+  threadId: string;
+  sessionId: string;
+  agentId: string;
+  message: string;
+  messageId: string;
+  status: "dispatching" | "accepted";
+  lifecyclePublished: boolean;
+  createdAt: string;
+};
+
+type MaterializeTurnResult =
+  | Awaited<ReturnType<typeof responseFromSnapshot>>
+  | { ok: false; error: string; status: number };
 
 export class WorkbenchSessionAgent {
   private snapshot: SessionSnapshot | null = null;
   private revision = 0;
   private clients = new Map<string, ReadableStreamDefaultController<Uint8Array>>();
+  private events: WorkbenchSessionEvent[] = [];
+  private clientTurns: ClientTurnReceipt[] = [];
+  private materializations = new Map<string, Promise<MaterializeTurnResult>>();
+  private readonly initialized: Promise<void>;
 
   constructor(
-    _state: unknown,
+    private readonly state: DurableObjectState,
     private readonly env: Env,
-  ) {}
+  ) {
+    this.initialized = state.blockConcurrencyWhile(async () => {
+      const events = await state.storage.get<WorkbenchSessionEvent[]>("session-event-replay");
+      this.events = this.pruneEvents(Array.isArray(events) ? events : []);
+      const clientTurns = await state.storage.get<ClientTurnReceipt[]>("client-turn-receipts");
+      this.clientTurns = this.pruneClientTurns(Array.isArray(clientTurns) ? clientTurns : []);
+      this.revision = this.events.reduce(
+        (maximum, event) => Math.max(maximum, event.revision ?? 0),
+        0,
+      );
+    });
+  }
+
+  private pruneClientTurns(receipts: ClientTurnReceipt[]) {
+    const cutoff = Date.now() - 90 * 24 * 60 * 60 * 1000;
+    return receipts.filter((receipt) => Date.parse(receipt.createdAt) >= cutoff).slice(-4_096);
+  }
+
+  private async putClientTurn(receipt: ClientTurnReceipt) {
+    this.clientTurns = this.pruneClientTurns([
+      ...this.clientTurns.filter((candidate) => candidate.clientTurnId !== receipt.clientTurnId),
+      receipt,
+    ]);
+    await this.state.storage.put("client-turn-receipts", this.clientTurns);
+  }
+
+  private pruneEvents(events: WorkbenchSessionEvent[]) {
+    return pruneSessionEvents(events);
+  }
+
+  private recordEvent(event: WorkbenchSessionEvent) {
+    this.events = this.pruneEvents([
+      ...this.events.filter((candidate) => candidate.id !== event.id),
+      event,
+    ]);
+    this.state.waitUntil(this.state.storage.put("session-event-replay", this.events));
+  }
 
   private nextRevision = () => (this.revision += 1);
 
@@ -91,6 +145,7 @@ export class WorkbenchSessionAgent {
   }
 
   private broadcastEvent(event: WorkbenchSessionEvent) {
+    this.recordEvent(event);
     for (const [clientId, controller] of this.clients) {
       try {
         this.sendEvent(controller, event);
@@ -101,6 +156,7 @@ export class WorkbenchSessionAgent {
   }
 
   private async ensureSnapshot(input: CoordinatorRequest) {
+    await this.initialized;
     if (!this.snapshot) {
       this.snapshot = await buildSnapshot(this.env, input.identity, {
         revision: this.nextRevision(),
@@ -278,16 +334,125 @@ export class WorkbenchSessionAgent {
     });
   }
 
-  async materializeTurn(input: CoordinatorRequest) {
+  private async publishMaterializedTurn(
+    input: CoordinatorRequest,
+    receipt: ClientTurnReceipt,
+    activeThread: ReturnType<typeof toActiveThreadSummary>,
+    startedAt: string,
+  ) {
+    if (receipt.lifecyclePublished) return receipt;
+    const activeIdentity = { ...input.identity, agentId: receipt.agentId };
+    await appendThreadLifecycleEvent(this.env, activeIdentity, {
+      transition: "create",
+      threadId: activeThread.threadId,
+      activeThreadId: activeThread.threadId,
+      nextStatus: activeThread.status,
+    });
+    this.broadcastEvent(
+      this.createEvent("session.thread.created", {
+        ...safeSnapshotData(this.snapshot!),
+        transition: { type: "create", startedAt },
+      }),
+    );
+    this.broadcastEvent(
+      this.createEvent("admin.summary.invalidated", {
+        reason: "thread-created",
+        threadId: activeThread.threadId,
+      }),
+    );
+    const published = { ...receipt, lifecyclePublished: true };
+    await this.putClientTurn(published);
+    return published;
+  }
+
+  private async resumeMaterializedTurn(
+    input: CoordinatorRequest,
+    receipt: ClientTurnReceipt,
+  ): Promise<MaterializeTurnResult> {
+    if (receipt.status === "accepted") {
+      const snapshot = await this.ensureSnapshot(input);
+      return responseFromSnapshot(this.env, input.agentHost!, snapshot, {
+        partial: true,
+        materializedTurn: {
+          duplicate: true,
+          messageId: receipt.messageId,
+          status: "accepted",
+          threadId: receipt.threadId,
+        },
+      });
+    }
+
+    const thread = await getOwnedChatThread(this.env, input.identity.scope, receipt.threadId);
+    const agent = thread
+      ? await selectAgent(this.env, receipt.agentId, input.identity.scope.workspaceId)
+      : null;
+    if (!thread || thread.status !== "active" || !agent || agent.status !== "active") {
+      return { ok: false, error: "Materialized chat turn is no longer active", status: 409 };
+    }
+    const activeIdentity = { ...input.identity, agentId: agent.id };
+    const activeThread = toActiveThreadSummary(this.env, thread, agent, thread.thread_id);
+    const context = await sessionContext(activeIdentity, {
+      thread,
+      agent,
+      accountId: input.identity.accountId,
+      accountSource: input.identity.accountSource,
+    });
+    this.snapshot = await buildSnapshot(this.env, activeIdentity, {
+      revision: this.nextRevision(),
+      activeAgent: agent,
+      activeThread: thread,
+    });
+    const response = await responseFromSnapshot(this.env, input.agentHost!, this.snapshot, {
+      partial: true,
+      materializedTurn: {
+        duplicate: true,
+        messageId: receipt.messageId,
+        status: "accepted",
+        threadId: receipt.threadId,
+      },
+    });
+    const token = response.connection?.token;
+    if (!token) {
+      return { ok: false, error: "Materialized Agent connection token was missing", status: 500 };
+    }
+    const submitted = await submitProgrammaticTurn(this.env, {
+      clientTurnId: receipt.clientTurnId,
+      context,
+      token,
+      message: receipt.message,
+    });
+    if (!submitted.ok) {
+      return { ok: false, error: submitted.error, status: submitted.status };
+    }
+    const accepted = {
+      ...receipt,
+      messageId: submitted.messageId ?? receipt.clientTurnId,
+      status: "accepted" as const,
+    };
+    await this.putClientTurn(accepted);
+    await this.publishMaterializedTurn(input, accepted, activeThread, receipt.createdAt);
+    response.materializedTurn = {
+      duplicate: true,
+      messageId: accepted.messageId,
+      status: "accepted",
+      threadId: accepted.threadId,
+    };
+    return response;
+  }
+
+  private async materializeTurnOnce(input: CoordinatorRequest): Promise<MaterializeTurnResult> {
     const startedAt = new Date().toISOString();
     const message = normalizeMaterializeMessage(input.message);
-    if (!message) {
+    const clientTurnId = input.clientTurnId?.trim();
+    if (!message || !clientTurnId || clientTurnId.length > 128) {
       return {
         ok: false,
-        error: `message must be non-empty text under ${maxMaterializeTurnMessageLength} characters`,
+        error: `message and clientTurnId must be bounded non-empty text; message max ${maxMaterializeTurnMessageLength} characters`,
         status: 400,
       };
     }
+    const existing = this.clientTurns.find((receipt) => receipt.clientTurnId === clientTurnId);
+    if (existing) return this.resumeMaterializedTurn(input, existing);
 
     const active = await this.activeIdentity(input);
     const sessionId =
@@ -338,7 +503,24 @@ export class WorkbenchSessionAgent {
     if (!token) {
       return { ok: false, error: "Materialized Agent connection token was missing", status: 500 };
     }
-    const submitted = await submitProgrammaticTurn(this.env, { context, token, message });
+    let receipt: ClientTurnReceipt = {
+      agentId: created.activeAgent.id,
+      clientTurnId,
+      createdAt: startedAt,
+      lifecyclePublished: false,
+      message,
+      messageId: clientTurnId,
+      sessionId,
+      status: "dispatching",
+      threadId: activeThread.threadId,
+    };
+    await this.putClientTurn(receipt);
+    const submitted = await submitProgrammaticTurn(this.env, {
+      clientTurnId,
+      context,
+      token,
+      message,
+    });
     if (!submitted.ok) {
       return {
         ok: false,
@@ -346,32 +528,38 @@ export class WorkbenchSessionAgent {
         status: submitted.status,
       };
     }
+    receipt = {
+      ...receipt,
+      messageId: submitted.messageId ?? clientTurnId,
+      status: "accepted",
+    };
+    await this.putClientTurn(receipt);
     response.materializedTurn = {
       threadId: activeThread.threadId,
       status: "accepted",
-      messageId: submitted.messageId,
+      messageId: receipt.messageId,
     };
-
-    await appendThreadLifecycleEvent(this.env, activeIdentity, {
-      transition: "create",
-      threadId: activeThread.threadId,
-      activeThreadId: activeThread.threadId,
-      nextStatus: activeThread.status,
-    });
-    this.broadcastEvent(
-      this.createEvent("session.thread.created", {
-        ...safeSnapshotData(this.snapshot),
-        transition: { type: "create", startedAt },
-      }),
-    );
-    this.broadcastEvent(
-      this.createEvent("admin.summary.invalidated", {
-        reason: "thread-created",
-        threadId: activeThread.threadId,
-      }),
-    );
-
+    await this.publishMaterializedTurn(input, receipt, activeThread, startedAt);
     return response;
+  }
+
+  async materializeTurn(input: CoordinatorRequest): Promise<MaterializeTurnResult> {
+    await this.initialized;
+    const clientTurnId = input.clientTurnId?.trim();
+    if (!clientTurnId || clientTurnId.length > 128) {
+      return { ok: false, error: "clientTurnId is required", status: 400 };
+    }
+    const inFlight = this.materializations.get(clientTurnId);
+    if (inFlight) return inFlight;
+    const materialization = this.materializeTurnOnce(input);
+    this.materializations.set(clientTurnId, materialization);
+    try {
+      return await materialization;
+    } finally {
+      if (this.materializations.get(clientTurnId) === materialization) {
+        this.materializations.delete(clientTurnId);
+      }
+    }
   }
 
   async updateThread(input: CoordinatorRequest) {
@@ -553,204 +741,30 @@ export class WorkbenchSessionAgent {
   }
 
   async switchAgent(input: CoordinatorRequest) {
-    const startedAt = new Date().toISOString();
-    const agentId = input.agentSwitch?.agentId?.trim();
-    const target = normalizeAgentSwitchTarget(input.agentSwitch?.target);
-    if (!agentId) return { ok: false, error: "agentId is required", status: 400 };
-
-    const targetAgent = await selectAgent(this.env, agentId, input.identity.scope.workspaceId);
-    if (!targetAgent) return { ok: false, error: "Agent not found", status: 404 };
-    if (targetAgent.status !== "active") {
-      return { ok: false, error: "Agent is not active", status: 403 };
-    }
-
-    const activeIdentity = { ...input.identity, agentId: targetAgent.id };
-    const latestSession = await getLatestChatSession(this.env, input.identity.scope);
-    const activeThreadId =
-      target === "current_thread"
-        ? (input.threadId?.trim() ??
-          this.snapshot?.activeThread?.threadId ??
-          latestSession?.active_thread_id ??
-          "")
-        : "";
-
-    if (target === "new_thread") {
-      await upsertActiveAgentPreference(this.env, {
-        userId: input.identity.scope.userId,
-        workspaceId: input.identity.scope.workspaceId,
-        agentId: targetAgent.id,
-        reason: "agent-selected-new-thread",
-      });
-      if (latestSession?.session_id) {
-        await updateChatSessionAgent(this.env, input.identity, {
-          sessionId: latestSession.session_id,
-          agentId: targetAgent.id,
-          activeThreadId: null,
-        });
-      }
-      this.snapshot = await buildSnapshot(this.env, activeIdentity, {
-        revision: this.nextRevision(),
-        activeAgent: targetAgent,
-      });
-      this.broadcastEvent(
-        this.createEvent(
-          "session.agent.handoff",
-          safeAgentSwitchData(this.snapshot, { startedAt }),
-        ),
-      );
-      this.broadcastEvent(
-        this.createEvent("admin.summary.invalidated", {
-          reason: "agent-selected-new-thread",
-          agentId: targetAgent.id,
-        }),
-      );
-      return responseFromSnapshot(this.env, input.agentHost!, this.snapshot, {
-        partial: true,
-        threadsRefreshRecommended: true,
-        transition: agentHandoffTransition(startedAt),
-        agentHandoff: null,
-      });
-    }
-
-    if (!activeThreadId) return { ok: false, error: "No active thread to continue", status: 400 };
-    const thread = await getOwnedChatThread(this.env, input.identity.scope, activeThreadId);
-    if (!thread || thread.status !== "active") {
-      return { ok: false, error: "Thread not found", status: 404 };
-    }
-    if (thread.agent_id === targetAgent.id) {
-      this.snapshot = await buildSnapshot(this.env, activeIdentity, {
-        revision: this.nextRevision(),
-        activeThread: thread,
-        activeAgent: targetAgent,
-      });
-      return responseFromSnapshot(this.env, input.agentHost!, this.snapshot, {
-        partial: true,
-      });
-    }
-    const runningRun = await getLatestRunningChatRun(
-      this.env,
-      input.identity.scope,
-      thread.thread_id,
-    );
-    if (runningRun) {
-      return { ok: false, error: "Thread has a running chat response", status: 409 };
-    }
-    await upsertActiveAgentPreference(this.env, {
-      userId: input.identity.scope.userId,
-      workspaceId: input.identity.scope.workspaceId,
-      agentId: targetAgent.id,
-      reason: "agent-handoff",
+    const switched = await switchSessionAgent({
+      env: this.env,
+      request: input,
+      snapshot: this.snapshot,
+      nextRevision: this.nextRevision,
+      broadcast: (type, data) => this.broadcastEvent(this.createEvent(type, data)),
     });
-
-    const fromAgent = await selectAgent(
-      this.env,
-      thread.agent_id,
-      input.identity.scope.workspaceId,
-    );
-    const handoff: AgentHandoffSummary = {
-      id: createId("cf-agent-handoff"),
-      threadId: thread.thread_id,
-      fromAgentId: fromAgent?.id,
-      fromAgentName: fromAgent?.name,
-      toAgentId: targetAgent.id,
-      toAgentName: targetAgent.name,
-      target,
-      createdAt: startedAt,
-    };
-    const upstream = appendAgentHandoffToUpstream(
-      {
-        ...parseDataJson(thread.upstream_json),
-        instanceName: await resolveThreadAgentInstanceName(thread),
-        agent: toAgentRuntimeMetadata(this.env, targetAgent, targetAgent.id),
-      },
-      handoff,
-    );
-    const timestamp = new Date().toISOString();
-    await this.env.DB.batch([
-      this.env.DB.prepare(
-        `UPDATE chat_threads
-         SET agent_id = ?,
-             upstream_json = ?,
-             updated_at = ?,
-             last_seen_at = ?
-         WHERE user_id = ? AND workspace_id = ? AND thread_id = ?`,
-      ).bind(
-        targetAgent.id,
-        toJson(upstream),
-        timestamp,
-        timestamp,
-        input.identity.scope.userId,
-        input.identity.scope.workspaceId,
-        thread.thread_id,
-      ),
-      this.env.DB.prepare(
-        `UPDATE chat_sessions
-         SET agent_id = ?,
-             active_thread_id = ?,
-             last_seen_at = ?,
-             updated_at = ?
-         WHERE user_id = ? AND workspace_id = ? AND session_id = ?`,
-      ).bind(
-        targetAgent.id,
-        thread.thread_id,
-        timestamp,
-        timestamp,
-        input.identity.scope.userId,
-        input.identity.scope.workspaceId,
-        thread.session_id,
-      ),
-    ]);
-
-    const updatedThread: ChatThreadRow = {
-      ...thread,
-      agent_id: targetAgent.id,
-      upstream_json: toJson(upstream),
-      updated_at: timestamp,
-      last_seen_at: timestamp,
-    };
-    this.snapshot = await buildSnapshot(this.env, activeIdentity, {
-      revision: this.nextRevision(),
-      activeThread: updatedThread,
-      activeAgent: targetAgent,
-    });
-    this.snapshot.agentHandoff = handoff;
-
-    await appendControlPlaneEvent(this.env, activeIdentity, {
-      type: "session.agent.handoff",
-      summary: `Switched agent from ${fromAgent?.name ?? "Unknown agent"} to ${targetAgent.name}.`,
-      targetType: "chat_thread",
-      targetId: thread.thread_id,
-      data: { agentHandoff: handoff },
-    });
-    this.broadcastEvent(
-      this.createEvent(
-        "session.agent.handoff",
-        safeAgentSwitchData(this.snapshot, { startedAt, agentHandoff: handoff }),
-      ),
-    );
-    this.broadcastEvent(
-      this.createEvent("admin.summary.invalidated", {
-        reason: "agent-handoff",
-        threadId: thread.thread_id,
-        agentId: targetAgent.id,
-      }),
-    );
-    return responseFromSnapshot(this.env, input.agentHost!, this.snapshot, {
-      partial: true,
-      threadsRefreshRecommended: true,
-      transition: agentHandoffTransition(startedAt),
-      agentHandoff: handoff,
-    });
+    if (switched.snapshot) this.snapshot = switched.snapshot;
+    return switched.result;
   }
 
   async stream(input: CoordinatorRequest) {
     const snapshot = await this.ensureSnapshot(input);
+    const initialEvents = resolveSessionReplay({
+      after: input.after,
+      events: this.events,
+      snapshotEvent: this.createEvent("session.snapshot", safeSnapshotData(snapshot), {
+        revision: snapshot.revision,
+      }),
+    });
     return createSessionEventStream({
-      snapshot,
       clients: this.clients,
-      createEvent: (type, data, options) => this.createEvent(type, data, options),
+      initialEvents,
       sendEvent: (controller, event) => this.sendEvent(controller, event),
-      snapshotData: safeSnapshotData(snapshot),
     });
   }
 

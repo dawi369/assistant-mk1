@@ -2,6 +2,7 @@ import { isRecord, json, parseDataJson } from "./http";
 import { selectMembership } from "./authz-store";
 import { requireAdminMembership } from "./membership-policy";
 import { prepareOperatorAlertStatement } from "./operator-alerts";
+import { dispatchWorkbenchSessionEvent } from "./session-coordinator";
 import {
   createId,
   toJson,
@@ -19,6 +20,16 @@ import {
   selectProposal,
 } from "./action-authority-core";
 import { executeActionProposal, reconcileActionProposal } from "./action-authority-execution";
+
+const dispatchActionUpdate = (
+  env: Env,
+  identity: AgentIdentity,
+  input: { proposalId: string; status: string; approvalRequestId?: string; runId?: string },
+) =>
+  dispatchWorkbenchSessionEvent(env, identity, {
+    type: "action.updated",
+    data: input,
+  });
 
 export const handleListActionProposals = async (env: Env, identity: AgentIdentity, url: URL) => {
   const requested = Number(url.searchParams.get("limit") ?? 25);
@@ -217,6 +228,12 @@ export const handleRequestActionExecution = async (
       data: { approvalRequestId: approvalId, runId },
     }),
   ]);
+  await dispatchActionUpdate(env, identity, {
+    approvalRequestId: approvalId,
+    proposalId: row.id,
+    runId,
+    status: "approval_requested",
+  });
   return json(
     {
       ok: false,
@@ -329,6 +346,12 @@ export const approveAndExecuteActionApproval = async (
       identity.scope.workspaceId,
     ),
   ]);
+  await dispatchActionUpdate(env, identity, {
+    approvalRequestId: approval.id,
+    proposalId: row.id,
+    runId: approval.run_id,
+    status: result.status,
+  });
   return json(
     {
       ok: result.status === "executed" || result.status === "reconciled",
@@ -380,6 +403,12 @@ export const cancelActionForDeniedApproval = async (
       data: { approvalRequestId: approval.id, reason: "approval_denied" },
     }),
   ]);
+  await dispatchActionUpdate(env, identity, {
+    approvalRequestId: approval.id,
+    proposalId,
+    runId: approval.run_id,
+    status: "cancelled",
+  });
 };
 
 export const handleReconcileAction = async (
@@ -390,6 +419,7 @@ export const handleReconcileAction = async (
   try {
     const result = await reconcileActionProposal(env, identity, proposalId);
     const resolved = result.status === "reconciled" || result.status === "executed";
+    await dispatchActionUpdate(env, identity, { proposalId, status: result.status });
     return json({ ok: resolved, result }, { status: resolved ? 200 : 202 });
   } catch (error) {
     return json(

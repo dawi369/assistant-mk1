@@ -3,8 +3,8 @@
 import { useEffect, useRef } from "react";
 
 import { shouldRefreshThreadsAfterSessionStreamOpen } from "@/lib/workbench/chat-session-state";
+import { browserWorkbenchRealtime } from "@/lib/workbench/browser-client";
 import type { WorkbenchSessionEvent } from "@/lib/workbench/workbench-types";
-import { sessionEventTypes } from "./session-runtime";
 
 export const useSessionEventStream = (input: {
   workspaceId?: string;
@@ -13,41 +13,49 @@ export const useSessionEventStream = (input: {
   onRefreshRecommended: () => void;
 }) => {
   const openedRef = useRef(false);
+  const cursorRef = useRef<string | undefined>(undefined);
+  const { onConnectedChange, onEvent, onRefreshRecommended, workspaceId } = input;
 
   useEffect(() => {
-    if (!input.workspaceId) return;
+    if (!workspaceId) return;
+    cursorRef.current = undefined;
+    openedRef.current = false;
     let closed = false;
-    let source: EventSource | null = null;
+    let subscription: ReturnType<typeof browserWorkbenchRealtime.subscribeSession> | null = null;
     let reconnectTimeout: number | null = null;
-    const connect = () => {
+    const connect = async () => {
       if (closed) return;
-      source = new EventSource("/api/workbench/chat-session/stream");
-      source.onopen = () => {
-        input.onConnectedChange(true);
-        const shouldRefresh = shouldRefreshThreadsAfterSessionStreamOpen(openedRef.current);
-        openedRef.current = true;
-        if (shouldRefresh) input.onRefreshRecommended();
-      };
-      const onEvent = (message: MessageEvent<string>) => {
-        try {
-          input.onEvent(JSON.parse(message.data) as WorkbenchSessionEvent);
-        } catch (parseError) {
-          console.warn("Failed to parse Workbench session event", parseError);
+      subscription = browserWorkbenchRealtime.subscribeSession({ after: cursorRef.current });
+      let connected = false;
+      try {
+        for await (const event of subscription.events) {
+          if (closed) break;
+          if (!connected) {
+            connected = true;
+            onConnectedChange(true);
+            const shouldRefresh = shouldRefreshThreadsAfterSessionStreamOpen(openedRef.current);
+            openedRef.current = true;
+            if (shouldRefresh) onRefreshRecommended();
+          }
+          cursorRef.current = event.id;
+          onEvent(event);
         }
-      };
-      for (const type of sessionEventTypes) source.addEventListener(type, onEvent as EventListener);
-      source.onerror = () => {
-        input.onConnectedChange(false);
-        source?.close();
-        if (!closed) reconnectTimeout = window.setTimeout(connect, 2_000);
-      };
+      } catch (streamError) {
+        if (!closed) console.warn("Workbench session stream disconnected", streamError);
+      } finally {
+        if (!closed) {
+          onConnectedChange(false);
+          subscription?.close();
+          reconnectTimeout = window.setTimeout(() => void connect(), 2_000);
+        }
+      }
     };
-    connect();
+    void connect();
     return () => {
       closed = true;
-      input.onConnectedChange(false);
-      source?.close();
+      onConnectedChange(false);
+      subscription?.close();
       if (reconnectTimeout) window.clearTimeout(reconnectTimeout);
     };
-  }, [input]);
+  }, [onConnectedChange, onEvent, onRefreshRecommended, workspaceId]);
 };

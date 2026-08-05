@@ -324,8 +324,10 @@ export const materializeDraftThread = async (
 
 export const submitProgrammaticTurn = async (
   env: Env,
-  input: { context: SessionContext; token: string; message: string },
-) => {
+  input: { context: SessionContext; token: string; message: string; clientTurnId: string },
+): Promise<
+  { ok: true; status: number; messageId?: string } | { ok: false; status: number; error: string }
+> => {
   if (!env.WorkbenchThreadChatAgent) {
     return { ok: false, error: "WorkbenchThreadChatAgent binding is not configured", status: 500 };
   }
@@ -337,6 +339,7 @@ export const submitProgrammaticTurn = async (
     method: "POST",
     body: JSON.stringify({
       token: input.token,
+      clientTurnId: input.clientTurnId,
       message: input.message,
       threadId: input.context.threadId,
       sessionId: input.context.sessionId,

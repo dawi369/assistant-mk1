@@ -7,9 +7,13 @@ import { streamChatSessionEvents } from "@/lib/workbench/cloudflare-control-plan
 export const runtime = "nodejs";
 const vercelSseReconnectWindowMs = 240_000;
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const response = await streamChatSessionEvents();
+    const url = new URL(request.url);
+    const response = await streamChatSessionEvents({
+      after: url.searchParams.get("after") ?? undefined,
+      lastEventId: request.headers.get("Last-Event-ID") ?? undefined,
+    });
     const headers = new Headers(response.headers);
     headers.delete("content-encoding");
     headers.delete("content-length");

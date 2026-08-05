@@ -293,6 +293,7 @@ export type ChatSessionResponse = {
   threads?: ChatThreadSummary[];
   agentHandoff?: AgentHandoffSummary | null;
   connection?: {
+    chatProtocolVersion?: number;
     agentHost?: string;
     agentName?: string;
     instanceName?: string;
@@ -310,7 +311,7 @@ export type ChatSessionResponse = {
     status: "draft";
   };
   pending?: { type: "create" } | { type: "activate"; threadId: Id };
-  materializedTurn?: { threadId: Id; status: "accepted"; messageId?: Id };
+  materializedTurn?: { threadId: Id; status: "accepted"; messageId?: Id; duplicate?: boolean };
   transition?: {
     type:
       | "initial"
@@ -342,6 +343,7 @@ export type WorkbenchSessionEvent = {
     | "chat.run.failed"
     | "workflow.run.updated"
     | "approval.updated"
+    | "action.updated"
     | "tool.run.updated"
     | "trace.updated"
     | "admin.summary.invalidated";

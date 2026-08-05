@@ -43,6 +43,17 @@ export type DurableObjectNamespace = {
   get(id: DurableObjectId): DurableObjectStub;
 };
 
+export type DurableObjectStorage = {
+  get<T = unknown>(key: string): Promise<T | undefined>;
+  put<T>(key: string, value: T): Promise<void>;
+};
+
+export type DurableObjectState = {
+  storage: DurableObjectStorage;
+  blockConcurrencyWhile<T>(callback: () => Promise<T>): Promise<T>;
+  waitUntil(promise: Promise<unknown>): void;
+};
+
 export type R2ObjectBody = {
   body: ReadableStream;
   arrayBuffer(): Promise<ArrayBuffer>;

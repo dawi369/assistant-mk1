@@ -37,6 +37,9 @@ Internal pre-1.0 foundation implementing the local Operational L3 and Authority 
 - Default-off WorkOS mobile bearer identity with authoritative bearer handling,
   issuer/JWKS/client allowlisting, cookie-equivalent tenancy, and configured
   independent-frontend CORS.
+- Versioned chat transport descriptors, durable `clientTurnId` deduplication,
+  bounded session-event replay, cursor-reset snapshots, and shared resumable
+  event streaming for web and native clients.
 
 The public 1.0 tag remains blocked until the same-commit hosted checklist in
 `docs/release-readiness.md` is complete. Version 0.5 makes no production-SLO claim.

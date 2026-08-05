@@ -34,6 +34,8 @@ const coordinatorResponse = async (
     status?: ThreadListStatus;
     title?: string;
     message?: string;
+    clientTurnId?: string;
+    after?: string;
     update?: {
       title?: string;
       status?: ThreadMutationStatus;
@@ -64,6 +66,8 @@ const coordinatorResponse = async (
       status: input.status,
       title: input.title,
       message: input.message,
+      clientTurnId: input.clientTurnId,
+      after: input.after,
       update: input.update,
       agentSwitch: input.agentSwitch,
       agentHost: agentHostFromRequest(request),
@@ -107,6 +111,11 @@ export const handleChatSessionStream = async (
   }
 
   const name = await sessionCoordinatorName(identity);
+  const url = new URL(request.url);
+  const after =
+    url.searchParams.get("after")?.trim() ||
+    request.headers.get("Last-Event-ID")?.trim() ||
+    undefined;
   const stub = env.WorkbenchSessionAgent.get(env.WorkbenchSessionAgent.idFromName(name));
   const response = await stub.fetch("https://session-agent.internal/session", {
     method: "POST",
@@ -114,6 +123,7 @@ export const handleChatSessionStream = async (
       action: "stream",
       identity,
       agentHost: agentHostFromRequest(request),
+      after,
     }),
   });
   return new Response(response.body, {
@@ -153,12 +163,23 @@ export const handleMaterializeChatSessionTurn = async (
   env: Env,
   identity: AgentIdentity,
 ) => {
-  const body = (await request.json().catch(() => ({}))) as { message?: unknown };
+  const body = (await request.json().catch(() => ({}))) as {
+    clientTurnId?: unknown;
+    message?: unknown;
+  };
   if (typeof body.message !== "string") {
     return json({ ok: false, error: "message is required" }, { status: 400 });
   }
+  if (
+    typeof body.clientTurnId !== "string" ||
+    !body.clientTurnId.trim() ||
+    body.clientTurnId.length > 128
+  ) {
+    return json({ ok: false, error: "clientTurnId is required" }, { status: 400 });
+  }
   return coordinatorResponse(request, env, identity, {
     action: "materializeTurn",
+    clientTurnId: body.clientTurnId,
     message: body.message,
   });
 };

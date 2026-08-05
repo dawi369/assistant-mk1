@@ -71,6 +71,8 @@ export type CoordinatorRequest = {
   status?: ThreadListStatus;
   title?: string;
   message?: string;
+  clientTurnId?: string;
+  after?: string;
   update?: {
     title?: string;
     status?: ThreadMutationStatus;
@@ -119,7 +121,12 @@ export type SessionResponseOptions = {
   threadsRefreshRecommended?: boolean;
   transition?: { type: SessionTransitionType; startedAt?: string };
   stagedThread?: { threadId: string; sessionId: string; expiresAt: string; status: "draft" };
-  materializedTurn?: { threadId: string; status: "accepted"; messageId?: string };
+  materializedTurn?: {
+    threadId: string;
+    status: "accepted";
+    messageId?: string;
+    duplicate?: boolean;
+  };
   agentHandoff?: AgentHandoffSummary | null;
 };
 
@@ -135,6 +142,8 @@ export type AgentHandoffSummary = {
 };
 
 export const tokenTtlSeconds = 5 * 60;
+
+export const chatProtocolVersion = 1;
 
 export const stagedThreadTtlMs = 30 * 60 * 1000;
 
@@ -595,6 +604,7 @@ export const responseFromSnapshot = async (
     agentHandoff: options.agentHandoff ?? snapshot.agentHandoff ?? null,
     connection: snapshot.context
       ? {
+          chatProtocolVersion,
           agentHost,
           agentName: snapshot.context.agentName,
           instanceName: snapshot.context.instanceName,

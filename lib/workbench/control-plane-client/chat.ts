@@ -28,10 +28,13 @@ export const getChatSession = (input?: { refresh?: "threads" }) =>
     `/chat/session${input?.refresh ? `?refresh=${encodeURIComponent(input.refresh)}` : ""}`,
   );
 
-export const streamChatSessionEvents = async () => {
-  const request = await controlPlaneRequest("/chat/session/stream", {
+export const streamChatSessionEvents = async (input?: { after?: string; lastEventId?: string }) => {
+  const after = input?.after?.trim();
+  const path = `/chat/session/stream${after ? `?after=${encodeURIComponent(after)}` : ""}`;
+  const request = await controlPlaneRequest(path, {
     headers: {
       accept: "text/event-stream",
+      ...(input?.lastEventId && !after ? { "Last-Event-ID": input.lastEventId } : {}),
     },
   });
   const response = await fetch(request.url, request.init);
@@ -54,7 +57,7 @@ export const stageChatSessionThread = () =>
     method: "POST",
   });
 
-export const materializeChatSessionTurn = (input: { message: string }) =>
+export const materializeChatSessionTurn = (input: { message: string; clientTurnId: string }) =>
   requestControlPlane<ChatSessionResponse>("/chat/session/materialize-turn", {
     method: "POST",
     body: JSON.stringify(input),

@@ -20,7 +20,11 @@ import type {
   Id,
   WorkbenchAccountContextResponse,
 } from "./contracts/index.js";
-import { isJsonObject, parseWorkbenchResponse } from "./validation.js";
+import {
+  isJsonObject,
+  parseWorkbenchResponse,
+  WorkbenchResponseValidationError,
+} from "./validation.js";
 
 export type WorkbenchClientPlatform = "web" | "ios" | "android";
 
@@ -138,6 +142,14 @@ export const createWorkbenchClient = (options: WorkbenchClientOptions) => {
       return parseWorkbenchResponse<T>(body, path);
     } catch (error) {
       if (error instanceof WorkbenchClientError) throw error;
+      if (error instanceof WorkbenchResponseValidationError) {
+        throw new WorkbenchClientError({
+          status: 0,
+          code: "invalid_response",
+          message: error.message,
+          retryable: false,
+        });
+      }
       if (controller.signal.aborted) {
         throw new WorkbenchClientError({
           status: 0,
