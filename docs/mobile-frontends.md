@@ -31,17 +31,18 @@ Vite and Expo dependencies.
 
 ## Configure WorkOS mobile identity
 
-Create a separate public application in the same WorkOS environment as the web
-application:
+Create a separate first-party OAuth application under WorkOS Connect in the same
+WorkOS environment as the web application:
 
 1. Enable Authorization Code with PKCE; do not create or embed a client secret.
 2. Register `assistantmk1://auth/callback` for internal builds.
 3. Register the production universal/app-link callbacks for the deployed origin.
-4. Choose the mobile session lifetime independently from the web application.
-5. Set `EXPO_PUBLIC_WORKOS_CLIENT_ID` to the public application ID.
-6. Add that ID to server-only `WORKBENCH_WORKOS_ALLOWED_CLIENT_IDS` and configure
-   `WORKBENCH_WORKOS_ISSUER` plus `WORKBENCH_WORKOS_JWKS_URL` on Vercel.
-7. Enable `WORKBENCH_MOBILE_CLIENTS_ENABLED` only after hosted bearer acceptance.
+4. Set `EXPO_PUBLIC_WORKOS_CLIENT_ID` to the public OAuth application's client ID
+   and `EXPO_PUBLIC_WORKOS_ISSUER` to the environment's AuthKit domain.
+5. Add that ID to server-only `WORKBENCH_WORKOS_ALLOWED_CLIENT_IDS`; configure
+   `WORKBENCH_WORKOS_ISSUER` to the same AuthKit domain and
+   `WORKBENCH_WORKOS_JWKS_URL` to `<authkit-domain>/oauth2/jwks` on Vercel.
+6. Enable `WORKBENCH_MOBILE_CLIENTS_ENABLED` only for internal acceptance first.
 
 When an Authorization header is present, bearer identity is authoritative. An
 invalid, expired, wrong-environment, or unapproved token returns `401`; it never
@@ -51,7 +52,41 @@ development identity behavior is unchanged.
 ## Run the reference app
 
 ```bash
-pnpm --filter @assistant-mk1/mobile start
+cp apps/mobile/.env.example apps/mobile/.env.local
+pnpm mobile:doctor
+pnpm mobile:ios
+# or
+pnpm mobile:android
+```
+
+The default workflow is local-first. `mobile:ios` and `mobile:android` generate,
+compile, install, and open a development build using the Mac's Xcode or Android
+SDK. The doctor checks both local toolchains and public mobile configuration
+without printing configured values. After the native binary is installed,
+normal TypeScript/UI changes use the faster Metro-only loop:
+
+```bash
+pnpm mobile:start
+```
+
+Re-run the platform build after changing a native dependency or Expo config
+plugin. For a cloud-independent reproduction of the EAS build pipeline, or the
+optional hosted internal-preview path, use:
+
+```bash
+pnpm mobile:build:local:ios
+pnpm mobile:build:local:android
+pnpm mobile:build:eas:ios
+pnpm mobile:build:eas:android
+```
+
+The EAS project link is public build metadata stored in `app.json`; credentials
+remain in Expo/EAS and local platform keychains. Daily development does not
+consume an EAS cloud build.
+
+Repository verification remains:
+
+```bash
 pnpm mobile:check
 pnpm conformance:client
 pnpm conformance:mobile

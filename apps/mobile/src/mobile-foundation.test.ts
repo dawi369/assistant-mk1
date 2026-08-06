@@ -18,6 +18,14 @@ describe("mobile client architecture", () => {
     expect(source).not.toMatch(/sk_(?:test|live)_|sk-or-v1-/);
   });
 
+  it("uses the public WorkOS OAuth PKCE endpoints", () => {
+    const auth = read("apps/mobile/src/auth/auth-provider.tsx");
+    expect(auth).toContain("/oauth2/authorize");
+    expect(auth).toContain("/oauth2/token");
+    expect(auth).toContain("usePKCE: true");
+    expect(auth).not.toContain("/user_management/");
+  });
+
   it("uses generic workflow schemas and generic operator routes", () => {
     expect(read("apps/mobile/app/workflow/[type].tsx")).toContain("workflow.inputSchema");
     for (const route of [

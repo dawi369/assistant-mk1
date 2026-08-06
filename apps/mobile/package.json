@@ -4,9 +4,14 @@
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
-    "start": "expo start",
-    "ios": "expo start --ios",
-    "android": "expo start --android",
+    "start": "expo start --dev-client",
+    "prebuild": "expo prebuild",
+    "ios": "expo run:ios",
+    "android": "ANDROID_HOME=${ANDROID_HOME:-$HOME/Library/Android/sdk} PATH=\"${ANDROID_HOME:-$HOME/Library/Android/sdk}/platform-tools:${ANDROID_HOME:-$HOME/Library/Android/sdk}/emulator:$PATH\" expo run:android --variant debugOptimized",
+    "build:local:ios": "eas build --local --platform ios --profile development-simulator",
+    "build:local:android": "eas build --local --platform android --profile development",
+    "build:eas:ios": "eas build --platform ios --profile internal-preview",
+    "build:eas:android": "eas build --platform android --profile internal-preview",
     "check": "tsc --noEmit && expo config --type public",
     "export:ios": "expo export --platform ios --output-dir ../../output/mobile/ios",
     "export:android": "expo export --platform android --output-dir ../../output/mobile/android"
@@ -19,6 +24,7 @@
     "expo-auth-session": "57.0.5",
     "expo-constants": "~57.0.7",
     "expo-crypto": "~57.0.1",
+    "expo-dev-client": "~57.0.10",
     "expo-device": "~57.0.1",
     "expo-linking": "~57.0.4",
     "expo-notifications": "57.0.6",
@@ -41,6 +47,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
+    "eas-cli": "21.4.0",
     "typescript": "~6.0.3"
   }
 }

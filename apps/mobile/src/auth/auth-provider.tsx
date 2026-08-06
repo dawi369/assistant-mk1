@@ -35,8 +35,8 @@ type AuthContextValue = {
 const storageKey = "assistant-mk1.workos-session";
 const redirectUri = AuthSession.makeRedirectUri({ scheme: "assistantmk1", path: "auth/callback" });
 const discovery: AuthSession.DiscoveryDocument = {
-  authorizationEndpoint: `${mobileConfig.workosIssuer}/user_management/authorize`,
-  tokenEndpoint: `${mobileConfig.workosIssuer}/user_management/authenticate`,
+  authorizationEndpoint: `${mobileConfig.workosIssuer}/oauth2/authorize`,
+  tokenEndpoint: `${mobileConfig.workosIssuer}/oauth2/token`,
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);

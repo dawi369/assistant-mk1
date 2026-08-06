@@ -62,6 +62,8 @@ cloudflare/control-plane/.wrangler/
 /output/mobile/
 /output/mobile-deploy-*/
 /apps/mobile/.expo/
+/apps/mobile/ios/
+/apps/mobile/android/
 /output/extension-contract/
 /packages/agent-sdk/dist/
 /packages/workbench-client/dist/
