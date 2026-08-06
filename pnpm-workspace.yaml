@@ -11,12 +11,14 @@ minimumReleaseAgeExclude:
   - esbuild
   - fast-uri
   - ip-address
+  - minimatch
   - undici
 verifyDepsBeforeRun: warn
 overrides:
   "@assistant-ui/tap": 0.9.3
   brace-expansion: 5.0.9
   esbuild: 0.28.1
+  "eas-cli>minimatch": 5.1.8
   fast-uri: 3.1.5
   fast-xml-parser: 5.10.1
   hono: 4.12.25
