@@ -1,5 +1,16 @@
+node_modules/
+.next/
+.pnpm-store/
+.turbo/
+.expo/
+apps/mobile/node_modules/
+apps/mobile/.expo/
+apps/mobile/ios/
+apps/mobile/android/
 cloudflare/control-plane/.wrangler/
 output/
 .playwright-cli/
 .assistant-mk1/
 .omm/
+coverage/
+*.tsbuildinfo
