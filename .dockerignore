@@ -8,6 +8,9 @@ node_modules
 .vercel
 .playwright-cli
 .omm
+apps/mobile/.expo
+apps/mobile/ios
+apps/mobile/android
 output
 **/output
 coverage
