@@ -56,6 +56,11 @@ edits the policy. General workspace mutation remains opt-in.
 | Public hosting    | `pnpm acceptance:hosted:public`                                                      |
 | Signed-in product | WorkOS browser acceptance across Vercel, Cloudflare, and Fly                         |
 
+`pnpm verify:security` fails on every high or critical advisory except the two
+currently unpatched `image-size` findings confined to Expo Metro's build-time
+dependency path. The exception is path- and advisory-specific, does not cover
+runtime input, and must be removed when Expo/Metro ships a patched dependency.
+
 Ignored evidence records must name one full commit SHA. Hosted Vault evidence
 must prove create/read-version/replace/revoke-delete without disclosing values.
 Hosted mutation evidence must name the isolated workspace, run, proposal,
