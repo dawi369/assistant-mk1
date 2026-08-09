@@ -1,3 +1,4 @@
+import { router } from "expo-router";
 import { useCallback, useState } from "react";
 import { Text, View } from "react-native";
 
@@ -7,16 +8,26 @@ import { colors } from "../src/theme";
 import { useWorkbench } from "../src/workbench-provider";
 
 export default function ThreadsScreen() {
-  const { client } = useWorkbench();
+  const { client, notifyChatSelectionChanged } = useWorkbench();
   const [archived, setArchived] = useState(false);
   const load = useCallback(
     () => client.threads.list(archived ? "archived" : "active"),
     [archived, client],
   );
-  const { data, error, refreshing, refresh } = useMobileResource(`threads-${archived}`, load);
+  const { data, error, refreshing, refresh } = useMobileResource(load);
   const mutate = async (id: string, status: "active" | "archived" | "deleted") => {
     await client.threads.update(id, { status });
     await refresh();
+  };
+  const open = async (threadId: string) => {
+    await client.threads.activate(threadId);
+    notifyChatSelectionChanged();
+    router.replace("/(tabs)");
+  };
+  const create = async () => {
+    await client.threads.create();
+    notifyChatSelectionChanged();
+    router.replace("/(tabs)");
   };
   return (
     <Screen refreshing={refreshing} onRefresh={() => void refresh()}>
@@ -25,12 +36,7 @@ export default function ThreadsScreen() {
           label={archived ? "Active chats" : "Archived chats"}
           onPress={() => setArchived((value) => !value)}
         />
-        {!archived ? (
-          <ActionButton
-            label="New chat"
-            onPress={() => void client.threads.create().then(() => refresh())}
-          />
-        ) : null}
+        {!archived ? <ActionButton label="New chat" onPress={() => void create()} /> : null}
       </View>
       <ErrorNotice message={error} />
       {(data?.threads ?? []).map((thread) => (
@@ -42,6 +48,9 @@ export default function ThreadsScreen() {
             {thread.agent?.name ?? "Agent"} · {thread.status}
           </Meta>
           <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
+            {!archived ? (
+              <ActionButton label="Open" onPress={() => void open(thread.threadId)} />
+            ) : null}
             {archived ? (
               <ActionButton
                 label="Restore"

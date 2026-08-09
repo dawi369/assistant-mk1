@@ -12,7 +12,7 @@ type Filter = "all" | "completed" | "failed";
 export default function HistoryScreen() {
   const { client } = useWorkbench();
   const load = useCallback(() => client.history.listRuns({ limit: 100 }), [client]);
-  const { data, error, refreshing, refresh } = useMobileResource("history-runs", load);
+  const { data, error, refreshing, refresh } = useMobileResource(load);
   const [filter, setFilter] = useState<Filter>("all");
   const runs = (data?.runs ?? []).filter((run) => filter === "all" || run.status === filter);
   return (

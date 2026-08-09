@@ -19,15 +19,16 @@ Expo app
 
 The app contains no WorkOS API key, Vercel/Cloudflare signing secret, provider
 credential, Vault credential, or runner secret. WorkOS access and refresh tokens
-are stored in SecureStore. Non-sensitive display snapshots, drafts, the device
-installation ID, and at most one pending chat turn are stored in SQLite.
+are stored in SecureStore. Drafts, the device installation ID, and at most one
+pending chat turn are stored in SQLite. Tenant-visible API resources are not
+persisted in a generic device cache; focused screens revalidate canonical state.
 
 `@assistant-mk1/workbench-client` is framework-neutral. It owns HTTP construction,
 bearer injection, runtime validation, normalized errors, aborts, pagination,
 idempotency, session replay, and the public chat transport contract.
-`@assistant-mk1/workbench-react` adds React Query behavior for the web product.
-Both are unpublished workspace packages and are verified as packed, zero-context
-Vite and Expo dependencies.
+`@assistant-mk1/workbench-react` is the optional React Query adapter currently
+dogfooded by the web Agents surface. Both packages are unpublished and verified
+as packed, zero-context Vite and Expo dependencies.
 
 ## Configure WorkOS mobile identity
 
@@ -54,16 +55,18 @@ development identity behavior is unchanged.
 ```bash
 cp apps/mobile/.env.example apps/mobile/.env.local
 pnpm mobile:doctor
-pnpm mobile:ios
-# or
+pnpm mobile:doctor:ios-device
+pnpm mobile:ios:device
+# or, for a simulator / Android emulator
+pnpm mobile:ios:simulator
 pnpm mobile:android
 ```
 
-The default workflow is local-first. `mobile:ios` and `mobile:android` generate,
-compile, install, and open a development build using the Mac's Xcode or Android
-SDK. The doctor checks both local toolchains and public mobile configuration
-without printing configured values. After the native binary is installed,
-normal TypeScript/UI changes use the faster Metro-only loop:
+The default workflow is local-first. The device, simulator, Android, and cloud
+doctor targets validate only the path you intend to use; unavailable optional
+paths are warnings. The platform commands generate, compile, install, and open a
+development build using the Mac's Xcode or Android SDK. After the native binary
+is installed, normal TypeScript/UI changes use the faster Metro-only loop:
 
 ```bash
 pnpm mobile:start
@@ -76,8 +79,10 @@ optional hosted internal-preview path, use:
 ```bash
 pnpm mobile:build:local:ios
 pnpm mobile:build:local:android
-pnpm mobile:build:eas:ios
-pnpm mobile:build:eas:android
+pnpm mobile:build:eas:ios:development
+pnpm mobile:build:eas:android:development
+pnpm mobile:build:eas:ios:preview
+pnpm mobile:build:eas:android:preview
 ```
 
 The EAS project link is public build metadata stored in `app.json`; credentials
@@ -101,21 +106,25 @@ Public Expo configuration:
 
 Core navigation uses native tabs for Chat, Agents, History, and Settings, with
 native stack routes for chats, workflows, runs, approvals, connections, and
-actions. Packs remain fully operable through generic workflow schemas, managed
-state, and JSON/Markdown/table/artifact descriptors; web renderer contributions
-are not loaded on native.
+actions. Current native pack support covers generic workflow discovery/forms,
+execution, run status, and artifact metadata. Rich Markdown/table/artifact
+content rendering remains a device-acceptance gap; web renderer contributions
+are intentionally not loaded on native.
 
 ## Resume and offline contract
 
 - Sending before bootstrap waits for auth/session readiness and retains one stable
   `clientTurnId`; a crash or retry cannot start a second model run.
-- Session events resume from a durable cursor. The Session Durable Object retains
-  256 events or 15 minutes and sends `replayReset: true` with a canonical snapshot
-  when a cursor is too old.
+- While the app process is alive, session events reconnect from the last received
+  cursor. The Session Durable Object retains 256 events or 15 minutes and sends
+  `replayReset: true` with a canonical snapshot when a cursor is too old. A cold
+  app start intentionally fetches canonical state rather than trusting persisted
+  display data.
 - Backgrounding closes live transports without cancelling server work.
   Foregrounding refreshes auth, reconnects chat, resumes events, and revalidates
   visible resources.
-- Drafts and one pending chat turn survive restarts. Workflows, approvals,
+- Existing threads can be selected and their Agent transcript hydrates the native
+  runtime. Drafts and one pending chat turn survive restarts. Workflows, approvals,
   connections, and actions are online-only and never queued.
 - Agent handoff closes the old transport; the old scoped token is rejected.
 
@@ -137,6 +146,10 @@ Invalid Expo tokens disable the device. Workspace export includes non-secret
 device/preferences/delivery metadata and explicitly excludes token references and
 push tokens; purge removes all device state.
 
+The app never prompts for notification permission at sign-in or workspace
+switch. An operator must choose **Enable notifications** in Settings before the
+device is registered.
+
 ## Release evidence
 
 ```bash
@@ -151,3 +164,8 @@ JSON covering real WorkOS sign-in, foreground recovery, approval push, terminal
 push, and sign-out revocation on one iOS and one Android device. Push stays off
 until this evidence is recorded. App Store and Play Store submission are outside
 this foundation slice.
+
+`pnpm conformance:mobile` is deterministic foundation evidence: native exports,
+type safety, architectural guards, and server protocol unit tests. It does not
+claim that simulator, physical-device, notification, or hosted journeys ran;
+those are covered only by the explicit E2E and hosted acceptance commands above.

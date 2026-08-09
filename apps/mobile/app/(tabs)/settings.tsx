@@ -1,5 +1,5 @@
 import { router } from "expo-router";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Switch, Text, View } from "react-native";
 
 import { useMobileAuth } from "../../src/auth/auth-provider";
@@ -9,26 +9,67 @@ import { mobileStore } from "../../src/storage/mobile-store";
 import { colors } from "../../src/theme";
 import { useWorkbench } from "../../src/workbench-provider";
 import {
+  isDeviceDeliveryRegistered,
   registerDeviceDelivery,
   revokeDeviceDelivery,
 } from "../../src/notifications/device-provider";
 
 export default function SettingsScreen() {
-  const { client } = useWorkbench();
+  const { client, notifyChatSelectionChanged } = useWorkbench();
   const { signOut } = useMobileAuth();
   const load = useCallback(() => client.workspaces.list(), [client]);
-  const { data, error, refreshing, refresh } = useMobileResource("workspaces", load);
+  const { data, error, refreshing, refresh } = useMobileResource(load);
   const loadNotifications = useCallback(() => client.notificationPreferences.get(), [client]);
-  const notifications = useMobileResource("notification-preferences", loadNotifications);
+  const notifications = useMobileResource(loadNotifications);
   const [busy, setBusy] = useState<string | null>(null);
+  const [deviceRegistered, setDeviceRegistered] = useState(false);
+  const [notificationError, setNotificationError] = useState<string | null>(null);
+  const [notificationBusy, setNotificationBusy] = useState(false);
+  useEffect(() => {
+    void isDeviceDeliveryRegistered(client)
+      .then(setDeviceRegistered)
+      .catch(() => undefined);
+  }, [client]);
   const activate = async (id: string) => {
     setBusy(id);
     try {
+      await revokeDeviceDelivery(client);
       await client.workspaces.activate(id);
-      await registerDeviceDelivery(client).catch(() => undefined);
+      await mobileStore.clearLocalAuthority();
+      setDeviceRegistered(false);
+      notifyChatSelectionChanged();
       await refresh();
     } finally {
       setBusy(null);
+    }
+  };
+  const disableNotifications = async () => {
+    setNotificationBusy(true);
+    setNotificationError(null);
+    try {
+      await revokeDeviceDelivery(client);
+      setDeviceRegistered(false);
+    } catch (nextError) {
+      setNotificationError(
+        nextError instanceof Error ? nextError.message : "Could not disable notifications.",
+      );
+    } finally {
+      setNotificationBusy(false);
+    }
+  };
+  const enableNotifications = async () => {
+    setNotificationBusy(true);
+    setNotificationError(null);
+    try {
+      const device = await registerDeviceDelivery(client);
+      if (!device) throw new Error("Notifications were not enabled on this device.");
+      setDeviceRegistered(true);
+    } catch (nextError) {
+      setNotificationError(
+        nextError instanceof Error ? nextError.message : "Could not enable notifications.",
+      );
+    } finally {
+      setNotificationBusy(false);
     }
   };
   const leave = async () => {
@@ -83,6 +124,19 @@ export default function SettingsScreen() {
           <Text style={{ color: colors.ink, fontSize: 17, fontWeight: "700", marginBottom: 12 }}>
             Notifications
           </Text>
+          {!deviceRegistered ? (
+            <View style={{ marginBottom: 14, gap: 8 }}>
+              <Text style={{ color: colors.muted, lineHeight: 20 }}>
+                Enable notifications when you want approval and completion alerts on this device.
+              </Text>
+              <ActionButton
+                label={notificationBusy ? "Enabling…" : "Enable notifications"}
+                disabled={notificationBusy}
+                onPress={() => void enableNotifications()}
+              />
+              <ErrorNotice message={notificationError} />
+            </View>
+          ) : null}
           <View style={{ gap: 14 }}>
             <View
               style={{
@@ -95,6 +149,7 @@ export default function SettingsScreen() {
               <Switch
                 accessibilityLabel="Approval required notifications"
                 value={notifications.data.preferences.approvalRequired}
+                disabled={!deviceRegistered}
                 onValueChange={(approvalRequired) =>
                   void updateNotifications({
                     approvalRequired,
@@ -114,6 +169,7 @@ export default function SettingsScreen() {
               <Switch
                 accessibilityLabel="Terminal outcome notifications"
                 value={notifications.data.preferences.terminalOutcomes}
+                disabled={!deviceRegistered}
                 onValueChange={(terminalOutcomes) =>
                   void updateNotifications({
                     approvalRequired: notifications.data!.preferences!.approvalRequired,
@@ -122,6 +178,13 @@ export default function SettingsScreen() {
                 }
               />
             </View>
+            {deviceRegistered ? (
+              <ActionButton
+                label={notificationBusy ? "Disabling…" : "Disable on this device"}
+                disabled={notificationBusy}
+                onPress={() => void disableNotifications()}
+              />
+            ) : null}
           </View>
         </Card>
       ) : null}

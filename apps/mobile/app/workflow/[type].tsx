@@ -15,7 +15,7 @@ export default function WorkflowScreen() {
   const { type } = useLocalSearchParams<{ type: string }>();
   const { client } = useWorkbench();
   const load = useCallback(() => client.workflows.list(), [client]);
-  const discovery = useMobileResource("workflows", load);
+  const discovery = useMobileResource(load);
   const workflow = useMemo(
     () => discovery.data?.workflows.find((candidate) => candidate.type === type),
     [discovery.data, type],

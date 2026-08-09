@@ -13,6 +13,7 @@ import {
 } from "react";
 
 import { mobileAuthConfigured, mobileConfig } from "../config";
+import { mobileStore } from "../storage/mobile-store";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -77,7 +78,8 @@ export function MobileAuthProvider({ children }: PropsWithChildren) {
   const refreshPromise = useRef<Promise<StoredSession | null> | null>(null);
 
   useEffect(() => {
-    void readSession().then((stored) => {
+    void readSession().then(async (stored) => {
+      if (!stored) await mobileStore.clearLocalAuthority();
       setSession(stored);
       setState(stored ? "signed-in" : "signed-out");
     });
@@ -102,6 +104,7 @@ export function MobileAuthProvider({ children }: PropsWithChildren) {
         })
         .catch(async () => {
           await saveSession(null);
+          await mobileStore.clearLocalAuthority();
           setSession(null);
           setState("signed-out");
           return null;
@@ -119,7 +122,13 @@ export function MobileAuthProvider({ children }: PropsWithChildren) {
       if (session.expiresAt - Date.now() > (input?.minValidityMs ?? 60_000)) {
         return session.accessToken;
       }
-      return (await refresh())?.accessToken ?? null;
+      const next = await refresh();
+      if (next) return next.accessToken;
+      await saveSession(null);
+      await mobileStore.clearLocalAuthority();
+      setSession(null);
+      setState("signed-out");
+      return null;
     },
     [refresh, session],
   );
@@ -154,6 +163,7 @@ export function MobileAuthProvider({ children }: PropsWithChildren) {
   const signOut = useCallback(async () => {
     refreshPromise.current = null;
     await saveSession(null);
+    await mobileStore.clearLocalAuthority();
     setSession(null);
     setState("signed-out");
   }, []);

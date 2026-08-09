@@ -9,7 +9,7 @@ import { useWorkbench } from "../src/workbench-provider";
 export default function ApprovalsScreen() {
   const { client } = useWorkbench();
   const load = useCallback(() => client.approvals.list(), [client]);
-  const { data, error, refreshing, refresh } = useMobileResource("approvals", load);
+  const { data, error, refreshing, refresh } = useMobileResource(load);
   return (
     <Screen refreshing={refreshing} onRefresh={() => void refresh()}>
       <ErrorNotice message={error} />

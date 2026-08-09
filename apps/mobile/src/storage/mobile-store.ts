@@ -9,11 +9,7 @@ const database = () => {
     databasePromise = SQLite.openDatabaseAsync("assistant-mk1.db").then(async (db) => {
       await db.execAsync(`
         PRAGMA journal_mode = WAL;
-        CREATE TABLE IF NOT EXISTS display_cache (
-          key TEXT PRIMARY KEY,
-          payload TEXT NOT NULL,
-          updated_at TEXT NOT NULL
-        );
+        DROP TABLE IF EXISTS display_cache;
         CREATE TABLE IF NOT EXISTS drafts (
           thread_id TEXT PRIMARY KEY,
           text TEXT NOT NULL,
@@ -38,29 +34,6 @@ const database = () => {
 };
 
 export const mobileStore = {
-  async putDisplaySnapshot(key: string, value: unknown) {
-    const db = await database();
-    await db.runAsync(
-      `INSERT INTO display_cache (key, payload, updated_at) VALUES (?, ?, ?)
-       ON CONFLICT(key) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at`,
-      key,
-      JSON.stringify(value),
-      new Date().toISOString(),
-    );
-  },
-  async getDisplaySnapshot<T>(key: string): Promise<T | null> {
-    const db = await database();
-    const row = await db.getFirstAsync<{ payload: string }>(
-      "SELECT payload FROM display_cache WHERE key = ?",
-      key,
-    );
-    if (!row) return null;
-    try {
-      return JSON.parse(row.payload) as T;
-    } catch {
-      return null;
-    }
-  },
   async putDraft(threadId: string, text: string) {
     const db = await database();
     if (!text) return db.runAsync("DELETE FROM drafts WHERE thread_id = ?", threadId);
@@ -136,6 +109,10 @@ export const mobileStore = {
   },
   async clearLocalAuthority() {
     const db = await database();
-    await db.execAsync("DELETE FROM drafts; DELETE FROM pending_turn;");
+    await db.execAsync(`
+      DELETE FROM drafts;
+      DELETE FROM pending_turn;
+      DELETE FROM local_settings WHERE key != 'notification.installation-id';
+    `);
   },
 };

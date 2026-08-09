@@ -10,7 +10,7 @@ import { useWorkbench } from "../../src/workbench-provider";
 export default function AgentsScreen() {
   const { client } = useWorkbench();
   const load = useCallback(() => client.agents.list(), [client]);
-  const { data, error, refreshing, refresh } = useMobileResource("agents", load);
+  const { data, error, refreshing, refresh } = useMobileResource(load);
   const [busy, setBusy] = useState<string | null>(null);
   const activate = async (agentId: string) => {
     setBusy(agentId);

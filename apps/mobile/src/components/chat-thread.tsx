@@ -1,6 +1,15 @@
-import { ComposerPrimitive, MessagePrimitive, ThreadPrimitive } from "@assistant-ui/react-native";
+import {
+  ComposerPrimitive,
+  MessagePrimitive,
+  ThreadPrimitive,
+  useAui,
+  useAuiState,
+} from "@assistant-ui/react-native";
+import { useEffect, useRef } from "react";
 import { Text, View } from "react-native";
 
+import { useMobileChat } from "../chat/chat-runtime";
+import { mobileStore } from "../storage/mobile-store";
 import { colors } from "../theme";
 
 const Message = () => (
@@ -41,8 +50,36 @@ const Message = () => (
   </MessagePrimitive.Root>
 );
 
+const DraftPersistence = () => {
+  const { threadId } = useMobileChat();
+  const aui = useAui();
+  const text = useAuiState((state) => state.composer.text);
+  const loadedThreadRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    let current = true;
+    loadedThreadRef.current = null;
+    void mobileStore.getDraft(threadId).then((draft) => {
+      if (!current) return;
+      aui.composer.setText(draft);
+      loadedThreadRef.current = threadId;
+    });
+    return () => {
+      current = false;
+    };
+  }, [aui, threadId]);
+
+  useEffect(() => {
+    if (loadedThreadRef.current !== threadId) return;
+    const timeout = setTimeout(() => void mobileStore.putDraft(threadId, text), 180);
+    return () => clearTimeout(timeout);
+  }, [text, threadId]);
+  return null;
+};
+
 export const ChatThread = () => (
   <ThreadPrimitive.Root style={{ flex: 1, backgroundColor: colors.canvas }}>
+    <DraftPersistence />
     <ThreadPrimitive.Empty>
       <View style={{ flex: 1, justifyContent: "center", padding: 32 }}>
         <Text style={{ color: colors.ink, fontSize: 28, fontWeight: "700" }}>

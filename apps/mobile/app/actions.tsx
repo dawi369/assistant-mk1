@@ -9,7 +9,7 @@ import { useWorkbench } from "../src/workbench-provider";
 export default function ActionsScreen() {
   const { client } = useWorkbench();
   const load = useCallback(() => client.actions.list({ limit: 100 }), [client]);
-  const { data, error, refreshing, refresh } = useMobileResource("actions", load);
+  const { data, error, refreshing, refresh } = useMobileResource(load);
   return (
     <Screen refreshing={refreshing} onRefresh={() => void refresh()}>
       <ErrorNotice message={error} />

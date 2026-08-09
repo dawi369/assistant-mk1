@@ -16,7 +16,7 @@ const hostOptions = (agentHost: string) => {
 };
 
 export const createMobileChatTransport = (input: {
-  connection: WorkbenchChatConnectionDescriptor;
+  getConnection: () => Promise<WorkbenchChatConnectionDescriptor>;
   sendTurn: SendTurn;
 }): WorkbenchChatTransport => {
   const listeners = new Set<(event: WorkbenchChatEvent) => void>();
@@ -27,13 +27,14 @@ export const createMobileChatTransport = (input: {
   const connect = async () => {
     if (agent) return;
     emit({ type: "connection", state: "connecting" });
-    const host = hostOptions(input.connection.agentHost!);
+    const connection = await input.getConnection();
+    const host = hostOptions(connection.agentHost!);
     const next = new AgentClient({
       agent: "WorkbenchThreadChatAgent",
-      name: input.connection.instanceName!,
+      name: connection.instanceName!,
       host: host.host,
       protocol: host.protocol,
-      query: { token: input.connection.token! },
+      query: { token: connection.token! },
     });
     next.addEventListener("open", () => emit({ type: "connection", state: "connected" }));
     next.addEventListener("close", () => emit({ type: "connection", state: "disconnected" }));

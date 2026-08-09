@@ -11,7 +11,7 @@ export default function RunScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { client } = useWorkbench();
   const load = useCallback(() => client.history.getRun(id), [client, id]);
-  const { data, error, refreshing, refresh } = useMobileResource(`run-${id}`, load);
+  const { data, error, refreshing, refresh } = useMobileResource(load);
   const snapshot = data?.snapshot;
   const run = snapshot?.run;
   return (

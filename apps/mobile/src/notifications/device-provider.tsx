@@ -4,12 +4,11 @@ import * as Crypto from "expo-crypto";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 import { router } from "expo-router";
-import { useCallback, useEffect, type PropsWithChildren } from "react";
+import { useEffect, type PropsWithChildren } from "react";
 
 import { useMobileAuth } from "../auth/auth-provider";
 import { mobileConfig } from "../config";
 import { mobileStore } from "../storage/mobile-store";
-import { useWorkbench } from "../workbench-provider";
 
 const installationKey = "notification.installation-id";
 const deviceKey = "notification.device-id";
@@ -48,6 +47,17 @@ export const revokeDeviceDelivery = async (client: WorkbenchClient) => {
   await mobileStore.putSetting(deviceKey, null);
 };
 
+export const isDeviceDeliveryRegistered = async (client: WorkbenchClient) => {
+  const deviceId = await mobileStore.getSetting(deviceKey);
+  if (!deviceId) return false;
+  const response = await client.devices.list();
+  const active = response.devices?.some(
+    (device) => device.id === deviceId && device.status === "active",
+  );
+  if (!active) await mobileStore.putSetting(deviceKey, null);
+  return Boolean(active);
+};
+
 const openCanonicalRoute = (data: unknown) => {
   if (!data || typeof data !== "object") return;
   const route = "route" in data && typeof data.route === "string" ? data.route : "";
@@ -61,11 +71,8 @@ const openCanonicalRoute = (data: unknown) => {
 
 export function MobileDeviceProvider({ children }: PropsWithChildren) {
   const { state } = useMobileAuth();
-  const { client } = useWorkbench();
-  const register = useCallback(() => registerDeviceDelivery(client), [client]);
   useEffect(() => {
     if (state !== "signed-in") return;
-    void register().catch(() => undefined);
     void Notifications.getLastNotificationResponseAsync().then((response) => {
       if (response) openCanonicalRoute(response.notification.request.content.data);
     });
@@ -73,6 +80,6 @@ export function MobileDeviceProvider({ children }: PropsWithChildren) {
       openCanonicalRoute(response.notification.request.content.data);
     });
     return () => subscription.remove();
-  }, [register, state]);
+  }, [state]);
   return children;
 }

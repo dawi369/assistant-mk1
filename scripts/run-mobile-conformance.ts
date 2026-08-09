@@ -5,7 +5,12 @@ import { resolve } from "node:path";
 const suites = [
   {
     command: ["mobile:check"],
-    guarantees: ["ios-bundle", "android-bundle", "native-type-safety", "expo-public-config"],
+    guarantees: [
+      "ios-export-bundle",
+      "android-export-bundle",
+      "native-type-safety",
+      "expo-public-config",
+    ],
   },
   {
     command: [
@@ -13,18 +18,22 @@ const suites = [
       "vitest",
       "run",
       "apps/mobile/src/mobile-foundation.test.ts",
+      "apps/mobile/src/chat/chat-messages.test.ts",
       "cloudflare/control-plane/src/notification-delivery.test.ts",
       "cloudflare/control-plane/src/session-agent-stream.test.ts",
       "cloudflare/control-plane/src/thread-chat-idempotency.test.ts",
       "cloudflare/control-plane/src/agent-connection-token.test.ts",
     ],
     guarantees: [
-      "secure-token-custody",
+      "public-config-secret-exclusion-guard",
       "one-pending-turn",
       "turn-deduplication",
-      "cursor-reset",
+      "session-replay-ring",
       "stale-token-rejection",
-      "generic-pack-ui",
+      "generic-pack-route-source-guard",
+      "canonical-display-resource-guard",
+      "thread-selection-and-hydration-guard",
+      "explicit-notification-permission-guard",
       "notification-redaction",
       "invalid-provider-token-classification",
     ],
@@ -61,6 +70,8 @@ const report = {
   generatedAt: new Date().toISOString(),
   commit: process.env.GITHUB_SHA ?? null,
   status: failed ? "failed" : "passed",
+  scope: "deterministic-mobile-foundation",
+  deviceAcceptance: "not-run",
   guarantees: results.flatMap((result) => result.guarantees),
   commands: results,
   failureArtifacts: [

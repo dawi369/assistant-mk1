@@ -10,7 +10,7 @@ import { useWorkbench } from "../src/workbench-provider";
 export default function ConnectionsScreen() {
   const { client } = useWorkbench();
   const load = useCallback(() => client.connections.list(), [client]);
-  const { data, error, refreshing, refresh } = useMobileResource("connections", load);
+  const { data, error, refreshing, refresh } = useMobileResource(load);
   const [secrets, setSecrets] = useState<Record<string, string>>({});
   return (
     <Screen refreshing={refreshing} onRefresh={() => void refresh()}>
