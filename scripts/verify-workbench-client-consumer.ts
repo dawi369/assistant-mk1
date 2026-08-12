@@ -85,6 +85,35 @@ writeFileSync(
   )}\n`,
 );
 run("pnpm", ["exec", "tsc", "-p", "tsconfig.json"], consumer);
+writeFileSync(
+  resolve(consumer, "runtime.mjs"),
+  `import { createWorkbenchClient } from "@assistant-mk1/workbench-client";
+
+const response = (body, requestId) => new Response(JSON.stringify(body), {
+  headers: { "content-type": "application/json", "x-request-id": requestId },
+});
+const valid = createWorkbenchClient({
+  baseUrl: "https://example.invalid",
+  client: { platform: "web", version: "packed-consumer" },
+  fetch: async () => response({ ok: true, runnable: true, workflows: [], additive: true }, "req_valid"),
+});
+if (!(await valid.workflows.list()).ok) throw new Error("Packed valid response was rejected.");
+
+const invalid = createWorkbenchClient({
+  baseUrl: "https://example.invalid",
+  client: { platform: "web", version: "packed-consumer" },
+  fetch: async () => response({ ok: true, runs: { credential: "must-not-leak" } }, "req_invalid"),
+});
+try {
+  await invalid.history.listRuns();
+  throw new Error("Packed invalid response was accepted.");
+} catch (error) {
+  if (error.code !== "invalid_response" || error.requestId !== "req_invalid") throw error;
+  if (String(error).includes("must-not-leak")) throw new Error("Invalid body leaked through error.");
+}
+`,
+);
+run("node", ["runtime.mjs"], consumer);
 run(
   "pnpm",
   [

@@ -123,14 +123,21 @@ describe("createWorkbenchClient", () => {
     const client = createWorkbenchClient({
       baseUrl: "https://workbench.example",
       client: { platform: "web", version: "0.1.0" },
-      fetch: async () => jsonResponse({ ok: true, runs: {} }),
+      fetch: async () =>
+        jsonResponse(
+          { ok: true, runs: {}, accessToken: "credential-must-not-appear" },
+          { headers: { "x-request-id": "req_invalid" } },
+        ),
     });
 
-    await expect(client.history.listRuns()).rejects.toMatchObject({
+    const error = await client.history.listRuns().catch((caught: unknown) => caught);
+    expect(error).toMatchObject({
       code: "invalid_response",
+      requestId: "req_invalid",
       status: 0,
       retryable: false,
     });
+    expect(String(error)).not.toContain("credential-must-not-appear");
   });
 
   it("fails closed on an unsupported chat protocol", async () => {
@@ -163,6 +170,36 @@ describe("createWorkbenchClient", () => {
       requestId: "req_404",
       retryable: false,
       status: 404,
+    });
+  });
+
+  it("propagates read cancellation without classifying it as retryable", async () => {
+    const fetcher = vi.fn<typeof fetch>(
+      async (_url, init) =>
+        await new Promise<Response>((_resolve, reject) => {
+          if (init?.signal?.aborted) {
+            reject(init.signal.reason);
+            return;
+          }
+          init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), {
+            once: true,
+          });
+        }),
+    );
+    const client = createWorkbenchClient({
+      baseUrl: "https://workbench.example",
+      client: { platform: "web", version: "0.1.1" },
+      fetch: fetcher,
+    });
+    const controller = new AbortController();
+    const request = client.connections.list({ signal: controller.signal });
+
+    controller.abort();
+
+    await expect(request).rejects.toMatchObject({
+      code: "request_cancelled",
+      retryable: false,
+      status: 0,
     });
   });
 });

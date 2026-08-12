@@ -334,7 +334,11 @@ importers:
         specifier: '>=19'
         version: 19.2.6
 
-  packages/workbench-client: {}
+  packages/workbench-client:
+    dependencies:
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
 
   packages/workbench-react:
     dependencies:

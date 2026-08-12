@@ -1,4 +1,4 @@
-export type JsonObject = Record<string, unknown>;
+import type { z } from "zod";
 
 export class WorkbenchResponseValidationError extends TypeError {
   constructor(message: string) {
@@ -7,48 +7,21 @@ export class WorkbenchResponseValidationError extends TypeError {
   }
 }
 
-export const isJsonObject = (value: unknown): value is JsonObject =>
+export const isJsonObject = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
-export const parseObject = <T>(value: unknown, label: string): T => {
-  if (!isJsonObject(value))
-    throw new WorkbenchResponseValidationError(`${label} must be a JSON object`);
-  return value as T;
-};
+export type InternalResponseSchema = z.ZodType;
 
-export const parseWorkbenchResponse = <T>(value: unknown, label: string): T => {
-  const object = parseObject<T>(value, label) as T & JsonObject;
-  if (typeof object.ok !== "boolean") {
-    throw new WorkbenchResponseValidationError(`${label}.ok must be a boolean`);
+export const parseWorkbenchResponse = <T>(
+  schema: InternalResponseSchema,
+  value: unknown,
+  label: string,
+): T => {
+  const result = schema.safeParse(value);
+  if (!result.success) {
+    const issue = result.error.issues[0];
+    const path = issue?.path.length ? `.${issue.path.join(".")}` : "";
+    throw new WorkbenchResponseValidationError(`${label}${path} is invalid`);
   }
-  for (const field of [
-    "actions",
-    "agents",
-    "artifacts",
-    "connections",
-    "devices",
-    "proposals",
-    "runs",
-    "states",
-    "threads",
-    "workflows",
-    "workspaces",
-  ]) {
-    if (field in object && !Array.isArray(object[field])) {
-      throw new WorkbenchResponseValidationError(`${label}.${field} must be an array`);
-    }
-  }
-  for (const field of ["activeAgentId", "activeWorkspaceId", "error"]) {
-    if (field in object && object[field] !== undefined && typeof object[field] !== "string") {
-      throw new WorkbenchResponseValidationError(`${label}.${field} must be a string`);
-    }
-  }
-  if ("connection" in object && object.connection !== undefined && object.connection !== null) {
-    if (!isJsonObject(object.connection) || object.connection.chatProtocolVersion !== 1) {
-      throw new WorkbenchResponseValidationError(
-        `${label}.connection uses an unsupported chat protocol`,
-      );
-    }
-  }
-  return object;
+  return result.data as T;
 };

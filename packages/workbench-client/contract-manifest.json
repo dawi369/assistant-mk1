@@ -1,9 +1,19 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
+  "runtimeSchemas": [
+    {
+      "path": "workbench-client/src/response-schemas.ts",
+      "sha256": "abc11012edf54ad1f17c8a697807e3eaf2aeb5496f373d03a2dea3646873e513"
+    },
+    {
+      "path": "workbench-client/src/validation.ts",
+      "sha256": "8dfc6ca9b87221776b50950df2ef5ac5d5048f7c935322e981c238016897482e"
+    }
+  ],
   "packages": [
     {
       "name": "@assistant-mk1/workbench-client",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "files": [
         {
           "path": "workbench-client/dist/chat.d.ts",
@@ -11,7 +21,7 @@
         },
         {
           "path": "workbench-client/dist/client.d.ts",
-          "sha256": "d01736112b77f84eb507eb7fd8b2e94ca730ca79c51b450011e2fd9b5a4f08f9"
+          "sha256": "6ff80cb6e45e907e7d454b4e65640064b88496778df9b3128b6bb060e42944f7"
         },
         {
           "path": "workbench-client/dist/contracts/agents-chat.d.ts",
@@ -50,18 +60,22 @@
           "sha256": "33c0f30b9f9c99f25baa4329a000667169404ce10fd1410f60e6960f23163de2"
         },
         {
+          "path": "workbench-client/dist/response-schemas.d.ts",
+          "sha256": "b0bcd4860f4ca4f6427595724561907df652775050c76f5edbfa23d99fab4b54"
+        },
+        {
           "path": "workbench-client/dist/validation.d.ts",
-          "sha256": "b54938d503fc784a6fe28f53755a88385bd2bef9b364d1210803bb84fa4408d9"
+          "sha256": "6f672c8a8d28f1ddd38b61b8123e84e2ce50046b3bb0baf4bd95ff8c44c0f917"
         }
       ]
     },
     {
       "name": "@assistant-mk1/workbench-react",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "files": [
         {
           "path": "workbench-react/dist/index.d.ts",
-          "sha256": "c1be64923c90f38543a8becf8e30f2aa623bb564a0c09f36f542e1e183e9eaa8"
+          "sha256": "730df5b7c0b03100bccc799d34351f36247e9faf3796a81f24e7df232bc920e7"
         }
       ]
     }

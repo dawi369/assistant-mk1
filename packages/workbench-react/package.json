@@ -1,6 +1,6 @@
 {
   "name": "@assistant-mk1/workbench-react",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "React query bindings for the Assistant-mk1 workbench client.",
   "license": "PolyForm-Noncommercial-1.0.0",

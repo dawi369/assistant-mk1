@@ -3,7 +3,8 @@ import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "
 import { relative, resolve } from "node:path";
 
 type ContractManifest = {
-  schemaVersion: 1;
+  schemaVersion: 2;
+  runtimeSchemas: Array<{ path: string; sha256: string }>;
   packages: Array<{
     name: string;
     version: string;
@@ -48,7 +49,11 @@ const packages = ["workbench-client", "workbench-react"].map((directory) => {
   };
 });
 
-const current: ContractManifest = { schemaVersion: 1, packages };
+const runtimeSchemas = ["src/response-schemas.ts", "src/validation.ts"].map((path) => ({
+  path: `workbench-client/${path}`,
+  sha256: hash(readFileSync(resolve(clientRoot, path), "utf8")),
+}));
+const current: ContractManifest = { schemaVersion: 2, runtimeSchemas, packages };
 const serialized = `${JSON.stringify(current, null, 2)}\n`;
 if (process.argv.includes("--accept")) {
   writeFileSync(manifestPath, serialized);
