@@ -27,6 +27,10 @@ export type SecurityAuditDecision = {
   allowed: BlockedAuditAdvisory[];
 };
 
+export type SecurityAuditPolicyOptions = {
+  locallyRemediatedAdvisories?: ReadonlySet<string>;
+};
+
 const ALLOWED_UNPATCHED_ADVISORIES = new Set(["GHSA-5p2g-fcmc-qvqq", "GHSA-w3rx-r6r6-pgpr"]);
 
 const ALLOWED_IMAGE_SIZE_PATH = "apps__mobile>expo>@expo/metro>metro>image-size";
@@ -62,7 +66,10 @@ function isNarrowExpoBuildTimeException(
   );
 }
 
-export function evaluateSecurityAudit(report: AuditReport): SecurityAuditDecision {
+export function evaluateSecurityAudit(
+  report: AuditReport,
+  options: SecurityAuditPolicyOptions = {},
+): SecurityAuditDecision {
   const advisories =
     report.advisories && typeof report.advisories === "object"
       ? (report.advisories as Record<string, AuditAdvisory>)
@@ -72,7 +79,10 @@ export function evaluateSecurityAudit(report: AuditReport): SecurityAuditDecisio
   for (const [id, advisory] of Object.entries(advisories)) {
     if (advisory.severity !== "high" && advisory.severity !== "critical") continue;
     const normalized = normalizeAdvisory(id, advisory);
-    if (isNarrowExpoBuildTimeException(advisory, normalized)) {
+    if (
+      isNarrowExpoBuildTimeException(advisory, normalized) ||
+      options.locallyRemediatedAdvisories?.has(normalized.githubAdvisoryId)
+    ) {
       decision.allowed.push(normalized);
     } else {
       decision.blocked.push(normalized);

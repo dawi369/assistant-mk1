@@ -1,4 +1,7 @@
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 import { evaluateSecurityAudit } from "./security-audit-policy";
 
@@ -29,12 +32,21 @@ try {
   process.exit(1);
 }
 
-const decision = evaluateSecurityAudit(report as { advisories?: unknown });
+const localPatchPath = resolve(process.cwd(), "patches/extract-zip@2.0.1.patch");
+const localPatchSha256 = createHash("sha256")
+  .update(readFileSync(localPatchPath))
+  .digest("hex");
+const expectedLocalPatchSha256 = "702d3c3679ddfd25701c6d22685f7e34fe0aec77e0e03ff2d5f28ecf9eb5384e";
+const locallyRemediatedAdvisories = new Set<string>();
+if (localPatchSha256 === expectedLocalPatchSha256) {
+  locallyRemediatedAdvisories.add("GHSA-jmr9-qjv8-65gv");
+}
+const decision = evaluateSecurityAudit(report as { advisories?: unknown }, {
+  locallyRemediatedAdvisories,
+});
 
 for (const advisory of decision.allowed) {
-  console.warn(
-    `Allowed unpatched Expo build-time advisory: ${advisory.githubAdvisoryId} (${advisory.moduleName})`,
-  );
+  console.warn(`${advisory.githubAdvisoryId} is constrained or locally remediated.`);
 }
 
 if (decision.blocked.length > 0) {

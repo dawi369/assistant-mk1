@@ -54,4 +54,19 @@ describe("security audit policy", () => {
     expect(decision.blocked).toHaveLength(3);
     expect(decision.allowed).toEqual([]);
   });
+
+  it("accepts only explicitly verified local remediation", () => {
+    const extractZip = advisory({
+      module_name: "extract-zip",
+      github_advisory_id: "GHSA-jmr9-qjv8-65gv",
+      findings: [{ paths: [".>@langchain/langgraph-cli>extract-zip"] }],
+    });
+    expect(evaluateSecurityAudit({ advisories: { extractZip } }).blocked).toHaveLength(1);
+    expect(
+      evaluateSecurityAudit(
+        { advisories: { extractZip } },
+        { locallyRemediatedAdvisories: new Set(["GHSA-jmr9-qjv8-65gv"]) },
+      ).blocked,
+    ).toEqual([]);
+  });
 });
