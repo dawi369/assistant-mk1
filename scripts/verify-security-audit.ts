@@ -33,9 +33,7 @@ try {
 }
 
 const localPatchPath = resolve(process.cwd(), "patches/extract-zip@2.0.1.patch");
-const localPatchSha256 = createHash("sha256")
-  .update(readFileSync(localPatchPath))
-  .digest("hex");
+const localPatchSha256 = createHash("sha256").update(readFileSync(localPatchPath)).digest("hex");
 const expectedLocalPatchSha256 = "702d3c3679ddfd25701c6d22685f7e34fe0aec77e0e03ff2d5f28ecf9eb5384e";
 const locallyRemediatedAdvisories = new Set<string>();
 if (localPatchSha256 === expectedLocalPatchSha256) {
