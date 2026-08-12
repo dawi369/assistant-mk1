@@ -3,6 +3,7 @@ FROM node:24-bookworm-slim AS sdk-builder
 WORKDIR /app
 RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY patches patches
 COPY packages/agent-sdk/package.json packages/agent-sdk/package.json
 COPY agent-packs/repo-analyst/package.json agent-packs/repo-analyst/package.json
 COPY agent-packs/baby-polymancer/package.json agent-packs/baby-polymancer/package.json
@@ -27,6 +28,7 @@ RUN apt-get update \
 
 RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY patches patches
 COPY packages/agent-sdk/package.json packages/agent-sdk/package.json
 COPY agent-packs/repo-analyst/package.json agent-packs/repo-analyst/package.json
 COPY agent-packs/baby-polymancer/package.json agent-packs/baby-polymancer/package.json
