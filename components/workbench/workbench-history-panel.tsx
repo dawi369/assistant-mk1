@@ -2,6 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  useApprovalAction,
+  useProposalAction,
+  useRunAction,
+  useWorkbenchActions,
+  useWorkbenchArtifacts,
+  useWorkbenchRun,
+  useWorkbenchRuns,
+} from "@assistant-mk1/workbench-react";
+import {
   CheckIcon,
   CircleAlertIcon,
   CircleStopIcon,
@@ -41,7 +50,6 @@ import {
   type HistoryFilter,
   type HistoryFocusRequest,
 } from "@/lib/workbench/history-surface";
-import { browserWorkbenchClient } from "@/lib/workbench/browser-client";
 import { cn } from "@/lib/utils";
 import type {
   ArtifactSummary,
@@ -104,21 +112,40 @@ export function WorkbenchHistoryPanel({
   onCloseAutoFocus?: (event: Event) => void;
   onFocusConsumed?: () => void;
 }) {
-  const [runs, setRuns] = useState<ExecutionHistoryRunSummary[]>([]);
-  const [artifacts, setArtifacts] = useState<ArtifactSummary[]>([]);
-  const [actions, setActions] = useState<ActionProposalSummary[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-  const [selectedRunSnapshot, setSelectedRunSnapshot] = useState<ExecutionRunSnapshot | null>(null);
   const [activeFilter, setActiveFilter] = useState<HistoryFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [highlightedRunId, setHighlightedRunId] = useState<string | null>(null);
   const [highlightedArtifactId, setHighlightedArtifactId] = useState<string | null>(null);
-  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
-  const [isLoadingRun, setIsLoadingRun] = useState(false);
-  const [historyError, setHistoryError] = useState<string | null>(null);
-  const [runError, setRunError] = useState<string | null>(null);
+  const [historyActionError, setHistoryActionError] = useState<string | null>(null);
+  const [runActionError, setRunActionError] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const selectedRunIdRef = useRef<string | null>(null);
+  const runsQuery = useWorkbenchRuns({ limit: 20, enabled: open });
+  const artifactsQuery = useWorkbenchArtifacts({ limit: 20, enabled: open });
+  const actionsQuery = useWorkbenchActions({ limit: 20, enabled: open });
+  const runQuery = useWorkbenchRun(selectedRunId, { enabled: open });
+  const { mutateAsync: cancelRun } = useRunAction("cancel");
+  const { mutateAsync: retryRun } = useRunAction("retry");
+  const { mutateAsync: approveRequest } = useApprovalAction("approve");
+  const { mutateAsync: denyRequest } = useApprovalAction("deny");
+  const { mutateAsync: executeProposal } = useProposalAction("execute");
+  const { mutateAsync: reconcileProposal } = useProposalAction("reconcile");
+  const { refetch: refetchRuns } = runsQuery;
+  const { refetch: refetchArtifacts } = artifactsQuery;
+  const { refetch: refetchActions } = actionsQuery;
+  const runs = (runsQuery.data?.runs ?? []) as ExecutionHistoryRunSummary[];
+  const artifacts = (artifactsQuery.data?.artifacts ?? []) as ArtifactSummary[];
+  const actions = (actionsQuery.data?.proposals ?? []) as ActionProposalSummary[];
+  const selectedRunSnapshot = (runQuery.data?.snapshot ?? null) as ExecutionRunSnapshot | null;
+  const isLoadingHistory =
+    runsQuery.isFetching || artifactsQuery.isFetching || actionsQuery.isFetching;
+  const isLoadingRun = runQuery.isFetching;
+  const historyError =
+    historyActionError ??
+    (runsQuery.error ?? artifactsQuery.error ?? actionsQuery.error)?.message ??
+    null;
+  const runError = runActionError ?? runQuery.error?.message ?? null;
 
   const selectedRun = useMemo(
     () => runs.find((run) => run.id === selectedRunId) ?? null,
@@ -145,99 +172,80 @@ export function WorkbenchHistoryPanel({
   }, [selectedRunId]);
 
   const loadHistory = useCallback(async () => {
-    setIsLoadingHistory(true);
-    setHistoryError(null);
+    setHistoryActionError(null);
     try {
-      const [runsBody, artifactsBody, actionsBody] = await Promise.all([
-        browserWorkbenchClient.history.listRuns({ limit: 20 }),
-        browserWorkbenchClient.history.listArtifacts({ limit: 20 }),
-        browserWorkbenchClient.actions.list({ limit: 20 }),
-      ]);
-      const nextRuns = runsBody.runs ?? [];
-      setRuns(nextRuns);
-      setArtifacts(artifactsBody.artifacts ?? []);
-      setActions(actionsBody.proposals ?? []);
-      return nextRuns;
+      const [runsResult] = await Promise.all([refetchRuns(), refetchArtifacts(), refetchActions()]);
+      return runsResult.data?.runs ?? [];
     } catch (error) {
-      setHistoryError(error instanceof Error ? error.message : "Failed to load history");
+      setHistoryActionError(error instanceof Error ? error.message : "Failed to load history");
       return null;
-    } finally {
-      setIsLoadingHistory(false);
     }
-  }, []);
+  }, [refetchActions, refetchArtifacts, refetchRuns]);
 
-  const inspectRun = useCallback(async (runId: string) => {
+  const inspectRun = useCallback((runId: string) => {
     setSelectedRunId(runId);
-    setSelectedRunSnapshot(null);
-    setIsLoadingRun(true);
-    setRunError(null);
-    try {
-      const body = await browserWorkbenchClient.history.getRun(runId);
-      setSelectedRunSnapshot(body.snapshot ?? null);
-    } catch (error) {
-      setRunError(error instanceof Error ? error.message : "Failed to load run details");
-    } finally {
-      setIsLoadingRun(false);
-    }
+    setRunActionError(null);
   }, []);
 
   const performRunAction = useCallback(
     async (action: "cancel" | "retry") => {
       if (!selectedRunId) return;
       setBusyAction(action);
-      setRunError(null);
+      setRunActionError(null);
       try {
-        await browserWorkbenchClient.history[action](selectedRunId);
+        await (action === "cancel" ? cancelRun : retryRun)(selectedRunId);
         const loadedRuns = await loadHistory();
         const nextRunId =
           action === "retry" ? (loadedRuns?.[0]?.id ?? selectedRunId) : selectedRunId;
-        await inspectRun(nextRunId);
+        inspectRun(nextRunId);
       } catch (actionError) {
-        setRunError(actionError instanceof Error ? actionError.message : `Failed to ${action} run`);
+        setRunActionError(
+          actionError instanceof Error ? actionError.message : `Failed to ${action} run`,
+        );
       } finally {
         setBusyAction(null);
       }
     },
-    [inspectRun, loadHistory, selectedRunId],
+    [cancelRun, inspectRun, loadHistory, retryRun, selectedRunId],
   );
 
   const decideApproval = useCallback(
     async (approvalId: string, action: "approve" | "deny") => {
       setBusyAction(`${action}:${approvalId}`);
-      setRunError(null);
+      setRunActionError(null);
       try {
-        if (action === "deny") {
-          await browserWorkbenchClient.approvals.deny(approvalId, "Denied from History");
-        } else {
-          await browserWorkbenchClient.approvals.approve(approvalId);
-        }
+        await (action === "deny" ? denyRequest : approveRequest)({
+          approvalId,
+          reason: "Denied from History",
+        });
         await loadHistory();
-        if (selectedRunId) await inspectRun(selectedRunId);
       } catch (approvalError) {
-        setRunError(
+        setRunActionError(
           approvalError instanceof Error ? approvalError.message : `Failed to ${action} approval`,
         );
       } finally {
         setBusyAction(null);
       }
     },
-    [inspectRun, loadHistory, selectedRunId],
+    [approveRequest, denyRequest, loadHistory],
   );
 
   const performProposalAction = useCallback(
     async (proposalId: string, action: "execute" | "reconcile") => {
       setBusyAction(`proposal:${action}:${proposalId}`);
-      setHistoryError(null);
+      setHistoryActionError(null);
       try {
-        await browserWorkbenchClient.actions[action](proposalId);
+        await (action === "execute" ? executeProposal : reconcileProposal)(proposalId);
         await loadHistory();
       } catch (error) {
-        setHistoryError(error instanceof Error ? error.message : `Failed to ${action} action`);
+        setHistoryActionError(
+          error instanceof Error ? error.message : `Failed to ${action} action`,
+        );
       } finally {
         setBusyAction(null);
       }
     },
-    [loadHistory],
+    [executeProposal, loadHistory, reconcileProposal],
   );
 
   useEffect(() => {
@@ -251,7 +259,7 @@ export function WorkbenchHistoryPanel({
         : (selectedRunIdRef.current ?? loadedRuns[0]?.id ?? null);
       if (runId) {
         setHighlightedRunId(focus ? runId : null);
-        void inspectRun(runId);
+        inspectRun(runId);
       }
       setHighlightedArtifactId(focus?.artifactId ?? null);
       if (focus) onFocusConsumed?.();

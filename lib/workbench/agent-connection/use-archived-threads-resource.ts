@@ -1,109 +1,68 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback } from "react";
+import {
+  useWorkbenchThreads,
+  useWorkbenchQueryClient,
+  workbenchQueryKeys,
+  type QueryClient,
+} from "@assistant-mk1/workbench-react";
 
-import { browserWorkbenchClient } from "@/lib/workbench/browser-client";
-import type { ChatThreadSummary } from "@/lib/workbench/workbench-types";
-import { archivedThreadsFreshMs, type ArchivedThreadsLoadInput } from "./session-runtime";
+import type { ChatThreadsResponse, ChatThreadSummary } from "@/lib/workbench/workbench-types";
+import type { ArchivedThreadsLoadInput } from "./session-runtime";
+
+const updateArchivedThreads = (
+  queryClient: QueryClient,
+  workspaceId: string | undefined,
+  updater: (threads: ChatThreadSummary[]) => ChatThreadSummary[],
+) => {
+  queryClient.setQueryData<ChatThreadsResponse>(
+    workbenchQueryKeys.threads(workspaceId, "archived"),
+    (current) => ({
+      ...current,
+      ok: current?.ok ?? true,
+      status: "archived",
+      threads: updater(current?.threads ?? []),
+    }),
+  );
+};
 
 export const useArchivedThreadsResource = (input: { workspaceId?: string; preload: boolean }) => {
-  const [threads, setThreads] = useState<ChatThreadSummary[]>([]);
-  const [isInitialLoading, setIsInitialLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const loadedRef = useRef(false);
-  const loadedAtRef = useRef(0);
-  const loadedWorkspaceIdRef = useRef<string | null>(null);
-  const currentWorkspaceIdRef = useRef<string | undefined>(input.workspaceId);
-  const requestRef = useRef<{ workspaceId: string; promise: Promise<void> } | null>(null);
-  currentWorkspaceIdRef.current = input.workspaceId;
+  const queryClient = useWorkbenchQueryClient();
+  const query = useWorkbenchThreads("archived", {
+    workspaceId: input.workspaceId,
+    enabled: Boolean(input.workspaceId && input.preload),
+  });
+  const { refetch } = query;
 
   const load = useCallback(
     async (loadInput: ArchivedThreadsLoadInput = {}) => {
-      const workspaceId = input.workspaceId;
-      if (!workspaceId) return;
-      const hasCurrentCache = loadedRef.current && loadedWorkspaceIdRef.current === workspaceId;
-      const cacheIsFresh =
-        hasCurrentCache && Date.now() - loadedAtRef.current < archivedThreadsFreshMs;
-      if (!loadInput.force && cacheIsFresh) return;
-
-      const activeRequest = requestRef.current;
-      if (activeRequest?.workspaceId === workspaceId) return activeRequest.promise;
-
-      if (!hasCurrentCache) setIsInitialLoading(true);
-      setError(null);
-      const request = (async () => {
-        try {
-          const body = await browserWorkbenchClient.threads.list("archived");
-          if (currentWorkspaceIdRef.current !== workspaceId) return;
-          setThreads(body.threads ?? []);
-          loadedRef.current = true;
-          loadedAtRef.current = Date.now();
-          loadedWorkspaceIdRef.current = workspaceId;
-        } catch (nextError) {
-          if (currentWorkspaceIdRef.current === workspaceId) {
-            setError(
-              nextError instanceof Error ? nextError.message : "Failed to load archived chats",
-            );
-          }
-          throw nextError;
-        } finally {
-          if (requestRef.current?.workspaceId === workspaceId) requestRef.current = null;
-          if (currentWorkspaceIdRef.current === workspaceId) setIsInitialLoading(false);
-        }
-      })();
-      requestRef.current = { workspaceId, promise: request };
-      return request;
+      if (!input.workspaceId) return;
+      const key = workbenchQueryKeys.threads(input.workspaceId, "archived");
+      if (!loadInput.force && queryClient.getQueryData(key) !== undefined) return;
+      const result = await refetch();
+      if (result.error) throw result.error;
     },
-    [input.workspaceId],
+    [input.workspaceId, queryClient, refetch],
   );
 
-  const loadRef = useRef(load);
-  useEffect(() => {
-    loadRef.current = load;
-  }, [load]);
-
   const refreshIfLoaded = useCallback(() => {
-    loadedAtRef.current = 0;
-    if (!loadedRef.current) return;
-    void loadRef.current({ force: true }).catch(() => undefined);
-  }, []);
+    const key = workbenchQueryKeys.threads(input.workspaceId, "archived");
+    if (queryClient.getQueryData(key) === undefined) return;
+    void queryClient.invalidateQueries({ queryKey: key });
+  }, [input.workspaceId, queryClient]);
 
-  useEffect(() => {
-    const cachedWorkspaceId = loadedWorkspaceIdRef.current;
-    if (input.workspaceId && (!cachedWorkspaceId || cachedWorkspaceId === input.workspaceId)) {
-      return;
-    }
-    loadedRef.current = false;
-    loadedAtRef.current = 0;
-    loadedWorkspaceIdRef.current = null;
-    setThreads([]);
-    setError(null);
-  }, [input.workspaceId]);
-
-  useEffect(() => {
-    if (!input.preload) return;
-    const timeout = window.setTimeout(() => void load().catch(() => undefined), 250);
-    return () => window.clearTimeout(timeout);
-  }, [input.preload, load]);
-
-  useEffect(() => {
-    const refreshVisibleCache = () => {
-      if (document.visibilityState !== "visible" || !loadedRef.current) return;
-      void load().catch(() => undefined);
-    };
-    document.addEventListener("visibilitychange", refreshVisibleCache);
-    window.addEventListener("focus", refreshVisibleCache);
-    return () => {
-      document.removeEventListener("visibilitychange", refreshVisibleCache);
-      window.removeEventListener("focus", refreshVisibleCache);
-    };
-  }, [load]);
+  const setArchivedThreads = useCallback(
+    (updater: (threads: ChatThreadSummary[]) => ChatThreadSummary[]) =>
+      updateArchivedThreads(queryClient, input.workspaceId, updater),
+    [input.workspaceId, queryClient],
+  );
 
   return {
-    archivedThreads: threads,
-    setArchivedThreads: setThreads,
-    isLoadingArchivedThreads: isInitialLoading,
-    archivedThreadsError: error,
+    archivedThreads: query.data?.threads ?? [],
+    setArchivedThreads,
+    isLoadingArchivedThreads: query.isPending && query.fetchStatus === "fetching",
+    archivedThreadsError: query.error?.message ?? null,
     loadArchivedThreads: load,
     refreshArchivedThreadsIfLoaded: refreshIfLoaded,
   };

@@ -10,6 +10,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import {
+  usePublishWorkbenchSession,
+  useWorkbenchSessionEventInvalidation,
+} from "@assistant-mk1/workbench-react";
 
 import { requestWorkbenchSummaryRefresh } from "@/lib/workbench/admin-summary-events";
 import { browserWorkbenchClient } from "@/lib/workbench/browser-client";
@@ -82,6 +86,8 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
   const deleteRollbacksRef = useRef<Map<string, OptimisticDeleteRollback>>(new Map());
   const threadRefreshTimeoutRef = useRef<number | null>(null);
   const workspaceId = session?.workspace?.id;
+  usePublishWorkbenchSession(session);
+  useWorkbenchSessionEventInvalidation(latestSessionEvent, workspaceId);
   const {
     archivedThreads,
     archivedThreadsError,

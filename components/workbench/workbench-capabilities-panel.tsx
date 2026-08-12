@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useConnectionAction, useWorkbenchConnections } from "@assistant-mk1/workbench-react";
 import {
   BotIcon,
   CircleUserRoundIcon,
@@ -20,7 +21,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { resolveAgentSlashWorkflowActions } from "@/lib/workbench/agent-slash-actions";
-import { browserWorkbenchClient } from "@/lib/workbench/browser-client";
 import { resolvePackToolCapabilities } from "@/lib/workbench/pack-capabilities";
 import { useWorkbenchAgentConnection } from "@/lib/workbench/use-agent-connection";
 
@@ -49,15 +49,13 @@ export function WorkbenchCapabilitiesPanel({
   const workflowTools = tools.filter((tool) => tool.invocation === "workflow");
   const userWorkflows =
     pack?.workflows.filter((workflow) => workflow.userInvocable !== false) ?? [];
-  const [connections, setConnections] = useState<
-    Array<{
-      id: string;
-      provider: string;
-      credentialClass: "none" | "oauth2" | "api_key";
-      status: string;
-      requestedScopes: string[];
-    }>
-  >([]);
+  const connectionsQuery = useWorkbenchConnections({ enabled: open && Boolean(pack) });
+  const connections = connectionsQuery.data?.connections ?? [];
+  const { mutateAsync: submitCredential } = useConnectionAction("submitCredential");
+  const { mutateAsync: revokeCredential } = useConnectionAction("revoke");
+  const { mutateAsync: refreshCredential } = useConnectionAction("refresh");
+  const { mutateAsync: checkCredentialHealth } = useConnectionAction("health");
+  const { mutateAsync: authorizeCredential } = useConnectionAction("authorize");
   const [connectionSecrets, setConnectionSecrets] = useState<Record<string, string>>({});
   const [connectionNotice, setConnectionNotice] = useState<string | null>(null);
   const [killSwitches, setKillSwitches] = useState<
@@ -71,8 +69,7 @@ export function WorkbenchCapabilitiesPanel({
   const [mutationPermissions, setMutationPermissions] = useState<Record<string, boolean>>({});
 
   const refreshConnections = async () => {
-    const body = await browserWorkbenchClient.connections.list();
-    setConnections(body.connections ?? []);
+    await connectionsQuery.refetch();
   };
 
   const refreshKillSwitches = async () => {
@@ -100,12 +97,7 @@ export function WorkbenchCapabilitiesPanel({
 
   useEffect(() => {
     if (!open || !pack) return;
-    void Promise.all([
-      refreshConnections(),
-      refreshKillSwitches(),
-      refreshMutationPermissions(),
-    ]).catch(() => {
-      setConnections([]);
+    void Promise.all([refreshKillSwitches(), refreshMutationPermissions()]).catch(() => {
       setKillSwitches([]);
       setMutationPermissions({});
     });
@@ -114,10 +106,7 @@ export function WorkbenchCapabilitiesPanel({
   const authorizeConnection = async (connectionId: string) => {
     setConnectionNotice("Authorizing connection...");
     try {
-      await browserWorkbenchClient.connections.submitCredential(
-        connectionId,
-        connectionSecrets[connectionId] ?? "",
-      );
+      await submitCredential({ connectionId, secret: connectionSecrets[connectionId] ?? "" });
       setConnectionNotice("Connection authorized.");
       setConnectionSecrets((current) => ({ ...current, [connectionId]: "" }));
       await refreshConnections();
@@ -128,7 +117,7 @@ export function WorkbenchCapabilitiesPanel({
 
   const revokeConnection = async (connectionId: string) => {
     try {
-      await browserWorkbenchClient.connections.revoke(connectionId);
+      await revokeCredential({ connectionId });
       setConnectionNotice("Connection revoked.");
       await refreshConnections();
     } catch (error) {
@@ -138,7 +127,7 @@ export function WorkbenchCapabilitiesPanel({
 
   const checkConnection = async (connectionId: string, refresh = false) => {
     try {
-      await browserWorkbenchClient.connections[refresh ? "refresh" : "health"](connectionId);
+      await (refresh ? refreshCredential : checkCredentialHealth)({ connectionId });
       setConnectionNotice(`Connection ${refresh ? "refreshed" : "checked"}.`);
       await refreshConnections();
     } catch (error) {
@@ -197,7 +186,8 @@ export function WorkbenchCapabilitiesPanel({
   const startOAuthConnection = async (connectionId: string) => {
     setConnectionNotice("Starting secure authorization...");
     try {
-      const body = await browserWorkbenchClient.connections.authorize(connectionId);
+      const body = await authorizeCredential({ connectionId });
+      if (!("authorizationUrl" in body)) throw new Error("Authorization response was incomplete.");
       window.location.assign(body.authorizationUrl);
     } catch (error) {
       setConnectionNotice(

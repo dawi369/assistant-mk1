@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { WorkbenchClientProvider } from "@assistant-mk1/workbench-react";
+import { useRunWorkflow, WorkbenchClientProvider } from "@assistant-mk1/workbench-react";
 import { useAuth } from "@workos-inc/authkit-nextjs/components";
 import {
   ActivityIcon,
@@ -104,6 +104,7 @@ function WorkbenchShellContent({
   const [workflowAction, setWorkflowAction] = useState<AgentSlashWorkflowAction | null>(null);
   const [workflowInput, setWorkflowInput] = useState<Record<string, string | boolean>>({});
   const [isWorkflowRunning, setIsWorkflowRunning] = useState(false);
+  const { mutateAsync: runWorkflow } = useRunWorkflow();
   const { user, loading } = useAuth();
   const {
     error: sessionError,
@@ -244,10 +245,7 @@ function WorkbenchShellContent({
       setIsWorkflowRunning(true);
       setAdminNotice(`Running ${action.label}...`);
       try {
-        const body = await browserWorkbenchClient.workflows.run(
-          action.binding.workflowType,
-          request,
-        );
+        const body = await runWorkflow({ workflowType: action.binding.workflowType, ...request });
         const status = body.run?.status ?? (body.ok ? "accepted" : "submitted");
         setHistoryFocus({
           runId: body.run?.id,
@@ -268,7 +266,7 @@ function WorkbenchShellContent({
         window.setTimeout(() => setAdminNotice(null), 3500);
       }
     },
-    [focusComposerAfterInteraction],
+    [focusComposerAfterInteraction, runWorkflow],
   );
 
   const handleWorkflowInputChange = useCallback((name: string, value: string | boolean) => {

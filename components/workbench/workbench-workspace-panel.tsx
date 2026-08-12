@@ -1,6 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useActivateWorkspace,
+  useWorkbenchAccounts,
+  useWorkbenchWorkspaces,
+} from "@assistant-mk1/workbench-react";
 import { useAuth } from "@workos-inc/authkit-nextjs/components";
 import {
   ArrowLeftIcon,
@@ -30,13 +35,11 @@ import type {
   CloudflareDataJobResponse,
   CloudflareRetentionPolicyResponse,
   CloudflareWorkspaceMembersResponse,
-  CloudflareWorkspacesResponse,
   WorkbenchAccountContextResponse,
   WorkspaceMemberSummary,
   WorkspaceSummary,
 } from "@/lib/workbench/workbench-types";
 
-const accountsPath = "/api/workbench/accounts";
 const workspacesPath = "/api/workbench/workspaces";
 type WorkbenchAccount = NonNullable<WorkbenchAccountContextResponse["accounts"]>[number];
 const retentionFields = [
@@ -58,9 +61,14 @@ export function WorkbenchWorkspacePanel({
   onCloseAutoFocus?: (event: Event) => void;
 }) {
   const { switchToOrganization } = useAuth();
-  const [accounts, setAccounts] = useState<WorkbenchAccount[]>([]);
-  const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
-  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
+  const accountsQuery = useWorkbenchAccounts(open);
+  const workspacesQuery = useWorkbenchWorkspaces(open);
+  const { refetch: refetchAccounts } = accountsQuery;
+  const { refetch: refetchWorkspaces } = workspacesQuery;
+  const { mutateAsync: activateWorkspace } = useActivateWorkspace();
+  const accounts = (accountsQuery.data?.accounts ?? []) as WorkbenchAccount[];
+  const workspaces = (workspacesQuery.data?.workspaces ?? []) as WorkspaceSummary[];
+  const activeWorkspaceId = workspacesQuery.data?.activeWorkspaceId ?? null;
   const [members, setMembers] = useState<WorkspaceMemberSummary[]>([]);
   const [availableMembers, setAvailableMembers] = useState<WorkspaceMemberSummary[]>([]);
   const [currentMembership, setCurrentMembership] = useState<WorkspaceMemberSummary | null>(null);
@@ -84,18 +92,15 @@ export function WorkbenchWorkspacePanel({
     setLoading(true);
     setError(null);
     try {
-      const [accountBody, workspaceBody] = await Promise.all([
-        fetch(accountsPath, { cache: "no-store" }).then((response) =>
-          readJsonResponse<WorkbenchAccountContextResponse>(response, "Failed to load accounts"),
-        ),
-        fetch(workspacesPath, { cache: "no-store" }).then((response) =>
-          readJsonResponse<CloudflareWorkspacesResponse>(response, "Failed to load workspaces"),
-        ),
+      const [accountResult, workspaceResult] = await Promise.all([
+        refetchAccounts(),
+        refetchWorkspaces(),
       ]);
+      if (accountResult.error) throw accountResult.error;
+      if (workspaceResult.error) throw workspaceResult.error;
+      const workspaceBody = workspaceResult.data;
+      if (!workspaceBody) throw new Error("Workspace response was empty");
       const nextActiveWorkspaceId = workspaceBody.activeWorkspaceId ?? null;
-      setAccounts(accountBody.accounts ?? []);
-      setWorkspaces(workspaceBody.workspaces ?? []);
-      setActiveWorkspaceId(nextActiveWorkspaceId);
 
       if (!nextActiveWorkspaceId) {
         setMembers([]);
@@ -134,7 +139,7 @@ export function WorkbenchWorkspacePanel({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [refetchAccounts, refetchWorkspaces]);
 
   useEffect(() => {
     if (!open) return;
@@ -188,9 +193,7 @@ export function WorkbenchWorkspacePanel({
     setBusyId(`workspace:${workspaceId}`);
     setError(null);
     try {
-      await fetch(`${workspacesPath}/${encodeURIComponent(workspaceId)}/activate`, {
-        method: "POST",
-      }).then((response) => readJsonResponse(response, "Failed to switch workspace"));
+      await activateWorkspace(workspaceId);
       window.location.reload();
     } catch (switchError) {
       setError(switchError instanceof Error ? switchError.message : "Failed to switch workspace");
