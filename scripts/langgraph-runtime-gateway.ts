@@ -3,6 +3,8 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { Readable } from "node:stream";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 
+import * as Sentry from "@sentry/node";
+
 import {
   canonicalFacadeRequest,
   facadeContentSha256Header,
@@ -27,6 +29,27 @@ import { agentManifestRegistry } from "../generated/agent-runtime/manifests";
 import { agentRunnerRegistry } from "../generated/agent-runtime/runner";
 import { compiledWorkbenchVersion } from "../generated/agent-runtime/platform";
 import { resolvePlatformRunnerTool } from "../lib/agent-runtime/core-runner-provider";
+import { scrubSentryBreadcrumb, scrubSentryEvent } from "../lib/observability/sentry-scrubber";
+
+const sentryDsn = process.env.SENTRY_DSN?.trim();
+if (sentryDsn) {
+  Sentry.init({
+    dsn: sentryDsn,
+    environment: process.env.SENTRY_ENVIRONMENT ?? "production",
+    release: process.env.SENTRY_RELEASE ?? process.env.WORKBENCH_RELEASE_SHA,
+    tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE ?? "0.02"),
+    sendDefaultPii: false,
+    beforeSend: scrubSentryEvent,
+    beforeBreadcrumb: scrubSentryBreadcrumb,
+    initialScope: {
+      tags: {
+        service: "assistant-mk1",
+        "runtime.surface": "fly-langgraph",
+        "runtime.target": "gateway",
+      },
+    },
+  });
+}
 
 const port = Number(process.env.PORT ?? 3000);
 const langGraphUpstreamUrl = (
@@ -800,6 +823,15 @@ const handleToolRunnerInvocation = async (
         },
       });
     } catch (error) {
+      Sentry.captureException(error, {
+        tags: { "gateway.operation": "runner.invoke" },
+        extra: {
+          errorCode:
+            error && typeof error === "object" && "code" in error && typeof error.code === "string"
+              ? error.code
+              : "runner_execution_failed",
+        },
+      });
       json(response, 502, {
         ok: false,
         error: {
@@ -999,6 +1031,10 @@ const server = createServer((request, response) => {
 
     await proxyToLangGraph(request, response, url);
   })().catch((error: unknown) => {
+    Sentry.captureException(error, {
+      tags: { "gateway.operation": "request" },
+      extra: { status: 500 },
+    });
     json(response, 500, {
       ok: false,
       error: error instanceof Error ? error.message : "runtime gateway request failed",
@@ -1009,3 +1045,13 @@ const server = createServer((request, response) => {
 server.listen(port, "0.0.0.0", () => {
   console.log(`LangGraph runtime gateway listening on ${port}`);
 });
+
+server.on("error", (error) => {
+  Sentry.captureException(error, { tags: { "gateway.operation": "server" } });
+});
+
+for (const signal of ["SIGTERM", "SIGINT"] as const) {
+  process.once(signal, () => {
+    void Sentry.flush(2_000).finally(() => server.close());
+  });
+}

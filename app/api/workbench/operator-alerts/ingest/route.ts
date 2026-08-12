@@ -38,17 +38,14 @@ export async function POST(request: Request) {
   }
   Sentry.captureMessage(`Assistant-mk1 operator alert: ${alert.code}`, {
     level: alert.severity === "critical" ? "error" : "warning",
-    fingerprint: ["assistant-mk1-operator-alert", alert.id],
+    fingerprint: ["assistant-mk1-operator-alert", alert.code],
     tags: {
       service: "assistant-mk1",
       "operator_alert.code": alert.code,
       "operator_alert.severity": alert.severity,
     },
     extra: {
-      alertId: alert.id,
-      summary: alert.summary,
-      targetType: alert.targetType,
-      targetId: alert.targetId,
+      alertCode: alert.code,
       status: alert.status,
       deliveryStatus: alert.deliveryStatus,
       deliveryAttempts: alert.deliveryAttempts,

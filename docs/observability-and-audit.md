@@ -109,13 +109,22 @@ with tags instead of creating separate projects too early:
 
 - `runtime.surface=vercel-next` for the Vercel/Next web app and server facade.
 - `runtime.surface=cloudflare-worker` for the Cloudflare control plane Worker.
-- `runtime.surface=fly-langgraph` for the future Fly/LangGraph workflow runtime.
+- `runtime.surface=fly-langgraph` for the Fly/LangGraph gateway and workflow runtime.
 
 This keeps issues, releases, and traces in one product view while preserving
 easy filters for the surfaces that fail differently. Add more tags when they
-represent real operating boundaries, such as `runtime.target`, `workspace.id`,
-or a non-sensitive agent/runtime label. Do not send provider keys, WorkOS
-secrets, model prompts containing private data, or raw tenant data to Sentry.
+represent real operating boundaries, such as `runtime.target` or a non-sensitive
+agent/runtime label. Do not send workspace or user identity, provider keys,
+WorkOS secrets, model prompts containing private data, or raw tenant data to
+Sentry.
+
+All Sentry surfaces share the same fail-closed scrubber. It removes user
+contexts, request bodies, cookies, authorization and signing headers, OAuth and
+PKCE material, credential-shaped fields, and URL query strings from events and
+breadcrumbs. `sendDefaultPii` remains disabled. The retained diagnostic
+allowlist is release/environment, runtime surface, request ID, bounded error
+code/status metadata, and redacted exception text. Verify this boundary with
+`pnpm observability:check` after changing telemetry configuration.
 
 Source maps should use `SENTRY_AUTH_TOKEN` only in trusted CI/deploy
 environments. Never commit the auth token or print it in logs.
@@ -134,7 +143,12 @@ Production Sentry sampling should stay intentionally quiet:
 
 Normal request transactions such as `GET /` can still appear under Sentry
 traces when they are sampled. Treat those as performance telemetry, not runtime
-errors. Unresolved issues remain the primary Sentry view for failures.
+errors. Unresolved issues remain the primary Sentry view for failures. Resolve
+fixed probes and obsolete deployment failures promptly so this view stays
+actionable. Production alert ownership belongs to the Sentry project owner:
+new errors, five errors within five minutes, critical operator alerts, and
+regressions on resolved issues must notify that owner. Operator alerts aggregate
+by stable alert code rather than per-record identifiers.
 
 ## Runtime Traces
 

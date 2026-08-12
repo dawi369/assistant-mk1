@@ -1,4 +1,8 @@
 import * as Sentry from "@sentry/cloudflare";
+import {
+  scrubSentryBreadcrumb,
+  scrubSentryEvent,
+} from "../../../lib/observability/sentry-scrubber";
 import { routeAgentRequest } from "agents";
 import { handleWorkflowCallback } from "./workflow-callbacks";
 import { handleAdminWorkspaceSummary } from "./admin-summary";
@@ -764,6 +768,9 @@ export default Sentry.withSentry<Env>(
 
     return {
       dsn: env.SENTRY_DSN,
+      sendDefaultPii: false,
+      beforeSend: scrubSentryEvent,
+      beforeBreadcrumb: scrubSentryBreadcrumb,
       environment: env.SENTRY_ENVIRONMENT ?? "production",
       release: env.SENTRY_RELEASE,
       tracesSampleRate: parseSampleRate(env.SENTRY_TRACES_SAMPLE_RATE),
