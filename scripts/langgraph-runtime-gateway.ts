@@ -31,13 +31,18 @@ import { compiledWorkbenchVersion } from "../generated/agent-runtime/platform";
 import { resolvePlatformRunnerTool } from "../lib/agent-runtime/core-runner-provider";
 import { scrubSentryBreadcrumb, scrubSentryEvent } from "../lib/observability/sentry-scrubber";
 
+function parseSentrySampleRate(value: string | undefined): number {
+  const parsed = Number(value ?? "0.02");
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 1 ? parsed : 0.02;
+}
+
 const sentryDsn = process.env.SENTRY_DSN?.trim();
 if (sentryDsn) {
   Sentry.init({
     dsn: sentryDsn,
     environment: process.env.SENTRY_ENVIRONMENT ?? "production",
     release: process.env.SENTRY_RELEASE ?? process.env.WORKBENCH_RELEASE_SHA,
-    tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE ?? "0.02"),
+    tracesSampleRate: parseSentrySampleRate(process.env.SENTRY_TRACES_SAMPLE_RATE),
     sendDefaultPii: false,
     beforeSend: scrubSentryEvent,
     beforeBreadcrumb: scrubSentryBreadcrumb,

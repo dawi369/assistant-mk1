@@ -103,7 +103,7 @@
     "verify:security": "tsx scripts/verify-security-audit.ts",
     "verify:docker": "tsx scripts/verify-docker-image.ts",
     "verify:runtime-architecture": "vitest run cloudflare/control-plane/src/runtime-architecture.test.ts scripts/agent-pack-compiler.test.ts",
-    "verify:fast": "pnpm docs:check && pnpm verify:onboarding && pnpm verify:environment-config && pnpm agent-packs:compile --check && pnpm agent-packs:validate && pnpm agent-sdk:verify && pnpm agent-sdk:contract --check && pnpm workbench-client:verify && pnpm workbench-client:contract --check && pnpm conformance:extension-contract && pnpm verify:runtime-architecture && pnpm db:cloudflare:migrations:verify && pnpm db:cloudflare:backup:verify && pnpm test:unit && pnpm typecheck && pnpm lint",
+    "verify:fast": "pnpm docs:check && pnpm observability:check && pnpm verify:onboarding && pnpm verify:environment-config && pnpm agent-packs:compile --check && pnpm agent-packs:validate && pnpm agent-sdk:verify && pnpm agent-sdk:contract --check && pnpm workbench-client:verify && pnpm workbench-client:contract --check && pnpm conformance:extension-contract && pnpm verify:runtime-architecture && pnpm db:cloudflare:migrations:verify && pnpm db:cloudflare:backup:verify && pnpm test:unit && pnpm typecheck && pnpm lint",
     "verify": "pnpm verify:fast && pnpm verify:security && pnpm build",
     "release:check": "pnpm verify && pnpm conformance:client && pnpm conformance:mobile && pnpm conformance:data-lifecycle && pnpm conformance:connections && pnpm conformance:actions && pnpm conformance:agent-system && pnpm verify:docker && pnpm conformance:level2 && pnpm conformance:level3",
     "fork:check": "pnpm release:check && pnpm test:e2e",
