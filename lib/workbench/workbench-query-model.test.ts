@@ -41,6 +41,7 @@ describe("workbench query model", () => {
       [
         workbenchQueryKeys.approvals("workspace:a"),
         workbenchQueryKeys.runLists("workspace:a"),
+        workbenchQueryKeys.runDetails("workspace:a"),
         workbenchQueryKeys.actionLists("workspace:a"),
       ],
     );

@@ -43,8 +43,10 @@ export const workbenchQueryKeys = {
     [...workbenchQueryKeys.tenant(workspaceId), "runs"] as const,
   runs: (workspaceId?: string | null, limit = 20) =>
     [...workbenchQueryKeys.runLists(workspaceId), { limit }] as const,
+  runDetails: (workspaceId?: string | null) =>
+    [...workbenchQueryKeys.tenant(workspaceId), "run"] as const,
   run: (workspaceId: string | null | undefined, runId: string) =>
-    [...workbenchQueryKeys.tenant(workspaceId), "run", runId] as const,
+    [...workbenchQueryKeys.runDetails(workspaceId), runId] as const,
   artifactLists: (workspaceId?: string | null) =>
     [...workbenchQueryKeys.tenant(workspaceId), "artifacts"] as const,
   artifacts: (workspaceId?: string | null, limit = 20) =>
@@ -270,6 +272,7 @@ export const workbenchSessionEventInvalidations = (
     return [
       workbenchQueryKeys.approvals(workspaceId),
       workbenchQueryKeys.runLists(workspaceId),
+      workbenchQueryKeys.runDetails(workspaceId),
       workbenchQueryKeys.actionLists(workspaceId),
     ];
   }
@@ -278,6 +281,7 @@ export const workbenchSessionEventInvalidations = (
       workbenchQueryKeys.actionLists(workspaceId),
       workbenchQueryKeys.approvals(workspaceId),
       workbenchQueryKeys.runLists(workspaceId),
+      workbenchQueryKeys.runDetails(workspaceId),
     ];
   }
   if (event.type.startsWith("chat.run.")) return threadKeys(workspaceId);
@@ -390,6 +394,7 @@ export const useApprovalAction = (action: "approve" | "deny", workspaceId?: stri
     invalidations: () => [
       workbenchQueryKeys.approvals(workspaceId),
       workbenchQueryKeys.runLists(workspaceId),
+      workbenchQueryKeys.runDetails(workspaceId),
       workbenchQueryKeys.actionLists(workspaceId),
     ],
   });

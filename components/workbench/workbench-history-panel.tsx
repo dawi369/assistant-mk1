@@ -522,9 +522,12 @@ function SelectedRunSummary({
   for (const artifact of snapshot.artifacts ?? []) artifactMap.set(artifact.id, artifact);
   for (const artifact of artifacts) artifactMap.set(artifact.id, artifact);
   const previewArtifacts = Array.from(artifactMap.values());
-  const pendingInterventions = (snapshot.interventions ?? []).filter(
-    (intervention) => intervention.status === "requested",
-  );
+  const effectiveRunStatus = run?.status ?? snapshot.run?.status;
+  const pendingInterventions = ["completed", "failed", "cancelled"].includes(
+    effectiveRunStatus ?? "",
+  )
+    ? []
+    : (snapshot.interventions ?? []).filter((intervention) => intervention.status === "requested");
   const runId = run?.id ?? snapshot.run?.id;
   const workflowIntentId =
     run?.workflowIntentId ?? snapshot.run?.workflowIntentId ?? snapshot.intent?.id;
