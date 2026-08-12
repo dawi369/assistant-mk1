@@ -26,8 +26,14 @@ rmSync(output, { recursive: true, force: true });
 mkdirSync(consumer, { recursive: true });
 run("pnpm", ["pack", "--pack-destination", output], resolve(root, "packages/workbench-client"));
 run("pnpm", ["pack", "--pack-destination", output], resolve(root, "packages/workbench-react"));
+run(
+  "pnpm",
+  ["pack", "--pack-destination", output],
+  realpathSync(resolve(root, "packages/workbench-client/node_modules/zod")),
+);
 const clientArchive = archive("assistant-mk1-workbench-client-");
 const reactArchive = archive("assistant-mk1-workbench-react-");
+const zodArchive = archive("zod-");
 for (const packageArchive of [clientArchive, reactArchive]) {
   const entries = run("tar", ["-tzf", packageArchive], root).split("\n");
   if (entries.some((entry) => entry.startsWith("package/src/"))) {
@@ -49,6 +55,7 @@ writeFileSync(
       type: "module",
       dependencies: {
         "@assistant-mk1/workbench-client": `file:${relative(consumer, clientArchive)}`,
+        zod: `file:${relative(consumer, zodArchive)}`,
       },
     },
     null,
