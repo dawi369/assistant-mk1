@@ -1,6 +1,6 @@
 {
   "name": "assistant-mk1",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "private": true,
   "description": "Code-first agent workbench for durable runs, approvals, policy, artifacts, audit, and tenant-safe operations.",
   "homepage": "https://github.com/dawi369/assistant-mk1#readme",

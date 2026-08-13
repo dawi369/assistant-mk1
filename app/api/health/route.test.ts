@@ -18,7 +18,7 @@ describe("public application health", () => {
     expect(await response.json()).toEqual({
       ok: true,
       service: "assistant-mk1",
-      version: "0.5.0",
+      version: "0.5.1",
       release: "a".repeat(40),
     });
   });

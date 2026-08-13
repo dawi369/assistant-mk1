@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.1
+
+Production-hardening release with a shared runtime-validated frontend client,
+one React Query resource model, credential-safe observability across Vercel,
+Cloudflare, and Fly, a decomposed connection broker, and executable hosted
+configuration/observability drift gates. Production remains at retained data
+plus connections; mutation, push, and conformance stay globally disabled.
+
 ## 0.5.0
 
 Internal pre-1.0 foundation implementing the local Operational L3 and Authority A2 contracts.

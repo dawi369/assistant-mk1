@@ -3,7 +3,7 @@
 A code-first agent workbench for durable runs, approvals, tool policy, artifacts,
 audit, and tenant-safe operations.
 
-[![Version](https://img.shields.io/badge/version-0.5.0-111827)](#release-status)
+[![Version](https://img.shields.io/badge/version-0.5.1-111827)](#release-status)
 [![Verify](https://github.com/dawi369/assistant-mk1/actions/workflows/verify.yml/badge.svg)](https://github.com/dawi369/assistant-mk1/actions/workflows/verify.yml)
 [![License](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-2563eb)](LICENSE)
 
@@ -13,7 +13,7 @@ audit, and tenant-safe operations.
 
 ## Release Status
 
-Assistant-mk1 `0.5.0` is the internal pre-1.0 foundation: an authenticated,
+Assistant-mk1 `0.5.1` is the internal pre-1.0 foundation: an authenticated,
 tenant-scoped workbench implementing the local Operational L3 plus Authority A2
 contracts. It includes forward-only retained-data migrations, workspace export
 and deletion lifecycle, WorkOS Vault custody, OAuth/API-key brokerage, and
