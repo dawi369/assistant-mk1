@@ -80,7 +80,7 @@ describe("runtime extension architecture", () => {
   it("keeps decomposed runtime modules and compatibility facades bounded", () => {
     const productionModules = [
       ...walk("cloudflare/control-plane/src").filter((path) =>
-        /(?:workspace-data|action-authority|session-agent).*\.ts$/.test(path),
+        /(?:workspace-data|action-authority|session-agent|connection-broker).*\.ts$/.test(path),
       ),
       ...walk("lib/workbench/contracts").filter((path) => path.endsWith(".ts")),
       ...walk("lib/workbench/control-plane-client").filter((path) => path.endsWith(".ts")),
@@ -93,6 +93,7 @@ describe("runtime extension architecture", () => {
       "cloudflare/control-plane/src/workspace-data-lifecycle.ts",
       "cloudflare/control-plane/src/action-authority.ts",
       "cloudflare/control-plane/src/session-agent.ts",
+      "cloudflare/control-plane/src/connection-broker.ts",
       "lib/workbench/workbench-types.ts",
       "lib/workbench/cloudflare-control-plane-client.ts",
       "lib/workbench/use-agent-connection.tsx",
@@ -104,7 +105,7 @@ describe("runtime extension architecture", () => {
   it("keeps decomposed runtime value imports acyclic", () => {
     const modules = [
       ...walk("cloudflare/control-plane/src").filter((path) =>
-        /(?:workspace-data|action-authority|session-agent).*\.ts$/.test(path),
+        /(?:workspace-data|action-authority|session-agent|connection-broker).*\.ts$/.test(path),
       ),
       ...walk("lib/workbench/contracts").filter((path) => path.endsWith(".ts")),
       ...walk("lib/workbench/control-plane-client").filter((path) => path.endsWith(".ts")),
@@ -160,7 +161,7 @@ describe("runtime extension architecture", () => {
   });
 
   it("keys Vault objects by tenant-scoped connection records", () => {
-    const broker = read("cloudflare/control-plane/src/connection-broker.ts");
+    const broker = readMatching("cloudflare/control-plane/src", /connection-broker.*\.ts$/);
     expect(broker).toContain("name: `connection:${recordId}`");
     expect(broker).toContain("name: `connection:${connection.id}`");
     expect(broker).not.toContain(
@@ -174,7 +175,7 @@ describe("runtime extension architecture", () => {
       "cloudflare/control-plane/src",
       /workspace-data-(?!lifecycle\.test).*\.ts$/,
     );
-    const broker = read("cloudflare/control-plane/src/connection-broker.ts");
+    const broker = readMatching("cloudflare/control-plane/src", /connection-broker.*\.ts$/);
     expect(lifecycle).toContain("INSERT INTO control_deletion_receipts");
     expect(lifecycle).toContain("DELETE FROM workspaces WHERE id = ? AND status = 'purging'");
     expect(lifecycle).toContain("DELETE FROM ${table} WHERE workspace_id = ?");
