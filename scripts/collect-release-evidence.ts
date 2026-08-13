@@ -65,7 +65,13 @@ const requiredKinds: Record<"acceptance" | "production", string[]> = {
     "hosted.soak-24h",
     "hosted.alert-outage-redelivery",
   ],
-  production: ["hosted.preflight", "hosted.public", "hosted.signed-in-readonly"],
+  production: [
+    "hosted.preflight",
+    "hosted.configuration",
+    "hosted.observability",
+    "hosted.public",
+    "hosted.signed-in-readonly",
+  ],
 };
 const latestByKind = new Map<string, (typeof records)[number]>();
 for (const record of records) {

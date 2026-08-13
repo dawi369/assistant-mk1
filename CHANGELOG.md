@@ -24,9 +24,9 @@ Internal pre-1.0 foundation implementing the local Operational L3 and Authority 
   metadata validation.
 - Domain-split workbench types, control-plane clients, session coordination,
   lifecycle, and action-authority modules behind import-compatible façades.
-- Production feature promotion through the globally available `mutations`
-  stage while preserving default-off workspace authority and conformance-only
-  mutation fixtures.
+- Production feature promotion through retained data and connections. The
+  mutation subsystem is compiled and conformance-proven but remains globally
+  disabled outside isolated acceptance.
 - Serious/critical Axe gating plus deterministic keyboard, focus-trap, and
   desktop/mobile overflow acceptance across the primary workbench surfaces.
 - Public health identity agreement across Vercel, Cloudflare, and Fly using the

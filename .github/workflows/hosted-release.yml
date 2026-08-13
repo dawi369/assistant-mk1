@@ -15,6 +15,8 @@ on:
         options:
           [
             preflight,
+            configuration,
+            observability,
             public,
             level3,
             vault,
@@ -121,6 +123,8 @@ jobs:
             local kind="hosted.${gate}"
             case "${gate}" in
               preflight) command=(pnpm acceptance:hosted:level3:preflight) ;;
+              configuration) command=(pnpm acceptance:hosted:configuration -- --target "${WORKBENCH_ENVIRONMENT}") ;;
+              observability) command=(pnpm acceptance:hosted:observability) ;;
               public) command=(pnpm acceptance:hosted:public) ;;
               level3) export WORKBENCH_HOSTED_DRILL_MODE=true; command=(pnpm acceptance:hosted:level3) ;;
               vault) export WORKBENCH_HOSTED_VAULT_MODE=true; command=(pnpm acceptance:hosted:vault) ;;
@@ -160,7 +164,7 @@ jobs:
             if [[ "${WORKBENCH_ENVIRONMENT}" == "acceptance" ]]; then
               for gate in preflight public level3 vault mutation data-lifecycle alert-redelivery; do run_gate "${gate}"; done
             else
-              for gate in preflight public; do run_gate "${gate}"; done
+              for gate in preflight configuration observability public; do run_gate "${gate}"; done
             fi
           else
             run_gate "${{ inputs.gate }}"

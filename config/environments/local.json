@@ -38,5 +38,9 @@
     "langgraphProxy": "WORKBENCH_LOCAL_LANGGRAPH_PROXY_TOKEN",
     "vault": "WORKBENCH_LOCAL_VAULT_SECRET",
     "openrouter": "WORKBENCH_LOCAL_OPENROUTER_API_KEY"
+  },
+  "observabilityEnvironmentVariables": {
+    "sentryDsn": "WORKBENCH_LOCAL_SENTRY_DSN",
+    "sentryAuthToken": "WORKBENCH_LOCAL_SENTRY_AUTH_TOKEN"
   }
 }

@@ -38,6 +38,10 @@ export type WorkbenchEnvironment = {
     vault: string;
     openrouter: string;
   };
+  observabilityEnvironmentVariables: {
+    sentryDsn: string;
+    sentryAuthToken: string;
+  };
 };
 
 const referencePattern = /^\$\{([A-Z][A-Z0-9_]*)\}$/;
@@ -63,6 +67,9 @@ export const parseWorkbenchEnvironment = (value: unknown): WorkbenchEnvironment 
   const vercel = isRecord(root.vercel) ? root.vercel : {};
   const workos = isRecord(root.workos) ? root.workos : {};
   const secrets = isRecord(root.secretEnvironmentVariables) ? root.secretEnvironmentVariables : {};
+  const observability = isRecord(root.observabilityEnvironmentVariables)
+    ? root.observabilityEnvironmentVariables
+    : {};
   const target = requireString(root.target, "target", failures);
   if (!isEnvironmentTarget(target)) failures.push(`target must be ${environmentTargets.join("|")}`);
   if (root.schemaVersion !== 1) failures.push("schemaVersion must be 1");
@@ -152,6 +159,18 @@ export const parseWorkbenchEnvironment = (value: unknown): WorkbenchEnvironment 
       openrouter: requireString(
         secrets.openrouter,
         "secretEnvironmentVariables.openrouter",
+        failures,
+      ),
+    },
+    observabilityEnvironmentVariables: {
+      sentryDsn: requireString(
+        observability.sentryDsn,
+        "observabilityEnvironmentVariables.sentryDsn",
+        failures,
+      ),
+      sentryAuthToken: requireString(
+        observability.sentryAuthToken,
+        "observabilityEnvironmentVariables.sentryAuthToken",
         failures,
       ),
     },

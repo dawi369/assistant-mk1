@@ -46,6 +46,8 @@ edits the policy. General workspace mutation remains opt-in.
 | ----------------- | ------------------------------------------------------------------------------------ |
 | Repository        | `pnpm release:check`, clean clone, `git diff --check`                                |
 | Environment split | `pnpm verify:environment-config`, protected target preflight                         |
+| Hosted drift      | `pnpm acceptance:hosted:configuration`                                               |
+| Observability     | `pnpm observability:check`, `pnpm acceptance:hosted:observability`                   |
 | Runtime extension | `pnpm conformance:agent-system`                                                      |
 | Operational L0–L2 | `pnpm conformance:level2`                                                            |
 | Operational L3    | `conformance:level3`, `acceptance:hosted:soak`, `acceptance:hosted:alert-redelivery` |

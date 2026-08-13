@@ -27,7 +27,10 @@ describe("provider secret configuration", () => {
       ]),
     ) as HostedSecretRoleValues;
 
-    const configuration = buildProviderSecretConfiguration(resolved.manifest, roles);
+    const configuration = buildProviderSecretConfiguration(resolved.manifest, roles, {
+      sentryDsn: "https://public@example.ingest.sentry.io/1",
+      sentryAuthToken: `sentry-${"x".repeat(40)}`,
+    });
 
     expect(configuration.vercelVariables).toMatchObject({
       WORKOS_CLIENT_ID: "client_acceptance",
@@ -39,5 +42,8 @@ describe("provider secret configuration", () => {
     expect(configuration.flySecrets).not.toHaveProperty("WORKOS_API_KEY");
     expect(configuration.vercelSecrets).not.toHaveProperty("OPENROUTER_API_KEY");
     expect(configuration.workerSecrets.WORKOS_API_KEY).toBe(roles.vault);
+    expect(configuration.workerSecrets).toHaveProperty("SENTRY_DSN");
+    expect(configuration.flySecrets).toHaveProperty("SENTRY_DSN");
+    expect(configuration.vercelSecrets).toHaveProperty("SENTRY_AUTH_TOKEN");
   });
 });

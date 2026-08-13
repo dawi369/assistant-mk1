@@ -63,10 +63,18 @@ const roles = manifest.secretEnvironmentVariables;
 const roleValues = Object.fromEntries(
   Object.entries(roles).map(([role, variable]) => [role, process.env[variable]?.trim() ?? ""]),
 ) as HostedSecretRoleValues;
+const observability = {
+  sentryDsn: process.env[manifest.observabilityEnvironmentVariables.sentryDsn]?.trim() ?? "",
+  sentryAuthToken:
+    process.env[manifest.observabilityEnvironmentVariables.sentryAuthToken]?.trim() ?? "",
+};
 
 if (!execute) {
   console.log(`Dry run only: configure ${target} provider secret roles at ${sha}.`);
   console.log(`Required source variables: ${Object.values(roles).join(", ")}.`);
+  console.log(
+    `Required observability variables: ${Object.values(manifest.observabilityEnvironmentVariables).join(", ")}.`,
+  );
   console.log(`Re-run with --execute --confirm ${confirmation} after approval is recorded.`);
   process.exit(0);
 }
@@ -75,12 +83,18 @@ if (valueAfter("--confirm") !== confirmation) {
 }
 if (git("status", "--porcelain")) throw new Error("secret configuration requires a clean worktree");
 const secretFailures = validateEnvironmentSecretValues([manifest]);
+if (!observability.sentryDsn.startsWith("https://")) {
+  secretFailures.push(`${target} Sentry DSN is missing or invalid`);
+}
+if (observability.sentryAuthToken.length < 32) {
+  secretFailures.push(`${target} Sentry auth token is missing or too short`);
+}
 if (secretFailures.length) throw new Error(secretFailures.join("; "));
 
 const rendered = renderEnvironmentConfig(target);
 verifyWorkerExists(rendered.wranglerPath);
 const { workerSecrets, flySecrets, vercelSecrets, vercelVariables } =
-  buildProviderSecretConfiguration(rendered.manifest, roleValues);
+  buildProviderSecretConfiguration(rendered.manifest, roleValues, observability);
 for (const [name, value] of Object.entries(workerSecrets)) {
   runWithInput(
     "pnpm",
@@ -129,7 +143,7 @@ writeFileSync(
       commit: sha,
       status: "configured",
       fingerprints: Object.fromEntries(
-        Object.entries(roleValues).map(([role, value]) => [
+        Object.entries({ ...roleValues, ...observability }).map(([role, value]) => [
           role,
           createHash("sha256").update(value).digest("hex"),
         ]),

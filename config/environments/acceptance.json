@@ -38,5 +38,9 @@
     "langgraphProxy": "WORKBENCH_ACCEPTANCE_LANGGRAPH_PROXY_TOKEN",
     "vault": "WORKBENCH_ACCEPTANCE_VAULT_SECRET",
     "openrouter": "WORKBENCH_ACCEPTANCE_OPENROUTER_API_KEY"
+  },
+  "observabilityEnvironmentVariables": {
+    "sentryDsn": "WORKBENCH_ACCEPTANCE_SENTRY_DSN",
+    "sentryAuthToken": "WORKBENCH_ACCEPTANCE_SENTRY_AUTH_TOKEN"
   }
 }

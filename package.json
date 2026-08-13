@@ -93,6 +93,8 @@
     "release:evidence:collect": "tsx scripts/collect-release-evidence.ts",
     "release:evidence:record": "tsx scripts/record-release-evidence.ts",
     "acceptance:hosted:public": "tsx scripts/accept-hosted-public.ts",
+    "acceptance:hosted:configuration": "tsx scripts/accept-hosted-configuration.ts",
+    "acceptance:hosted:observability": "tsx scripts/accept-hosted-observability.ts",
     "acceptance:hosted:level3:preflight": "tsx scripts/check-hosted-level3-preflight.ts",
     "acceptance:hosted:level3": "tsx scripts/run-hosted-level3-drills.ts",
     "acceptance:hosted:vault": "tsx scripts/accept-hosted-vault.ts",
