@@ -7,6 +7,7 @@ import {
 } from "./chat-runtime-live-state";
 import type {
   ChatRuntimeSummary,
+  ChatSessionResponse,
   CloudflareAdminSummaryResponse,
   WorkbenchSessionEvent,
 } from "./workbench-types";
@@ -20,6 +21,17 @@ const event = (
   revision: 2,
   createdAt,
   data: { threadId: "thread-a" },
+});
+
+const session = (threadId = "thread-a"): ChatSessionResponse => ({
+  activeThread: {
+    threadId,
+    sessionId: "session-a",
+    agentId: "agent-a",
+    status: "active",
+    title: "Thread A",
+    isActive: true,
+  },
 });
 
 const chatRuntime = (state: ChatRuntimeSummary["state"]): ChatRuntimeSummary => ({
@@ -55,7 +67,7 @@ describe("chat runtime live state", () => {
 
   it("uses live session state ahead of stale Admin summary state", () => {
     const state = deriveRuntimeState({
-      session: null,
+      session: session(),
       connection: null,
       error: null,
       isSessionStreamConnected: true,
@@ -104,7 +116,7 @@ describe("chat runtime live state", () => {
     ).toBe(true);
   });
 
-  it("reports a connected stale non-run event as syncing instead of loading", () => {
+  it("keeps the last known runtime state while non-run details catch up", () => {
     const state = deriveRuntimeState({
       session: null,
       connection: { workspaceId: "workspace-a" },
@@ -116,10 +128,64 @@ describe("chat runtime live state", () => {
       summary: summary("completed", "2026-06-17T12:00:09.000Z"),
     });
 
-    expect(state.chatLabel).toBe("Syncing");
-    expect(state.chatTone).toBe("running");
+    expect(state.chatLabel).toBe("Completed");
+    expect(state.chatTone).toBe("completed");
     expect(state.cloudflareStatus).toBe("Live");
     expect(state.summaryIsStale).toBe(true);
+  });
+
+  it("preserves a newer completed chat event across summary invalidation", () => {
+    const state = deriveRuntimeState({
+      session: session(),
+      connection: { workspaceId: "workspace-a" },
+      error: null,
+      isSessionStreamConnected: true,
+      latestSessionEvent: event("admin.summary.invalidated", "2026-06-17T12:00:11.000Z"),
+      latestChatRunEvent: event("chat.run.completed", "2026-06-17T12:00:10.000Z"),
+      pending: null,
+      isInitialLoading: false,
+      summary: summary("running", "2026-06-17T12:00:09.000Z"),
+    });
+
+    expect(state.chatState).toBe("completed");
+    expect(state.chatLabel).toBe("Completed");
+    expect(state.source).toBe("live_session_event");
+    expect(state.summaryIsStale).toBe(true);
+  });
+
+  it("lets a newer summary supersede the retained chat event", () => {
+    const state = deriveRuntimeState({
+      session: null,
+      connection: { workspaceId: "workspace-a" },
+      error: null,
+      isSessionStreamConnected: true,
+      latestSessionEvent: event("chat.run.completed", "2026-06-17T12:00:10.000Z"),
+      latestChatRunEvent: event("chat.run.completed", "2026-06-17T12:00:10.000Z"),
+      pending: null,
+      isInitialLoading: false,
+      summary: summary("thread_ready", "2026-06-17T12:00:11.000Z"),
+    });
+
+    expect(state.chatState).toBe("thread_ready");
+    expect(state.chatLabel).toBe("Ready");
+    expect(state.source).toBe("live_session_stream");
+  });
+
+  it("does not carry retained chat state into another active thread", () => {
+    const state = deriveRuntimeState({
+      session: session("thread-b"),
+      connection: { workspaceId: "workspace-a" },
+      error: null,
+      isSessionStreamConnected: true,
+      latestSessionEvent: event("session.thread.activated", "2026-06-17T12:00:11.000Z"),
+      latestChatRunEvent: event("chat.run.completed", "2026-06-17T12:00:10.000Z"),
+      pending: null,
+      isInitialLoading: false,
+      summary: summary("thread_ready", "2026-06-17T12:00:09.000Z"),
+    });
+
+    expect(state.chatState).toBe("thread_ready");
+    expect(state.chatLabel).toBe("Ready");
   });
 
   it("does not present a historical workflow failure as a live chat failure", () => {

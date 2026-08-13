@@ -73,6 +73,7 @@ export function AdminPanel({
     isInitialLoading,
     isSessionStreamConnected,
     latestSessionEvent,
+    latestChatRunEvent,
     switchAgent,
   } = useWorkbenchAgentConnection();
   const {
@@ -142,6 +143,7 @@ export function AdminPanel({
     error: sessionError,
     isSessionStreamConnected,
     latestSessionEvent,
+    latestChatRunEvent,
     pending,
     isInitialLoading,
     summary,

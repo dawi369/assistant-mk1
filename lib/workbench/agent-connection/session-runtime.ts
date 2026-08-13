@@ -113,6 +113,7 @@ export type ChatSessionContextValue = {
   error: string | null;
   isSessionStreamConnected: boolean;
   latestSessionEvent: WorkbenchSessionEvent | null;
+  latestChatRunEvent: WorkbenchSessionEvent | null;
   isInitialLoading: boolean;
   isTransitioning: boolean;
   pending: PendingSessionTransition | null;

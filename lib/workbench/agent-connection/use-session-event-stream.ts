@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 
-import { shouldRefreshThreadsAfterSessionStreamOpen } from "@/lib/workbench/chat-session-state";
+import { sessionStreamReconnectPlan } from "@/lib/workbench/agent-connection/session-stream-policy";
 import { browserWorkbenchRealtime } from "@/lib/workbench/browser-client";
 import type { WorkbenchSessionEvent } from "@/lib/workbench/workbench-types";
 
@@ -10,16 +10,13 @@ export const useSessionEventStream = (input: {
   workspaceId?: string;
   onConnectedChange: (connected: boolean) => void;
   onEvent: (event: WorkbenchSessionEvent) => void;
-  onRefreshRecommended: () => void;
 }) => {
-  const openedRef = useRef(false);
   const cursorRef = useRef<string | undefined>(undefined);
-  const { onConnectedChange, onEvent, onRefreshRecommended, workspaceId } = input;
+  const { onConnectedChange, onEvent, workspaceId } = input;
 
   useEffect(() => {
     if (!workspaceId) return;
     cursorRef.current = undefined;
-    openedRef.current = false;
     let closed = false;
     let subscription: ReturnType<typeof browserWorkbenchRealtime.subscribeSession> | null = null;
     let reconnectTimeout: number | null = null;
@@ -27,26 +24,26 @@ export const useSessionEventStream = (input: {
       if (closed) return;
       subscription = browserWorkbenchRealtime.subscribeSession({ after: cursorRef.current });
       let connected = false;
+      let failed = false;
       try {
         for await (const event of subscription.events) {
           if (closed) break;
           if (!connected) {
             connected = true;
             onConnectedChange(true);
-            const shouldRefresh = shouldRefreshThreadsAfterSessionStreamOpen(openedRef.current);
-            openedRef.current = true;
-            if (shouldRefresh) onRefreshRecommended();
           }
           cursorRef.current = event.id;
           onEvent(event);
         }
       } catch (streamError) {
+        failed = true;
         if (!closed) console.warn("Workbench session stream disconnected", streamError);
       } finally {
         if (!closed) {
-          onConnectedChange(false);
+          const reconnectPlan = sessionStreamReconnectPlan(failed);
+          if (reconnectPlan.markDisconnected) onConnectedChange(false);
           subscription?.close();
-          reconnectTimeout = window.setTimeout(() => void connect(), 2_000);
+          reconnectTimeout = window.setTimeout(() => void connect(), reconnectPlan.delayMs);
         }
       }
     };
@@ -57,5 +54,5 @@ export const useSessionEventStream = (input: {
       subscription?.close();
       if (reconnectTimeout) window.clearTimeout(reconnectTimeout);
     };
-  }, [onConnectedChange, onEvent, onRefreshRecommended, workspaceId]);
+  }, [onConnectedChange, onEvent, workspaceId]);
 };

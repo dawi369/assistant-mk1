@@ -56,6 +56,11 @@ const readTime = (value?: string | null) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+const eventThreadId = (event?: WorkbenchSessionEvent | null) => {
+  const threadId = event?.data.threadId;
+  return typeof threadId === "string" ? threadId : null;
+};
+
 export const isAdminSummaryFreshForLiveEvent = (
   summary: CloudflareAdminSummaryResponse["summary"] | null | undefined,
   event: WorkbenchSessionEvent | null | undefined,
@@ -72,6 +77,7 @@ export const deriveRuntimeState = (input: {
   error: string | null;
   isSessionStreamConnected: boolean;
   latestSessionEvent: WorkbenchSessionEvent | null;
+  latestChatRunEvent?: WorkbenchSessionEvent | null;
   pending: PendingSessionTransition | null;
   isInitialLoading: boolean;
   summary?: CloudflareAdminSummaryResponse["summary"] | null;
@@ -81,10 +87,21 @@ export const deriveRuntimeState = (input: {
   const summary = input.summary ?? null;
   const summaryIsFresh = isAdminSummaryFreshForLiveEvent(summary, input.latestSessionEvent);
   const summaryIsStale = Boolean(summary && !summaryIsFresh);
-  const liveEventState = liveChatStateFromEvent(input.latestSessionEvent);
-  const summaryState = summaryIsFresh ? summary?.chatRuntime?.state : undefined;
+  const activeThread = isVisibleThread(input.session?.activeThread)
+    ? (input.session?.activeThread ?? null)
+    : null;
+  const latestChatRunEvent = input.latestChatRunEvent ?? input.latestSessionEvent;
+  const latestChatThreadId = eventThreadId(latestChatRunEvent);
+  const latestChatEventMatchesThread = activeThread?.threadId
+    ? latestChatThreadId === activeThread.threadId
+    : latestChatRunEvent === input.latestSessionEvent;
+  const liveEventState =
+    latestChatEventMatchesThread && !isAdminSummaryFreshForLiveEvent(summary, latestChatRunEvent)
+      ? liveChatStateFromEvent(latestChatRunEvent)
+      : undefined;
+  const summaryState = summary?.chatRuntime?.state;
   const chatState = liveEventState ?? summaryState;
-  const isLiveSummarySyncing = summaryIsStale && input.isSessionStreamConnected && !liveEventState;
+  const isLiveSummarySyncing = summaryIsStale && input.isSessionStreamConnected && !chatState;
   const chatLabel =
     input.pending?.type === "create" || input.pending?.type === "activate"
       ? "Opening"
@@ -94,9 +111,6 @@ export const deriveRuntimeState = (input: {
   const chatTone = isLiveSummarySyncing ? "running" : chatRuntimeStateTone(chatState);
 
   const activeAgent = input.session?.activeAgent ?? summary?.activeAgent ?? null;
-  const activeThread = isVisibleThread(input.session?.activeThread)
-    ? (input.session?.activeThread ?? null)
-    : null;
   const summaryThread = summary?.chatRuntime?.latestThread ?? null;
   // Historical workflow/tool failures belong in History and the Admin detail
   // projection. They must not degrade the current chat connection indicator.

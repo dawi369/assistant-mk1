@@ -73,6 +73,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [isSessionStreamConnected, setIsSessionStreamConnected] = useState(false);
   const [latestSessionEvent, setLatestSessionEvent] = useState<WorkbenchSessionEvent | null>(null);
+  const [latestChatRunEvent, setLatestChatRunEvent] = useState<WorkbenchSessionEvent | null>(null);
   const [pending, setPending] = useState<PendingSessionTransition | null>({ type: "initial" });
   const [localNewSession, setLocalNewSession] = useState(false);
   const [deletingThreadIds, setDeletingThreadIds] = useState<ReadonlySet<string>>(() => new Set());
@@ -591,6 +592,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
   const applySessionEvent = useCallback(
     (event: WorkbenchSessionEvent) => {
       setLatestSessionEvent(event);
+      if (event.type.startsWith("chat.run.")) setLatestChatRunEvent(event);
 
       let shouldRefreshConnection = false;
       let shouldClearConnection = false;
@@ -665,9 +667,8 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
         workspaceId: connection?.workspaceId,
         onConnectedChange: setIsSessionStreamConnected,
         onEvent: applySessionEvent,
-        onRefreshRecommended: () => preloadNewSession("stream-open"),
       }),
-      [applySessionEvent, connection?.workspaceId, preloadNewSession],
+      [applySessionEvent, connection?.workspaceId],
     ),
   );
 
@@ -698,6 +699,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
       error,
       isSessionStreamConnected,
       latestSessionEvent,
+      latestChatRunEvent,
       isInitialLoading: pending?.type === "initial" && !connection,
       isTransitioning: pending !== null && pending.type !== "initial",
       pending,
@@ -748,6 +750,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
     deleteThreadOptimistically,
     error,
     isSessionStreamConnected,
+    latestChatRunEvent,
     latestSessionEvent,
     isLoadingArchivedThreads,
     archivedThreadsError,
