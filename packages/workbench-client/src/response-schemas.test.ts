@@ -51,7 +51,7 @@ describe("workbench response schemas", () => {
 
   it("rejects unsupported chat protocol versions", () => {
     expect(
-      responseSchemas.session.safeParse({ ok: true, connection: { chatProtocolVersion: 2 } })
+      responseSchemas.session.safeParse({ ok: true, connection: { chatProtocolVersion: 3 } })
         .success,
     ).toBe(false);
   });

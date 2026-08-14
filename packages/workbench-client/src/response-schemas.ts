@@ -230,7 +230,7 @@ export const responseSchemas = {
       agentHandoff: handoff.nullable().optional(),
       connection: z
         .object({
-          chatProtocolVersion: z.literal(1),
+          chatProtocolVersion: z.literal(2),
           agentHost: z.string().min(1).optional(),
           token: z.string().min(1).optional(),
           threadId: id.optional(),

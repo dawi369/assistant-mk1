@@ -68,8 +68,9 @@ describe("mobile client architecture", () => {
     const runtime = read("apps/mobile/src/chat/chat-runtime.tsx");
     const composer = read("apps/mobile/src/components/chat-thread.tsx");
     expect(threads).toContain("activate.mutateAsync(threadId)");
-    expect(runtime).toContain("messagesFromChatEvent");
-    expect(runtime).toContain("thread.reset(messages)");
+    expect(runtime).toContain("createWorkbenchChatController");
+    expect(runtime).toContain("controller.acceptSessionEvent(event)");
+    expect(runtime).toContain("thread.reset(threadMessagesFromWire(event.messages))");
     expect(composer).toContain("mobileStore.getDraft(threadId)");
     expect(composer).toContain("mobileStore.putDraft(threadId, text)");
   });

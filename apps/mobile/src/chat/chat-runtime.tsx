@@ -4,9 +4,11 @@ import {
   useLocalRuntime,
 } from "@assistant-ui/react-native";
 import {
+  createWorkbenchChatController,
   workbenchChatProtocolVersion,
   type ChatSessionResponse,
   type WorkbenchChatConnectionDescriptor,
+  type WorkbenchChatController,
 } from "@assistant-mk1/workbench-client";
 import * as Crypto from "expo-crypto";
 import { AppState } from "react-native";
@@ -23,34 +25,8 @@ import {
 
 import { mobileStore } from "../storage/mobile-store";
 import { useWorkbench } from "../workbench-provider";
-import { messagesFromChatEvent } from "./chat-messages";
+import { threadMessagesFromWire } from "./chat-messages";
 import { createMobileChatTransport } from "./chat-transport";
-
-type ChatMessage = { id?: unknown; role?: unknown; parts?: unknown };
-
-const textFromMessage = (message: ChatMessage) => {
-  if (!Array.isArray(message.parts)) return "";
-  return message.parts
-    .map((part) =>
-      part && typeof part === "object" && "text" in part && typeof part.text === "string"
-        ? part.text
-        : "",
-    )
-    .join("")
-    .trim();
-};
-
-const latestAssistant = (event: Record<string, unknown>) => {
-  if (event.type !== "cf_agent_chat_messages" || !Array.isArray(event.messages)) return null;
-  const message = [...event.messages]
-    .reverse()
-    .find((candidate): candidate is ChatMessage =>
-      Boolean(candidate && typeof candidate === "object" && candidate.role === "assistant"),
-    );
-  if (!message || typeof message.id !== "string") return null;
-  const text = textFromMessage(message);
-  return text ? { id: message.id, text } : null;
-};
 
 const latestUserText = (messages: Parameters<ChatModelAdapter["run"]>[0]["messages"]) => {
   const message = [...messages].reverse().find((candidate) => candidate.role === "user");
@@ -81,19 +57,23 @@ const MobileChatContext = createContext<{ threadId: string }>({ threadId: "new-c
 export const useMobileChat = () => useContext(MobileChatContext);
 
 export function MobileChatRuntimeProvider({ children }: PropsWithChildren) {
-  const { chatSelectionRevision, client } = useWorkbench();
-  const transportRef = useRef<ReturnType<typeof createMobileChatTransport> | null>(null);
+  const { chatSelectionRevision, client, subscribeSessionEvents } = useWorkbench();
+  const controllerRef = useRef<WorkbenchChatController | null>(null);
   const transportUnsubscribeRef = useRef<(() => void) | null>(null);
+  const sessionUnsubscribeRef = useRef<(() => void) | null>(null);
   const activeThreadRef = useRef<string | null>(null);
   const runningRef = useRef(false);
   const runtimeRef = useRef<ReturnType<typeof useLocalRuntime> | null>(null);
+  const lastTranscriptRef = useRef<readonly Record<string, unknown>[]>([]);
   const [threadId, setThreadId] = useState("new-chat");
 
-  const closeTransport = useCallback(() => {
+  const closeController = useCallback(() => {
     transportUnsubscribeRef.current?.();
     transportUnsubscribeRef.current = null;
-    transportRef.current?.close();
-    transportRef.current = null;
+    sessionUnsubscribeRef.current?.();
+    sessionUnsubscribeRef.current = null;
+    controllerRef.current?.close();
+    controllerRef.current = null;
   }, []);
 
   const connectCurrentThread = useCallback(
@@ -101,14 +81,15 @@ export function MobileChatRuntimeProvider({ children }: PropsWithChildren) {
       const session = await client.session.get({ source: "mobile-chat-connect" });
       const connection = requireChatConnection(session.connection);
       const nextThreadId = connection.threadId ?? connection.instanceName!;
-      if (!force && transportRef.current && activeThreadRef.current === nextThreadId) {
-        await transportRef.current.connect();
-        return transportRef.current;
+      if (!force && controllerRef.current && activeThreadRef.current === nextThreadId) {
+        await controllerRef.current.connect();
+        return controllerRef.current;
       }
-      closeTransport();
+      closeController();
       if (activeThreadRef.current !== nextThreadId) runtimeRef.current?.thread.reset([]);
       activeThreadRef.current = nextThreadId;
       setThreadId(nextThreadId);
+      lastTranscriptRef.current = [];
       const transport = createMobileChatTransport({
         getConnection: async () => {
           const fresh = await client.session.get({ source: "mobile-chat-transport" });
@@ -125,33 +106,56 @@ export function MobileChatRuntimeProvider({ children }: PropsWithChildren) {
           return { messageId: materialized.messageId };
         },
       });
-      transportRef.current = transport;
-      transportUnsubscribeRef.current = transport.subscribe((event) => {
-        if (event.type !== "message" || runningRef.current) return;
-        const messages = messagesFromChatEvent(event.message);
-        if (messages) runtimeRef.current?.thread.reset(messages);
+      const controller = createWorkbenchChatController({
+        transport,
+        pendingTurns: {
+          get: () => mobileStore.getPendingTurn(),
+          put: (turn) => mobileStore.putPendingTurn(turn),
+          clear: (clientTurnId) => mobileStore.clearPendingTurn(clientTurnId),
+        },
       });
-      await transport.connect();
+      controllerRef.current = controller;
+      transportUnsubscribeRef.current = transport.subscribe((event) => {
+        if (event.type !== "transcript") return;
+        lastTranscriptRef.current = event.messages;
+        if (!runningRef.current)
+          runtimeRef.current?.thread.reset(threadMessagesFromWire(event.messages));
+      });
+      sessionUnsubscribeRef.current = subscribeSessionEvents((event) => {
+        const eventThreadId = typeof event.data.threadId === "string" ? event.data.threadId : null;
+        if (eventThreadId && eventThreadId !== activeThreadRef.current) return;
+        controller.acceptSessionEvent(event);
+      });
+      await controller.connect();
       const queued = resumeQueued ? await mobileStore.getPendingTurn() : null;
       if (queued) {
-        await transport.send(queued);
-        await mobileStore.clearPendingTurn(queued.clientTurnId);
+        runningRef.current = true;
+        void controller
+          .submit({
+            clientTurnId: queued.clientTurnId,
+            text: queued.text,
+          })
+          .catch(() => undefined)
+          .finally(() => {
+            runningRef.current = false;
+            runtimeRef.current?.thread.reset(threadMessagesFromWire(lastTranscriptRef.current));
+          });
       }
-      return transport;
+      return controller;
     },
-    [client, closeTransport],
+    [client, closeController, subscribeSessionEvents],
   );
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => {
-      if (state === "active") void transportRef.current?.resume().catch(() => undefined);
-      else transportRef.current?.close();
+      if (state === "active") void controllerRef.current?.resume().catch(() => undefined);
+      else controllerRef.current?.pause();
     });
     return () => {
       subscription.remove();
-      closeTransport();
+      closeController();
     };
-  }, [closeTransport]);
+  }, [closeController]);
 
   const adapter = useMemo<ChatModelAdapter>(
     () => ({
@@ -167,57 +171,15 @@ export function MobileChatRuntimeProvider({ children }: PropsWithChildren) {
         if (queued && queued.text !== text) {
           throw new Error("One message is already waiting to send.");
         }
-        await mobileStore.putPendingTurn(turn);
         runningRef.current = true;
-        const transport = await connectCurrentThread(false, false);
-
-        const assistantText = new Promise<string>((resolve, reject) => {
-          let previousAssistantId: string | null = null;
-          let accepted = false;
-          const timeout = setTimeout(() => {
-            unsubscribe();
-            reject(new Error("The response is still running. Reopen this chat to continue."));
-          }, 180_000);
-          const fail = (error: unknown) => {
-            clearTimeout(timeout);
-            unsubscribe();
-            reject(error);
-          };
-          const unsubscribe = transport.subscribe((event) => {
-            if (event.type === "error") fail(new Error(event.message));
-            if (event.type !== "message") return;
-            const assistant = latestAssistant(event.message);
-            if (!assistant) return;
-            if (!accepted) previousAssistantId = assistant.id;
-            else if (assistant.id !== previousAssistantId) {
-              clearTimeout(timeout);
-              unsubscribe();
-              resolve(assistant.text);
-            }
-          });
-          options.abortSignal.addEventListener(
-            "abort",
-            () => {
-              clearTimeout(timeout);
-              void transport.cancel();
-              unsubscribe();
-              reject(options.abortSignal.reason);
-            },
-            { once: true },
-          );
-          void transport
-            .connect()
-            .then(() => transport.send({ clientTurnId: turn.clientTurnId, text: turn.text }))
-            .then(async () => {
-              accepted = true;
-              await mobileStore.clearPendingTurn(turn.clientTurnId);
-            })
-            .catch((error: unknown) => {
-              fail(error);
-            });
-        });
         try {
-          return { content: [{ type: "text", text: await assistantText }] };
+          const controller = await connectCurrentThread(false, false);
+          const result = await controller.submit({
+            clientTurnId: turn.clientTurnId,
+            text: turn.text,
+            signal: options.abortSignal,
+          });
+          return { content: [{ type: "text", text: result.assistantText }] };
         } finally {
           runningRef.current = false;
         }

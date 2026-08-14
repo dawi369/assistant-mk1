@@ -3,7 +3,7 @@
   "runtimeSchemas": [
     {
       "path": "workbench-client/src/response-schemas.ts",
-      "sha256": "abc11012edf54ad1f17c8a697807e3eaf2aeb5496f373d03a2dea3646873e513"
+      "sha256": "0ace6156ac920edeaf83dcb1698a5ef924d631a5b58949fbe9b5b4e7a26e3603"
     },
     {
       "path": "workbench-client/src/validation.ts",
@@ -17,7 +17,7 @@
       "files": [
         {
           "path": "workbench-client/dist/chat.d.ts",
-          "sha256": "fc28923b6c2ee1dc0258c083d8e6269ca1140e3a722ebe33802c78c4ff8d85ba"
+          "sha256": "b5e9dafa847e1bec4572b9a28cabd0fd3c6ed035d44983bfd7b5e663f0b6ee59"
         },
         {
           "path": "workbench-client/dist/client.d.ts",
@@ -61,7 +61,7 @@
         },
         {
           "path": "workbench-client/dist/response-schemas.d.ts",
-          "sha256": "b0bcd4860f4ca4f6427595724561907df652775050c76f5edbfa23d99fab4b54"
+          "sha256": "23764ed5693ddaacc11124a8bd884f9167a4995c7a260247b0375e031637e4c3"
         },
         {
           "path": "workbench-client/dist/validation.d.ts",
@@ -75,7 +75,7 @@
       "files": [
         {
           "path": "workbench-react/dist/index.d.ts",
-          "sha256": "c3a66298db77705b0ef017c8f050943e2e37413f990545b90c0825e31818535e"
+          "sha256": "c6da3feb76c89e5e2c705bcefef58b09c67e62bfb339f3821f6c8313c0eea26c"
         }
       ]
     }

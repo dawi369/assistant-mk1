@@ -2,6 +2,7 @@ import {
   createWorkbenchClient,
   createWorkbenchRealtimeAdapter,
   type ChatSessionResponse,
+  type WorkbenchSessionEvent,
 } from "@assistant-mk1/workbench-client";
 import {
   WorkbenchClientProvider,
@@ -32,6 +33,7 @@ type ClientContext = {
   chatSelectionRevision: number;
   realtimeState: "idle" | "connecting" | "connected" | "reconnecting";
   notifyChatSelectionChanged(): void;
+  subscribeSessionEvents(listener: (event: WorkbenchSessionEvent) => void): () => void;
 };
 
 const WorkbenchContext = createContext<ClientContext | null>(null);
@@ -65,6 +67,7 @@ function MobileWorkbenchRuntime({
   const [chatSelectionRevision, setChatSelectionRevision] = useState(0);
   const [realtimeState, setRealtimeState] = useState<ClientContext["realtimeState"]>("idle");
   const workspaceIdRef = useRef<string | null>(null);
+  const sessionEventListenersRef = useRef(new Set<(event: WorkbenchSessionEvent) => void>());
 
   const notifyChatSelectionChanged = useCallback(() => {
     setChatSelectionRevision((revision) => revision + 1);
@@ -115,6 +118,7 @@ function MobileWorkbenchRuntime({
         for await (const event of subscription.events) {
           if (closed || !foreground) break;
           if (workspaceId) await mobileStore.putSessionCursor(workspaceId, event.id);
+          sessionEventListenersRef.current.forEach((listener) => listener(event));
           await invalidateWorkbenchQueries(
             queryClient,
             workbenchSessionEventInvalidations(event, workspaceId),
@@ -162,6 +166,10 @@ function MobileWorkbenchRuntime({
       chatSelectionRevision,
       realtimeState,
       notifyChatSelectionChanged,
+      subscribeSessionEvents(listener) {
+        sessionEventListenersRef.current.add(listener);
+        return () => sessionEventListenersRef.current.delete(listener);
+      },
     }),
     [chatSelectionRevision, client, notifyChatSelectionChanged, realtimeState],
   );

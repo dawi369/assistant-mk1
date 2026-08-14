@@ -144,7 +144,7 @@ describe("createWorkbenchClient", () => {
     const client = createWorkbenchClient({
       baseUrl: "https://workbench.example",
       client: { platform: "ios", version: "0.1.0" },
-      fetch: async () => jsonResponse({ ok: true, connection: { chatProtocolVersion: 2 } }),
+      fetch: async () => jsonResponse({ ok: true, connection: { chatProtocolVersion: 3 } }),
     });
 
     await expect(client.session.get()).rejects.toMatchObject({

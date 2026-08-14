@@ -44,7 +44,14 @@ export const createMobileChatTransport = (input: {
         if (message.type === "cf_agent_use_chat_response" && typeof message.id === "string") {
           activeRequestId = message.id;
         }
-        emit({ type: "message", message });
+        if (message.type === "cf_agent_chat_messages" && Array.isArray(message.messages)) {
+          emit({
+            type: "transcript",
+            messages: message.messages.filter((candidate): candidate is Record<string, unknown> =>
+              Boolean(candidate && typeof candidate === "object" && !Array.isArray(candidate)),
+            ),
+          });
+        }
       } catch {
         emit({
           type: "error",

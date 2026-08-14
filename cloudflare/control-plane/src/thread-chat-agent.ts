@@ -431,6 +431,7 @@ export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
     const requestBody = (options?.body ?? this.programmaticSubmitBody?.body) as
       | Record<string, unknown>
       | undefined;
+    const clientTurnId = getClientTurnIdFromBody(requestBody) ?? undefined;
     const tokenVerifyStartedAtMs = Date.now();
     const claims = await this.verifyScopedClaims(getTokenFromBody(requestBody));
     const tokenVerifyEndedAtMs = Date.now();
@@ -558,6 +559,7 @@ export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
             runId,
             traceId: trace.traceId,
             model: runtimeConfig.model,
+            clientTurnId,
           },
         }),
       );
@@ -662,6 +664,7 @@ export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
                 runId,
                 error,
                 startedAtMs: requestStartedAtMs,
+                clientTurnId,
               });
             }
             throw error;
@@ -749,6 +752,7 @@ export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
                   sessionId: claims.sessionId,
                   runId,
                   traceId: trace.traceId,
+                  clientTurnId,
                   timings: {
                     firstTokenMs: firstTokenAtMs ? firstTokenAtMs - providerStartedAtMs : undefined,
                     totalMs: endedAtMs - requestStartedAtMs,
@@ -773,6 +777,7 @@ export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
               runId,
               error,
               startedAtMs: requestStartedAtMs,
+              clientTurnId,
             });
           }
         },
@@ -785,6 +790,7 @@ export class WorkbenchThreadChatAgent extends AIChatAgent<Env> {
           runId,
           error,
           startedAtMs: requestStartedAtMs,
+          clientTurnId,
         });
       }
       throw error;
@@ -796,7 +802,12 @@ const failAgentRun = async (
   env: Env,
   identity: ReturnType<typeof claimsToIdentity>,
   trace: RuntimeTraceContext,
-  input: { runId: string | null; error: unknown; startedAtMs: number },
+  input: {
+    runId: string | null;
+    error: unknown;
+    startedAtMs: number;
+    clientTurnId?: string;
+  },
 ) => {
   const message = input.error instanceof Error ? input.error.message : "Agent chat failed";
   if (input.runId) {
@@ -837,6 +848,7 @@ const failAgentRun = async (
       errorCode: "runtime_failed",
       retryable: true,
       message,
+      clientTurnId: input.clientTurnId,
     },
   });
   await dispatchWorkbenchSessionEvent(env, identity, {

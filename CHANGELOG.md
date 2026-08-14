@@ -8,6 +8,10 @@ Cloudflare, and Fly, a decomposed connection broker, and executable hosted
 configuration/observability drift gates. Production remains at retained data
 plus connections; mutation, push, and conformance stay globally disabled.
 
+- Mobile chat protocol v2 adds a framework-neutral resumable controller,
+  durable queued-turn replay, formal terminal session events, and foreground
+  recovery without treating transcript arrival as completion authority.
+
 ## 0.5.0
 
 Internal pre-1.0 foundation implementing the local Operational L3 and Authority A2 contracts.

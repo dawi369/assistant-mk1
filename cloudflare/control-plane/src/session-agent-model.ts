@@ -1,3 +1,5 @@
+import { workbenchChatProtocolVersion } from "@assistant-mk1/workbench-client";
+
 import { toAgentSummary, toAgentRuntimeMetadata } from "./agent-records";
 import { signAgentConnectionClaims } from "./agent-connection-token";
 import { selectAgent, selectWorkspace } from "./authz-store";
@@ -143,7 +145,7 @@ export type AgentHandoffSummary = {
 
 export const tokenTtlSeconds = 5 * 60;
 
-export const chatProtocolVersion = 1;
+export const chatProtocolVersion = workbenchChatProtocolVersion;
 
 export const stagedThreadTtlMs = 30 * 60 * 1000;
 
