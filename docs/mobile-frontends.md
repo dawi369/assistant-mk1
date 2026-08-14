@@ -92,6 +92,12 @@ The EAS project link is public build metadata stored in `app.json`; credentials
 remain in Expo/EAS and local platform keychains. Daily development does not
 consume an EAS cloud build.
 
+Before the first iOS internal-distribution build, the Apple Account Holder must
+accept the current Developer Program agreement and complete the EU Digital
+Services Act trader-status declaration in App Store Connect. EAS cannot create
+the bundle identifier or provisioning profile while either account-level item
+is pending. The registered test iPhone must also appear in `eas device:list`.
+
 Repository verification remains:
 
 ```bash
