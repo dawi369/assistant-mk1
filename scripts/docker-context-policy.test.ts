@@ -17,6 +17,9 @@ const requiredExclusions = [
   "output",
   "**/output",
   "coverage",
+  "packages/*/dist",
+  "agent-packs/*/dist",
+  "examples/*/dist",
   "cloudflare/control-plane/.dev.vars",
   "cloudflare/control-plane/.wrangler",
 ] as const;
@@ -28,5 +31,12 @@ describe("Docker build context policy", () => {
 
   it("keeps the public environment template available", () => {
     expect(dockerIgnore).toContain("!.env.example");
+  });
+
+  it("builds runtime-neutral workspace dependencies inside the image", () => {
+    const dockerfile = readFileSync(new URL("../Dockerfile.langgraph", import.meta.url), "utf8");
+    expect(dockerfile).toContain("COPY packages/observability/package.json");
+    expect(dockerfile).toContain("RUN pnpm observability:build && pnpm agent-sdk:build");
+    expect(dockerfile).toContain("/app/packages/observability/dist");
   });
 });

@@ -14,6 +14,9 @@ apps/mobile/android
 output
 **/output
 coverage
+packages/*/dist
+agent-packs/*/dist
+examples/*/dist
 cloudflare/control-plane/.dev.vars
 cloudflare/control-plane/.wrangler
 *.db
