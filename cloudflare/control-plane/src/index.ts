@@ -246,6 +246,15 @@ const handleRequest = async (request: Request, env: Env, ctx: WorkerExecutionCon
   const authResult = await requireControlPlaneAuth(request, env);
   if (!authResult.ok) return authResult.response;
 
+  if (request.method === "GET" && url.pathname === "/health/facade") {
+    return json({
+      ok: true,
+      service: "assistant-mk1-control-plane-facade",
+      version: compiledWorkbenchVersion,
+      release: env.WORKBENCH_RELEASE_SHA ?? "development",
+    });
+  }
+
   const authzStartedAtMs = Date.now();
   const deletionRecoveryRoute =
     (url.pathname === "/workbench/workspace-deletion" &&

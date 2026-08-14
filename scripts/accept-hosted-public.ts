@@ -42,6 +42,7 @@ const main = async () => {
   const fly = requiredOrigin("HOSTED_FLY_ORIGIN");
   const checks = [
     await readHealth(vercel, "/api/health", "assistant-mk1"),
+    await readHealth(vercel, "/api/health/facade", "assistant-mk1-facade"),
     await readHealth(cloudflare, "/health/live", "assistant-mk1-control-plane"),
     await readHealth(cloudflare, "/health", "assistant-mk1-control-plane"),
     await readHealth(fly, "/health/live", "assistant-mk1-langgraph-runtime"),

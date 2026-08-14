@@ -55,7 +55,7 @@ edits the policy. General workspace mutation remains opt-in.
 | Connections       | `pnpm conformance:connections`, `pnpm acceptance:hosted:vault`                       |
 | Mutation          | `pnpm conformance:actions`, `pnpm acceptance:hosted:mutation`                        |
 | Supply chain      | `pnpm verify:security`, `pnpm verify:docker`                                         |
-| Public hosting    | `pnpm acceptance:hosted:public`                                                      |
+| Public hosting    | `pnpm acceptance:hosted:public` (includes a live Vercel-to-Cloudflare facade probe)  |
 | Signed-in product | WorkOS browser acceptance across Vercel, Cloudflare, and Fly                         |
 | Native clients    | `conformance:mobile`, strict same-SHA iOS/Android device evidence                    |
 

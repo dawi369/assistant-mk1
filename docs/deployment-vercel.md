@@ -115,6 +115,11 @@ pnpm acceptance:hosted:public
 WORKBENCH_HOSTED_DRILL_MODE=true pnpm acceptance:hosted:level3
 ```
 
+The public acceptance gate calls `/api/health/facade`, which signs a real
+Vercel-to-Cloudflare request and fails when either deployed secret is absent or
+the two targets disagree. Environment-variable inventory alone is not accepted
+as proof of facade connectivity.
+
 The unauthenticated workbench context check should return `401`. Hosted Vercel
 workbench routes require a signed-in WorkOS browser session. Hosted D1 uses
 forward migrations only; it is never rebuilt. The protected hosted workflow
