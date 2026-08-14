@@ -11,6 +11,7 @@ import { Text, View } from "react-native";
 import { useMobileChat } from "../chat/chat-runtime";
 import { mobileStore } from "../storage/mobile-store";
 import { colors } from "../theme";
+import { ChatToolCall, ReasoningBlock } from "./generic-renderers";
 
 const Message = () => (
   <MessagePrimitive.Root style={{ paddingHorizontal: 16, paddingVertical: 6 }}>
@@ -38,11 +39,9 @@ const Message = () => (
           renderText={({ part }) => (
             <Text style={{ color: colors.ink, fontSize: 16, lineHeight: 24 }}>{part.text}</Text>
           )}
-          renderReasoning={() => (
-            <Text style={{ color: colors.muted, fontSize: 13 }}>Working…</Text>
-          )}
+          renderReasoning={({ part }) => <ReasoningBlock text={part.text} />}
           renderToolCall={({ part }) => (
-            <Text style={{ color: colors.muted, fontSize: 13 }}>{part.toolName}</Text>
+            <ChatToolCall toolName={part.toolName} result={part.result} isError={part.isError} />
           )}
         />
       </View>

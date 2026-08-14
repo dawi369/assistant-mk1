@@ -48,6 +48,9 @@ export default function AgentsScreen() {
                   }
                 />
               ))}
+            {agent.isActive && (agent.behavior.pack?.managedState?.length ?? 0) > 0 ? (
+              <ActionButton label="Managed state" onPress={() => router.push("/managed-state")} />
+            ) : null}
           </View>
         </Card>
       ))}

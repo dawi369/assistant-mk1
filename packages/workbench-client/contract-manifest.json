@@ -33,7 +33,7 @@
         },
         {
           "path": "workbench-client/dist/contracts/execution.d.ts",
-          "sha256": "776a71ca272acfb4ea22748682c889347fb567c7f65d8e70d9694f1b907d55ad"
+          "sha256": "34694f0cac11a7a3d4da3a6578705674ac25025cb75cb697899de848fcfc34af"
         },
         {
           "path": "workbench-client/dist/contracts/index.d.ts",

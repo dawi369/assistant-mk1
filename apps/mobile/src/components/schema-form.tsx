@@ -1,33 +1,9 @@
-import { Switch, Text, TextInput, View } from "react-native";
+import { Pressable, Switch, Text, TextInput, View } from "react-native";
 
 import { colors } from "../theme";
+import { schemaProperties, type SchemaFormValue } from "./schema-form-model";
 
-type SchemaProperty = {
-  type?: string;
-  title?: string;
-  description?: string;
-  default?: unknown;
-  enum?: unknown[];
-};
-
-export type SchemaFormValue = Record<string, string | boolean>;
-
-export const schemaFormInput = (schema: Record<string, unknown>, values: SchemaFormValue) => {
-  const properties =
-    schema.properties && typeof schema.properties === "object"
-      ? (schema.properties as Record<string, SchemaProperty>)
-      : {};
-  return Object.fromEntries(
-    Object.entries(values).map(([key, value]) => {
-      const type = properties[key]?.type;
-      if (type === "number" || type === "integer") return [key, Number(value)];
-      if ((type === "object" || type === "array") && typeof value === "string") {
-        return [key, JSON.parse(value) as unknown];
-      }
-      return [key, value];
-    }),
-  );
-};
+export { schemaFormDefaults, schemaFormInput, type SchemaFormValue } from "./schema-form-model";
 
 export const SchemaForm = ({
   schema,
@@ -38,10 +14,7 @@ export const SchemaForm = ({
   values: SchemaFormValue;
   onChange: (values: SchemaFormValue) => void;
 }) => {
-  const properties =
-    schema.properties && typeof schema.properties === "object"
-      ? (schema.properties as Record<string, SchemaProperty>)
-      : {};
+  const properties = schemaProperties(schema);
   const required = new Set(Array.isArray(schema.required) ? schema.required : []);
   return (
     <View style={{ gap: 16 }}>
@@ -54,7 +27,34 @@ export const SchemaForm = ({
           {property.description ? (
             <Text style={{ color: colors.muted, lineHeight: 19 }}>{property.description}</Text>
           ) : null}
-          {property.type === "boolean" ? (
+          {property.enum?.length ? (
+            <View
+              accessibilityRole="radiogroup"
+              style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}
+            >
+              {property.enum.map((option) => {
+                const selected = values[name] === String(option);
+                return (
+                  <Pressable
+                    key={String(option)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected }}
+                    onPress={() => onChange({ ...values, [name]: String(option) })}
+                    style={{
+                      borderRadius: 999,
+                      borderWidth: 1,
+                      borderColor: selected ? colors.accent : colors.line,
+                      backgroundColor: selected ? colors.accentSoft : colors.surface,
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                    }}
+                  >
+                    <Text style={{ color: colors.ink }}>{String(option)}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : property.type === "boolean" ? (
             <Switch
               accessibilityLabel={property.title ?? name}
               value={values[name] === true}
@@ -75,7 +75,11 @@ export const SchemaForm = ({
               keyboardType={
                 property.type === "number" || property.type === "integer"
                   ? "decimal-pad"
-                  : "default"
+                  : property.format === "email"
+                    ? "email-address"
+                    : property.format === "uri" || property.format === "url"
+                      ? "url"
+                      : "default"
               }
               multiline={property.type === "object" || property.type === "array"}
               autoCapitalize="none"

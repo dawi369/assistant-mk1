@@ -1,11 +1,12 @@
 import { router, useLocalSearchParams } from "expo-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { View } from "react-native";
 import { useRunWorkflow, useWorkbenchWorkflows } from "@assistant-mk1/workbench-react";
 
 import { ActionButton, ErrorNotice, Screen } from "../../src/components/screen";
 import {
   SchemaForm,
+  schemaFormDefaults,
   schemaFormInput,
   type SchemaFormValue,
 } from "../../src/components/schema-form";
@@ -21,6 +22,9 @@ export default function WorkflowScreen() {
   const [input, setInput] = useState<SchemaFormValue>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (workflow) setInput(schemaFormDefaults(workflow.inputSchema));
+  }, [workflow]);
   const run = async () => {
     setBusy(true);
     try {

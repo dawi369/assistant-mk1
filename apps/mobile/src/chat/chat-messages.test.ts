@@ -12,6 +12,14 @@ describe("mobile chat transcript conversion", () => {
           role: "assistant",
           parts: [
             { type: "reasoning", text: "checking" },
+            { type: "reasoning", text: "" },
+            {
+              type: "tool-repo_snapshot",
+              toolCallId: "tool-1",
+              state: "output-available",
+              input: { depth: 2 },
+              output: { files: 4 },
+            },
             { type: "text", text: "done" },
           ],
         },
@@ -23,6 +31,15 @@ describe("mobile chat transcript conversion", () => {
         role: "assistant",
         content: [
           { type: "reasoning", text: "checking" },
+          {
+            type: "tool-call",
+            toolCallId: "tool-1",
+            toolName: "repo_snapshot",
+            args: { depth: 2 },
+            argsText: '{"depth":2}',
+            result: { files: 4 },
+            isError: false,
+          },
           { type: "text", text: "done" },
         ],
       },

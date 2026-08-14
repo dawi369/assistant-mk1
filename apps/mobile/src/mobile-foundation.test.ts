@@ -41,6 +41,19 @@ describe("mobile client architecture", () => {
     }
   });
 
+  it("renders pack outputs through generic native contracts", () => {
+    const run = read("apps/mobile/app/run/[id].tsx");
+    const renderers = read("apps/mobile/src/components/generic-renderers.tsx");
+    const messages = read("apps/mobile/src/chat/chat-messages.ts");
+    expect(run).toContain("artifactRenderers");
+    expect(run).toContain("ArtifactRenderer");
+    expect(renderers).toContain("MarkdownRenderer");
+    expect(renderers).toContain("TableRenderer");
+    expect(renderers).toContain("ManagedStateCard");
+    expect(messages).toContain('type: "tool-call"');
+    expect([run, renderers, messages].join("\n")).not.toMatch(/repo-analyst|polymancer|swordfish/i);
+  });
+
   it("persists exactly one queued turn with a stable client identity", () => {
     const storage = read("apps/mobile/src/storage/mobile-store.ts");
     const runtime = read("apps/mobile/src/chat/chat-runtime.tsx");

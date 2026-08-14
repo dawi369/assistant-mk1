@@ -25,6 +25,7 @@ export type ExecutionRunSnapshot = {
   } | null;
   run: {
     id?: Id;
+    agentId?: Id;
     status?: RunStatus | string;
     workflowIntentId?: Id;
     execution?: Partial<ExecutionPolicy>;
@@ -52,12 +53,7 @@ export type ExecutionRunSnapshot = {
     updatedAt?: string;
     createdAt?: string;
   }>;
-  artifacts: Array<{
-    id: Id;
-    title?: string;
-    uri?: string;
-    mimeType?: string;
-  }>;
+  artifacts: ArtifactSummary[];
   decisions: Array<{
     id: Id;
     title?: string;

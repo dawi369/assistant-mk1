@@ -47,6 +47,7 @@ const Navigation = () => {
         <Stack.Screen name="approvals" options={{ title: "Approvals" }} />
         <Stack.Screen name="connections" options={{ title: "Connections" }} />
         <Stack.Screen name="actions" options={{ title: "Actions" }} />
+        <Stack.Screen name="managed-state" options={{ title: "Managed state" }} />
       </Stack.Protected>
     </Stack>
   );
