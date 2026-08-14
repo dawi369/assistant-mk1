@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import { readMobileDeviceEvidence } from "./mobile-device-evidence-lib";
+
 if (process.env.WORKBENCH_MOBILE_ACCEPTANCE_MODE !== "true") {
   throw new Error("Set WORKBENCH_MOBILE_ACCEPTANCE_MODE=true for guarded hosted acceptance.");
 }
@@ -11,21 +13,7 @@ if (!evidenceInput || !existsSync(evidenceInput)) {
     "WORKBENCH_MOBILE_DEVICE_EVIDENCE must reference the completed iOS/Android acceptance JSON.",
   );
 }
-const evidence = JSON.parse(readFileSync(evidenceInput, "utf8")) as Record<string, unknown>;
-for (const field of [
-  "commit",
-  "operator",
-  "workosApplicationId",
-  "iosDevice",
-  "androidDevice",
-  "signIn",
-  "chatResume",
-  "approvalPush",
-  "terminalPush",
-  "signOutRevocation",
-]) {
-  if (!evidence[field]) throw new Error(`Hosted mobile evidence is missing ${field}.`);
-}
+const evidence = readMobileDeviceEvidence(evidenceInput);
 const commit = process.env.GITHUB_SHA ?? process.env.VERCEL_GIT_COMMIT_SHA ?? "development";
 if (evidence.commit !== commit) throw new Error("Hosted mobile evidence must match this commit.");
 const origins = [
@@ -45,15 +33,22 @@ const health = await Promise.all(
 );
 if (health.some((item) => item.release !== commit))
   throw new Error("Hosted services do not report the accepted commit.");
+const applicationVersion = JSON.parse(readFileSync(resolve(process.cwd(), "package.json"), "utf8"))
+  .version as string;
+if (health.some((item) => item.version !== applicationVersion)) {
+  throw new Error("Hosted services do not report the accepted application version.");
+}
 const output = resolve(process.cwd(), "output/mobile/hosted-acceptance.json");
 mkdirSync(resolve(process.cwd(), "output/mobile"), { recursive: true });
 writeFileSync(
   output,
   `${JSON.stringify(
     {
-      schemaVersion: 1,
+      schemaVersion: 2,
       commit,
+      applicationVersion,
       status: "passed",
+      operator: evidence.operator,
       evidenceSha256: createHash("sha256").update(readFileSync(evidenceInput)).digest("hex"),
       health,
       completedAt: new Date().toISOString(),

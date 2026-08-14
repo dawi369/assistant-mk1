@@ -1,0 +1,8 @@
+appId: ${MOBILE_E2E_APP_ID}
+name: Android signed-out boundary
+---
+- launchApp:
+    clearState: true
+- assertVisible: "Assistant"
+- assertVisible: "Sign in"
+- takeScreenshot: output/mobile/android/signed-out/sign-in

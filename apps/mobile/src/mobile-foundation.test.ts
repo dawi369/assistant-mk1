@@ -101,4 +101,14 @@ describe("mobile client architecture", () => {
     );
     expect(settings).toContain('label={notificationBusy ? "Enabling…" : "Enable notifications"}');
   });
+
+  it("keeps native acceptance local, artifact-backed, and credential-free", () => {
+    const runner = read("scripts/run-mobile-e2e.ts");
+    const evidence = read("scripts/mobile-device-evidence-lib.ts");
+    expect(runner).toContain('"--test-output-dir"');
+    expect(runner).not.toContain("maestro cloud");
+    expect(evidence).toContain('"earlySend"');
+    expect(evidence).toContain('"foregroundResume"');
+    expect(evidence).toContain("credentialPattern");
+  });
 });

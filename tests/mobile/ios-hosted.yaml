@@ -1,6 +1,20 @@
 appId: ${MOBILE_E2E_APP_ID}
+name: iOS authenticated operator surface
 ---
-- launchApp
+- launchApp:
+    stopApp: false
+- assertVisible: "Chat"
+- tapOn: "Agents"
+- assertVisible: "Agents"
+- tapOn: "History"
+- assertVisible: "History"
+- tapOn: "Settings"
+- assertVisible: "Settings"
+- tapOn: "Chat"
+- tapOn: "Chats"
+- assertVisible: "New chat"
+- back
+- takeScreenshot: output/mobile/ios/hosted/operator-surface
 - assertVisible:
     text: "Assistant MK1"
 - assertVisible:

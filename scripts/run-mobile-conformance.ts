@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-const suites = [
+const suites: Array<{ command: string[]; guarantees: string[] }> = [
   {
     command: ["mobile:check"],
     guarantees: [
@@ -19,6 +19,10 @@ const suites = [
       "run",
       "apps/mobile/src/mobile-foundation.test.ts",
       "apps/mobile/src/chat/chat-messages.test.ts",
+      "apps/mobile/src/components/generic-renderer-model.test.ts",
+      "apps/mobile/src/components/schema-form-model.test.ts",
+      "packages/workbench-client/src/chat.test.ts",
+      "scripts/mobile-device-evidence-lib.test.ts",
       "cloudflare/control-plane/src/notification-delivery.test.ts",
       "cloudflare/control-plane/src/session-agent-stream.test.ts",
       "cloudflare/control-plane/src/thread-chat-idempotency.test.ts",
@@ -36,19 +40,30 @@ const suites = [
       "explicit-notification-permission-guard",
       "notification-redaction",
       "invalid-provider-token-classification",
+      "formal-terminal-chat-authority",
+      "generic-native-rendering",
+      "schema-driven-workflow-inputs",
+      "strict-device-evidence-contract",
     ],
   },
   {
     command: ["db:cloudflare:migrations:verify"],
     guarantees: ["forward-mobile-migration", "export-purge-schema-parity"],
   },
-] as const;
+];
+
+if (process.env.WORKBENCH_MOBILE_DEVICE_EVIDENCE) {
+  suites.push({
+    command: ["mobile:evidence:check"],
+    guarantees: ["same-commit-ios-device", "same-commit-android-device"],
+  });
+}
 
 const results: Array<{
   command: string;
   durationMs: number;
   status: "passed" | "failed";
-  guarantees: readonly string[];
+  guarantees: string[];
 }> = [];
 let failed = false;
 for (const suite of suites) {
@@ -66,12 +81,12 @@ for (const suite of suites) {
   }
 }
 const report = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   generatedAt: new Date().toISOString(),
   commit: process.env.GITHUB_SHA ?? null,
   status: failed ? "failed" : "passed",
   scope: "deterministic-mobile-foundation",
-  deviceAcceptance: "not-run",
+  deviceAcceptance: process.env.WORKBENCH_MOBILE_DEVICE_EVIDENCE ? "passed" : "required-not-run",
   guarantees: results.flatMap((result) => result.guarantees),
   commands: results,
   failureArtifacts: [

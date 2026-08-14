@@ -26,9 +26,12 @@ persisted in a generic device cache; focused screens revalidate canonical state.
 `@assistant-mk1/workbench-client` is framework-neutral. It owns HTTP construction,
 bearer injection, runtime validation, normalized errors, aborts, pagination,
 idempotency, session replay, and the public chat transport contract.
-`@assistant-mk1/workbench-react` is the optional React Query adapter currently
-dogfooded by the web Agents surface. Both packages are unpublished and verified
-as packed, zero-context Vite and Expo dependencies.
+`@assistant-mk1/workbench-react` is the shared resource layer for both web and
+native product surfaces. It owns query keys, abort propagation, invalidation,
+and bounded optimistic thread updates. The chat provider remains responsible
+for transport and handoff, but publishes canonical snapshots into the same
+cache. Both packages are unpublished and verified as packed, zero-context Vite
+and Expo dependencies.
 
 ## Configure WorkOS mobile identity
 
@@ -106,10 +109,10 @@ Public Expo configuration:
 
 Core navigation uses native tabs for Chat, Agents, History, and Settings, with
 native stack routes for chats, workflows, runs, approvals, connections, and
-actions. Current native pack support covers generic workflow discovery/forms,
-execution, run status, and artifact metadata. Rich Markdown/table/artifact
-content rendering remains a device-acceptance gap; web renderer contributions
-are intentionally not loaded on native.
+actions. Pack workflows use schema-driven native forms. Runs, chat tool calls,
+reasoning, managed state, and artifacts use generic JSON, Markdown, table, and
+trusted-descriptor renderers. Web React renderers are intentionally not loaded
+on native; a pack remains fully operable without pack-specific mobile source.
 
 ## Resume and offline contract
 
@@ -153,19 +156,35 @@ device is registered.
 ## Release evidence
 
 ```bash
+pnpm test:mobile:e2e:ios:signed-out
+pnpm test:mobile:e2e:android:signed-out
 pnpm test:mobile:e2e:ios
 pnpm test:mobile:e2e:android
+pnpm mobile:evidence:init -- --commit=<full-sha> --operator=<name> --workos-app=<id>
+pnpm mobile:evidence:check
 pnpm acceptance:mobile:hosted
 ```
 
-The Maestro commands require an installed internal-preview build and available
-simulator/device. Hosted acceptance additionally requires a same-commit evidence
-JSON covering real WorkOS sign-in, foreground recovery, approval push, terminal
-push, and sign-out revocation on one iOS and one Android device. Push stays off
-until this evidence is recorded. App Store and Play Store submission are outside
-this foundation slice.
+The signed-out Maestro journeys clear application state. The authenticated
+journeys deliberately preserve the existing native WorkOS session; complete the
+system-browser OAuth flow manually before running them. This avoids putting a
+password, one-time code, or session token in test files. Maestro writes JUnit,
+screenshots, and command artifacts beneath `output/mobile/<platform>`.
+
+`mobile:evidence:init` creates an intentionally failing template. Record each
+passed check only after observing it on the named build and device. The strict
+checker requires the same full commit on iOS and Android, a real timestamp for
+every required journey, at least one screenshot per platform, and rejects
+credential-shaped fields or values. Hosted acceptance additionally verifies
+that Vercel, Cloudflare, and Fly report that commit and application version.
+Required checks are sign-in, early-send exactly-once behavior, foreground
+resume, workflow plus artifact, approval push, terminal push, and sign-out
+delivery revocation. Push stays off until this evidence is recorded. App Store
+and Play Store submission are outside this foundation slice.
 
 `pnpm conformance:mobile` is deterministic foundation evidence: native exports,
 type safety, architectural guards, and server protocol unit tests. It does not
 claim that simulator, physical-device, notification, or hosted journeys ran;
 those are covered only by the explicit E2E and hosted acceptance commands above.
+When `WORKBENCH_MOBILE_DEVICE_EVIDENCE` is set, conformance validates and records
+the physical-device proof; otherwise its report says `required-not-run`.
