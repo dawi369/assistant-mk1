@@ -1,21 +1,24 @@
 import * as Linking from "expo-linking";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { Text, TextInput, View } from "react-native";
+import { useConnectionAction, useWorkbenchConnections } from "@assistant-mk1/workbench-react";
 
 import { ActionButton, Card, ErrorNotice, Meta, Screen } from "../src/components/screen";
-import { useMobileResource } from "../src/hooks/use-mobile-resource";
 import { colors } from "../src/theme";
-import { useWorkbench } from "../src/workbench-provider";
 
 export default function ConnectionsScreen() {
-  const { client } = useWorkbench();
-  const load = useCallback(() => client.connections.list(), [client]);
-  const { data, error, refreshing, refresh } = useMobileResource(load);
+  const connections = useWorkbenchConnections();
+  const authorize = useConnectionAction("authorize");
+  const submitCredential = useConnectionAction("submitCredential");
+  const health = useConnectionAction("health");
+  const revoke = useConnectionAction("revoke");
   const [secrets, setSecrets] = useState<Record<string, string>>({});
+  const error =
+    connections.error ?? authorize.error ?? submitCredential.error ?? health.error ?? revoke.error;
   return (
-    <Screen refreshing={refreshing} onRefresh={() => void refresh()}>
-      <ErrorNotice message={error} />
-      {(data?.connections ?? []).map((connection) => (
+    <Screen refreshing={connections.isFetching} onRefresh={() => void connections.refetch()}>
+      <ErrorNotice message={error instanceof Error ? error.message : null} />
+      {(connections.data?.connections ?? []).map((connection) => (
         <Card key={connection.id}>
           <Text style={{ color: colors.ink, fontSize: 17, fontWeight: "700" }}>
             {connection.provider}
@@ -48,9 +51,12 @@ export default function ConnectionsScreen() {
               <ActionButton
                 label="Authorize"
                 onPress={() =>
-                  void client.connections
-                    .authorize(connection.id)
-                    .then((result) => Linking.openURL(result.authorizationUrl))
+                  void authorize.mutateAsync({ connectionId: connection.id }).then((result) => {
+                    if (!("authorizationUrl" in result)) {
+                      throw new Error("Connection authorization did not return a redirect URL.");
+                    }
+                    return Linking.openURL(result.authorizationUrl);
+                  })
                 }
               />
             ) : null}
@@ -59,11 +65,13 @@ export default function ConnectionsScreen() {
                 label="Save"
                 disabled={!secrets[connection.id]}
                 onPress={() =>
-                  void client.connections
-                    .submitCredential(connection.id, secrets[connection.id]!)
+                  void submitCredential
+                    .mutateAsync({
+                      connectionId: connection.id,
+                      secret: secrets[connection.id]!,
+                    })
                     .then(() => {
                       setSecrets((current) => ({ ...current, [connection.id]: "" }));
-                      return refresh();
                     })
                 }
               />
@@ -71,14 +79,14 @@ export default function ConnectionsScreen() {
             {connection.status === "authorized" ? (
               <ActionButton
                 label="Check"
-                onPress={() => void client.connections.health(connection.id).then(() => refresh())}
+                onPress={() => void health.mutate({ connectionId: connection.id })}
               />
             ) : null}
             {connection.status === "authorized" ? (
               <ActionButton
                 label="Revoke"
                 destructive
-                onPress={() => void client.connections.revoke(connection.id).then(() => refresh())}
+                onPress={() => void revoke.mutate({ connectionId: connection.id })}
               />
             ) : null}
           </View>

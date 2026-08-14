@@ -51,10 +51,11 @@ describe("mobile client architecture", () => {
 
   it("keeps tenant display resources canonical and local authority bounded", () => {
     const storage = read("apps/mobile/src/storage/mobile-store.ts");
-    const resource = read("apps/mobile/src/hooks/use-mobile-resource.ts");
+    const provider = read("apps/mobile/src/workbench-provider.tsx");
     expect(storage).not.toContain("CREATE TABLE IF NOT EXISTS display_cache");
     expect(storage).not.toContain("putDisplaySnapshot");
-    expect(resource).not.toContain("getDisplaySnapshot");
+    expect(provider).toContain("WorkbenchClientProvider");
+    expect(provider).toContain("workbenchSessionEventInvalidations");
     expect(storage).toContain("DELETE FROM drafts");
     expect(storage).toContain("DELETE FROM pending_turn");
     expect(read("apps/mobile/src/auth/auth-provider.tsx")).toContain(
@@ -66,7 +67,7 @@ describe("mobile client architecture", () => {
     const threads = read("apps/mobile/app/threads.tsx");
     const runtime = read("apps/mobile/src/chat/chat-runtime.tsx");
     const composer = read("apps/mobile/src/components/chat-thread.tsx");
-    expect(threads).toContain("client.threads.activate(threadId)");
+    expect(threads).toContain("activate.mutateAsync(threadId)");
     expect(runtime).toContain("messagesFromChatEvent");
     expect(runtime).toContain("thread.reset(messages)");
     expect(composer).toContain("mobileStore.getDraft(threadId)");
@@ -79,7 +80,8 @@ describe("mobile client architecture", () => {
     const provider = read("apps/mobile/src/notifications/device-provider.tsx");
     const settings = read("apps/mobile/app/(tabs)/settings.tsx");
     expect(transport).toContain("await input.getConnection()");
-    expect(workbench).toContain("subscribeSession({ after: cursorRef.current })");
+    expect(workbench).toContain("mobileStore.getSessionCursor(workspaceId)");
+    expect(workbench).toContain("realtime.subscribeSession({ after })");
     expect(provider.slice(provider.indexOf("export function MobileDeviceProvider"))).not.toContain(
       "registerDeviceDelivery(client)",
     );

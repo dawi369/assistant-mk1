@@ -1,35 +1,28 @@
 import { router } from "expo-router";
-import { useCallback, useState } from "react";
 import { Text, View } from "react-native";
+import { useActivateAgent, useWorkbenchAgents } from "@assistant-mk1/workbench-react";
 
 import { ActionButton, Card, ErrorNotice, Meta, Screen } from "../../src/components/screen";
-import { useMobileResource } from "../../src/hooks/use-mobile-resource";
 import { colors } from "../../src/theme";
 import { useWorkbench } from "../../src/workbench-provider";
 
 export default function AgentsScreen() {
-  const { client } = useWorkbench();
-  const load = useCallback(() => client.agents.list(), [client]);
-  const { data, error, refreshing, refresh } = useMobileResource(load);
-  const [busy, setBusy] = useState<string | null>(null);
+  const { notifyChatSelectionChanged } = useWorkbench();
+  const agents = useWorkbenchAgents();
+  const activation = useActivateAgent();
   const activate = async (agentId: string) => {
-    setBusy(agentId);
-    try {
-      await client.agents.activate(agentId);
-      await refresh();
-    } finally {
-      setBusy(null);
-    }
+    await activation.mutateAsync({ agentId });
+    notifyChatSelectionChanged();
   };
   return (
     <Screen
       title="Agents"
       subtitle="Activate a trusted package or run one of its declared workflows."
-      refreshing={refreshing}
-      onRefresh={() => void refresh()}
+      refreshing={agents.isFetching}
+      onRefresh={() => void agents.refetch()}
     >
-      <ErrorNotice message={error} />
-      {(data?.agents ?? []).map((agent) => (
+      <ErrorNotice message={agents.error instanceof Error ? agents.error.message : null} />
+      {(agents.data?.agents ?? []).map((agent) => (
         <Card key={agent.id}>
           <Text style={{ color: colors.ink, fontSize: 18, fontWeight: "700" }}>{agent.name}</Text>
           <Text style={{ color: colors.muted, marginTop: 5, lineHeight: 20 }}>
@@ -40,7 +33,7 @@ export default function AgentsScreen() {
             {!agent.isActive ? (
               <ActionButton
                 label="Activate"
-                disabled={busy === agent.id}
+                disabled={activation.isPending}
                 onPress={() => void activate(agent.id)}
               />
             ) : null}

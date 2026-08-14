@@ -217,6 +217,9 @@ importers:
       '@assistant-mk1/workbench-client':
         specifier: workspace:*
         version: link:../../packages/workbench-client
+      '@assistant-mk1/workbench-react':
+        specifier: workspace:*
+        version: link:../../packages/workbench-react
       '@assistant-ui/react-native':
         specifier: 0.1.33
         version: 0.1.33(@types/react@19.2.15)(assistant-cloud@0.1.34)(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.15)(react@19.2.3))(react@19.2.3)(use-sync-external-store@1.6.0(react@19.2.3))

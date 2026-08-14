@@ -1,19 +1,17 @@
-import { useCallback } from "react";
 import { Text, View } from "react-native";
+import { useProposalAction, useWorkbenchActions } from "@assistant-mk1/workbench-react";
 
 import { ActionButton, Card, ErrorNotice, Meta, Screen } from "../src/components/screen";
-import { useMobileResource } from "../src/hooks/use-mobile-resource";
 import { colors } from "../src/theme";
-import { useWorkbench } from "../src/workbench-provider";
 
 export default function ActionsScreen() {
-  const { client } = useWorkbench();
-  const load = useCallback(() => client.actions.list({ limit: 100 }), [client]);
-  const { data, error, refreshing, refresh } = useMobileResource(load);
+  const actions = useWorkbenchActions({ limit: 100 });
+  const execute = useProposalAction("execute");
+  const reconcile = useProposalAction("reconcile");
   return (
-    <Screen refreshing={refreshing} onRefresh={() => void refresh()}>
-      <ErrorNotice message={error} />
-      {(data?.proposals ?? []).map((proposal) => (
+    <Screen refreshing={actions.isFetching} onRefresh={() => void actions.refetch()}>
+      <ErrorNotice message={actions.error instanceof Error ? actions.error.message : null} />
+      {(actions.data?.proposals ?? []).map((proposal) => (
         <Card key={proposal.id}>
           <Text style={{ color: colors.ink, fontSize: 17, fontWeight: "700" }}>
             {proposal.actionType}
@@ -26,13 +24,15 @@ export default function ActionsScreen() {
             {proposal.status === "approved" ? (
               <ActionButton
                 label="Execute"
-                onPress={() => void client.actions.execute(proposal.id).then(() => refresh())}
+                disabled={execute.isPending}
+                onPress={() => void execute.mutateAsync(proposal.id)}
               />
             ) : null}
             {proposal.status === "outcome_unknown" ? (
               <ActionButton
                 label="Reconcile"
-                onPress={() => void client.actions.reconcile(proposal.id).then(() => refresh())}
+                disabled={reconcile.isPending}
+                onPress={() => void reconcile.mutateAsync(proposal.id)}
               />
             ) : null}
           </View>

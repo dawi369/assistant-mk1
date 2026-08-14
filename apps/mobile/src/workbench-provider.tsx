@@ -1,7 +1,15 @@
 import {
   createWorkbenchClient,
   createWorkbenchRealtimeAdapter,
+  type ChatSessionResponse,
 } from "@assistant-mk1/workbench-client";
+import {
+  WorkbenchClientProvider,
+  invalidateWorkbenchQueries,
+  useWorkbenchQueryClient,
+  workbenchQueryKeys,
+  workbenchSessionEventInvalidations,
+} from "@assistant-mk1/workbench-react";
 import { fetch as expoFetch } from "expo/fetch";
 import {
   createContext,
@@ -17,21 +25,151 @@ import { AppState } from "react-native";
 
 import { useMobileAuth } from "./auth/auth-provider";
 import { mobileConfig } from "./config";
+import { mobileStore } from "./storage/mobile-store";
 
 type ClientContext = {
   client: ReturnType<typeof createWorkbenchClient>;
-  resourceRevision: number;
   chatSelectionRevision: number;
+  realtimeState: "idle" | "connecting" | "connected" | "reconnecting";
   notifyChatSelectionChanged(): void;
 };
 
 const WorkbenchContext = createContext<ClientContext | null>(null);
 
+const publishSession = (
+  queryClient: ReturnType<typeof useWorkbenchQueryClient>,
+  session: ChatSessionResponse,
+) => {
+  const workspaceId = session.workspace?.id;
+  queryClient.setQueryData(workbenchQueryKeys.session(), session);
+  if (!workspaceId) return;
+  queryClient.setQueryData(workbenchQueryKeys.session(workspaceId), session);
+  queryClient.setQueryData(workbenchQueryKeys.threads(workspaceId, "active"), {
+    ok: true,
+    status: "active",
+    threads: session.threads ?? [],
+  });
+};
+
+function MobileWorkbenchRuntime({
+  children,
+  client,
+  realtime,
+  authState,
+}: PropsWithChildren<{
+  client: ReturnType<typeof createWorkbenchClient>;
+  realtime: ReturnType<typeof createWorkbenchRealtimeAdapter>;
+  authState: ReturnType<typeof useMobileAuth>["state"];
+}>) {
+  const queryClient = useWorkbenchQueryClient();
+  const [chatSelectionRevision, setChatSelectionRevision] = useState(0);
+  const [realtimeState, setRealtimeState] = useState<ClientContext["realtimeState"]>("idle");
+  const workspaceIdRef = useRef<string | null>(null);
+
+  const notifyChatSelectionChanged = useCallback(() => {
+    setChatSelectionRevision((revision) => revision + 1);
+    const workspaceId = workspaceIdRef.current;
+    void invalidateWorkbenchQueries(queryClient, [
+      workbenchQueryKeys.session(workspaceId),
+      workbenchQueryKeys.threads(workspaceId, "active"),
+      workbenchQueryKeys.threads(workspaceId, "archived"),
+    ]);
+  }, [queryClient]);
+
+  useEffect(() => {
+    if (authState !== "signed-in") {
+      workspaceIdRef.current = null;
+      setRealtimeState("idle");
+      return;
+    }
+    let closed = false;
+    let foreground = AppState.currentState === "active";
+    let attempt = 0;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let subscription: ReturnType<typeof realtime.subscribeSession> | null = null;
+
+    const scheduleReconnect = () => {
+      if (closed || !foreground) return;
+      attempt += 1;
+      setRealtimeState("reconnecting");
+      const ceiling = Math.min(15_000, 500 * 2 ** Math.min(attempt, 5));
+      const delay = Math.round(ceiling * (0.5 + Math.random() * 0.5));
+      reconnectTimer = setTimeout(() => void connect(), delay);
+    };
+
+    const connect = async () => {
+      if (closed || !foreground || subscription) return;
+      setRealtimeState(attempt ? "reconnecting" : "connecting");
+      try {
+        const session = await client.session.get({ source: "mobile-realtime-bootstrap" });
+        if (closed || !foreground) return;
+        publishSession(queryClient, session);
+        const workspaceId = session.workspace?.id ?? null;
+        workspaceIdRef.current = workspaceId;
+        const after = workspaceId
+          ? ((await mobileStore.getSessionCursor(workspaceId)) ?? undefined)
+          : undefined;
+        subscription = realtime.subscribeSession({ after });
+        setRealtimeState("connected");
+        attempt = 0;
+        for await (const event of subscription.events) {
+          if (closed || !foreground) break;
+          if (workspaceId) await mobileStore.putSessionCursor(workspaceId, event.id);
+          await invalidateWorkbenchQueries(
+            queryClient,
+            workbenchSessionEventInvalidations(event, workspaceId),
+          );
+          if (event.type === "session.thread.activated" || event.type === "session.agent.handoff") {
+            setChatSelectionRevision((revision) => revision + 1);
+          }
+        }
+      } catch {
+        // The bounded reconnect below reauthenticates and resumes from the persisted cursor.
+      } finally {
+        subscription?.close();
+        subscription = null;
+        scheduleReconnect();
+      }
+    };
+
+    const appState = AppState.addEventListener("change", (next) => {
+      foreground = next === "active";
+      if (!foreground) {
+        if (reconnectTimer) clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+        subscription?.close();
+        subscription = null;
+        setRealtimeState("idle");
+        return;
+      }
+      void connect();
+      void queryClient.invalidateQueries({
+        queryKey: workbenchQueryKeys.tenant(workspaceIdRef.current),
+      });
+    });
+    void connect();
+    return () => {
+      closed = true;
+      appState.remove();
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      subscription?.close();
+    };
+  }, [authState, client, queryClient, realtime]);
+
+  const value = useMemo<ClientContext>(
+    () => ({
+      client,
+      chatSelectionRevision,
+      realtimeState,
+      notifyChatSelectionChanged,
+    }),
+    [chatSelectionRevision, client, notifyChatSelectionChanged, realtimeState],
+  );
+  return <WorkbenchContext.Provider value={value}>{children}</WorkbenchContext.Provider>;
+}
+
 export function MobileWorkbenchProvider({ children }: PropsWithChildren) {
   const { getAccessToken, state } = useMobileAuth();
-  const [resourceRevision, setResourceRevision] = useState(0);
-  const [chatSelectionRevision, setChatSelectionRevision] = useState(0);
-  const cursorRef = useRef<string | undefined>(undefined);
   const clients = useMemo(() => {
     const options = {
       baseUrl: mobileConfig.workbenchOrigin,
@@ -44,73 +182,13 @@ export function MobileWorkbenchProvider({ children }: PropsWithChildren) {
       realtime: createWorkbenchRealtimeAdapter(options),
     };
   }, [getAccessToken]);
-  const notifyChatSelectionChanged = useCallback(() => {
-    setChatSelectionRevision((revision) => revision + 1);
-    setResourceRevision((revision) => revision + 1);
-  }, []);
-
-  useEffect(() => {
-    if (state !== "signed-in") {
-      cursorRef.current = undefined;
-      return;
-    }
-    let closed = false;
-    let foreground = AppState.currentState === "active";
-    let connecting = false;
-    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-    let subscription: ReturnType<typeof clients.realtime.subscribeSession> | null = null;
-    const connect = async () => {
-      if (closed || !foreground || connecting) return;
-      connecting = true;
-      subscription = clients.realtime.subscribeSession({ after: cursorRef.current });
-      try {
-        for await (const event of subscription.events) {
-          if (closed || !foreground) break;
-          cursorRef.current = event.id;
-          setResourceRevision((revision) => revision + 1);
-          if (event.type === "session.thread.activated" || event.type === "session.agent.handoff") {
-            setChatSelectionRevision((revision) => revision + 1);
-          }
-        }
-      } catch {
-        // Foreground reconnect below reauthenticates and resumes from the last cursor.
-      } finally {
-        connecting = false;
-        subscription?.close();
-        subscription = null;
-        if (!closed && foreground) reconnectTimer = setTimeout(() => void connect(), 2_000);
-      }
-    };
-    const appState = AppState.addEventListener("change", (next) => {
-      foreground = next === "active";
-      if (!foreground) {
-        if (reconnectTimer) clearTimeout(reconnectTimer);
-        reconnectTimer = null;
-        subscription?.close();
-        return;
-      }
-      setResourceRevision((revision) => revision + 1);
-      void connect();
-    });
-    void connect();
-    return () => {
-      closed = true;
-      appState.remove();
-      if (reconnectTimer) clearTimeout(reconnectTimer);
-      subscription?.close();
-    };
-  }, [clients.realtime, state]);
-
-  const value = useMemo<ClientContext>(
-    () => ({
-      client: clients.client,
-      resourceRevision,
-      chatSelectionRevision,
-      notifyChatSelectionChanged,
-    }),
-    [chatSelectionRevision, clients, notifyChatSelectionChanged, resourceRevision],
+  return (
+    <WorkbenchClientProvider client={clients.client}>
+      <MobileWorkbenchRuntime client={clients.client} realtime={clients.realtime} authState={state}>
+        {children}
+      </MobileWorkbenchRuntime>
+    </WorkbenchClientProvider>
   );
-  return <WorkbenchContext.Provider value={value}>{children}</WorkbenchContext.Provider>;
 }
 
 export const useWorkbench = () => {

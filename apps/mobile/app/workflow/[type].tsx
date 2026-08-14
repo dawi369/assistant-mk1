@@ -1,6 +1,7 @@
 import { router, useLocalSearchParams } from "expo-router";
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { View } from "react-native";
+import { useRunWorkflow, useWorkbenchWorkflows } from "@assistant-mk1/workbench-react";
 
 import { ActionButton, ErrorNotice, Screen } from "../../src/components/screen";
 import {
@@ -8,14 +9,11 @@ import {
   schemaFormInput,
   type SchemaFormValue,
 } from "../../src/components/schema-form";
-import { useMobileResource } from "../../src/hooks/use-mobile-resource";
-import { useWorkbench } from "../../src/workbench-provider";
 
 export default function WorkflowScreen() {
   const { type } = useLocalSearchParams<{ type: string }>();
-  const { client } = useWorkbench();
-  const load = useCallback(() => client.workflows.list(), [client]);
-  const discovery = useMobileResource(load);
+  const discovery = useWorkbenchWorkflows();
+  const runWorkflow = useRunWorkflow();
   const workflow = useMemo(
     () => discovery.data?.workflows.find((candidate) => candidate.type === type),
     [discovery.data, type],
@@ -27,7 +25,8 @@ export default function WorkflowScreen() {
     setBusy(true);
     try {
       if (!workflow) throw new Error("Workflow is unavailable for the active agent.");
-      const response = await client.workflows.run(type, {
+      const response = await runWorkflow.mutateAsync({
+        workflowType: type,
         input: schemaFormInput(workflow.inputSchema, input),
         executionMode: "dry_run",
       });
@@ -47,10 +46,12 @@ export default function WorkflowScreen() {
         workflow?.description ??
         "Generic schema input. Mutation execution remains policy-controlled and online-only."
       }
-      refreshing={discovery.refreshing}
-      onRefresh={() => void discovery.refresh()}
+      refreshing={discovery.isFetching}
+      onRefresh={() => void discovery.refetch()}
     >
-      <ErrorNotice message={error ?? discovery.error} />
+      <ErrorNotice
+        message={error ?? (discovery.error instanceof Error ? discovery.error.message : null)}
+      />
       <View style={{ marginHorizontal: 16, gap: 14 }}>
         {workflow ? (
           <SchemaForm schema={workflow.inputSchema} values={input} onChange={setInput} />

@@ -26,6 +26,11 @@ const database = () => {
           value TEXT NOT NULL,
           updated_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS session_cursors (
+          workspace_id TEXT PRIMARY KEY,
+          cursor TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
       `);
       return db;
     });
@@ -107,11 +112,35 @@ export const mobileStore = {
       new Date().toISOString(),
     );
   },
+  async getSessionCursor(workspaceId: string) {
+    const db = await database();
+    return (
+      (
+        await db.getFirstAsync<{ cursor: string }>(
+          "SELECT cursor FROM session_cursors WHERE workspace_id = ?",
+          workspaceId,
+        )
+      )?.cursor ?? null
+    );
+  },
+  async putSessionCursor(workspaceId: string, cursor: string | null) {
+    const db = await database();
+    if (!cursor)
+      return db.runAsync("DELETE FROM session_cursors WHERE workspace_id = ?", workspaceId);
+    return db.runAsync(
+      `INSERT INTO session_cursors (workspace_id, cursor, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(workspace_id) DO UPDATE SET cursor = excluded.cursor, updated_at = excluded.updated_at`,
+      workspaceId,
+      cursor,
+      new Date().toISOString(),
+    );
+  },
   async clearLocalAuthority() {
     const db = await database();
     await db.execAsync(`
       DELETE FROM drafts;
       DELETE FROM pending_turn;
+      DELETE FROM session_cursors;
       DELETE FROM local_settings WHERE key != 'notification.installation-id';
     `);
   },

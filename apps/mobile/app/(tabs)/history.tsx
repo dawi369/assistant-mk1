@@ -1,26 +1,25 @@
 import { router } from "expo-router";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
+import { useWorkbenchRuns } from "@assistant-mk1/workbench-react";
 
 import { Card, ErrorNotice, Meta, Screen } from "../../src/components/screen";
-import { useMobileResource } from "../../src/hooks/use-mobile-resource";
 import { colors } from "../../src/theme";
-import { useWorkbench } from "../../src/workbench-provider";
 
 type Filter = "all" | "completed" | "failed";
 
 export default function HistoryScreen() {
-  const { client } = useWorkbench();
-  const load = useCallback(() => client.history.listRuns({ limit: 100 }), [client]);
-  const { data, error, refreshing, refresh } = useMobileResource(load);
+  const history = useWorkbenchRuns({ limit: 100 });
   const [filter, setFilter] = useState<Filter>("all");
-  const runs = (data?.runs ?? []).filter((run) => filter === "all" || run.status === filter);
+  const runs = (history.data?.runs ?? []).filter(
+    (run) => filter === "all" || run.status === filter,
+  );
   return (
     <Screen
       title="History"
       subtitle="Workflow and tool execution, results, and recovery."
-      refreshing={refreshing}
-      onRefresh={() => void refresh()}
+      refreshing={history.isFetching}
+      onRefresh={() => void history.refetch()}
     >
       <View style={{ flexDirection: "row", gap: 8, paddingHorizontal: 16, marginBottom: 14 }}>
         {(["all", "completed", "failed"] as const).map((value) => (
@@ -50,7 +49,7 @@ export default function HistoryScreen() {
           </Pressable>
         ))}
       </View>
-      <ErrorNotice message={error} />
+      <ErrorNotice message={history.error instanceof Error ? history.error.message : null} />
       {runs.map((run) => (
         <Card
           key={run.id}
@@ -69,7 +68,7 @@ export default function HistoryScreen() {
           ) : null}
         </Card>
       ))}
-      {!refreshing && runs.length === 0 ? (
+      {!history.isFetching && runs.length === 0 ? (
         <Text style={{ color: colors.muted, textAlign: "center", padding: 32 }}>
           No matching runs.
         </Text>

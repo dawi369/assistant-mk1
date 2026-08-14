@@ -1,22 +1,20 @@
 import { useLocalSearchParams } from "expo-router";
-import { useCallback } from "react";
 import { Text, View } from "react-native";
+import { useRunAction, useWorkbenchRun } from "@assistant-mk1/workbench-react";
 
 import { ActionButton, Card, ErrorNotice, Meta, Screen } from "../../src/components/screen";
-import { useMobileResource } from "../../src/hooks/use-mobile-resource";
 import { colors } from "../../src/theme";
-import { useWorkbench } from "../../src/workbench-provider";
 
 export default function RunScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { client } = useWorkbench();
-  const load = useCallback(() => client.history.getRun(id), [client, id]);
-  const { data, error, refreshing, refresh } = useMobileResource(load);
-  const snapshot = data?.snapshot;
+  const detail = useWorkbenchRun(id);
+  const cancel = useRunAction("cancel");
+  const retry = useRunAction("retry");
+  const snapshot = detail.data?.snapshot;
   const run = snapshot?.run;
   return (
-    <Screen refreshing={refreshing} onRefresh={() => void refresh()}>
-      <ErrorNotice message={error} />
+    <Screen refreshing={detail.isFetching} onRefresh={() => void detail.refetch()}>
+      <ErrorNotice message={detail.error instanceof Error ? detail.error.message : null} />
       <Card>
         <Text style={{ color: colors.ink, fontSize: 22, fontWeight: "700" }}>
           {run?.status ?? "Run"}
@@ -27,13 +25,15 @@ export default function RunScreen() {
             <ActionButton
               label="Cancel"
               destructive
-              onPress={() => void client.history.cancel(run.id!).then(() => refresh())}
+              disabled={cancel.isPending}
+              onPress={() => void cancel.mutateAsync(run.id!)}
             />
           ) : null}
           {run?.id ? (
             <ActionButton
               label="Retry"
-              onPress={() => void client.history.retry(run.id!).then(() => refresh())}
+              disabled={retry.isPending}
+              onPress={() => void retry.mutateAsync(run.id!)}
             />
           ) : null}
         </View>

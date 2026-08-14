@@ -1,10 +1,15 @@
 import { router } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Switch, Text, View } from "react-native";
+import {
+  useActivateWorkspace,
+  useUpdateNotificationPreferences,
+  useWorkbenchNotificationPreferences,
+  useWorkbenchWorkspaces,
+} from "@assistant-mk1/workbench-react";
 
 import { useMobileAuth } from "../../src/auth/auth-provider";
 import { ActionButton, Card, ErrorNotice, Meta, Screen } from "../../src/components/screen";
-import { useMobileResource } from "../../src/hooks/use-mobile-resource";
 import { mobileStore } from "../../src/storage/mobile-store";
 import { colors } from "../../src/theme";
 import { useWorkbench } from "../../src/workbench-provider";
@@ -17,10 +22,10 @@ import {
 export default function SettingsScreen() {
   const { client, notifyChatSelectionChanged } = useWorkbench();
   const { signOut } = useMobileAuth();
-  const load = useCallback(() => client.workspaces.list(), [client]);
-  const { data, error, refreshing, refresh } = useMobileResource(load);
-  const loadNotifications = useCallback(() => client.notificationPreferences.get(), [client]);
-  const notifications = useMobileResource(loadNotifications);
+  const workspaces = useWorkbenchWorkspaces();
+  const activateWorkspace = useActivateWorkspace();
+  const notifications = useWorkbenchNotificationPreferences();
+  const updateNotificationPreferences = useUpdateNotificationPreferences();
   const [busy, setBusy] = useState<string | null>(null);
   const [deviceRegistered, setDeviceRegistered] = useState(false);
   const [notificationError, setNotificationError] = useState<string | null>(null);
@@ -34,11 +39,10 @@ export default function SettingsScreen() {
     setBusy(id);
     try {
       await revokeDeviceDelivery(client);
-      await client.workspaces.activate(id);
+      await activateWorkspace.mutateAsync(id);
       await mobileStore.clearLocalAuthority();
       setDeviceRegistered(false);
       notifyChatSelectionChanged();
-      await refresh();
     } finally {
       setBusy(null);
     }
@@ -81,18 +85,17 @@ export default function SettingsScreen() {
     approvalRequired: boolean;
     terminalOutcomes: boolean;
   }) => {
-    await client.notificationPreferences.update(input);
-    await notifications.refresh();
+    await updateNotificationPreferences.mutateAsync(input);
   };
   return (
     <Screen
       title="Settings"
       subtitle="Workspace, connection, approval, and session controls."
-      refreshing={refreshing}
-      onRefresh={() => void refresh()}
+      refreshing={workspaces.isFetching}
+      onRefresh={() => void workspaces.refetch()}
     >
-      <ErrorNotice message={error} />
-      {(data?.workspaces ?? []).map((workspace) => (
+      <ErrorNotice message={workspaces.error instanceof Error ? workspaces.error.message : null} />
+      {(workspaces.data?.workspaces ?? []).map((workspace) => (
         <Card key={workspace.id}>
           <Text style={{ color: colors.ink, fontSize: 17, fontWeight: "700" }}>
             {workspace.name}

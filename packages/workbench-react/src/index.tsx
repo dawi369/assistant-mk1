@@ -63,6 +63,8 @@ export const workbenchQueryKeys = {
     workspaceId?: string | null,
     input: { namespace?: string; type?: string; limit?: number } = {},
   ) => [...workbenchQueryKeys.tenant(workspaceId), "managed-state", input] as const,
+  notificationPreferences: (workspaceId?: string | null) =>
+    [...workbenchQueryKeys.tenant(workspaceId), "notification-preferences"] as const,
 } as const;
 
 export const createWorkbenchQueryClient = (config: QueryClientConfig = {}) =>
@@ -228,8 +230,19 @@ export const useWorkbenchManagedState = (
   });
 };
 
+export const useWorkbenchNotificationPreferences = (input: TenantInput = {}) => {
+  const client = useWorkbenchClient();
+  return useQuery({
+    queryKey: workbenchQueryKeys.notificationPreferences(input.workspaceId),
+    queryFn: ({ signal }) => client.notificationPreferences.get({ signal }),
+    enabled: enabled(input),
+  });
+};
+
 const invalidate = (queryClient: QueryClient, keys: readonly QueryKey[]) =>
   Promise.all(keys.map((queryKey) => queryClient.invalidateQueries({ queryKey })));
+
+export const invalidateWorkbenchQueries = invalidate;
 
 export const clearWorkbenchTenantCache = (queryClient: QueryClient, workspaceId?: string | null) =>
   queryClient.removeQueries({ queryKey: workbenchQueryKeys.tenant(workspaceId) });
@@ -372,6 +385,28 @@ export const useActivateAgent = (workspaceId?: string | null) =>
     ],
   });
 
+export const useCreateThread = (workspaceId?: string | null) =>
+  useTenantMutation<void, Awaited<ReturnType<WorkbenchClient["threads"]["create"]>>>({
+    mutationFn: (client) => client.threads.create(),
+    invalidations: () => threadKeys(workspaceId),
+  });
+
+export const useActivateThread = (workspaceId?: string | null) =>
+  useTenantMutation<string, Awaited<ReturnType<WorkbenchClient["threads"]["activate"]>>>({
+    mutationFn: (client, threadId) => client.threads.activate(threadId),
+    invalidations: () => threadKeys(workspaceId),
+  });
+
+export const useUpdateThread = (workspaceId?: string | null) =>
+  useTenantMutation<
+    { threadId: string; title?: string; status?: "active" | "archived" | "deleted" },
+    Awaited<ReturnType<WorkbenchClient["threads"]["update"]>>
+  >({
+    mutationFn: (client, input) =>
+      client.threads.update(input.threadId, { title: input.title, status: input.status }),
+    invalidations: () => threadKeys(workspaceId),
+  });
+
 export const useRunAction = (action: "cancel" | "retry", workspaceId?: string | null) =>
   useTenantMutation<string, Awaited<ReturnType<WorkbenchClient["history"][typeof action]>>>({
     mutationFn: (client, runId) => client.history[action](runId),
@@ -430,6 +465,15 @@ export const useProposalAction = (action: "execute" | "reconcile", workspaceId?:
       workbenchQueryKeys.approvals(workspaceId),
       workbenchQueryKeys.runLists(workspaceId),
     ],
+  });
+
+export const useUpdateNotificationPreferences = (workspaceId?: string | null) =>
+  useTenantMutation<
+    { approvalRequired: boolean; terminalOutcomes: boolean },
+    Awaited<ReturnType<WorkbenchClient["notificationPreferences"]["update"]>>
+  >({
+    mutationFn: (client, input) => client.notificationPreferences.update(input),
+    invalidations: () => [workbenchQueryKeys.notificationPreferences(workspaceId)],
   });
 
 export type { WorkbenchClient } from "@assistant-mk1/workbench-client";
