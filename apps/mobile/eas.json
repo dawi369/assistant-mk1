@@ -35,7 +35,6 @@
         "EXPO_PUBLIC_SENTRY_ENVIRONMENT": "preview"
       },
       "distribution": "internal",
-      "channel": "internal-preview",
       "android": {
         "buildType": "apk"
       }

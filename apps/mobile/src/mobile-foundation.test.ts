@@ -127,4 +127,11 @@ describe("mobile client architecture", () => {
       /EXPO_PUBLIC_(?:SENTRY_AUTH_TOKEN|SENTRY_ORG|SENTRY_PROJECT)/,
     );
   });
+
+  it("keeps internal builds store-safe without declaring an unused update channel", () => {
+    const config = read("apps/mobile/app.json");
+    const eas = read("apps/mobile/eas.json");
+    expect(config).toContain('"ITSAppUsesNonExemptEncryption": false');
+    expect(eas).not.toContain('"channel"');
+  });
 });
