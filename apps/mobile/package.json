@@ -5,6 +5,7 @@
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start --dev-client",
+    "eas-build-pre-install": "node scripts/configure-sentry-release.cjs",
     "prebuild": "expo prebuild",
     "ios": "expo run:ios",
     "ios:simulator": "expo run:ios",
@@ -25,9 +26,11 @@
     "export:android": "expo export --platform android --output-dir ../../output/mobile/android"
   },
   "dependencies": {
+    "@assistant-mk1/observability": "workspace:*",
     "@assistant-mk1/workbench-client": "workspace:*",
     "@assistant-mk1/workbench-react": "workspace:*",
     "@assistant-ui/react-native": "0.1.33",
+    "@sentry/react-native": "8.22.0",
     "agents": "0.16.0",
     "expo": "~57.0.8",
     "expo-auth-session": "57.0.5",

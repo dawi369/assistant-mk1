@@ -9,6 +9,11 @@ Assistant-mk1 source changes merge without conflicts; each is a compatibility
 checkpoint enforced by the SDK contract, compiler, runtime resolution,
 installed-package conformance, and CI.
 
+`fork-base-v1.1.0` is the next mobile-capable foundation candidate. It must not
+be created or recommended until `pnpm fork:mobile-release-check` passes for the
+same commit on real iOS and Android devices and the hosted services report that
+commit. Until then, `fork-base-v1.0.1` remains the accepted base.
+
 ## Boundaries
 
 Application-owned code includes the Vercel facade, Cloudflare control plane,
@@ -86,6 +91,18 @@ checks, installed-package extension conformance, runtime architecture tests,
 unit/type/lint/security/build checks, Docker containment, Level 2-3, lifecycle,
 connection, action, agent-system, and browser journeys. A merge is eligible only
 when local evidence and GitHub checks are green for the same commit.
+
+For a mobile-capable foundation tag, additionally run:
+
+```bash
+WORKBENCH_MOBILE_DEVICE_EVIDENCE=output/mobile/device-acceptance.json \
+  pnpm fork:mobile-release-check
+```
+
+This adds both native bundles, the shared client/chat/rendering contracts, and
+strict physical-device evidence. The evidence is intentionally ignored and
+must be retained with the internal release record; it cannot be synthesized by
+CI or replaced by an Expo export.
 
 ## Rollback
 

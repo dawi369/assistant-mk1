@@ -38,6 +38,13 @@
       "expo-secure-store",
       "expo-sqlite",
       [
+        "@sentry/react-native/expo",
+        {
+          "organization": "t23",
+          "project": "assistant-mk1"
+        }
+      ],
+      [
         "expo-notifications",
         {
           "defaultChannel": "workbench"

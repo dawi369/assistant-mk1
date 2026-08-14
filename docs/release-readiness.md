@@ -57,6 +57,7 @@ edits the policy. General workspace mutation remains opt-in.
 | Supply chain      | `pnpm verify:security`, `pnpm verify:docker`                                         |
 | Public hosting    | `pnpm acceptance:hosted:public`                                                      |
 | Signed-in product | WorkOS browser acceptance across Vercel, Cloudflare, and Fly                         |
+| Native clients    | `conformance:mobile`, strict same-SHA iOS/Android device evidence                    |
 
 `pnpm verify:security` fails on every high or critical advisory except the two
 currently unpatched `image-size` findings confined to Expo Metro's build-time
@@ -102,6 +103,9 @@ browser observation.
       cancellation fencing, and cross-tenant `404`.
 - [ ] Same-commit 24-hour schedule/webhook soak, receiver-outage redelivery,
       and signed-in operator journeys are recorded.
+- [ ] One iOS and one Android internal-preview build pass sign-in, early send,
+      foreground resume, workflow/artifact, push, and sign-out revocation with
+      symbolicated mobile errors under the same Sentry release SHA.
 - [ ] Dashboards and alerts cover lifecycle failures/backlog, Vault and OAuth
       failures, blocked mutation, `outcome_unknown`, trigger failures, and alert
       delivery failures.

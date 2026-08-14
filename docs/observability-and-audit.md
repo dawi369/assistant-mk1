@@ -110,6 +110,7 @@ with tags instead of creating separate projects too early:
 - `runtime.surface=vercel-next` for the Vercel/Next web app and server facade.
 - `runtime.surface=cloudflare-worker` for the Cloudflare control plane Worker.
 - `runtime.surface=fly-langgraph` for the Fly/LangGraph gateway and workflow runtime.
+- `runtime.surface=expo-native` for the iOS and Android operator app.
 
 This keeps issues, releases, and traces in one product view while preserving
 easy filters for the surfaces that fail differently. Add more tags when they
@@ -128,6 +129,15 @@ code/status metadata, and redacted exception text. Verify this boundary with
 
 Source maps should use `SENTRY_AUTH_TOKEN` only in trusted CI/deploy
 environments. Never commit the auth token or print it in logs.
+
+Native builds use `@sentry/react-native` with the same runtime-neutral scrubber
+as web, Worker, and Fly. The public mobile binary may contain only the DSN,
+environment, and full-SHA release. `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, and
+`SENTRY_PROJECT` are build-time EAS/local-build values and must never use the
+`EXPO_PUBLIC_` prefix. The Sentry Metro configuration and Expo config plugin
+upload JavaScript and native symbols for preview/release builds; Expo Go is not
+a symbolication acceptance environment. A native build is accepted only when
+its Sentry release equals the Git SHA in mobile device evidence.
 
 Local Sentry transport is disabled by default even when `.env.local` contains
 DSNs. Enable `SENTRY_ENABLE_LOCAL=true` for server/edge diagnostics and

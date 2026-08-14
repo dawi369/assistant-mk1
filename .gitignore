@@ -68,6 +68,7 @@ cloudflare/control-plane/.wrangler/
 /packages/agent-sdk/dist/
 /packages/workbench-client/dist/
 /packages/workbench-react/dist/
+/packages/observability/dist/
 /examples/complex-operator/dist/
 /output/release/
 /output/backups/

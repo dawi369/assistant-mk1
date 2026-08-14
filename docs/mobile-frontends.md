@@ -106,6 +106,13 @@ Public Expo configuration:
 - `EXPO_PUBLIC_WORKOS_CLIENT_ID`
 - `EXPO_PUBLIC_WORKOS_ISSUER`
 - `EXPO_PUBLIC_EAS_PROJECT_ID` for remote push registration outside an EAS build
+- `EXPO_PUBLIC_SENTRY_DSN`, `EXPO_PUBLIC_SENTRY_ENVIRONMENT`, and a full-SHA
+  `EXPO_PUBLIC_SENTRY_RELEASE`
+
+Sentry symbol upload uses non-public `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, and
+`SENTRY_PROJECT` in the local/EAS build environment. Store the token as a
+sensitive EAS secret. The native Sentry module requires a development or
+internal-preview build; Expo Go is not the crash/symbolication proof path.
 
 Core navigation uses native tabs for Chat, Agents, History, and Settings, with
 native stack routes for chats, workflows, runs, approvals, connections, and

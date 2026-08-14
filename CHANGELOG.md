@@ -14,6 +14,9 @@ plus connections; mutation, push, and conformance stay globally disabled.
 - Native pack output is now fully generic: declared JSON, Markdown, and table
   artifacts, managed state, workflow schemas, reasoning, and tool calls render
   without pack-specific mobile source code.
+- Mobile acceptance now requires strict same-commit iOS and Android evidence,
+  while native Sentry uses the shared credential scrubber and build-only symbol
+  upload authority.
 
 ## 0.5.0
 

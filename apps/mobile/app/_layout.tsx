@@ -8,6 +8,9 @@ import { MobileAuthProvider, useMobileAuth } from "../src/auth/auth-provider";
 import { colors } from "../src/theme";
 import { MobileWorkbenchProvider } from "../src/workbench-provider";
 import { MobileDeviceProvider } from "../src/notifications/device-provider";
+import { initializeMobileObservability, withMobileObservability } from "../src/observability";
+
+initializeMobileObservability();
 
 const Navigation = () => {
   const { state } = useMobileAuth();
@@ -53,7 +56,7 @@ const Navigation = () => {
   );
 };
 
-export default function RootLayout() {
+function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
@@ -69,3 +72,5 @@ export default function RootLayout() {
     </GestureHandlerRootView>
   );
 }
+
+export default withMobileObservability(RootLayout);

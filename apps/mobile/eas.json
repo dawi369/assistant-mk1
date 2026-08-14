@@ -5,6 +5,11 @@
   },
   "build": {
     "development": {
+      "environment": "development",
+      "env": {
+        "SENTRY_ENVIRONMENT": "development",
+        "EXPO_PUBLIC_SENTRY_ENVIRONMENT": "development"
+      },
       "developmentClient": true,
       "distribution": "internal",
       "android": {
@@ -12,6 +17,11 @@
       }
     },
     "development-simulator": {
+      "environment": "development",
+      "env": {
+        "SENTRY_ENVIRONMENT": "development",
+        "EXPO_PUBLIC_SENTRY_ENVIRONMENT": "development"
+      },
       "developmentClient": true,
       "distribution": "internal",
       "ios": {
@@ -19,6 +29,11 @@
       }
     },
     "internal-preview": {
+      "environment": "preview",
+      "env": {
+        "SENTRY_ENVIRONMENT": "preview",
+        "EXPO_PUBLIC_SENTRY_ENVIRONMENT": "preview"
+      },
       "distribution": "internal",
       "channel": "internal-preview",
       "android": {

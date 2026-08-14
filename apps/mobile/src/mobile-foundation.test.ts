@@ -111,4 +111,20 @@ describe("mobile client architecture", () => {
     expect(evidence).toContain('"foregroundResume"');
     expect(evidence).toContain("credentialPattern");
   });
+
+  it("uses the shared scrubber and keeps Sentry upload authority build-only", () => {
+    const observability = read("apps/mobile/src/observability.ts");
+    const config = read("apps/mobile/app.json");
+    const metro = read("apps/mobile/metro.config.js");
+    const release = read("apps/mobile/scripts/configure-sentry-release.cjs");
+    expect(observability).toContain("@assistant-mk1/observability");
+    expect(observability).toContain("sendDefaultPii: false");
+    expect(config).toContain("@sentry/react-native/expo");
+    expect(metro).toContain("getSentryExpoConfig");
+    expect(release).toContain("EAS_BUILD_GIT_COMMIT_HASH");
+    expect(release).toContain('spawnSync("set-env"');
+    expect([observability, config, metro, release].join("\n")).not.toMatch(
+      /EXPO_PUBLIC_(?:SENTRY_AUTH_TOKEN|SENTRY_ORG|SENTRY_PROJECT)/,
+    );
+  });
 });

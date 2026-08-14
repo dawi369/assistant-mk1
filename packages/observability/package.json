@@ -1,0 +1,23 @@
+{
+  "name": "@assistant-mk1/observability",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Runtime-neutral observability privacy boundary for Assistant-mk1.",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist",
+    "prepack": "pnpm clean && pnpm build"
+  }
+}
