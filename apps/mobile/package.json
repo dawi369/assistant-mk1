@@ -21,6 +21,7 @@
     "build:eas:android:development": "eas build --platform android --profile development",
     "build:eas:ios:preview": "eas build --platform ios --profile internal-preview",
     "build:eas:android:preview": "eas build --platform android --profile internal-preview",
+    "build:eas:ios:testflight": "eas build --platform ios --profile testflight --auto-submit",
     "check": "tsc --noEmit && expo config --type public",
     "export:ios": "expo export --platform ios --output-dir ../../output/mobile/ios",
     "export:android": "expo export --platform android --output-dir ../../output/mobile/android"

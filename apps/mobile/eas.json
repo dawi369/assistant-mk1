@@ -38,6 +38,23 @@
       "android": {
         "buildType": "apk"
       }
+    },
+    "testflight": {
+      "environment": "production",
+      "env": {
+        "SENTRY_ENVIRONMENT": "production",
+        "EXPO_PUBLIC_SENTRY_ENVIRONMENT": "production"
+      },
+      "distribution": "store",
+      "autoIncrement": true,
+      "ios": {
+        "resourceClass": "m-medium"
+      }
+    }
+  },
+  "submit": {
+    "testflight": {
+      "ios": {}
     }
   }
 }

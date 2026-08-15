@@ -88,6 +88,21 @@ pnpm mobile:build:eas:ios:preview
 pnpm mobile:build:eas:android:preview
 ```
 
+For an iPhone that cannot enable Developer Mode, use the store-signed
+TestFlight path:
+
+```bash
+pnpm mobile:build:eas:ios:testflight
+```
+
+The `testflight` profile builds a standalone production binary and submits it
+to App Store Connect. EAS manages the Apple distribution certificate; the
+iPhone installs the accepted build from TestFlight without ad-hoc device
+registration, Developer Mode, Xcode, or a local Metro server. Configure the
+public mobile identity and Sentry build variables in the EAS `production`
+environment before starting the build. TestFlight builds expire after 90 days,
+and native dependency or Expo config changes require a new build.
+
 The EAS project link is public build metadata stored in `app.json`; credentials
 remain in Expo/EAS and local platform keychains. Daily development does not
 consume an EAS cloud build.

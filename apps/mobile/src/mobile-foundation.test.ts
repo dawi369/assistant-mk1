@@ -134,4 +134,15 @@ describe("mobile client architecture", () => {
     expect(config).toContain('"ITSAppUsesNonExemptEncryption": false');
     expect(eas).not.toContain('"channel"');
   });
+
+  it("ships TestFlight through store distribution without development-device authority", () => {
+    const eas = JSON.parse(read("apps/mobile/eas.json"));
+    expect(eas.build.testflight).toMatchObject({
+      environment: "production",
+      distribution: "store",
+      autoIncrement: true,
+    });
+    expect(eas.build.testflight.developmentClient).not.toBe(true);
+    expect(eas.submit.testflight.ios).toEqual({});
+  });
 });
