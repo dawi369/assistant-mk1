@@ -31,6 +31,12 @@ describe("mobile client architecture", () => {
     expect(config).not.toContain("process.env[name]");
   });
 
+  it("keeps the generated Expo application portable outside the monorepo", () => {
+    const dynamicConfig = read("apps/mobile/app.config.js");
+    expect(dynamicConfig).not.toContain("../../config/product.json");
+    expect(dynamicConfig).not.toContain("@assistant-mk1/");
+  });
+
   it("uses the public WorkOS OAuth PKCE endpoints", () => {
     const auth = read("apps/mobile/src/auth/workos-mobile-auth.ts");
     expect(auth).toContain("/oauth2/authorize");
