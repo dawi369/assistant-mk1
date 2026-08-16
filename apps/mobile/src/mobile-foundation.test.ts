@@ -18,6 +18,19 @@ describe("mobile client architecture", () => {
     expect(source).not.toMatch(/sk_(?:test|live)_|sk-or-v1-/);
   });
 
+  it("uses statically analyzable Expo public environment references", () => {
+    const config = read("apps/mobile/src/config.ts");
+    for (const name of [
+      "EXPO_PUBLIC_WORKBENCH_ORIGIN",
+      "EXPO_PUBLIC_WORKOS_CLIENT_ID",
+      "EXPO_PUBLIC_WORKOS_ISSUER",
+      "EXPO_PUBLIC_EAS_PROJECT_ID",
+    ]) {
+      expect(config).toContain(`process.env.${name}`);
+    }
+    expect(config).not.toContain("process.env[name]");
+  });
+
   it("uses the public WorkOS OAuth PKCE endpoints", () => {
     const auth = read("apps/mobile/src/auth/auth-provider.tsx");
     expect(auth).toContain("/oauth2/authorize");
