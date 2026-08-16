@@ -32,11 +32,27 @@ describe("mobile client architecture", () => {
   });
 
   it("uses the public WorkOS OAuth PKCE endpoints", () => {
-    const auth = read("apps/mobile/src/auth/auth-provider.tsx");
+    const auth = read("apps/mobile/src/auth/workos-mobile-auth.ts");
     expect(auth).toContain("/oauth2/authorize");
     expect(auth).toContain("/oauth2/token");
     expect(auth).toContain("usePKCE: true");
+    expect(auth).toContain("launchSystemAuthorization");
+    expect(auth).not.toContain("promptAsync(");
     expect(auth).not.toContain("/user_management/");
+  });
+
+  it("keeps mobile authentication recoverable and callback-scoped", () => {
+    const provider = read("apps/mobile/src/auth/auth-provider.tsx");
+    const workos = read("apps/mobile/src/auth/workos-mobile-auth.ts");
+    const flow = read("apps/mobile/src/auth/auth-flow.ts");
+    const launcher = read("apps/mobile/src/auth/system-authorization.ts");
+    const layout = read("apps/mobile/app/_layout.tsx");
+    expect(provider).toContain("createSingleFlight");
+    expect(provider).toContain("captureMobileAuthFailure");
+    expect(flow).toContain('type: "failed"');
+    expect(workos).toContain("signInWithWorkos");
+    expect(launcher).toContain("mobileAuthorizationCallbackMatches");
+    expect(layout).toContain('name="auth/callback"');
   });
 
   it("uses generic workflow schemas and generic operator routes", () => {

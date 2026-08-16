@@ -38,6 +38,7 @@ const Navigation = () => {
     >
       <Stack.Protected guard={state === "signed-out"}>
         <Stack.Screen name="sign-in" options={{ headerShown: false }} />
+        <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
       </Stack.Protected>
       <Stack.Protected guard={state === "signed-in"}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />

@@ -2,6 +2,8 @@ import { scrubSentryBreadcrumb, scrubSentryEvent } from "@assistant-mk1/observab
 import * as Sentry from "@sentry/react-native";
 import Constants from "expo-constants";
 
+import type { MobileAuthFailure, MobileAuthStage } from "./auth/auth-flow";
+
 const dsn = process.env.EXPO_PUBLIC_SENTRY_DSN?.trim();
 const environment = process.env.EXPO_PUBLIC_SENTRY_ENVIRONMENT?.trim() || "development";
 const release =
@@ -35,3 +37,18 @@ export function initializeMobileObservability() {
 }
 
 export const withMobileObservability = Sentry.wrap;
+
+export function captureMobileAuthFailure(failure: MobileAuthFailure) {
+  if (!initialized) return;
+  Sentry.withScope((scope) => {
+    scope.setTag("auth.stage", failure.stage);
+    scope.setTag("error.code", failure.code);
+    scope.setLevel("error");
+    Sentry.captureException(new Error(`Mobile authentication failed: ${failure.code}`));
+  });
+}
+
+export function recordMobileAuthStage(stage: MobileAuthStage) {
+  if (!initialized) return;
+  Sentry.addBreadcrumb({ category: "mobile.auth", message: stage, level: "info" });
+}

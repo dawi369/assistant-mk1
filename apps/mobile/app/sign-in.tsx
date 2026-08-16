@@ -1,11 +1,12 @@
 import { Text, View } from "react-native";
 
-import { ActionButton } from "../src/components/screen";
+import { ActionButton, ErrorNotice } from "../src/components/screen";
 import { useMobileAuth } from "../src/auth/auth-provider";
 import { colors } from "../src/theme";
 
 export default function SignInScreen() {
-  const { configured, signIn } = useMobileAuth();
+  const { configured, error, operation, signIn } = useMobileAuth();
+  const signingIn = operation === "signing-in";
   return (
     <View
       style={{ flex: 1, justifyContent: "center", padding: 28, backgroundColor: colors.canvas }}
@@ -37,10 +38,19 @@ export default function SignInScreen() {
         Sign in to open your agents, chats, and workbench history.
       </Text>
       <ActionButton
-        label={configured ? "Sign in" : "Mobile sign-in is not configured"}
-        disabled={!configured}
+        label={
+          !configured
+            ? "Mobile sign-in is not configured"
+            : signingIn
+              ? "Opening sign in…"
+              : "Sign in"
+        }
+        disabled={!configured || signingIn}
         onPress={() => void signIn()}
       />
+      <View style={{ marginTop: 16, marginHorizontal: -16 }}>
+        <ErrorNotice message={error?.message} />
+      </View>
     </View>
   );
 }

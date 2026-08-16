@@ -56,6 +56,32 @@ for (const name of [
   results.push({ label: name, status: configured.has(name) ? "ok" : "error" });
 }
 
+const appConfig = JSON.parse(readFileSync(join(mobileRoot, "app.json"), "utf8")) as {
+  expo?: { scheme?: string };
+};
+const mobileConfig = readFileSync(join(mobileRoot, "src/config.ts"), "utf8");
+const workosAuth = readFileSync(join(mobileRoot, "src/auth/workos-mobile-auth.ts"), "utf8");
+results.push({
+  label: "mobile OAuth callback scheme",
+  status:
+    Boolean(appConfig.expo?.scheme) &&
+    mobileConfig.includes("Constants.expoConfig?.scheme") &&
+    workosAuth.includes("scheme: mobileConfig.authScheme") &&
+    workosAuth.includes("path: mobileConfig.authCallbackPath")
+      ? "ok"
+      : "error",
+  detail: `app scheme and PKCE redirect must remain ${appConfig.expo?.scheme ?? "<scheme>"}://auth/callback`,
+});
+requireFile("mobile OAuth callback route", join(mobileRoot, "app/auth/callback.tsx"));
+results.push({
+  label: "external system-browser authorization",
+  status:
+    workosAuth.includes("launchSystemAuthorization") && !workosAuth.includes("promptAsync(")
+      ? "ok"
+      : "error",
+  detail: "avoids the reported iOS in-app auth-session JSI release crash path",
+});
+
 if (process.platform === "darwin") {
   const requireIos = target === "ios-device" || target === "ios-simulator";
   requireCommand("Xcode command-line tools", "xcodebuild", ["-version"], requireIos);

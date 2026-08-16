@@ -23,6 +23,18 @@ are stored in SecureStore. Drafts, the device installation ID, and at most one
 pending chat turn are stored in SQLite. Tenant-visible API resources are not
 persisted in a generic device cache; focused screens revalidate canonical state.
 
+The reference app owns OAuth as a replaceable host boundary rather than placing
+Expo or WorkOS code in the framework-neutral client. It opens the operating
+system browser, accepts only the exact registered callback, validates OAuth state
+and PKCE through `expo-auth-session`, and exchanges the code before storing the
+session in SecureStore. Browser, callback, exchange, and storage failures become
+typed recoverable UI states and sanitized Sentry stage events. Repeated sign-in
+taps share one in-flight operation. This external-browser path also avoids the
+reported Expo iOS `ASWebAuthenticationSession` promise-release crash class
+([expo/expo#47998](https://github.com/expo/expo/issues/47998)); remove the workaround
+only after the native dependency has an upstream regression test and the
+physical-device acceptance journey is green.
+
 `@assistant-mk1/workbench-client` is framework-neutral. It owns HTTP construction,
 bearer injection, runtime validation, normalized errors, aborts, pagination,
 idempotency, session replay, and the public chat transport contract.
@@ -48,6 +60,12 @@ WorkOS environment as the web application:
    `WORKBENCH_WORKOS_JWKS_URL` to `<authkit-domain>/oauth2/jwks` on Vercel.
 6. Enable `WORKBENCH_MOBILE_CLIENTS_ENABLED` only for internal acceptance first.
 
+A downstream app changes the Expo `scheme` in `apps/mobile/app.json` and registers
+that scheme's `://auth/callback` URI in WorkOS. Runtime auth derives the scheme
+from the embedded Expo configuration; no provider or client-package source edit
+is required. `mobile:doctor` fails if the scheme, route, and runtime redirect
+stop agreeing.
+
 When an Authorization header is present, bearer identity is authoritative. An
 invalid, expired, wrong-environment, or unapproved token returns `401`; it never
 falls back to the web cookie. Without a bearer token, existing web and local
@@ -67,7 +85,9 @@ pnpm mobile:android
 
 The default workflow is local-first. The device, simulator, Android, and cloud
 doctor targets validate only the path you intend to use; unavailable optional
-paths are warnings. The platform commands generate, compile, install, and open a
+paths are warnings. The doctor also locks the callback scheme, callback route,
+and external-browser authorization boundary so a fork cannot silently ship a
+broken sign-in integration. The platform commands generate, compile, install, and open a
 development build using the Mac's Xcode or Android SDK. After the native binary
 is installed, normal TypeScript/UI changes use the faster Metro-only loop:
 

@@ -1,6 +1,4 @@
-import * as AuthSession from "expo-auth-session";
 import * as SecureStore from "expo-secure-store";
-import * as WebBrowser from "expo-web-browser";
 import {
   createContext,
   useCallback,
@@ -12,37 +10,34 @@ import {
   type PropsWithChildren,
 } from "react";
 
-import { mobileAuthConfigured, mobileConfig } from "../config";
+import { mobileAuthConfigured } from "../config";
+import { captureMobileAuthFailure, recordMobileAuthStage } from "../observability";
 import { mobileStore } from "../storage/mobile-store";
-
-WebBrowser.maybeCompleteAuthSession();
-
-type StoredSession = {
-  accessToken: string;
-  refreshToken?: string;
-  expiresAt: number;
-};
+import { createSingleFlight, type MobileAuthFailure } from "./auth-flow";
+import {
+  refreshWorkosSession,
+  signInWithWorkos,
+  type StoredMobileSession,
+} from "./workos-mobile-auth";
 
 type AuthState = "loading" | "signed-out" | "signed-in";
+type AuthOperation = "idle" | "signing-in" | "refreshing" | "signing-out";
 
 type AuthContextValue = {
   state: AuthState;
+  operation: AuthOperation;
+  error: MobileAuthFailure | null;
   configured: boolean;
   getAccessToken(input?: { minValidityMs?: number }): Promise<string | null>;
   signIn(): Promise<void>;
   signOut(): Promise<void>;
+  clearError(): void;
 };
 
 const storageKey = "assistant-mk1.workos-session";
-const redirectUri = AuthSession.makeRedirectUri({ scheme: "assistantmk1", path: "auth/callback" });
-const discovery: AuthSession.DiscoveryDocument = {
-  authorizationEndpoint: `${mobileConfig.workosIssuer}/oauth2/authorize`,
-  tokenEndpoint: `${mobileConfig.workosIssuer}/oauth2/token`,
-};
-
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-const saveSession = async (session: StoredSession | null) => {
+const saveSession = async (session: StoredMobileSession | null) => {
   if (!session) return SecureStore.deleteItemAsync(storageKey);
   await SecureStore.setItemAsync(storageKey, JSON.stringify(session), {
     keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
@@ -53,7 +48,7 @@ const readSession = async () => {
   const encoded = await SecureStore.getItemAsync(storageKey);
   if (!encoded) return null;
   try {
-    const session = JSON.parse(encoded) as StoredSession;
+    const session = JSON.parse(encoded) as StoredMobileSession;
     return session.accessToken && Number.isFinite(session.expiresAt) ? session : null;
   } catch {
     await saveSession(null);
@@ -61,56 +56,74 @@ const readSession = async () => {
   }
 };
 
-const fromTokenResponse = (
-  response: AuthSession.TokenResponse,
-  previousRefreshToken?: string,
-): StoredSession => ({
-  accessToken: response.accessToken,
-  refreshToken: response.refreshToken ?? previousRefreshToken,
-  expiresAt:
-    (response.issuedAt ?? Math.floor(Date.now() / 1000)) * 1000 +
-    (response.expiresIn ?? 3_600) * 1000,
-});
-
 export function MobileAuthProvider({ children }: PropsWithChildren) {
-  const [session, setSession] = useState<StoredSession | null>(null);
+  const [session, setSession] = useState<StoredMobileSession | null>(null);
   const [state, setState] = useState<AuthState>("loading");
-  const refreshPromise = useRef<Promise<StoredSession | null> | null>(null);
+  const [operation, setOperation] = useState<AuthOperation>("idle");
+  const [error, setError] = useState<MobileAuthFailure | null>(null);
+  const refreshPromise = useRef<Promise<StoredMobileSession | null> | null>(null);
+  const authorityGeneration = useRef(0);
+  const signInFlight = useRef(createSingleFlight<void>()).current;
 
   useEffect(() => {
-    void readSession().then(async (stored) => {
-      if (!stored) await mobileStore.clearLocalAuthority();
-      setSession(stored);
-      setState(stored ? "signed-in" : "signed-out");
-    });
+    void readSession()
+      .then(async (stored) => {
+        if (!stored) await mobileStore.clearLocalAuthority();
+        setSession(stored);
+        setState(stored ? "signed-in" : "signed-out");
+      })
+      .catch(async () => {
+        const failure: MobileAuthFailure = {
+          stage: "session_persistence",
+          code: "session_persistence_failed",
+          message: "Your saved session could not be opened securely. Please sign in again.",
+          retryable: true,
+        };
+        captureMobileAuthFailure(failure);
+        await mobileStore.clearLocalAuthority().catch(() => undefined);
+        setSession(null);
+        setError(failure);
+        setState("signed-out");
+      });
   }, []);
 
   const refresh = useCallback(async () => {
     if (!session?.refreshToken || !mobileAuthConfigured) return null;
     if (!refreshPromise.current) {
-      refreshPromise.current = AuthSession.refreshAsync(
-        {
-          clientId: mobileConfig.workosClientId,
-          refreshToken: session.refreshToken,
-        },
-        discovery,
-      )
-        .then(async (response) => {
-          const next = fromTokenResponse(response, session.refreshToken);
+      const generation = authorityGeneration.current;
+      setOperation("refreshing");
+      refreshPromise.current = refreshWorkosSession(session.refreshToken)
+        .then(async (next) => {
+          if (authorityGeneration.current !== generation) return null;
           await saveSession(next);
+          if (authorityGeneration.current !== generation) {
+            await saveSession(null).catch(() => undefined);
+            return null;
+          }
           setSession(next);
           setState("signed-in");
           return next;
         })
         .catch(async () => {
-          await saveSession(null);
-          await mobileStore.clearLocalAuthority();
+          if (authorityGeneration.current !== generation) return null;
+          const failure: MobileAuthFailure = {
+            stage: "token_exchange",
+            code: "refresh_failed",
+            message: "Your session expired. Please sign in again.",
+            retryable: true,
+          };
+          captureMobileAuthFailure(failure);
+          await Promise.allSettled([saveSession(null), mobileStore.clearLocalAuthority()]);
           setSession(null);
+          setError(failure);
           setState("signed-out");
           return null;
         })
         .finally(() => {
-          refreshPromise.current = null;
+          if (authorityGeneration.current === generation) {
+            refreshPromise.current = null;
+            setOperation("idle");
+          }
         });
     }
     return refreshPromise.current;
@@ -122,10 +135,11 @@ export function MobileAuthProvider({ children }: PropsWithChildren) {
       if (session.expiresAt - Date.now() > (input?.minValidityMs ?? 60_000)) {
         return session.accessToken;
       }
+      const generation = authorityGeneration.current;
       const next = await refresh();
       if (next) return next.accessToken;
-      await saveSession(null);
-      await mobileStore.clearLocalAuthority();
+      if (authorityGeneration.current !== generation) return null;
+      await Promise.allSettled([saveSession(null), mobileStore.clearLocalAuthority()]);
       setSession(null);
       setState("signed-out");
       return null;
@@ -134,43 +148,76 @@ export function MobileAuthProvider({ children }: PropsWithChildren) {
   );
 
   const signIn = useCallback(async () => {
-    if (!mobileAuthConfigured) throw new Error("Mobile WorkOS client is not configured");
-    const request = new AuthSession.AuthRequest({
-      clientId: mobileConfig.workosClientId,
-      redirectUri,
-      responseType: AuthSession.ResponseType.Code,
-      scopes: ["openid", "profile", "email", "offline_access"],
-      usePKCE: true,
-    });
-    await request.makeAuthUrlAsync(discovery);
-    const result = await request.promptAsync(discovery, { showInRecents: true });
-    if (result.type !== "success" || !result.params.code || !request.codeVerifier) return;
-    const response = await AuthSession.exchangeCodeAsync(
-      {
-        clientId: mobileConfig.workosClientId,
-        code: result.params.code,
-        redirectUri,
-        extraParams: { code_verifier: request.codeVerifier },
-      },
-      discovery,
-    );
-    const next = fromTokenResponse(response);
-    await saveSession(next);
-    setSession(next);
-    setState("signed-in");
-  }, []);
+    return signInFlight
+      .run(async () => {
+        const generation = ++authorityGeneration.current;
+        setOperation("signing-in");
+        setError(null);
+        const result = await signInWithWorkos({
+          persistSession: saveSession,
+          reportStage: recordMobileAuthStage,
+          reportFailure: captureMobileAuthFailure,
+        });
+        if (result.type === "signed-in" && authorityGeneration.current === generation) {
+          setSession(result.session);
+          setState("signed-in");
+        } else if (result.type === "failed") {
+          setError(result.failure);
+        }
+        setOperation("idle");
+      })
+      .catch(() => {
+        // The flow is intentionally total. This is a final UI boundary for programming errors.
+        const failure: MobileAuthFailure = {
+          stage: "authorization_request",
+          code: "request_failed",
+          message: "Sign-in could not be started. Please try again.",
+          retryable: true,
+        };
+        captureMobileAuthFailure(failure);
+        setError(failure);
+        setOperation("idle");
+      });
+  }, [signInFlight]);
 
   const signOut = useCallback(async () => {
+    authorityGeneration.current += 1;
+    setOperation("signing-out");
+    setError(null);
     refreshPromise.current = null;
-    await saveSession(null);
-    await mobileStore.clearLocalAuthority();
+    const results = await Promise.allSettled([
+      saveSession(null),
+      mobileStore.clearLocalAuthority(),
+    ]);
     setSession(null);
     setState("signed-out");
+    setOperation("idle");
+    if (results.some((result) => result.status === "rejected")) {
+      const failure: MobileAuthFailure = {
+        stage: "session_persistence",
+        code: "session_persistence_failed",
+        message: "Local session cleanup was incomplete. Please try again.",
+        retryable: true,
+      };
+      captureMobileAuthFailure(failure);
+      setError(failure);
+    }
   }, []);
 
+  const clearError = useCallback(() => setError(null), []);
+
   const value = useMemo<AuthContextValue>(
-    () => ({ state, configured: mobileAuthConfigured, getAccessToken, signIn, signOut }),
-    [getAccessToken, signIn, signOut, state],
+    () => ({
+      state,
+      operation,
+      error,
+      configured: mobileAuthConfigured,
+      getAccessToken,
+      signIn,
+      signOut,
+      clearError,
+    }),
+    [clearError, error, getAccessToken, operation, signIn, signOut, state],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
