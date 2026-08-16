@@ -129,6 +129,7 @@
     "agent-sdk:verify": "pnpm agent-sdk:build && tsx scripts/verify-agent-sdk-consumer.ts",
     "agent-sdk:contract": "pnpm agent-sdk:build && tsx scripts/check-agent-sdk-contract.ts",
     "workbench-client:build": "pnpm --filter @assistant-mk1/workbench-client build && pnpm --filter @assistant-mk1/workbench-react build",
+    "workbench-client:pack": "pnpm workbench-client:build && tsx scripts/pack-workbench-client.ts",
     "workbench-client:verify": "pnpm workbench-client:build && tsx scripts/verify-workbench-client-consumer.ts",
     "workbench-client:contract": "pnpm workbench-client:build && tsx scripts/check-workbench-client-contract.ts",
     "agent-packs:create": "tsx scripts/create-agent-pack.ts",

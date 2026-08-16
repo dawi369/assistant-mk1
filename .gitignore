@@ -59,6 +59,7 @@ cloudflare/control-plane/.wrangler/
 /output/conformance/
 /output/sdk-consumer/
 /output/workbench-client-consumer/
+/output/workbench-client-distribution/
 /output/mobile/
 /output/mobile-deploy-*/
 /apps/mobile/.expo/

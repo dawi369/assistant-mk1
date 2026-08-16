@@ -41,6 +41,8 @@ These files should stay aligned with code changes:
 - `environment-separation.md`: explicit local, acceptance, and production
   targets, fail-closed deploy commands, promotion, and same-commit evidence.
 - `workbench-ui.md`: current UI baseline and target workbench surfaces.
+- `frontend-integration.md`: portable headless/React client packages, auth,
+  caching, chat/realtime, distribution, and generic Agent Pack rendering.
 - `mobile-frontends.md`: Expo reference app, portable client, bearer identity, resume, and push contract.
 - `dev-infrastructure-readiness.md`: local/remote setup, smoke commands, and
   resource checklist.

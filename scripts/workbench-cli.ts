@@ -13,6 +13,7 @@ const help = `Assistant-mk1 developer commands
   pnpm workbench verify [fast|full|release]
   pnpm workbench pack create --id <id> --name <name>
   pnpm workbench pack <compile|validate|inspect|test|check> [arguments]
+  pnpm workbench client pack
   pnpm workbench env check [--target <local|acceptance|production>]
 
 Existing package-script aliases remain supported for CI and automation.`;
@@ -44,6 +45,9 @@ export const resolveWorkbenchCommand = (arguments_: string[]): ResolvedCommand |
       check: "agent-packs:check",
     };
     if (scripts[action]) return { script: scripts[action], args: rest };
+  }
+  if (group === "client" && action === "pack") {
+    return { script: "workbench-client:pack", args: rest };
   }
   if (group === "env" && action === "check") {
     return { script: "environment:check", args: rest };

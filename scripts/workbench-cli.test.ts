@@ -31,6 +31,10 @@ describe("workbench command facade", () => {
       script: "workbench:fork",
       args: ["--check"],
     });
+    expect(resolveWorkbenchCommand(["client", "pack"])).toEqual({
+      script: "workbench-client:pack",
+      args: [],
+    });
   });
 
   it("prints help for an empty command and rejects unknown command paths", () => {

@@ -173,6 +173,23 @@ the [Complex Agent Golden Path](docs/complex-agent-golden-path.md),
 the [Capability Model](docs/capability-model.md), and
 [Agent Profile Authoring](docs/agent-profile-authoring.md).
 
+## Frontend Integration
+
+The bundled Next.js and Expo applications dogfood the same private frontend
+boundary. `@assistant-mk1/workbench-client` supplies runtime-validated,
+framework-neutral product APIs and chat/realtime contracts;
+`@assistant-mk1/workbench-react` supplies tenant-safe React Query keys, hooks,
+and invalidation for React DOM or React Native.
+
+```bash
+pnpm workbench client pack       # portable archives plus checksum manifest
+pnpm workbench-client:verify     # zero-context Vite and Expo consumers
+pnpm conformance:client          # client contract and behavior evidence
+```
+
+See [Frontend Integration](docs/frontend-integration.md) for cookie, bearer,
+Vite, Expo, caching, chat, and generic Agent Pack rendering guidance.
+
 ## Verification
 
 ```bash
@@ -207,6 +224,8 @@ changes should also run the affected Cloudflare or Fly smoke documented in
 - `app/api/workbench/*`: signed Vercel facades over Cloudflare.
 - `components/assistant-ui/*`: reusable assistant-ui composition.
 - `components/workbench/*`: product workbench, history, workspace, and Admin UI.
+- `packages/workbench-client/*`: portable runtime-validated product client.
+- `packages/workbench-react/*`: shared React Query resource layer.
 - `cloudflare/control-plane/*`: Worker, D1 schema, Durable Objects, policy, and audit.
 - `backend/agent.ts`: LangGraph graph and provider seam.
 - `agent-packs/*`: code-first agent packages.
