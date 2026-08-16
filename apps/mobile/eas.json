@@ -12,6 +12,9 @@
       },
       "developmentClient": true,
       "distribution": "internal",
+      "ios": {
+        "image": "macos-tahoe-26.5-xcode-26.6"
+      },
       "android": {
         "buildType": "apk"
       }
@@ -25,6 +28,7 @@
       "developmentClient": true,
       "distribution": "internal",
       "ios": {
+        "image": "macos-tahoe-26.5-xcode-26.6",
         "simulator": true
       }
     },
@@ -35,6 +39,9 @@
         "EXPO_PUBLIC_SENTRY_ENVIRONMENT": "preview"
       },
       "distribution": "internal",
+      "ios": {
+        "image": "macos-tahoe-26.5-xcode-26.6"
+      },
       "android": {
         "buildType": "apk"
       }
@@ -48,6 +55,7 @@
       "distribution": "store",
       "autoIncrement": true,
       "ios": {
+        "image": "macos-tahoe-26.5-xcode-26.6",
         "resourceClass": "m-medium"
       }
     }

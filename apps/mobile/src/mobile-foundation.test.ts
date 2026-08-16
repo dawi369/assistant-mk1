@@ -47,12 +47,16 @@ describe("mobile client architecture", () => {
     const flow = read("apps/mobile/src/auth/auth-flow.ts");
     const launcher = read("apps/mobile/src/auth/system-authorization.ts");
     const layout = read("apps/mobile/app/_layout.tsx");
+    const startup = read("apps/mobile/src/startup/startup-boundary.tsx");
     expect(provider).toContain("createSingleFlight");
     expect(provider).toContain("captureMobileAuthFailure");
     expect(flow).toContain('type: "failed"');
     expect(workos).toContain("signInWithWorkos");
     expect(launcher).toContain("mobileAuthorizationCallbackMatches");
     expect(layout).toContain('name="auth/callback"');
+    expect(layout).toContain("MobileStartupBoundary");
+    expect(startup).toContain("clearSavedMobileSession");
+    expect(startup).toContain("reloadAppAsync");
   });
 
   it("uses generic workflow schemas and generic operator routes", () => {
@@ -172,6 +176,7 @@ describe("mobile client architecture", () => {
       autoIncrement: true,
     });
     expect(eas.build.testflight.developmentClient).not.toBe(true);
+    expect(eas.build.testflight.ios.image).toBe("macos-tahoe-26.5-xcode-26.6");
     expect(eas.submit.testflight.ios).toEqual({ ascAppId: "6801853827" });
   });
 });

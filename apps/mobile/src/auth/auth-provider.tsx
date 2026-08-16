@@ -56,6 +56,12 @@ const readSession = async () => {
   }
 };
 
+export const clearSavedMobileSession = async () => {
+  const results = await Promise.allSettled([saveSession(null), mobileStore.clearLocalAuthority()]);
+  const failure = results.find((result) => result.status === "rejected");
+  if (failure?.status === "rejected") throw failure.reason;
+};
+
 export function MobileAuthProvider({ children }: PropsWithChildren) {
   const [session, setSession] = useState<StoredMobileSession | null>(null);
   const [state, setState] = useState<AuthState>("loading");
@@ -185,10 +191,7 @@ export function MobileAuthProvider({ children }: PropsWithChildren) {
     setOperation("signing-out");
     setError(null);
     refreshPromise.current = null;
-    const results = await Promise.allSettled([
-      saveSession(null),
-      mobileStore.clearLocalAuthority(),
-    ]);
+    const results = await Promise.allSettled([clearSavedMobileSession()]);
     setSession(null);
     setState("signed-out");
     setOperation("idle");

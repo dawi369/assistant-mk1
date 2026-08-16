@@ -16,24 +16,28 @@ let initialized = false;
 
 export function initializeMobileObservability() {
   if (initialized || !dsn) return;
-  initialized = true;
-  Sentry.init({
-    dsn,
-    environment,
-    release,
-    sendDefaultPii: false,
-    beforeSend: scrubSentryEvent,
-    beforeBreadcrumb: scrubSentryBreadcrumb,
-    tracesSampleRate: environment === "production" ? 0.02 : 0,
-    enableAutoSessionTracking: true,
-    attachStacktrace: true,
-    initialScope: {
-      tags: {
-        service: "assistant-mk1",
-        "runtime.surface": "expo-native",
+  try {
+    Sentry.init({
+      dsn,
+      environment,
+      release,
+      sendDefaultPii: false,
+      beforeSend: scrubSentryEvent,
+      beforeBreadcrumb: scrubSentryBreadcrumb,
+      tracesSampleRate: environment === "production" ? 0.02 : 0,
+      enableAutoSessionTracking: true,
+      attachStacktrace: true,
+      initialScope: {
+        tags: {
+          service: "assistant-mk1",
+          "runtime.surface": "expo-native",
+        },
       },
-    },
-  });
+    });
+    initialized = true;
+  } catch {
+    // Telemetry is optional and must never prevent the native application from starting.
+  }
 }
 
 export const withMobileObservability = Sentry.wrap;
@@ -51,4 +55,13 @@ export function captureMobileAuthFailure(failure: MobileAuthFailure) {
 export function recordMobileAuthStage(stage: MobileAuthStage) {
   if (!initialized) return;
   Sentry.addBreadcrumb({ category: "mobile.auth", message: stage, level: "info" });
+}
+
+export function captureMobileStartupFailure(error: unknown, phase?: string) {
+  if (!initialized) return;
+  Sentry.withScope((scope) => {
+    scope.setTag("mobile.startup.phase", phase ?? "render");
+    scope.setLevel("fatal");
+    Sentry.captureException(error instanceof Error ? error : new Error("Mobile startup failed"));
+  });
 }

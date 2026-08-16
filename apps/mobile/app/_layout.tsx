@@ -9,6 +9,7 @@ import { colors } from "../src/theme";
 import { MobileWorkbenchProvider } from "../src/workbench-provider";
 import { MobileDeviceProvider } from "../src/notifications/device-provider";
 import { initializeMobileObservability, withMobileObservability } from "../src/observability";
+import { MobileStartupBoundary } from "../src/startup/startup-boundary";
 
 initializeMobileObservability();
 
@@ -59,18 +60,20 @@ const Navigation = () => {
 
 function RootLayout() {
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <MobileAuthProvider>
-          <MobileWorkbenchProvider>
-            <MobileDeviceProvider>
-              <StatusBar style="auto" />
-              <Navigation />
-            </MobileDeviceProvider>
-          </MobileWorkbenchProvider>
-        </MobileAuthProvider>
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+    <MobileStartupBoundary>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <MobileAuthProvider>
+            <MobileWorkbenchProvider>
+              <MobileDeviceProvider>
+                <StatusBar style="auto" />
+                <Navigation />
+              </MobileDeviceProvider>
+            </MobileWorkbenchProvider>
+          </MobileAuthProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    </MobileStartupBoundary>
   );
 }
 

@@ -36,6 +36,7 @@
     "conformance:actions": "tsx scripts/run-production-conformance.ts actions",
     "conformance:client": "tsx scripts/run-client-conformance.ts",
     "conformance:mobile": "tsx scripts/run-mobile-conformance.ts",
+    "mobile:dependencies:check": "tsx scripts/check-mobile-native-dependencies.ts",
     "mobile:check": "pnpm --filter @assistant-mk1/mobile check && pnpm --filter @assistant-mk1/mobile export:ios && pnpm --filter @assistant-mk1/mobile export:android",
     "mobile:doctor": "tsx scripts/mobile-doctor.ts",
     "mobile:doctor:ios-device": "tsx scripts/mobile-doctor.ts --target=ios-device",

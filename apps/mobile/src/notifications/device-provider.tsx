@@ -8,6 +8,7 @@ import { useEffect, type PropsWithChildren } from "react";
 
 import { useMobileAuth } from "../auth/auth-provider";
 import { mobileConfig } from "../config";
+import { captureMobileStartupFailure } from "../observability";
 import { mobileStore } from "../storage/mobile-store";
 
 const installationKey = "notification.installation-id";
@@ -73,9 +74,11 @@ export function MobileDeviceProvider({ children }: PropsWithChildren) {
   const { state } = useMobileAuth();
   useEffect(() => {
     if (state !== "signed-in") return;
-    void Notifications.getLastNotificationResponseAsync().then((response) => {
-      if (response) openCanonicalRoute(response.notification.request.content.data);
-    });
+    void Notifications.getLastNotificationResponseAsync()
+      .then((response) => {
+        if (response) openCanonicalRoute(response.notification.request.content.data);
+      })
+      .catch((error) => captureMobileStartupFailure(error, "notification-response"));
     const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
       openCanonicalRoute(response.notification.request.content.data);
     });
