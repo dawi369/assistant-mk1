@@ -10,6 +10,7 @@ import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import { AuthKitProvider } from "@workos-inc/authkit-nextjs/components";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { workbenchProduct } from "@/lib/workbench/product-identity";
 import "./globals.css";
 
 const plexSans = IBM_Plex_Sans({
@@ -26,10 +27,10 @@ const plexMono = IBM_Plex_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Assistant · mk1",
-    template: "%s · Assistant mk1",
+    default: workbenchProduct.webTitle,
+    template: `%s · ${workbenchProduct.webTitle}`,
   },
-  description: "A focused workbench for trusted agents, durable workflows, and inspected action.",
+  description: workbenchProduct.description,
 };
 
 export default function RootLayout({

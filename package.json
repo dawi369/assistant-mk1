@@ -2,7 +2,7 @@
   "name": "assistant-mk1",
   "version": "0.5.1",
   "private": true,
-  "description": "Code-first agent workbench for durable runs, approvals, policy, artifacts, audit, and tenant-safe operations.",
+  "description": "A focused workbench for trusted agents, durable workflows, and inspected action.",
   "homepage": "https://github.com/dawi369/assistant-mk1#readme",
   "bugs": {
     "url": "https://github.com/dawi369/assistant-mk1/issues"
@@ -87,6 +87,7 @@
     "docs:check": "tsx scripts/check-doc-links.ts",
     "workbench": "tsx scripts/workbench-cli.ts",
     "workbench:init": "tsx scripts/workbench-init.ts",
+    "workbench:fork": "tsx scripts/workbench-fork.ts",
     "workbench:dev": "tsx scripts/workbench-dev.ts",
     "workbench:doctor": "tsx scripts/workbench-doctor.ts",
     "verify:onboarding": "tsx scripts/verify-onboarding.ts",

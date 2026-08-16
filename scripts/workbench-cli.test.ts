@@ -21,6 +21,16 @@ describe("workbench command facade", () => {
       script: "release:check",
       args: [],
     });
+    expect(
+      resolveWorkbenchCommand(["fork", "init", "--id", "my-workbench", "--name", "Mine"]),
+    ).toEqual({
+      script: "workbench:fork",
+      args: ["--id", "my-workbench", "--name", "Mine"],
+    });
+    expect(resolveWorkbenchCommand(["fork", "--check"])).toEqual({
+      script: "workbench:fork",
+      args: ["--check"],
+    });
   });
 
   it("prints help for an empty command and rejects unknown command paths", () => {

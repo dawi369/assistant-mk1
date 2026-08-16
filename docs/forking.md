@@ -51,6 +51,24 @@ git push -u origin main
 Record the base tag and commit in downstream release notes. Do not move or
 recreate foundation tags.
 
+Configure the fork's public product identity before provider setup:
+
+```bash
+pnpm workbench fork init \
+  --id my-workbench \
+  --name "My Workbench" \
+  --origin https://workbench.example.com \
+  --mobile-bundle com.example.workbench
+pnpm workbench fork --check
+```
+
+The command updates the root application identity and Expo name, slug, scheme,
+bundle identifier, deep-link host, and associated domain from
+`config/product.json`. It intentionally retains the stable internal
+`@assistant-mk1/*` package namespace and does not invent provider-owned Expo,
+EAS, WorkOS, Sentry, Vercel, Cloudflare, or Fly identifiers. Configure those
+through their existing environment manifests and provider setup commands.
+
 ## First real fork checklist
 
 The first domain product is also the first external-repository acceptance proof:

@@ -6,6 +6,8 @@ type ResolvedCommand = { script: string; args: string[] };
 const help = `Assistant-mk1 developer commands
 
   pnpm workbench init [--check|--no-migrate]
+  pnpm workbench fork init --id <id> --name <name> --origin <url> --mobile-bundle <id>
+  pnpm workbench fork --check
   pnpm workbench dev
   pnpm workbench doctor [--offline]
   pnpm workbench verify [fast|full|release]
@@ -19,6 +21,12 @@ export const resolveWorkbenchCommand = (arguments_: string[]): ResolvedCommand |
   const [group, action, ...rest] = arguments_;
   if (!group || group === "help" || group === "--help" || group === "-h") return null;
   if (group === "init") return { script: "workbench:init", args: arguments_.slice(1) };
+  if (group === "fork" && (action === "init" || action === "check" || action === "--check")) {
+    return {
+      script: "workbench:fork",
+      args: action === "init" ? rest : ["--check", ...rest],
+    };
+  }
   if (group === "dev") return { script: "workbench:dev", args: arguments_.slice(1) };
   if (group === "doctor") return { script: "workbench:doctor", args: arguments_.slice(1) };
   if (group === "verify") {
