@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.5.1
+## 0.5.1 (unreleased candidate)
 
 Production-hardening release with a shared runtime-validated frontend client,
 one React Query resource model, credential-safe observability across Vercel,

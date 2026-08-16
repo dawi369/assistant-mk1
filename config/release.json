@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "applicationVersion": "0.5.1",
+  "status": "candidate",
+  "publishedTag": null,
+  "acceptedForkBase": "fork-base-v1.0.1",
+  "nextForkBase": "fork-base-v1.1.0"
+}
