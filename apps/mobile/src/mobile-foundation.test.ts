@@ -156,6 +156,6 @@ describe("mobile client architecture", () => {
       autoIncrement: true,
     });
     expect(eas.build.testflight.developmentClient).not.toBe(true);
-    expect(eas.submit.testflight.ios).toEqual({});
+    expect(eas.submit.testflight.ios).toEqual({ ascAppId: "6801853827" });
   });
 });
