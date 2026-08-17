@@ -79,6 +79,31 @@ export const checkAssistantUiNativeRuntime = () => {
   }
 };
 
+export const checkSentryBuildCli = () => {
+  const mobilePackagePath = "apps/mobile/package.json";
+  const mobilePackage = JSON.parse(readFileSync(mobilePackagePath, "utf8")) as {
+    dependencies?: Record<string, string>;
+    devDependencies?: Record<string, string>;
+  };
+  const sentryPackage = resolvePackageJson(
+    "@sentry/react-native/package.json",
+    mobilePackagePath,
+  );
+  const requiredCli = sentryPackage.dependencies?.["@sentry/cli"];
+  const declaredCli = mobilePackage.devDependencies?.["@sentry/cli"];
+  if (!requiredCli || declaredCli !== requiredCli) {
+    throw new Error(
+      `The mobile package must declare @sentry/cli@${requiredCli ?? "the React Native SDK version"} directly so pnpm builds can resolve the Xcode upload phase.`,
+    );
+  }
+  const resolvedCli = resolvePackageJson("@sentry/cli/package.json", mobilePackagePath);
+  if (resolvedCli.version !== requiredCli) {
+    throw new Error(
+      `Incompatible Sentry build CLI: resolved ${resolvedCli.version}, expected ${requiredCli}.`,
+    );
+  }
+};
+
 export const parseNativeMismatches = (output: string): NativeMismatch[] =>
   [...output.matchAll(/^\s{2}(.+)@([^\s]+) - expected version: ([^\s]+)$/gmu)].map(
     ([, packageName, current, expected]) => ({
@@ -125,6 +150,7 @@ export const validateNativeMismatches = (
 
 export const checkMobileNativeDependencies = () => {
   checkAssistantUiNativeRuntime();
+  checkSentryBuildCli();
   const result = spawnSync(
     "pnpm",
     ["--filter", "@assistant-mk1/mobile", "exec", "expo", "install", "--check"],
