@@ -6,8 +6,8 @@
     {
       "package": "expo",
       "current": "57.0.8",
-      "expected": "~57.0.13",
-      "reviewAfter": "2026-08-21T14:26:00.000Z"
+      "expected": "~57.0.14",
+      "reviewAfter": "2026-08-24T10:48:33.098Z"
     },
     {
       "package": "expo-auth-session",
@@ -18,14 +18,14 @@
     {
       "package": "expo-constants",
       "current": "57.0.7",
-      "expected": "~57.0.11",
-      "reviewAfter": "2026-08-21T14:28:00.000Z"
+      "expected": "~57.0.12",
+      "reviewAfter": "2026-08-24T10:48:33.411Z"
     },
     {
       "package": "expo-dev-client",
       "current": "57.0.10",
-      "expected": "~57.0.12",
-      "reviewAfter": "2026-08-21T14:31:00.000Z"
+      "expected": "~57.0.13",
+      "reviewAfter": "2026-08-24T10:50:55.589Z"
     },
     {
       "package": "expo-linking",
@@ -36,20 +36,20 @@
     {
       "package": "expo-notifications",
       "current": "57.0.6",
-      "expected": "~57.0.11",
-      "reviewAfter": "2026-08-21T14:28:00.000Z"
+      "expected": "~57.0.12",
+      "reviewAfter": "2026-08-24T10:53:28.761Z"
     },
     {
       "package": "expo-router",
       "current": "57.0.8",
-      "expected": "~57.0.13",
-      "reviewAfter": "2026-08-21T14:30:00.000Z"
+      "expected": "~57.0.14",
+      "reviewAfter": "2026-08-24T10:54:45.995Z"
     },
     {
       "package": "expo-splash-screen",
       "current": "57.0.5",
-      "expected": "~57.0.6",
-      "reviewAfter": "2026-08-17T15:47:00.000Z"
+      "expected": "~57.0.7",
+      "reviewAfter": "2026-08-24T10:49:30.934Z"
     }
   ]
 }

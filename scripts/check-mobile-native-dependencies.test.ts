@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   parseNativeMismatches,
+  satisfiesCaretRange,
   validateNativeMismatches,
 } from "./check-mobile-native-dependencies";
 
@@ -13,6 +14,13 @@ const mismatch = {
 };
 
 describe("mobile native dependency boundary", () => {
+  it("enforces caret ranges for pre-1.0 runtime dependencies", () => {
+    expect(satisfiesCaretRange("0.9.7", "^0.9.7")).toBe(true);
+    expect(satisfiesCaretRange("0.9.12", "^0.9.7")).toBe(true);
+    expect(satisfiesCaretRange("0.9.3", "^0.9.7")).toBe(false);
+    expect(satisfiesCaretRange("0.10.0", "^0.9.7")).toBe(false);
+  });
+
   it("parses scoped and unscoped Expo validation output", () => {
     expect(
       parseNativeMismatches(`
