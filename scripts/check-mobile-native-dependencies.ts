@@ -85,10 +85,7 @@ export const checkSentryBuildCli = () => {
     dependencies?: Record<string, string>;
     devDependencies?: Record<string, string>;
   };
-  const sentryPackage = resolvePackageJson(
-    "@sentry/react-native/package.json",
-    mobilePackagePath,
-  );
+  const sentryPackage = resolvePackageJson("@sentry/react-native/package.json", mobilePackagePath);
   const requiredCli = sentryPackage.dependencies?.["@sentry/cli"];
   const declaredCli = mobilePackage.devDependencies?.["@sentry/cli"];
   if (!requiredCli || declaredCli !== requiredCli) {
