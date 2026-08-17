@@ -17,7 +17,7 @@
       "files": [
         {
           "path": "workbench-client/dist/chat.d.ts",
-          "sha256": "b5e9dafa847e1bec4572b9a28cabd0fd3c6ed035d44983bfd7b5e663f0b6ee59"
+          "sha256": "e13d838089d932bc367dd6c80d8965aaafbb7245943ab0efc10b396e6f79d75d"
         },
         {
           "path": "workbench-client/dist/client.d.ts",

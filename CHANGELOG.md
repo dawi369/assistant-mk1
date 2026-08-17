@@ -11,6 +11,9 @@ plus connections; mutation, push, and conformance stay globally disabled.
 - Mobile chat protocol v2 adds a framework-neutral resumable controller,
   durable queued-turn replay, formal terminal session events, and foreground
   recovery without treating transcript arrival as completion authority.
+- Durable chat commands no longer wait for the disposable realtime observer;
+  native and web clients can accept an idempotent turn while live updates
+  reconnect, with bounded connection attempts and explicit delivery state.
 - Native pack output is now fully generic: declared JSON, Markdown, and table
   artifacts, managed state, workflow schemas, reasoning, and tool calls render
   without pack-specific mobile source code.
