@@ -133,12 +133,24 @@ describe("mobile client architecture", () => {
     const provider = read("apps/mobile/src/notifications/device-provider.tsx");
     const settings = read("apps/mobile/app/(tabs)/settings.tsx");
     expect(transport).toContain("await input.getConnection()");
+    expect(transport).toContain("const accepted = await input.sendTurn(turn)");
+    expect(transport.indexOf("const accepted = await input.sendTurn(turn)")).toBeLessThan(
+      transport.indexOf('void reconnect("turn-accepted")'),
+    );
     expect(workbench).toContain("mobileStore.getSessionCursor(workspaceId)");
     expect(workbench).toContain("realtime.subscribeSession({ after })");
     expect(provider.slice(provider.indexOf("export function MobileDeviceProvider"))).not.toContain(
       "registerDeviceDelivery(client)",
     );
     expect(settings).toContain('label={notificationBusy ? "Enabling…" : "Enable notifications"}');
+  });
+
+  it("surfaces chat transport state instead of swallowing native failures", () => {
+    const runtime = read("apps/mobile/src/chat/chat-runtime.tsx");
+    const thread = read("apps/mobile/src/components/chat-thread.tsx");
+    expect(runtime).toContain("controller.subscribe(setSnapshot)");
+    expect(thread).toContain("snapshot.error?.message");
+    expect(thread).toContain('accessibilityLiveRegion="polite"');
   });
 
   it("keeps native acceptance local, artifact-backed, and credential-free", () => {

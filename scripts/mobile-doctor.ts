@@ -82,6 +82,21 @@ results.push({
   detail: "avoids the reported iOS in-app auth-session JSI release crash path",
 });
 
+const generatedAndroidGradle = join(mobileRoot, "android/app/build.gradle");
+if (existsSync(generatedAndroidGradle)) {
+  const gradle = readFileSync(generatedAndroidGradle, "utf8");
+  const sentryScript = gradle.match(/"(sentry\.gradle(?:\.kts)?)"/u)?.[1];
+  if (sentryScript) {
+    results.push({
+      label: "generated Android Sentry integration",
+      status: existsSync(join(mobileRoot, "node_modules/@sentry/react-native", sentryScript))
+        ? "ok"
+        : "error",
+      detail: `run pnpm mobile:prebuild when the generated native project references a stale ${sentryScript}`,
+    });
+  }
+}
+
 if (process.platform === "darwin") {
   const requireIos = target === "ios-device" || target === "ios-simulator";
   requireCommand("Xcode command-line tools", "xcodebuild", ["-version"], requireIos);

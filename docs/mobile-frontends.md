@@ -95,8 +95,25 @@ is installed, normal TypeScript/UI changes use the faster Metro-only loop:
 pnpm mobile:start
 ```
 
+For a Codex-friendly inner loop, use the bounded chat contract gate before
+opening Metro:
+
+```bash
+pnpm mobile:dev:verify   # chat contract + native type/config checks
+pnpm mobile:start        # visual iteration in the installed development build
+pnpm test:mobile:watch   # optional focused watch loop while editing
+```
+
+`pnpm test:mobile:chat` is the fastest message-delivery regression command. It
+proves that durable acceptance does not wait for realtime identity, that a
+stable turn is submitted once, and that canonical Agent/session events settle
+the response. Maestro remains the outer loop because unit tests do not prove
+keyboard, navigation, native sockets, or system-browser OAuth.
+
 Re-run the platform build after changing a native dependency or Expo config
-plugin. For a cloud-independent reproduction of the EAS build pipeline, or the
+plugin. `pnpm mobile:prebuild` cleanly regenerates the ignored native projects;
+use it after dependency upgrades so stale Gradle or CocoaPods integration files
+cannot leak into the next build. For a cloud-independent reproduction of the EAS build pipeline, or the
 optional hosted internal-preview path, use:
 
 ```bash
@@ -164,8 +181,10 @@ on native; a pack remains fully operable without pack-specific mobile source.
 
 ## Resume and offline contract
 
-- Sending before bootstrap waits for auth/session readiness and retains one stable
-  `clientTurnId`; a crash or retry cannot start a second model run.
+- Sending waits for authenticated session authority, but not for the live Agent
+  WebSocket. The HTTP command durably accepts one stable `clientTurnId` first;
+  realtime then observes the canonical transcript. A crash or retry cannot
+  start a second model run.
 - While the app process is alive, session events reconnect from the last received
   cursor. The Session Durable Object retains 256 events or 15 minutes and sends
   `replayReset: true` with a canonical snapshot when a cursor is too old. A cold

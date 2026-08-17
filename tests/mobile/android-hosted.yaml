@@ -13,9 +13,11 @@ name: Android authenticated operator surface
 - tapOn: "Chat"
 - tapOn: "Chats"
 - assertVisible: "New chat"
-- back
-- takeScreenshot: output/mobile/android/hosted/operator-surface
-- assertVisible:
-    text: "Assistant MK1"
-- assertVisible:
-    text: "Sign in"
+- tapOn: "New chat"
+- tapOn: "Message your agent"
+- inputText: ${MOBILE_E2E_MESSAGE}
+- tapOn: "Send message"
+- assertVisible: ${MOBILE_E2E_MESSAGE}
+- tapOn: "Chats"
+- assertVisible: ${MOBILE_E2E_MESSAGE}
+- takeScreenshot: output/mobile/android/hosted/canonical-chat-acceptance

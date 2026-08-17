@@ -3,6 +3,14 @@ name: iOS signed-out boundary
 ---
 - launchApp:
     clearState: true
+- tapOn:
+    point: "50%,27%"
+- tapOn:
+    text: "Continue"
+    optional: true
+- tapOn:
+    text: "Close"
+    optional: true
 - assertVisible: "Assistant"
 - assertVisible: "Sign in"
 - takeScreenshot: output/mobile/ios/signed-out/sign-in

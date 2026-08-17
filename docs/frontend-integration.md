@@ -142,11 +142,33 @@ wire messages. `createWorkbenchChatController` provides one pending turn,
 stable `clientTurnId` delivery, reconnect/pause/resume behavior, cancellation,
 and handoff/token-refresh replacement semantics.
 
+Every client follows the same command/observation split:
+
+```text
+user intent
+  -> authenticated HTTP command with stable idempotency identity
+  -> canonical server acceptance and durable state
+  -> session events / Agent transcript observe the accepted state
+  -> shared resource invalidation updates each client
+```
+
+The realtime channel is disposable. A WebSocket that is slow, disconnected, or
+unsupported on a platform must never prevent an HTTP command from being
+accepted. Clients may render the local turn immediately, but only the accepted
+command response and later canonical transcript authorize clearing the pending
+turn or presenting it after restart. This rule makes web, native, and a future
+CLI interchangeable at the product boundary.
+
 The initial session event adapter resumes with an event cursor. Applications
 should persist only the last cursor and non-sensitive display snapshots. On a
 replay reset, replace local state with the canonical session snapshot. Workflow
 runs, approvals, connections, and actions are online-only and must not be
 silently queued.
+
+UI, routing, secure token storage, and platform lifecycle remain host-owned.
+Identity derivation, tenancy, policy, thread/agent selection, durable messages,
+and execution authority remain server-owned. Shared packages coordinate
+requests and caches; they do not make product authorization decisions.
 
 ## Agent Pack UI portability
 

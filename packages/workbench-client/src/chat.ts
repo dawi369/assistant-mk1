@@ -14,7 +14,14 @@ export type WorkbenchChatEvent =
   | { type: "replaced"; reason: "agent_handoff" | "token_refresh" };
 
 export type WorkbenchChatTransport = {
+  /** Connect the disposable realtime observation channel. */
   connect(): Promise<void>;
+  /**
+   * Durably accept a turn through the canonical command path.
+   *
+   * Implementations must not wait for `connect()` before issuing this command.
+   * Realtime is an observer of accepted state, never a prerequisite for writes.
+   */
   send(input: { clientTurnId: Id; text: string }): Promise<{ messageId: Id }>;
   cancel(): Promise<void>;
   resume(): Promise<void>;
@@ -147,9 +154,14 @@ export const createWorkbenchChatController = (input: {
     }
   };
 
+  const stateWhileObserving = () => {
+    if (state === "sending" || state === "running" || state === "paused") return state;
+    return state === "reconnecting" ? "reconnecting" : "connecting";
+  };
+
   const unsubscribeTransport = input.transport.subscribe((event) => {
     if (event.type === "connection") {
-      if (event.state === "connecting") publish(state === "paused" ? "paused" : "connecting");
+      if (event.state === "connecting") publish(stateWhileObserving());
       if (event.state === "connected") publish(active ? "running" : "ready", null);
       if (event.state === "disconnected" && state !== "paused" && state !== "closed") {
         publish("reconnecting");
@@ -175,7 +187,8 @@ export const createWorkbenchChatController = (input: {
         message: event.message,
         recoverable: event.recoverable,
       };
-      publish(event.recoverable ? "reconnecting" : "failed", nextError);
+      const recoverableState = active ? (active.messageId ? "running" : "sending") : "reconnecting";
+      publish(event.recoverable ? recoverableState : "failed", nextError);
       if (!event.recoverable && active) {
         active.terminal = "failed";
         settle();
@@ -187,9 +200,18 @@ export const createWorkbenchChatController = (input: {
 
   const connect = async () => {
     if (state === "closed") throw new Error("Chat controller is closed.");
-    publish(state === "reconnecting" ? "reconnecting" : "connecting", null);
-    await input.transport.connect();
-    if (state !== "paused") publish(active ? "running" : "ready", null);
+    publish(stateWhileObserving(), null);
+    try {
+      await input.transport.connect();
+      if (state !== "paused") publish(active ? "running" : "ready", null);
+    } catch (cause) {
+      publish(active ? (active.messageId ? "running" : "sending") : "reconnecting", {
+        code: "chat_connect_failed",
+        message: cause instanceof Error ? cause.message : "Chat connection failed.",
+        recoverable: true,
+      });
+      throw cause;
+    }
   };
 
   const submit: WorkbenchChatController["submit"] = async ({ clientTurnId, text, signal }) => {
@@ -202,7 +224,10 @@ export const createWorkbenchChatController = (input: {
     if (!stored) await input.pendingTurns.put(turn);
     pendingTurn = turn;
     publish("sending", null);
-    await connect();
+
+    // Observation starts concurrently, but durable command acceptance must not
+    // be blocked by WebSocket identity, reconnect, or platform socket support.
+    void connect().catch(() => undefined);
 
     return await new Promise<{ messageId: Id; assistantText: string }>((resolve, reject) => {
       const timeout = setTimeout(() => {

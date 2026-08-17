@@ -18,6 +18,7 @@ const suites: Array<{ command: string[]; guarantees: string[] }> = [
       "vitest",
       "run",
       "apps/mobile/src/mobile-foundation.test.ts",
+      "apps/mobile/src/chat/chat-transport.test.ts",
       "apps/mobile/src/chat/chat-messages.test.ts",
       "apps/mobile/src/components/generic-renderer-model.test.ts",
       "apps/mobile/src/components/schema-form-model.test.ts",
@@ -31,6 +32,7 @@ const suites: Array<{ command: string[]; guarantees: string[] }> = [
     guarantees: [
       "public-config-secret-exclusion-guard",
       "one-pending-turn",
+      "durable-send-before-realtime-observation",
       "turn-deduplication",
       "session-replay-ring",
       "stale-token-rejection",

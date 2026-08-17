@@ -76,6 +76,32 @@ const DraftPersistence = () => {
   return null;
 };
 
+const ChatStatus = () => {
+  const { snapshot } = useMobileChat();
+  const label =
+    snapshot.state === "sending"
+      ? "Sending message…"
+      : snapshot.state === "running"
+        ? "Agent is responding…"
+        : snapshot.state === "connecting"
+          ? "Connecting live updates…"
+          : snapshot.state === "reconnecting"
+            ? "Reconnecting live updates…"
+            : snapshot.state === "failed"
+              ? "Chat needs attention"
+              : null;
+  const message = snapshot.error?.message ?? label;
+  if (!message) return null;
+  return (
+    <View
+      accessibilityLiveRegion="polite"
+      style={{ paddingHorizontal: 16, paddingVertical: 8, backgroundColor: colors.accentSoft }}
+    >
+      <Text style={{ color: colors.ink, fontSize: 13 }}>{message}</Text>
+    </View>
+  );
+};
+
 export const ChatThread = () => (
   <ThreadPrimitive.Root style={{ flex: 1, backgroundColor: colors.canvas }}>
     <DraftPersistence />
@@ -95,6 +121,7 @@ export const ChatThread = () => (
       keyboardDismissMode="interactive"
       keyboardShouldPersistTaps="handled"
     />
+    <ChatStatus />
     <ComposerPrimitive.Root
       style={{
         flexDirection: "row",

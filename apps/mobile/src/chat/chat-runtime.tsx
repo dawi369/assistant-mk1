@@ -9,6 +9,7 @@ import {
   type ChatSessionResponse,
   type WorkbenchChatConnectionDescriptor,
   type WorkbenchChatController,
+  type WorkbenchChatControllerSnapshot,
 } from "@assistant-mk1/workbench-client";
 import * as Crypto from "expo-crypto";
 import { AppState } from "react-native";
@@ -52,13 +53,23 @@ const requireChatConnection = (
   return connection as WorkbenchChatConnectionDescriptor;
 };
 
-const MobileChatContext = createContext<{ threadId: string }>({ threadId: "new-chat" });
+const initialChatSnapshot: WorkbenchChatControllerSnapshot = {
+  state: "idle",
+  pendingTurn: null,
+  error: null,
+};
+
+const MobileChatContext = createContext<{
+  threadId: string;
+  snapshot: WorkbenchChatControllerSnapshot;
+}>({ threadId: "new-chat", snapshot: initialChatSnapshot });
 
 export const useMobileChat = () => useContext(MobileChatContext);
 
 export function MobileChatRuntimeProvider({ children }: PropsWithChildren) {
   const { chatSelectionRevision, client, subscribeSessionEvents } = useWorkbench();
   const controllerRef = useRef<WorkbenchChatController | null>(null);
+  const controllerUnsubscribeRef = useRef<(() => void) | null>(null);
   const transportUnsubscribeRef = useRef<(() => void) | null>(null);
   const sessionUnsubscribeRef = useRef<(() => void) | null>(null);
   const activeThreadRef = useRef<string | null>(null);
@@ -66,8 +77,11 @@ export function MobileChatRuntimeProvider({ children }: PropsWithChildren) {
   const runtimeRef = useRef<ReturnType<typeof useLocalRuntime> | null>(null);
   const lastTranscriptRef = useRef<readonly Record<string, unknown>[]>([]);
   const [threadId, setThreadId] = useState("new-chat");
+  const [snapshot, setSnapshot] = useState<WorkbenchChatControllerSnapshot>(initialChatSnapshot);
 
   const closeController = useCallback(() => {
+    controllerUnsubscribeRef.current?.();
+    controllerUnsubscribeRef.current = null;
     transportUnsubscribeRef.current?.();
     transportUnsubscribeRef.current = null;
     sessionUnsubscribeRef.current?.();
@@ -82,7 +96,7 @@ export function MobileChatRuntimeProvider({ children }: PropsWithChildren) {
       const connection = requireChatConnection(session.connection);
       const nextThreadId = connection.threadId ?? connection.instanceName!;
       if (!force && controllerRef.current && activeThreadRef.current === nextThreadId) {
-        await controllerRef.current.connect();
+        void controllerRef.current.connect().catch(() => undefined);
         return controllerRef.current;
       }
       closeController();
@@ -115,6 +129,7 @@ export function MobileChatRuntimeProvider({ children }: PropsWithChildren) {
         },
       });
       controllerRef.current = controller;
+      controllerUnsubscribeRef.current = controller.subscribe(setSnapshot);
       transportUnsubscribeRef.current = transport.subscribe((event) => {
         if (event.type !== "transcript") return;
         lastTranscriptRef.current = event.messages;
@@ -126,7 +141,8 @@ export function MobileChatRuntimeProvider({ children }: PropsWithChildren) {
         if (eventThreadId && eventThreadId !== activeThreadRef.current) return;
         controller.acceptSessionEvent(event);
       });
-      await controller.connect();
+      // Realtime observation is eager but never gates durable turn acceptance.
+      void controller.connect().catch(() => undefined);
       const queued = resumeQueued ? await mobileStore.getPendingTurn() : null;
       if (queued) {
         runningRef.current = true;
@@ -195,7 +211,7 @@ export function MobileChatRuntimeProvider({ children }: PropsWithChildren) {
   }, [chatSelectionRevision, connectCurrentThread]);
 
   return (
-    <MobileChatContext.Provider value={{ threadId }}>
+    <MobileChatContext.Provider value={{ threadId, snapshot }}>
       <AssistantRuntimeProvider runtime={runtime}>{children}</AssistantRuntimeProvider>
     </MobileChatContext.Provider>
   );
