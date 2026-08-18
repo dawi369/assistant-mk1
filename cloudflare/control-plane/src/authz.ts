@@ -270,7 +270,7 @@ export const createDefaultAgentIfMissing = async (
 
   const timestamp = new Date().toISOString();
   await env.DB.prepare(
-    `INSERT INTO agents (
+    `INSERT OR IGNORE INTO agents (
        id, workspace_id, name, description, status, is_default, created_by_user_id,
        data_json, created_at, updated_at
      )

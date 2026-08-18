@@ -234,7 +234,8 @@ const Composer: FC<{ pendingFirstTurn: boolean }> = ({ pendingFirstTurn }) => {
   );
 
   const executeExactSlashCommand = (event: FormEvent<HTMLFormElement>) => {
-    const normalizedText = composerText.trim().toLowerCase();
+    const submittedText = event.currentTarget.querySelector("textarea")?.value ?? composerText;
+    const normalizedText = submittedText.trim().toLowerCase();
     const command = commands.find((item) => normalizedText === `/${item.id.toLowerCase()}`);
     if (!command) return;
 

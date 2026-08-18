@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { defaultAgentId, defaultWorkspaceId, resolveAgentIdentity } from "./authz";
+import {
+  createDefaultAgentIfMissing,
+  defaultAgentId,
+  defaultWorkspaceId,
+  resolveAgentIdentity,
+} from "./authz";
 import type { D1PreparedStatement, Env } from "./types";
 
 const timestamp = "2026-08-02T00:00:00.000Z";
@@ -134,5 +139,45 @@ describe("hosted identity resolution", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.response.status).toBe(403);
     expect(getWriteCount()).toBe(0);
+  });
+});
+
+describe("default agent bootstrap", () => {
+  it("uses an idempotent insert when concurrent requests observe no default agent", async () => {
+    const queries: string[] = [];
+    const env = {
+      DB: {
+        prepare(query: string): D1PreparedStatement {
+          queries.push(query);
+          const statement: D1PreparedStatement = {
+            bind() {
+              return statement;
+            },
+            async first<T>() {
+              return null as T | null;
+            },
+            async all<T>() {
+              return { results: [] as T[] };
+            },
+            async run() {
+              if (query.includes("INSERT INTO agents")) {
+                throw new Error("non-idempotent default-agent insert");
+              }
+              return { success: true };
+            },
+          };
+          return statement;
+        },
+      },
+    } as unknown as Env;
+
+    await Promise.all([
+      createDefaultAgentIfMissing(env, { workspaceId, userId }),
+      createDefaultAgentIfMissing(env, { workspaceId, userId }),
+    ]);
+
+    expect(queries.filter((query) => query.includes("INSERT OR IGNORE INTO agents"))).toHaveLength(
+      2,
+    );
   });
 });
