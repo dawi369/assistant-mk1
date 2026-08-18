@@ -135,7 +135,7 @@ describe("mobile client architecture", () => {
     expect(transport).toContain("await input.getConnection()");
     expect(transport).toContain("const accepted = await input.sendTurn(turn)");
     expect(transport.indexOf("const accepted = await input.sendTurn(turn)")).toBeLessThan(
-      transport.indexOf('void reconnect("turn-accepted")'),
+      transport.indexOf("void observeAcceptedTurn()"),
     );
     expect(workbench).toContain("mobileStore.getSessionCursor(workspaceId)");
     expect(workbench).toContain("realtime.subscribeSession({ after })");

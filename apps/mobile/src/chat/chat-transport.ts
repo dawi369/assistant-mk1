@@ -136,13 +136,23 @@ export const createMobileChatTransport = (input: {
     await connect();
   };
 
+  const observeAcceptedTurn = async () => {
+    try {
+      await connect();
+    } catch {
+      // The durable command already succeeded. Refresh authority and retry the
+      // disposable observer once without delaying or duplicating the command.
+      await connect();
+    }
+  };
+
   return {
     connect,
     async send(turn) {
       // HTTP command acceptance is the source of truth and cannot depend on
       // the disposable realtime observer being connected.
       const accepted = await input.sendTurn(turn);
-      void reconnect("turn-accepted").catch(() => undefined);
+      void observeAcceptedTurn().catch(() => undefined);
       return accepted;
     },
     async cancel() {
